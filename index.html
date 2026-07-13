@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM Team · Панель управления</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A1420; --bg2:#0D1826; --card:#162136; --card2:#1B2942; --line:rgba(80,195,255,.12);
+    --ink:#F2F7FD; --dim:#A7BAD4; --faint:#6B8098;
+    --green:#3CFAB4; --blue:#50C3FF; --coral:#FF6B8A; --amber:#FFB84D;
+    --green-bg:rgba(60,250,180,.12); --blue-bg:rgba(80,195,255,.12);
+    --amber-bg:rgba(255,184,77,.12); --coral-bg:rgba(255,107,138,.13);
+    --grad:linear-gradient(120deg,#3CFAB4,#50C3FF);
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:"Golos Text","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --sidebar-w:264px; --sidebar-w-min:64px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow:hidden;
+    background-image:
+      radial-gradient(1100px 500px at 88% -8%,rgba(80,195,255,.10),transparent 60%),
+      radial-gradient(900px 480px at 5% -5%,rgba(60,250,180,.08),transparent 55%);}
+  a{color:var(--blue);text-decoration:none}
+
+  .app{display:flex;height:100vh}
+
+  /* ================= SIDEBAR ================= */
+  .sidebar{width:var(--sidebar-w);flex:0 0 auto;background:var(--bg2);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;transition:width .25s ease;overflow:hidden}
+  .sidebar.collapsed{width:var(--sidebar-w-min)}
+
+  .brandbar{display:flex;align-items:center;gap:12px;padding:18px 15px;border-bottom:1px solid var(--line);min-height:70px}
+  .logo{width:34px;height:34px;flex:0 0 auto}
+  .logo svg{width:100%;height:100%;display:block}
+  .brandname{font-weight:600;font-size:16px;white-space:nowrap;opacity:1;transition:opacity .15s}
+  .brandname b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sidebar.collapsed .brandname{opacity:0;pointer-events:none}
+
+  .nav{flex:1;overflow-y:auto;padding:14px 10px}
+  .nav::-webkit-scrollbar{width:8px}
+  .nav::-webkit-scrollbar-thumb{background:var(--card2);border-radius:4px}
+
+  .nav-group{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--faint);padding:14px 10px 7px;white-space:nowrap;transition:opacity .15s}
+  .sidebar.collapsed .nav-group{opacity:0;height:10px;padding-top:8px;padding-bottom:0;overflow:hidden}
+
+  .nav-item{display:flex;align-items:center;gap:12px;padding:10px 11px;border-radius:10px;cursor:pointer;
+    color:var(--dim);white-space:nowrap;border:1px solid transparent;margin-bottom:2px;user-select:none}
+  .nav-item:hover{background:var(--card);color:var(--ink)}
+  .nav-item.active{background:var(--blue-bg);border-color:rgba(80,195,255,.28);color:var(--ink)}
+  .nav-item.active .nav-ico{color:var(--green)}
+  .nav-ico{width:20px;height:20px;flex:0 0 auto;color:var(--faint);display:flex;align-items:center;justify-content:center}
+  .nav-ico svg{width:19px;height:19px}
+  .nav-label{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;transition:opacity .15s}
+  .sidebar.collapsed .nav-label{opacity:0}
+
+  .sidebar-foot{border-top:1px solid var(--line);padding:10px}
+  .collapse-btn{display:flex;align-items:center;gap:12px;width:100%;padding:10px 11px;border-radius:10px;
+    background:none;border:1px solid transparent;color:var(--faint);cursor:pointer;font-family:var(--sans);font-size:13px}
+  .collapse-btn:hover{background:var(--card);color:var(--ink)}
+  .collapse-btn svg{width:18px;height:18px;flex:0 0 auto;transition:transform .25s}
+  .sidebar.collapsed .collapse-btn svg{transform:rotate(180deg)}
+  .sidebar.collapsed .collapse-btn span{display:none}
+
+  /* ================= MAIN ================= */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .topbar{display:flex;align-items:center;gap:14px;padding:15px 26px;border-bottom:1px solid var(--line);
+    background:rgba(13,24,38,.6);backdrop-filter:blur(6px);min-height:70px}
+  .crumb{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--blue)}
+  .page-title{font-size:19px;font-weight:700;letter-spacing:-.01em}
+  .topbar-actions{margin-left:auto;display:flex;gap:10px}
+  .btn{font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 15px;border-radius:10px;cursor:pointer;
+    border:1px solid var(--line);background:var(--card);color:var(--ink)}
+  .btn:hover{background:var(--card2)}
+  .btn.accent{background:var(--grad);color:#06101B;border:none}
+  .btn.accent:hover{filter:brightness(1.08)}
+  .btn.ghost-danger{color:var(--coral);border-color:rgba(255,107,138,.35)}
+  .btn.ghost-danger:hover{background:var(--coral-bg)}
+
+  .content{flex:1;position:relative;overflow:hidden}
+  .view{position:absolute;inset:0;display:none}
+  .view.active{display:block}
+  .view iframe{width:100%;height:100%;border:0;background:#fff}
+  .view iframe.dark{background:var(--bg)}
+
+  /* ================= DASHBOARD ================= */
+  #view-home{overflow-y:auto;padding:26px}
+  #view-home::-webkit-scrollbar{width:10px}
+  #view-home::-webkit-scrollbar-thumb{background:var(--card2);border-radius:5px}
+  .dash-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+  .dash-head h1{font-size:26px;font-weight:700;letter-spacing:-.015em}
+  .dash-head h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .dash-sub{color:var(--dim);font-size:14px;margin-bottom:22px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;align-items:start}
+
+  .widget{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;
+    box-shadow:0 10px 30px rgba(4,12,22,.4);position:relative}
+  .widget.dragging{opacity:.45}
+  .widget.drop-target{outline:2px dashed rgba(80,195,255,.5);outline-offset:3px}
+  .widget-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .widget-title{font-size:15px;font-weight:600}
+  .widget-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+  .widget-tools{margin-left:auto;display:none;gap:6px}
+  body.edit-mode .widget-tools{display:flex}
+  .wtool{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);
+    color:var(--dim);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center}
+  .wtool:hover{color:var(--ink);background:var(--card2)}
+  .wtool.del:hover{color:var(--coral);border-color:rgba(255,107,138,.4)}
+  body.edit-mode .widget{cursor:grab}
+  body.edit-mode .widget:active{cursor:grabbing}
+
+  /* KPI */
+  .kpi-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .kpi{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .kpi .v{font-size:22px;font-weight:700;font-family:var(--mono);letter-spacing:-.02em}
+  .kpi .v.up{color:var(--green)} .kpi .v.down{color:var(--coral)} .kpi .v.flat{color:var(--blue)}
+  .kpi .l{font-size:12px;color:var(--faint);margin-top:3px}
+
+  /* Tasks */
+  .task-add{display:flex;gap:8px;margin-bottom:12px}
+  .task-add input{flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:10px;
+    padding:9px 12px;color:var(--ink);font-family:var(--sans);font-size:13.5px;outline:none}
+  .task-add input:focus{border-color:rgba(80,195,255,.45)}
+  .task{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);font-size:13.5px}
+  .task:last-child{border-bottom:none}
+  .task input[type=checkbox]{accent-color:#3CFAB4;width:16px;height:16px;cursor:pointer}
+  .task.done .task-text{color:var(--faint);text-decoration:line-through}
+  .task-del{margin-left:auto;background:none;border:none;color:var(--faint);cursor:pointer;font-size:15px;padding:2px 6px;border-radius:6px}
+  .task-del:hover{color:var(--coral);background:var(--coral-bg)}
+  .empty-note{color:var(--faint);font-size:13px;padding:6px 2px}
+
+  /* Recent tools / quick links */
+  .link-list{display:flex;flex-direction:column;gap:6px}
+  .link-row{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:11px;background:var(--bg2);
+    border:1px solid var(--line);cursor:pointer;font-size:13.5px;color:var(--ink)}
+  .link-row:hover{border-color:rgba(80,195,255,.4);background:var(--card2)}
+  .link-row .dot{width:8px;height:8px;border-radius:50%;background:var(--grad);flex:0 0 auto}
+  .link-row .when{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint)}
+
+  /* status widget */
+  .status-line{display:flex;align-items:center;gap:10px;padding:8px 2px;font-size:13.5px;border-bottom:1px solid var(--line)}
+  .status-line:last-child{border-bottom:none}
+  .pill{font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 10px;border-radius:14px;margin-left:auto}
+  .pill.ok{background:var(--green-bg);color:var(--green)}
+  .pill.warn{background:var(--amber-bg);color:var(--amber)}
+  .pill.err{background:var(--coral-bg);color:var(--coral)}
+
+  /* add-widget panel */
+  .add-panel{display:none;margin-bottom:18px;background:var(--card);border:1px dashed rgba(80,195,255,.35);
+    border-radius:16px;padding:16px 18px}
+  body.edit-mode .add-panel{display:block}
+  .add-panel .widget-eyebrow{margin-bottom:10px}
+  .chip-row{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{font-size:13px;font-weight:500;padding:7px 14px;border-radius:20px;cursor:pointer;
+    background:var(--bg2);border:1px solid var(--line);color:var(--dim)}
+  .chip:hover:not(.used){border-color:rgba(60,250,180,.45);color:var(--ink)}
+  .chip.used{opacity:.35;cursor:default}
+
+  @media (max-width:760px){
+    .sidebar{position:fixed;z-index:100;height:100%}
+    .grid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== Sidebar ===== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brandbar">
+      <div class="logo">
+        <svg viewBox="0 0 40 40" fill="none">
+          <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#3CFAB4"/><stop offset="1" stop-color="#50C3FF"/></linearGradient></defs>
+          <path d="M20 4 a16 16 0 0 1 0 32" stroke="url(#lg)" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="20" cy="20" r="9" fill="none" stroke="#50C3FF" stroke-width="3.4"/>
+          <path d="M20 11 a9 9 0 0 1 6.4 15.4" stroke="#3CFAB4" stroke-width="3.4" stroke-linecap="round" fill="none"/>
+        </svg>
+      </div>
+      <div class="brandname">CRM <b>Team</b></div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sidebar-foot">
+      <button class="collapse-btn" id="collapseBtn" title="Свернуть меню">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"/></svg>
+        <span>Свернуть меню</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===== Main ===== -->
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <div class="crumb" id="crumb">CRM · Панель управления</div>
+        <div class="page-title" id="pageTitle">Главная</div>
+      </div>
+      <div class="topbar-actions" id="homeActions">
+        <button class="btn" id="editToggle">Настроить главную</button>
+      </div>
+    </div>
+    <div class="content" id="content">
+      <div class="view active" id="view-home">
+        <div class="dash-head"><h1>Добро пожаловать в <span class="grad">панель управления</span></h1></div>
+        <div class="dash-sub">Соберите главную под себя: добавляйте, удаляйте и перетаскивайте блоки в режиме настройки.</div>
+        <div class="add-panel">
+          <div class="widget-eyebrow">Добавить блок</div>
+          <div class="chip-row" id="chipRow"></div>
+        </div>
+        <div class="grid" id="grid"></div>
+      </div>
+      <!-- iframe-представления создаются динамически -->
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   НАВИГАЦИЯ — разделы левого меню.
+   Чтобы добавить новый раздел: добавьте объект в массив.
+   ========================================================= */
+const NAV = [
+  { group: "Обзор" },
+  { id:"home", label:"Главная", icon:"home" },
+  { group: "Инструменты" },
+  { id:"deviations", label:"Панель отклонений", icon:"chart",  src:"pages/deviations-panel.html", dark:true },
+  { id:"onelink",    label:"OneLink Builder",   icon:"link",   src:"pages/onelink-builder.html",  dark:true },
+  { id:"admin",      label:"Админка коммуникаций", icon:"gear", src:"pages/admin-panel.html" },
+];
+
+const ICONS = {
+  home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z"/></svg>',
+  chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-6M21 20H3"/></svg>',
+  link:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>',
+  gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>'
+};
+
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("crmpanel:"+k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem("crmpanel:"+k, JSON.stringify(v)); }catch(e){} }
+};
+
+/* ---------- сайдбар ---------- */
+const sidebar = $("#sidebar");
+if (store.get("sidebarCollapsed", false)) sidebar.classList.add("collapsed");
+$("#collapseBtn").onclick = () => {
+  sidebar.classList.toggle("collapsed");
+  store.set("sidebarCollapsed", sidebar.classList.contains("collapsed"));
+};
+
+const navEl = $("#nav");
+NAV.forEach(item => {
+  if (item.group){
+    const g = document.createElement("div");
+    g.className = "nav-group"; g.textContent = item.group;
+    navEl.appendChild(g); return;
+  }
+  const el = document.createElement("div");
+  el.className = "nav-item"; el.dataset.id = item.id; el.title = item.label;
+  el.innerHTML = `<span class="nav-ico">${ICONS[item.icon]||""}</span><span class="nav-label">${item.label}</span>`;
+  el.onclick = () => openSection(item.id);
+  navEl.appendChild(el);
+});
+
+/* ---------- переключение разделов ---------- */
+const content = $("#content");
+function sectionById(id){ return NAV.find(n => n.id === id); }
+
+function openSection(id){
+  const s = sectionById(id); if (!s) return;
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.id === id));
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+
+  if (id === "home"){
+    $("#view-home").classList.add("active");
+  } else {
+    let view = document.getElementById("view-" + id);
+    if (!view){
+      view = document.createElement("div");
+      view.className = "view"; view.id = "view-" + id;
+      view.innerHTML = `<iframe src="${s.src}" class="${s.dark ? "dark" : ""}" loading="lazy" title="${s.label}"></iframe>`;
+      content.appendChild(view);
+    }
+    view.classList.add("active");
+    trackRecent(s);
+  }
+  $("#pageTitle").textContent = s.label;
+  $("#crumb").textContent = id === "home" ? "CRM · Панель управления" : "CRM · Инструменты";
+  $("#homeActions").style.display = id === "home" ? "flex" : "none";
+  store.set("lastSection", id);
+}
+
+/* ---------- недавние инструменты ---------- */
+function trackRecent(s){
+  let rec = store.get("recent", []).filter(r => r.id !== s.id);
+  rec.unshift({ id:s.id, label:s.label, ts:Date.now() });
+  store.set("recent", rec.slice(0, 6));
+  renderWidgetBody("recent");
+}
+
+/* =========================================================
+   ВИДЖЕТЫ ГЛАВНОЙ
+   Каталог блоков; состояние (какие включены и в каком
+   порядке) хранится в localStorage.
+   ========================================================= */
+const WIDGETS = {
+  summary: { title:"Сводка по коммуникациям", eyebrow:"Дашборд", render: el => {
+    el.innerHTML = `<div class="kpi-row">
+      <div class="kpi"><div class="v up">+12,4%</div><div class="l">Выручка CPA, нед/нед</div></div>
+      <div class="kpi"><div class="v flat">318</div><div class="l">Активных кампаний</div></div>
+      <div class="kpi"><div class="v up">4,8%</div><div class="l">CTR e-mail, среднее</div></div>
+      <div class="kpi"><div class="v down">−3 SLA</div><div class="l">Просроченные задачи</div></div>
+    </div>
+    <div class="empty-note" style="margin-top:10px">Демо-данные. Подключите источник в следующей итерации.</div>`;
+  }},
+  tasks: { title:"Мои задачи", eyebrow:"To-do", render: el => {
+    const tasks = store.get("tasks", []);
+    el.innerHTML = `<div class="task-add">
+        <input type="text" placeholder="Новая задача… (Enter)" id="taskInput">
+      </div><div id="taskList"></div>`;
+    const list = el.querySelector("#taskList");
+    if (!tasks.length) list.innerHTML = `<div class="empty-note">Задач пока нет — добавьте первую.</div>`;
+    tasks.forEach((t, i) => {
+      const row = document.createElement("div");
+      row.className = "task" + (t.done ? " done" : "");
+      row.innerHTML = `<input type="checkbox" ${t.done?"checked":""}><span class="task-text">${escapeHtml(t.text)}</span><button class="task-del" title="Удалить">×</button>`;
+      row.querySelector("input").onchange = e => { tasks[i].done = e.target.checked; store.set("tasks", tasks); renderWidgetBody("tasks"); };
+      row.querySelector(".task-del").onclick = () => { tasks.splice(i,1); store.set("tasks", tasks); renderWidgetBody("tasks"); };
+      list.appendChild(row);
+    });
+    el.querySelector("#taskInput").onkeydown = e => {
+      if (e.key === "Enter" && e.target.value.trim()){
+        tasks.unshift({ text:e.target.value.trim(), done:false });
+        store.set("tasks", tasks); renderWidgetBody("tasks");
+      }
+    };
+  }},
+  recent: { title:"Недавно использованные инструменты", eyebrow:"История", render: el => {
+    const rec = store.get("recent", []);
+    if (!rec.length){ el.innerHTML = `<div class="empty-note">Откройте любой инструмент в меню слева — он появится здесь.</div>`; return; }
+    el.innerHTML = `<div class="link-list">` + rec.map(r =>
+      `<div class="link-row" data-id="${r.id}"><span class="dot"></span>${escapeHtml(r.label)}<span class="when">${timeAgo(r.ts)}</span></div>`
+    ).join("") + `</div>`;
+    el.querySelectorAll(".link-row").forEach(row => row.onclick = () => openSection(row.dataset.id));
+  }},
+  quicklinks: { title:"Быстрые ссылки", eyebrow:"Инструменты", render: el => {
+    el.innerHTML = `<div class="link-list">` + NAV.filter(n => n.id && n.id !== "home").map(n =>
+      `<div class="link-row" data-id="${n.id}"><span class="dot"></span>${n.label}</div>`
+    ).join("") + `</div>`;
+    el.querySelectorAll(".link-row").forEach(row => row.onclick = () => openSection(row.dataset.id));
+  }},
+  status: { title:"Статусы систем", eyebrow:"Мониторинг", render: el => {
+    el.innerHTML = `
+      <div class="status-line">Рассылки e-mail<span class="pill ok">OK</span></div>
+      <div class="status-line">Push-шлюз<span class="pill ok">OK</span></div>
+      <div class="status-line">Выгрузка CPA-фида<span class="pill warn">Задержка</span></div>
+      <div class="status-line">Интеграция AppsFlyer<span class="pill ok">OK</span></div>
+      <div class="empty-note" style="margin-top:8px">Демо-данные для MVP.</div>`;
+  }},
+};
+
+const DEFAULT_LAYOUT = ["summary","tasks","recent","quicklinks"];
+let layout = store.get("layout", DEFAULT_LAYOUT).filter(id => WIDGETS[id]);
+
+const grid = $("#grid");
+function renderGrid(){
+  grid.innerHTML = "";
+  layout.forEach(id => {
+    const w = WIDGETS[id];
+    const card = document.createElement("div");
+    card.className = "widget"; card.dataset.id = id;
+    card.innerHTML = `
+      <div class="widget-head">
+        <div><div class="widget-eyebrow">${w.eyebrow}</div><div class="widget-title">${w.title}</div></div>
+        <div class="widget-tools"><button class="wtool del" title="Убрать блок">×</button></div>
+      </div>
+      <div class="widget-body"></div>`;
+    card.querySelector(".del").onclick = () => { layout = layout.filter(x => x !== id); saveLayout(); };
+    enableDrag(card);
+    grid.appendChild(card);
+    w.render(card.querySelector(".widget-body"));
+  });
+  renderChips();
+}
+function renderWidgetBody(id){
+  const card = grid.querySelector(`.widget[data-id="${id}"]`);
+  if (card) WIDGETS[id].render(card.querySelector(".widget-body"));
+}
+function saveLayout(){ store.set("layout", layout); renderGrid(); }
+
+/* ---------- добавление блоков ---------- */
+const chipRow = $("#chipRow");
+function renderChips(){
+  chipRow.innerHTML = "";
+  Object.entries(WIDGETS).forEach(([id, w]) => {
+    const used = layout.includes(id);
+    const chip = document.createElement("div");
+    chip.className = "chip" + (used ? " used" : "");
+    chip.textContent = (used ? "✓ " : "+ ") + w.title;
+    if (!used) chip.onclick = () => { layout.push(id); saveLayout(); };
+    chipRow.appendChild(chip);
+  });
+}
+
+/* ---------- drag & drop (в режиме настройки) ---------- */
+let dragId = null;
+function enableDrag(card){
+  card.addEventListener("dragstart", e => { dragId = card.dataset.id; card.classList.add("dragging"); });
+  card.addEventListener("dragend", () => { dragId = null; card.classList.remove("dragging");
+    grid.querySelectorAll(".widget").forEach(w => w.classList.remove("drop-target")); });
+  card.addEventListener("dragover", e => { if (dragId && dragId !== card.dataset.id){ e.preventDefault(); card.classList.add("drop-target"); }});
+  card.addEventListener("dragleave", () => card.classList.remove("drop-target"));
+  card.addEventListener("drop", e => {
+    e.preventDefault();
+    const from = layout.indexOf(dragId), to = layout.indexOf(card.dataset.id);
+    if (from < 0 || to < 0) return;
+    layout.splice(to, 0, layout.splice(from, 1)[0]);
+    saveLayout();
+  });
+}
+
+/* ---------- режим настройки ---------- */
+const editToggle = $("#editToggle");
+editToggle.onclick = () => {
+  const on = document.body.classList.toggle("edit-mode");
+  editToggle.textContent = on ? "Готово" : "Настроить главную";
+  editToggle.classList.toggle("accent", on);
+  grid.querySelectorAll(".widget").forEach(w => w.draggable = on);
+};
+
+/* ---------- утилиты ---------- */
+function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function timeAgo(ts){
+  const m = Math.round((Date.now() - ts) / 60000);
+  if (m < 1) return "сейчас";
+  if (m < 60) return m + " мин";
+  const h = Math.round(m / 60);
+  if (h < 24) return h + " ч";
+  return Math.round(h / 24) + " дн";
+}
+
+/* ---------- старт ---------- */
+renderGrid();
+openSection(store.get("lastSection", "home"));
+</script>
+</body>
+</html>
