@@ -2,7 +2,11 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Communications Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 body {
     font-family: Arial, sans-serif;
@@ -470,6 +474,146 @@ button {
     color: #6b7280;
     font-style: italic;
 }
+
+/* ============================================================
+   Тёмная тема CRM Team — блоки как на остальном сайте.
+   Переопределяет светлое оформление выше фирменной палитрой.
+   ============================================================ */
+:root{
+    --bg:#0A1420; --bg2:#0D1826; --card:#162136; --card2:#1B2942; --line:rgba(80,195,255,.12);
+    --ink:#EAF2FB; --dim:#8FA3C0; --faint:#5A6E8C;
+    --green:#3CFAB4; --blue:#50C3FF; --coral:#FF6B8A; --amber:#FFB84D; --violet:#B9A7FF;
+    --green-bg:rgba(60,250,180,.12); --blue-bg:rgba(80,195,255,.12);
+    --amber-bg:rgba(255,184,77,.12); --coral-bg:rgba(255,107,138,.13); --violet-bg:rgba(139,124,246,.16);
+    --grad:linear-gradient(120deg,#3CFAB4,#50C3FF);
+    --sans:"Golos Text","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+}
+body{
+    background:var(--bg); color:var(--ink); font-family:var(--sans);
+    background-image:
+        radial-gradient(1100px 500px at 88% -8%,rgba(80,195,255,.10),transparent 60%),
+        radial-gradient(900px 480px at 5% -5%,rgba(60,250,180,.08),transparent 55%);
+}
+h2,h3,h4{color:var(--ink)}
+
+/* Вкладки */
+.tab{background:var(--card2); color:var(--dim); border:1px solid var(--line); border-bottom:none}
+.tab.active{background:var(--card); color:var(--ink); font-weight:600}
+
+/* Формы, блоки-карточки */
+.form{background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 10px 30px rgba(4,12,22,.4)}
+.form-block{background:var(--card2); border:1px solid var(--line); border-radius:14px}
+.form-block-title{color:var(--ink); border-bottom:1px solid var(--line)}
+
+/* Поля ввода */
+label{color:var(--dim)}
+input,select,textarea{background:var(--bg2); border:1px solid var(--line); color:var(--ink)}
+input:focus,select:focus,textarea:focus{border-color:rgba(80,195,255,.45); outline:none}
+input::placeholder,textarea::placeholder{color:var(--faint)}
+select option{background:var(--bg2); color:var(--ink)}
+small{color:var(--faint)}
+.checkbox{color:var(--dim)}
+input[type=checkbox],input[type=radio]{accent-color:#3CFAB4}
+
+/* Кнопки */
+button{background:var(--grad); color:#06202B; font-family:var(--sans); font-weight:600}
+button:hover{filter:brightness(1.08)}
+
+/* Редактируемый выпадающий список */
+.dropdown-list{background:var(--card); border:1px solid var(--line)}
+.dropdown-list div{color:var(--ink)}
+.dropdown-list div:hover{background:var(--card2)}
+
+/* Группы флагов */
+.extra-flags .flags-group-label{color:var(--dim)}
+.for-cc-block{border-top:1px solid var(--line)}
+
+/* Подсказки */
+.field-help{background:var(--faint)}
+.field-help:hover{background:var(--blue)}
+.field-help-popup{background:var(--card2); color:var(--ink); border:1px solid var(--line); box-shadow:0 10px 40px rgba(0,0,0,.45)}
+
+/* Селект во вкладке просмотра */
+#view select{background:var(--bg2); border:1px solid var(--line); color:var(--ink)}
+
+/* Таблица шаблонов */
+.template-table th{background:var(--card2); color:var(--dim)}
+.template-table td{border-bottom:1px solid var(--line); color:var(--ink)}
+.template-table tr:hover{background:var(--card2)}
+.template-table .channel-sms{background:var(--blue-bg); color:var(--blue)}
+.template-table .channel-push{background:var(--amber-bg); color:var(--amber)}
+.template-table .channel-email{background:var(--green-bg); color:var(--green)}
+.template-table .channel-cc{background:var(--violet-bg); color:var(--violet)}
+.template-table .status-active{color:var(--green)}
+.template-table .status-inactive{color:var(--coral)}
+.template-table .btn-view{background:var(--card2); color:var(--ink); border:1px solid var(--line)}
+.template-table .btn-view:hover{background:var(--card)}
+
+/* Итог по списку */
+.list-stats{background:var(--green-bg); color:var(--green)}
+
+/* Дашборд */
+.stat-card{background:var(--card); box-shadow:0 10px 30px rgba(4,12,22,.4); border-radius:16px; border-left:4px solid var(--blue)}
+.stat-card.success{border-left-color:var(--green)}
+.stat-card.error{border-left-color:var(--coral)}
+.stat-card.warning{border-left-color:var(--amber)}
+.stat-card.info{border-left-color:var(--blue)}
+.stat-card .stat-label{color:var(--faint)}
+.stat-card .stat-value{color:var(--ink)}
+.stat-card .stat-sub{color:var(--faint)}
+.stat-card .stat-trend.up{color:var(--green)}
+.stat-card .stat-trend.down{color:var(--coral)}
+.stat-card .stat-trend.neutral{color:var(--dim)}
+
+.dashboard-section{background:var(--card); box-shadow:0 10px 30px rgba(4,12,22,.4); border-radius:16px}
+.dashboard-section h3{color:var(--ink)}
+
+.channel-stat-card.sms{background:var(--blue-bg)}
+.channel-stat-card.push{background:var(--amber-bg)}
+.channel-stat-card.email{background:var(--green-bg)}
+.channel-stat-card.cc{background:var(--violet-bg)}
+.channel-stat-card .channel-name{color:var(--ink)}
+.channel-stat-card .channel-total{color:var(--ink)}
+.channel-stat-card.per-user-card .per-user-minmax{color:var(--dim)}
+.channel-stat-card .channel-details{color:var(--dim)}
+.overheat-status.overheat-ok{background:var(--green-bg); color:var(--green)}
+.overheat-status.overheat-warn{background:var(--amber-bg); color:var(--amber)}
+.overheat-status.overheat-bad{background:var(--coral-bg); color:var(--coral)}
+.overheat-detail{color:var(--faint)}
+
+/* Столбчатая диаграмма */
+.bar-chart{border-bottom:1px solid var(--line)}
+.bar-chart .bar{background:var(--grad)}
+.bar-chart .bar .bar-label{color:var(--faint)}
+.bar-chart .bar .bar-value{color:var(--dim)}
+.chart-legend{color:var(--dim)}
+.chart-legend .dot.success{background:var(--green)}
+.chart-legend .dot.error{background:var(--coral)}
+
+/* Прогресс-бары */
+.progress-bar{background:var(--card2)}
+.progress-bar .progress-fill.success{background:var(--green)}
+.progress-bar .progress-fill.error{background:var(--coral)}
+
+/* Причины ошибок */
+.error-reason{background:var(--coral-bg)}
+.error-reason .reason-name{color:var(--coral)}
+.error-reason .reason-count{color:var(--coral)}
+
+/* Контент письма */
+.email-content-section{border:1px solid var(--line)}
+.email-content-section h4{background:var(--card2); color:var(--ink); border-bottom:1px solid var(--line)}
+.email-text-preview{background:var(--bg2); color:var(--dim)}
+.email-links-table th{background:var(--card2); color:var(--dim); border-bottom:1px solid var(--line)}
+.email-links-table td{border-bottom:1px solid var(--line); color:var(--ink)}
+.email-links-table tr:hover{background:var(--card2)}
+.email-links-table .link-url{color:var(--blue)}
+.email-links-table .link-type.button{background:var(--blue-bg); color:var(--blue)}
+.email-links-table .link-type.text{background:var(--card2); color:var(--dim)}
+.email-links-table .link-type.banner{background:var(--amber-bg); color:var(--amber)}
+.email-links-table .link-type.image{background:var(--violet-bg); color:var(--violet)}
+.email-links-table .link-context{color:var(--faint)}
 </style>
 </head>
 <body>
