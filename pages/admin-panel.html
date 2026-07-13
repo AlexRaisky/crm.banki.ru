@@ -614,20 +614,24 @@ button:hover{filter:brightness(1.08)}
 .email-links-table .link-type.banner{background:var(--amber-bg); color:var(--amber)}
 .email-links-table .link-type.image{background:var(--violet-bg); color:var(--violet)}
 .email-links-table .link-context{color:var(--faint)}
+
+/* Хинты под полями — как на странице OneLink Builder */
+.hint{color:var(--faint); font-size:12.5px; margin-top:7px; line-height:1.5}
+.hint code, code.inline{font-family:var(--mono); background:var(--card2); color:var(--blue); padding:2px 7px; border-radius:5px; font-size:12px}
+.field.checkbox{flex-wrap:wrap}
+.field.checkbox .hint{flex-basis:100%; margin-top:4px}
 </style>
 </head>
 <body>
 
-<h2>Мастер коммуникаций</h2>
-
-<div class="tabs">
+<div class="tabs" id="tabsBar">
     <div class="tab active" onclick="openTab('sms', this)">SMS</div>
     <div class="tab" onclick="openTab('push', this)">Push</div>
     <div class="tab" onclick="openTab('email', this)">Email</div>
     <div class="tab" onclick="openTab('cc', this)">КЦ</div>
     <div class="tab" onclick="openTab('view', this)">Просмотр настроек</div>
-    <div class="tab" onclick="openTab('list', this)">Список шаблонов</div>
-    <div class="tab" onclick="openTab('dashboard', this)">Дашборд</div>
+    <div class="tab tab-list" onclick="openTab('list', this)">Список шаблонов</div>
+    <div class="tab tab-dashboard" onclick="openTab('dashboard', this)">Дашборд</div>
 </div>
 
 <!-- ================= SMS ================= -->
@@ -1844,54 +1848,35 @@ function hideFieldHelp() {
     if (popup) popup.style.display = 'none';
 }
 
+/* Подсказки к полям — в формате OneLink Builder: серый текст-хинт под полем. */
 function initFieldHelp() {
-    if (document.getElementById('fieldHelpPopup')) return;
-    var popup = document.createElement('div');
-    popup.id = 'fieldHelpPopup';
-    popup.className = 'field-help-popup';
-    document.body.appendChild(popup);
-    document.addEventListener('click', function(e) {
-        var helpEl = e.target.closest('.field-help');
-        if (helpEl) {
-            e.stopPropagation();
-            e.preventDefault();
-            showFieldHelp(helpEl);
-        } else {
-            hideFieldHelp();
-        }
-    });
     var formIds = ['sms', 'push', 'email', 'cc'];
     formIds.forEach(function(id) {
         var form = document.getElementById(id);
         if (!form) return;
         form.querySelectorAll('.field').forEach(function(field) {
+            if (field.querySelector(':scope > .hint')) return;
             var label = field.querySelector('label');
-            if (!label || label.querySelector('.field-help')) return;
+            if (!label) return;
             var key = getFieldHelpKey(label);
             var helpText = FIELD_HELP_TEXTS[key];
             if (!helpText && key.indexOf('Доп. флаги') === 0) helpText = FIELD_HELP_TEXTS['Доп. флаги'];
             if (helpText) {
-                var span = document.createElement('span');
-                span.className = 'field-help';
-                span.setAttribute('data-help', helpText);
-                span.textContent = '?';
-                label.appendChild(span);
+                var hint = document.createElement('div');
+                hint.className = 'hint';
+                hint.textContent = helpText;
+                field.appendChild(hint);
             }
         });
-        ['Горизонтали', 'Настроечные'].forEach(function(key) {
-            var label = form.querySelector('.flags-group-label');
-            if (!label) return;
-            var labels = form.querySelectorAll('.flags-group-label');
-            var h = key === 'Горизонтали' ? (FIELD_HELP_TEXTS['Горизонтали'] || FIELD_HELP_TEXTS['Доп. флаги']) : (FIELD_HELP_TEXTS['Настроечные'] || FIELD_HELP_TEXTS['Доп. флаги']);
-            labels.forEach(function(lbl) {
-                if (lbl.textContent.trim() === key && !lbl.querySelector('.field-help') && h) {
-                    var span = document.createElement('span');
-                    span.className = 'field-help';
-                    span.setAttribute('data-help', h);
-                    span.textContent = '?';
-                    lbl.appendChild(span);
-                }
-            });
+        form.querySelectorAll('.flags-group-label').forEach(function(lbl) {
+            if (lbl.nextElementSibling && lbl.nextElementSibling.classList.contains('hint')) return;
+            var h = FIELD_HELP_TEXTS[lbl.textContent.trim()];
+            if (h) {
+                var hint = document.createElement('div');
+                hint.className = 'hint';
+                hint.textContent = h;
+                lbl.insertAdjacentElement('afterend', hint);
+            }
         });
     });
 }
@@ -3100,8 +3085,28 @@ function applyFallbackData() {
     DASHBOARD_DATA = FALLBACK_DASHBOARD;
 }
 
+/* Режим отдельного раздела: ?only=list | ?only=dashboard.
+   Без параметра — обычный мастер (вкладки «Список шаблонов» и «Дашборд» скрыты,
+   т.к. они вынесены в самостоятельные разделы панели). */
+function applyOnlyMode() {
+    var only = new URLSearchParams(location.search).get('only');
+    var tabsBar = document.getElementById('tabsBar');
+    if (only === 'list' || only === 'dashboard') {
+        if (tabsBar) tabsBar.style.display = 'none';
+        document.querySelectorAll('.form').forEach(f => f.classList.remove('active'));
+        var target = document.getElementById(only);
+        if (target) target.classList.add('active');
+    } else if (tabsBar) {
+        var lt = tabsBar.querySelector('.tab-list');
+        var dt = tabsBar.querySelector('.tab-dashboard');
+        if (lt) lt.style.display = 'none';
+        if (dt) dt.style.display = 'none';
+    }
+}
+
 /* Инициализация списка и подсказок при загрузке */
 document.addEventListener('DOMContentLoaded', () => {
+    applyOnlyMode();
     loadMockData()
         .then(() => {
             applyFilters();
