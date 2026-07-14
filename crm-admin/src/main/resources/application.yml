@@ -1,0 +1,74 @@
+spring:
+  application:
+    name: crm-admin
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/crm}
+    username: ${DB_USER:crm}
+    password: ${DB_PASSWORD:crm}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Europe/Moscow
+  flyway:
+    enabled: true
+    schemas: notice,callcenter,retention,arch,app
+    default-schema: app
+    create-schemas: true
+
+server:
+  port: 8080
+  forward-headers-strategy: framework
+  error:
+    include-message: always
+    include-binding-errors: always
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  # First super-admin, created idempotently on startup.
+  admin:
+    email: ${ADMIN_EMAIL:admin@banki.ru}
+    password: ${ADMIN_PASSWORD:admin12345}
+  # Restrict login/registration email domain (empty = no restriction).
+  email-domain: ${APP_EMAIL_DOMAIN:}
+  # Write app.current_user before mutating queries (audit trigger on arch.arch_log).
+  audit:
+    enabled: true
+  # Physical table locations — override per environment without touching code.
+  tables:
+    push: notice.push_template
+    email: notice.email_template
+    sms: notice.d_com_sms_template
+    cc: callcenter.d_segment_properties
+
+logging:
+  level:
+    org.flywaydb: info
+
+---
+# Bundled DB for local/dev + demo. Flyway builds the prod-identical schema and seeds demo data.
+spring:
+  config:
+    activate:
+      on-profile: docker
+  flyway:
+    locations: classpath:db/migration,classpath:db/seed
+
+---
+# Production: connect to the existing corporate PostgreSQL. Tables already exist there,
+# so schema migrations are OFF; only baseline validation runs.
+spring:
+  config:
+    activate:
+      on-profile: prod
+  flyway:
+    enabled: false
+app:
+  audit:
+    enabled: true

@@ -1,0 +1,21 @@
+# --- Build output ---
+target/
+*.class
+*.jar
+
+# --- Secrets / local env (use .env.example as template) ---
+.env
+*.env.local
+
+# --- IDE ---
+.idea/
+*.iml
+.vscode/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Obsidian local UI state (notes themselves ARE tracked) ---
+.obsidian/workspace*.json
+.obsidian/cache/

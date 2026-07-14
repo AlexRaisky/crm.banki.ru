@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:16
+    container_name: crm-admin-db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-crm}
+      POSTGRES_USER: ${DB_USER:-crm}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-crm}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - crm_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-crm} -d ${DB_NAME:-crm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    container_name: crm-admin-app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Spring profile: "docker" = bundled DB + Flyway schema + dev seed.
+      # Switch to "prod" (external DB, no schema migrations) when connecting to the real corporate DB.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
+      DB_URL: ${DB_URL:-jdbc:postgresql://db:5432/crm}
+      DB_USER: ${DB_USER:-crm}
+      DB_PASSWORD: ${DB_PASSWORD:-crm}
+      # First super-admin, created idempotently on startup:
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@banki.ru}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
+      # Restrict registration/login email domain (empty = no restriction):
+      APP_EMAIL_DOMAIN: ${APP_EMAIL_DOMAIN:-}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+
+volumes:
+  crm_db_data:
