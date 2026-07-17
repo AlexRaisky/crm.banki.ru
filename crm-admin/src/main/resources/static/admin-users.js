@@ -7,6 +7,9 @@
     admin: "Мастер коммуникаций", templates: "Список шаблонов",
     dashboard: "Дашборд", access: "Управление доступом"
   };
+  /* Перевод: t() — глобальный словарь оболочки (I18N_EN); до её загрузки отдаём как есть */
+  function tr(s) { return (typeof window.t === "function") ? window.t(s) : s; }
+  function sectionLabel(s) { return tr(SECTION_LABELS[s] || s); }
   var ROLES = [
     { v: "READER", t: "Reader — только просмотр" },
     { v: "EDITOR", t: "Editor — + создание/редактирование шаблонов" },
@@ -36,8 +39,8 @@
       var id = idPrefix + s;
       var cb = h("input", { type: "checkbox", id: id, value: s });
       if (selected && selected.indexOf(s) >= 0) cb.checked = true;
-      wrap.appendChild(h("label", { style: "display:flex;align-items:center;gap:5px;font-size:13px;color:#cbd5e1" },
-        [cb, SECTION_LABELS[s] || s]));
+      wrap.appendChild(h("label", { style: "display:flex;align-items:center;gap:5px;font-size:13px;color:var(--dim)" },
+        [cb, sectionLabel(s)]));
     });
     return wrap;
   }
@@ -60,7 +63,7 @@
   }
 
   function fieldStyle() {
-    return "padding:8px 10px;border-radius:8px;border:1px solid #263145;background:#0c1120;color:#e6ebf5;font-size:13px";
+    return "padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-size:13px";
   }
   function btnStyle(bg) {
     return "padding:7px 12px;border:0;border-radius:8px;background:" + (bg || "#4a6cf7") + ";color:#fff;font-size:13px;cursor:pointer";
@@ -71,23 +74,23 @@
       container.innerHTML = "";
       var table = h("table", { style: "width:100%;border-collapse:collapse;font-size:13px" });
       var head = h("tr", null, ["Почта", "Имя", "Роль", "Разделы", "Активен", ""].map(function (t) {
-        return h("th", { style: "text-align:left;padding:8px;border-bottom:1px solid #263145;color:#8a97ad" }, [t]);
+        return h("th", { style: "text-align:left;padding:8px;border-bottom:1px solid var(--line);color:var(--dim)" }, [t ? tr(t) : t]);
       }));
       table.appendChild(head);
       users.forEach(function (u) {
-        var secText = (u.sections || []).map(function (s) { return SECTION_LABELS[s] || s; }).join(", ");
+        var secText = (u.sections || []).map(sectionLabel).join(", ");
         var row = h("tr", null, [
-          h("td", { style: "padding:8px;border-bottom:1px solid #1b2333" }, [u.email]),
-          h("td", { style: "padding:8px;border-bottom:1px solid #1b2333" }, [u.displayName || "—"]),
-          h("td", { style: "padding:8px;border-bottom:1px solid #1b2333" }, [u.role]),
-          h("td", { style: "padding:8px;border-bottom:1px solid #1b2333;color:#8a97ad;max-width:260px" }, [secText || "—"]),
-          h("td", { style: "padding:8px;border-bottom:1px solid #1b2333" }, [u.enabled ? "✓" : "—"]),
-          h("td", { style: "padding:8px;border-bottom:1px solid #1b2333;white-space:nowrap" }, [
-            h("button", { style: btnStyle("#334155"), onclick: function () { editUser(u, container); } }, ["Изменить"]),
+          h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.email]),
+          h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.displayName || "—"]),
+          h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.role]),
+          h("td", { style: "padding:8px;border-bottom:1px solid var(--line);color:var(--dim);max-width:260px" }, [secText || "—"]),
+          h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.enabled ? "✓" : "—"]),
+          h("td", { style: "padding:8px;border-bottom:1px solid var(--line);white-space:nowrap" }, [
+            h("button", { style: btnStyle("#334155"), onclick: function () { editUser(u, container); } }, [tr("Изменить")]),
             h("span", null, [" "]),
-            h("button", { style: btnStyle("#7c2d12"), onclick: function () { resetPwd(u); } }, ["Пароль"]),
+            h("button", { style: btnStyle("#7c2d12"), onclick: function () { resetPwd(u); } }, [tr("Пароль")]),
             h("span", null, [" "]),
-            h("button", { style: btnStyle("#991b1b"), onclick: function () { delUser(u, container); } }, ["Удалить"])
+            h("button", { style: btnStyle("#991b1b"), onclick: function () { delUser(u, container); } }, [tr("Удалить")])
           ])
         ]);
         table.appendChild(row);
@@ -97,16 +100,16 @@
   }
 
   function editUser(u, container) {
-    var box = h("div", { style: "margin:12px 0;padding:14px;border:1px solid #263145;border-radius:10px;background:#131a29" });
+    var box = h("div", { style: "margin:12px 0;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--card)" });
     var name = h("input", { style: fieldStyle(), value: u.displayName || "" });
     var role = roleSelect(u.role);
     var enabled = h("input", { type: "checkbox" }); enabled.checked = u.enabled;
     var secs = sectionCheatboxes(u.sections, "edit_" + u.id + "_");
-    box.appendChild(h("div", { style: "font-weight:600;margin-bottom:8px" }, ["Изменение: " + u.email]));
-    box.appendChild(field("Имя", name));
-    box.appendChild(field("Роль", role));
-    box.appendChild(field("Активен", enabled));
-    box.appendChild(field("Разделы", secs));
+    box.appendChild(h("div", { style: "font-weight:600;margin-bottom:8px" }, [tr("Изменение: ") + u.email]));
+    box.appendChild(field(tr("Имя"), name));
+    box.appendChild(field(tr("Роль"), role));
+    box.appendChild(field(tr("Активен"), enabled));
+    box.appendChild(field(tr("Разделы"), secs));
     box.appendChild(h("button", {
       style: btnStyle() + ";margin-top:10px",
       onclick: function () {
@@ -115,7 +118,7 @@
           sections: collectSections("edit_" + u.id + "_")
         }).then(function () { renderUsers(container); }).catch(function (e) { alert(e.message); });
       }
-    }, ["Сохранить"]));
+    }, [tr("Сохранить")]));
     container.insertBefore(box, container.firstChild);
   }
 
@@ -132,24 +135,24 @@
 
   function field(label, control) {
     return h("div", { style: "margin:8px 0" }, [
-      h("div", { style: "font-size:12px;color:#8a97ad;margin-bottom:4px" }, [label]),
+      h("div", { style: "font-size:12px;color:var(--faint);margin-bottom:4px" }, [label]),
       control
     ]);
   }
 
   function createForm(usersContainer) {
     var email = h("input", { style: fieldStyle(), type: "email", placeholder: "name@banki.ru" });
-    var name = h("input", { style: fieldStyle(), placeholder: "Имя" });
-    var pwd = h("input", { style: fieldStyle(), type: "password", placeholder: "Пароль (мин. 8)" });
+    var name = h("input", { style: fieldStyle(), placeholder: tr("Имя") });
+    var pwd = h("input", { style: fieldStyle(), type: "password", placeholder: tr("Пароль (мин. 8)") });
     var role = roleSelect("READER");
     var secs = sectionCheatboxes([], "new_");
-    var box = h("div", { style: "padding:16px;border:1px solid #263145;border-radius:10px;background:#131a29;margin-bottom:18px" });
-    box.appendChild(h("div", { style: "font-weight:600;margin-bottom:10px" }, ["Новый пользователь"]));
-    box.appendChild(field("Почта", email));
-    box.appendChild(field("Имя", name));
-    box.appendChild(field("Пароль", pwd));
-    box.appendChild(field("Роль", role));
-    box.appendChild(field("Разделы", secs));
+    var box = h("div", { style: "padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--card);margin-bottom:18px" });
+    box.appendChild(h("div", { style: "font-weight:600;margin-bottom:10px" }, [tr("Новый пользователь")]));
+    box.appendChild(field(tr("Почта"), email));
+    box.appendChild(field(tr("Имя"), name));
+    box.appendChild(field(tr("Пароль"), pwd));
+    box.appendChild(field(tr("Роль"), role));
+    box.appendChild(field(tr("Разделы"), secs));
     box.appendChild(h("button", {
       style: btnStyle() + ";margin-top:12px",
       onclick: function () {
@@ -161,18 +164,21 @@
           renderUsers(usersContainer);
         }).catch(function (e) { alert(e.message); });
       }
-    }, ["Создать"]));
+    }, [tr("Создать")]));
     return box;
   }
+
+  /* Сброс кэша отрисовки (например, при смене языка) — раздел перерисуется при следующем открытии */
+  window.accessInvalidate = function () { rendered = false; };
 
   window.renderAccessSection = function () {
     var root = document.getElementById("sec-access");
     if (!root) return;
     if (rendered) return;
     root.innerHTML = "";
-    root.appendChild(h("h2", { style: "margin:0 0 4px" }, ["Управление доступом"]));
-    root.appendChild(h("p", { style: "color:#8a97ad;margin:0 0 20px;font-size:13px" },
-      ["Роль задаёт уровень возможностей, набор разделов — что видит пользователь."]));
+    root.appendChild(h("h2", { style: "margin:0 0 4px" }, [tr("Управление доступом")]));
+    root.appendChild(h("p", { style: "color:var(--dim);margin:0 0 20px;font-size:13px" },
+      [tr("Роль задаёт уровень возможностей, набор разделов — что видит пользователь.")]));
     var usersContainer = h("div", null, []);
     CRM.adminSections().then(function (secs) {
       allSections = secs;

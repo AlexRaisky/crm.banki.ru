@@ -23,16 +23,18 @@ public class TemplateService {
     private final CcSegmentRepository ccRepo;
     private final TemplateMapper mapper;
     private final AuditContext audit;
+    private final AdminLogService adminLog;
 
     public TemplateService(PushTemplateRepository pushRepo, EmailTemplateRepository emailRepo,
                            SmsTemplateRepository smsRepo, CcSegmentRepository ccRepo,
-                           TemplateMapper mapper, AuditContext audit) {
+                           TemplateMapper mapper, AuditContext audit, AdminLogService adminLog) {
         this.pushRepo = pushRepo;
         this.emailRepo = emailRepo;
         this.smsRepo = smsRepo;
         this.ccRepo = ccRepo;
         this.mapper = mapper;
         this.audit = audit;
+        this.adminLog = adminLog;
     }
 
     // ------------------------------------------------------------------- LIST
@@ -75,23 +77,32 @@ public class TemplateService {
     @Transactional
     public String create(TemplateDto dto) {
         audit.mark();
-        return switch (norm(dto.getChannel())) {
+        String channel = norm(dto.getChannel());
+        String code;
+        Object rowId;
+        switch (channel) {
             case "push" -> {
                 PushTemplate p = new PushTemplate();
                 mapper.apply(p, dto);
                 p.setCode(pushRepo.maxCode() + 1);
-                yield String.valueOf(pushRepo.save(p).getCode());
+                PushTemplate saved = pushRepo.save(p);
+                code = String.valueOf(saved.getCode());
+                rowId = saved.getId();
             }
             case "sms" -> {
                 SmsTemplate s = new SmsTemplate();
                 mapper.apply(s, dto);
                 s.setCode(smsRepo.maxCode() + 1);
-                yield String.valueOf(smsRepo.save(s).getCode());
+                SmsTemplate saved = smsRepo.save(s);
+                code = String.valueOf(saved.getCode());
+                rowId = saved.getId();
             }
             case "email" -> {
                 EmailTemplate em = new EmailTemplate();
                 mapper.apply(em, dto);
-                yield String.valueOf(emailRepo.save(em).getId());
+                EmailTemplate saved = emailRepo.save(em);
+                code = String.valueOf(saved.getId());
+                rowId = saved.getId();
             }
             case "cc" -> {
                 CcSegment c = new CcSegment();
@@ -100,10 +111,15 @@ public class TemplateService {
                 }
                 c.setSegment(Integer.valueOf(dto.getCode().trim()));  // id (PK) is auto-generated
                 mapper.apply(c, dto);
-                yield String.valueOf(ccRepo.save(c).getSegment());
+                CcSegment saved = ccRepo.save(c);
+                code = String.valueOf(saved.getSegment());
+                rowId = saved.getId();
             }
             default -> throw badChannel(dto.getChannel());
-        };
+        }
+        // Журнал заведения: пишем созданную строку в t_admin_log (та же транзакция).
+        adminLog.log(channel, "INSERT", adminLog.rowJson(channel, rowId));
+        return code;
     }
 
     // ------------------------------------------------------------- CREATE CHAIN
@@ -134,6 +150,8 @@ public class TemplateService {
     public void update(String channel, String code, TemplateDto dto) {
         audit.mark();
         TemplateBase e = load(channel, code);
+        // old_row: состояние ДО изменения
+        adminLog.log(norm(channel), "UPDATE", adminLog.rowJson(norm(channel), idOf(e)));
         dto.setChannel(channel);
         mapper.apply(e, dto);
         // managed entity — flush on commit
@@ -144,6 +162,8 @@ public class TemplateService {
     public void delete(String channel, String code) {
         audit.mark();
         TemplateBase e = load(channel, code);
+        // old_row: удаляемая строка
+        adminLog.log(norm(channel), "DELETE", adminLog.rowJson(norm(channel), idOf(e)));
         switch (norm(channel)) {
             case "push" -> pushRepo.delete((PushTemplate) e);
             case "sms" -> smsRepo.delete((SmsTemplate) e);
@@ -151,6 +171,15 @@ public class TemplateService {
             case "cc" -> ccRepo.delete((CcSegment) e);
             default -> throw badChannel(channel);
         }
+    }
+
+    /** Суррогатный PK строки (у всех четырёх таблиц колонка id). */
+    private static Object idOf(TemplateBase e) {
+        if (e instanceof PushTemplate p) return p.getId();
+        if (e instanceof SmsTemplate s) return s.getId();
+        if (e instanceof EmailTemplate em) return em.getId();
+        if (e instanceof CcSegment c) return c.getId();
+        throw new IllegalStateException("Неизвестный тип шаблона: " + e.getClass());
     }
 
     // ------------------------------------------------------------------ helpers

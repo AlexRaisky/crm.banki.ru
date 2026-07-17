@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM Team · Настройки</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     НАСТРОЕЧНАЯ АДМИНКА (/settings, доступ — только ADMIN)
+     Айдентика и каркас наследуются из пользовательской админки;
+     формат отображения со временем может отличаться.
+     «Приложения и разделы» хранятся на сервере
+     (GET/PUT /api/panel-settings/appSections) и зеркалятся в
+     localStorage crmpanel:appSections — панель применяет при загрузке.
+     Остальные настройки (тема/язык/инструменты) — клиентские,
+     в localStorage с префиксом crmpanel:.
+     ============================================================ */
+  :root{
+    --bg:#0A1420; --bg2:#0D1826; --card:#162136; --card2:#1B2942; --line:rgba(80,195,255,.12);
+    --ink:#F2F7FD; --dim:#A7BAD4; --faint:#6B8098;
+    --green:#3CFAB4; --blue:#50C3FF; --coral:#FF6B8A; --amber:#FFB84D;
+    --green-bg:rgba(60,250,180,.12); --blue-bg:rgba(80,195,255,.12);
+    --amber-bg:rgba(255,184,77,.12); --coral-bg:rgba(255,107,138,.13);
+    --grad:linear-gradient(120deg,#3CFAB4,#50C3FF);
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:"Golos Text","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  /* ---- Светлая тема (настройка «Общие параметры → Тема оформления») ---- */
+  html.theme-light body{
+    --bg:#EFF3F8; --bg2:#FFFFFF; --card:#FFFFFF; --card2:#E7EDF5; --line:rgba(20,60,100,.16);
+    --ink:#16283E; --dim:#44597A; --faint:#7C8DA6;
+    --green:#0E9F63; --blue:#0B7FD1; --coral:#CE3D64; --amber:#A9720F;
+    --green-bg:rgba(14,159,99,.12); --blue-bg:rgba(11,127,209,.10);
+    --amber-bg:rgba(169,114,15,.12); --coral-bg:rgba(206,61,100,.10);
+    --grad:linear-gradient(120deg,#19C98A,#2FA4EF);
+    background-image:none;
+  }
+  html.theme-light .gheader{background:rgba(255,255,255,.85)}
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;
+    -webkit-font-smoothing:antialiased;overflow:hidden;
+    background-image:
+      radial-gradient(1100px 500px at 88% -8%,rgba(80,195,255,.10),transparent 60%),
+      radial-gradient(900px 480px at 5% -5%,rgba(60,250,180,.08),transparent 55%);}
+  a{color:var(--blue);text-decoration:none}
+
+  .app{display:flex;flex-direction:column;height:100vh}
+  .gheader{display:flex;align-items:center;gap:12px;padding:0 16px;height:56px;flex:0 0 auto;
+    background:rgba(13,24,38,.75);border-bottom:1px solid var(--line);backdrop-filter:blur(6px)}
+  .logo{width:30px;height:30px;flex:0 0 auto}
+  .logo svg{width:100%;height:100%;display:block}
+  .brandname{font-weight:600;font-size:15.5px;white-space:nowrap}
+  .brandname b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sep{width:1px;height:26px;background:var(--line)}
+  .page-name{font-weight:700;font-size:16px;display:flex;align-items:center;gap:9px}
+  .page-name svg{width:18px;height:18px;color:var(--green)}
+  .back{margin-left:auto;font-size:13.5px;font-weight:600;color:var(--dim);display:flex;align-items:center;gap:7px;
+    padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card)}
+  .back:hover{background:var(--card2);color:var(--ink)}
+
+  .shell{display:flex;flex:1;min-height:0}
+  .sidebar{width:242px;flex:0 0 auto;background:var(--bg2);border-right:1px solid var(--line);padding:12px 9px;overflow-y:auto}
+  .nav-item{display:flex;align-items:center;gap:12px;padding:10px 11px;border-radius:10px;cursor:pointer;
+    color:var(--dim);white-space:nowrap;border:1px solid transparent;margin-bottom:2px;user-select:none;font-size:14px;font-weight:500}
+  .nav-item:hover{background:var(--card);color:var(--ink)}
+  .nav-item.active{background:var(--blue-bg);border-color:rgba(80,195,255,.28);color:var(--ink)}
+  .nav-item.active .ico{color:var(--green)}
+  .ico{width:19px;height:19px;flex:0 0 auto;color:var(--faint);display:flex;align-items:center;justify-content:center}
+  .ico svg{width:18px;height:18px}
+
+  .content{flex:1;overflow-y:auto;padding:26px}
+  .content::-webkit-scrollbar{width:10px}
+  .content::-webkit-scrollbar-thumb{background:var(--card2);border-radius:5px}
+  .pane{display:none;max-width:1060px}
+  .pane.active{display:block}
+  .pane h1{font-size:24px;font-weight:700;letter-spacing:-.015em;margin-bottom:6px}
+  .pane h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .pane .sub{color:var(--dim);font-size:13.5px;margin-bottom:22px;max-width:760px}
+  .pane h2{font-size:17px;font-weight:640;margin:6px 0 14px}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px;
+    box-shadow:0 10px 30px rgba(4,12,22,.4)}
+  .card h3{font-size:15.5px;font-weight:640;margin-bottom:4px;display:flex;align-items:center;gap:9px}
+  .card .note{color:var(--faint);font-size:12.5px;margin-bottom:14px}
+  .app-badge{width:28px;height:28px;border-radius:8px;background:var(--grad);color:#06202B;font-size:13px;font-weight:700;
+    display:inline-flex;align-items:center;justify-content:center}
+
+  /* обзорные блоки */
+  .ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
+  .ov-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;cursor:pointer;
+    transition:.16s;box-shadow:0 10px 30px rgba(4,12,22,.4)}
+  .ov-card:hover{border-color:rgba(60,250,180,.45);transform:translateY(-2px)}
+  .ov-ico{width:42px;height:42px;border-radius:11px;background:var(--grad);color:#06202B;
+    display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+  .ov-ico svg{width:21px;height:21px}
+  .ov-card h3{font-size:16px;font-weight:640;margin-bottom:8px}
+  .ov-card p{color:var(--dim);font-size:13.5px;line-height:1.55;margin-bottom:14px}
+  .ov-go{font-family:var(--mono);font-size:12px;color:var(--blue)}
+
+  .mon-back{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--dim);
+    background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;cursor:pointer;margin-bottom:18px}
+  .mon-back:hover{background:var(--card2);color:var(--ink)}
+  .mon-stub{border:1px dashed rgba(80,195,255,.3);border-radius:16px;padding:34px;text-align:center;
+    color:var(--faint);font-size:13.5px;background:var(--card)}
+  .mon-stub b{display:block;color:var(--dim);font-size:15.5px;margin-bottom:7px}
+
+  .check-row{display:flex;align-items:center;gap:11px;padding:9px 4px;border-bottom:1px solid var(--line);font-size:14px}
+  .check-row:last-child{border-bottom:none}
+  .check-row input{accent-color:#3CFAB4;width:17px;height:17px;cursor:pointer}
+  .check-row input:disabled{cursor:not-allowed}
+  .check-row .muted{color:var(--faint);font-size:12px;margin-left:auto;font-family:var(--mono)}
+
+  /* радио/селекты общих параметров */
+  .opt-row{display:flex;align-items:center;gap:11px;padding:10px 4px;border-bottom:1px solid var(--line);font-size:14px;cursor:pointer}
+  .opt-row:last-child{border-bottom:none}
+  .opt-row input[type=radio]{accent-color:#3CFAB4;width:16px;height:16px;cursor:pointer}
+  .opt-row .opt-note{color:var(--faint);font-size:12px;margin-left:auto}
+  select.sel{background:var(--bg2);border:1px solid var(--line);border-radius:10px;color:var(--ink);
+    font-family:var(--sans);font-size:14px;padding:10px 12px;min-width:260px;cursor:pointer}
+  select.sel option{background:var(--bg2);color:var(--ink)}
+
+  .btn{font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 16px;border-radius:10px;cursor:pointer;
+    border:1px solid var(--line);background:var(--card2);color:var(--ink)}
+  .btn:hover{filter:brightness(1.12)}
+  .btn.accent{background:var(--grad);color:#06101B;border:none}
+  .btn.ghost-danger{color:var(--coral);border-color:rgba(255,107,138,.35);background:transparent}
+  .btn.ghost-danger:hover{background:var(--coral-bg)}
+  .actions{display:flex;gap:10px;margin-top:18px;align-items:center}
+  .save-note{font-family:var(--mono);font-size:11.5px;color:var(--green);opacity:0;transition:.3s}
+  .save-note.show{opacity:1}
+  .save-note.err{color:var(--coral)}
+
+  table{width:100%;border-collapse:collapse}
+  th{font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);
+    text-align:left;padding:0 12px 10px;font-weight:500;border-bottom:1px solid var(--line)}
+  td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:13.5px}
+  tr:last-child td{border-bottom:none}
+  td .t-name{font-weight:600}
+  td .mono{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  td .btn{padding:6px 11px;font-size:12px;margin-left:6px}
+  .empty{color:var(--faint);font-size:13.5px;padding:8px 2px}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="gheader">
+    <div class="logo">
+      <svg viewBox="0 0 40 40" fill="none">
+        <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#3CFAB4"/><stop offset="1" stop-color="#50C3FF"/></linearGradient></defs>
+        <path d="M20 4 a16 16 0 0 1 0 32" stroke="url(#lg)" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="20" cy="20" r="9" fill="none" stroke="#50C3FF" stroke-width="3.4"/>
+        <path d="M20 11 a9 9 0 0 1 6.4 15.4" stroke="#3CFAB4" stroke-width="3.4" stroke-linecap="round" fill="none"/>
+      </svg>
+    </div>
+    <div class="brandname">CRM <b>Team</b></div>
+    <div class="sep"></div>
+    <div class="page-name">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+      <span data-i18n="Настройки">Настройки</span>
+    </div>
+    <a class="back" href="/" data-i18n="← В панель управления">← В панель управления</a>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar" id="snav"></aside>
+
+    <main class="content">
+
+      <!-- ===== Обзор настроек ===== -->
+      <section class="pane active" id="pane-over">
+        <h1 data-i18n-html="h_over">Настроечная <span class="grad">админка</span></h1>
+        <div class="sub" data-i18n="Служебные настройки панели CRM Team. Выберите блок или воспользуйтесь меню слева.">Служебные настройки панели CRM Team. Выберите блок или воспользуйтесь меню слева.</div>
+        <div class="ov-grid" id="overGrid"></div>
+      </section>
+
+      <!-- ===== Приложения и разделы ===== -->
+      <section class="pane" id="pane-apps">
+        <h1 data-i18n-html="h_apps">Приложения <span class="grad">и разделы</span></h1>
+        <div class="sub" data-i18n="Какие разделы панели доступны в каждом приложении (App Launcher). Пока всем приложениям разрешены все разделы — набор будет корректироваться. «Главная» доступна всегда.">Какие разделы панели доступны в каждом приложении (App Launcher). Пока всем приложениям
+          разрешены все разделы — набор будет корректироваться. «Главная» доступна всегда.</div>
+        <div id="appsBox"></div>
+        <div class="actions">
+          <button class="btn accent" id="saveApps" data-i18n="Сохранить">Сохранить</button>
+          <button class="btn" id="resetApps" data-i18n="Сбросить (все разделы всем)">Сбросить (все разделы всем)</button>
+          <span class="save-note" id="appsSaved" data-i18n="✓ Сохранено — панель применит при загрузке">✓ Сохранено — панель применит при загрузке</span>
+          <span class="save-note err" id="appsError"></span>
+        </div>
+      </section>
+
+      <!-- ===== Мониторинг ===== -->
+      <section class="pane" id="pane-monitoring">
+        <div id="monHome">
+          <h1 data-i18n-html="h_mon">Мониторинг <span class="grad">интеграций</span></h1>
+          <div class="sub"><span data-i18n="Служебный мониторинг обмена данными. Подраздел:">Служебный мониторинг обмена данными. Подраздел:</span> <b data-i18n="Работа с партнёрами">Работа с партнёрами</b>.
+            <span data-i18n="При клике на блок будет открываться связанная статистика.">При клике на блок будет открываться связанная статистика.</span></div>
+          <h2 data-i18n="Работа с партнёрами">Работа с партнёрами</h2>
+          <div class="ov-grid">
+            <div class="ov-card" onclick="monDetail('Поступление статусов')">
+              <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
+              <h3 data-i18n="Поступление статусов">Поступление статусов</h3>
+              <p data-i18n="Приход статусов отправок от партнёров: объёмы, задержки, разрывы потока.">Приход статусов отправок от партнёров: объёмы, задержки, разрывы потока.</p>
+              <span class="ov-go" data-i18n="Статистика →">Статистика →</span>
+            </div>
+            <div class="ov-card" onclick="monDetail('Зависшие статусы отправок')">
+              <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.5"/></svg></div>
+              <h3 data-i18n="Зависшие статусы отправок">Зависшие статусы отправок</h3>
+              <p data-i18n="Отправки без финального статуса дольше порога: где и на каком шаге зависли.">Отправки без финального статуса дольше порога: где и на каком шаге зависли.</p>
+              <span class="ov-go" data-i18n="Статистика →">Статистика →</span>
+            </div>
+            <div class="ov-card" onclick="monDetail('Записи отправок без идентификатора клиента')">
+              <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-3.9 3.1-7 7-7s7 3.1 7 7"/><line x1="17" y1="8" x2="23" y2="14"/><line x1="23" y1="8" x2="17" y2="14"/></svg></div>
+              <h3 data-i18n="Записи отправок без идентификатора клиента">Записи отправок без идентификатора клиента</h3>
+              <p data-i18n="Отправки, которые не удаётся привязать к клиенту: объёмы и источники записей.">Отправки, которые не удаётся привязать к клиенту: объёмы и источники записей.</p>
+              <span class="ov-go" data-i18n="Статистика →">Статистика →</span>
+            </div>
+            <div class="ov-card" onclick="monDetail('Наличие переменных Context API')">
+              <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+              <h3 data-i18n="Наличие переменных Context API">Наличие переменных Context API</h3>
+              <p data-i18n="Заполненность переменных Context API в коммуникациях: пропуски и ошибки подстановки.">Заполненность переменных Context API в коммуникациях: пропуски и ошибки подстановки.</p>
+              <span class="ov-go" data-i18n="Статистика →">Статистика →</span>
+            </div>
+          </div>
+        </div>
+        <div id="monDetailBox" style="display:none"></div>
+      </section>
+
+      <!-- ===== Загруженные инструменты ===== -->
+      <section class="pane" id="pane-uploads">
+        <h1 data-i18n-html="h_up">Загруженные <span class="grad">инструменты</span></h1>
+        <div class="sub" data-i18n="HTML-инструменты, загруженные в раздел «Загруженные инструменты» пользовательской панели. Хранятся в localStorage браузера и открываются в исходном оформлении.">HTML-инструменты, загруженные в раздел «Загруженные инструменты» пользовательской панели.
+          Хранятся в localStorage браузера и открываются в исходном оформлении.</div>
+        <div class="card" id="toolsCard"></div>
+      </section>
+
+      <!-- ===== Общие параметры ===== -->
+      <section class="pane" id="pane-general">
+        <h1 data-i18n-html="h_gen">Общие <span class="grad">параметры</span></h1>
+        <div class="sub" data-i18n="Настроечные версии общих параметров панели. Значения сохраняются в браузере и будут применяться панелью по мере подключения (сейчас интерфейс — тёмная тема, русский язык).">Настроечные версии общих параметров панели.</div>
+
+        <div class="card">
+          <h3 data-i18n="Тема оформления">Тема оформления</h3>
+          <div class="note" data-i18n="Как панель выбирает тему интерфейса.">Как панель выбирает тему интерфейса.</div>
+          <label class="opt-row"><input type="radio" name="theme" value="system"> <span data-i18n="Системная">Системная</span>
+            <span class="opt-note" data-i18n="по настройке ОС">по настройке ОС</span></label>
+          <label class="opt-row"><input type="radio" name="theme" value="dark"> <span data-i18n="Тёмная">Тёмная</span>
+            <span class="opt-note" data-i18n="текущая тема панели">текущая тема панели</span></label>
+          <label class="opt-row"><input type="radio" name="theme" value="light"> <span data-i18n="Светлая">Светлая</span>
+            <span class="opt-note" data-i18n="визуал в разработке">визуал в разработке</span></label>
+        </div>
+
+        <div class="card">
+          <h3 data-i18n="Язык интерфейса">Язык интерфейса</h3>
+          <div class="note" data-i18n="Переводы интерфейса будут подключаться поэтапно.">Переводы интерфейса будут подключаться поэтапно.</div>
+          <select class="sel" id="langSel">
+            <option value="ru">Русский</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+
+        <div class="actions">
+          <button class="btn accent" id="saveGeneral" data-i18n="Сохранить">Сохранить</button>
+          <span class="save-note" id="generalSaved" data-i18n="✓ Сохранено">✓ Сохранено</span>
+        </div>
+      </section>
+
+      <!-- ===== Диагностика ===== -->
+      <section class="pane" id="pane-diag">
+        <h1 data-i18n-html="h_diag">Диагностика <span class="grad">хранилища</span></h1>
+        <div class="sub">Что панель хранит в localStorage браузера (префикс crmpanel:).</div>
+        <div class="card"><div id="diagBox"></div></div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("crmpanel:"+k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem("crmpanel:"+k, JSON.stringify(v)); }catch(e){} },
+  del(k){ try{ localStorage.removeItem("crmpanel:"+k); }catch(e){} }
+};
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ---------- язык интерфейса (crmpanel:lang) ---------- */
+const LANG = (() => { try { return JSON.parse(localStorage.getItem("crmpanel:lang")) === "en" ? "en" : "ru"; } catch(e){ return "ru"; } })();
+const S_EN = {
+  "Настройки":"Settings", "← В панель управления":"← Back to the panel",
+  "Обзор":"Overview", "Приложения и разделы":"Apps & sections", "Мониторинг":"Monitoring",
+  "Загруженные инструменты":"Uploaded tools", "Общие параметры":"General settings", "Диагностика":"Diagnostics",
+  "Все настройки на одной странице.":"All settings on one page.",
+  "Какие разделы панели видит каждое приложение из App Launcher.":"Which panel sections each App Launcher app can see.",
+  "Работа с партнёрами: статусы, зависшие отправки, Context API.":"Partner operations: statuses, stuck sends, Context API.",
+  "Переименование и удаление загруженных HTML-инструментов.":"Rename and delete uploaded HTML tools.",
+  "Тема оформления (светлая, тёмная, системная) и язык интерфейса.":"Theme (light, dark, system) and interface language.",
+  "Занятость localStorage браузера данными панели.":"Panel data usage of the browser localStorage.",
+  "Служебные настройки панели CRM Team. Выберите блок или воспользуйтесь меню слева.":"Service settings of the CRM Team panel. Pick a block or use the left menu.",
+  "Открыть →":"Open →", "Статистика →":"Statistics →",
+  "Какие разделы панели доступны в каждом приложении (App Launcher). Пока всем приложениям разрешены все разделы — набор будет корректироваться. «Главная» доступна всегда.":"Which panel sections are available in each app (App Launcher). For now all apps have all sections — the set will be adjusted. Home is always available.",
+  "Сохранить":"Save", "Сбросить (все разделы всем)":"Reset (all sections for all)",
+  "✓ Сохранено — панель применит при загрузке":"✓ Saved — the panel applies it on load",
+  "✓ Сохранено":"✓ Saved",
+  "Главная":"Home", "Управление коммуникациями":"Communications", "Дашборд":"Dashboard",
+  "всегда доступна":"always available",
+  "Настроенный набор разделов":"Custom section set", "Все разделы (по умолчанию)":"All sections (default)",
+  "Администрирование":"Administration", "Аналитика":"Analytics", "Маркетинг":"Marketing",
+  "Бизнес":"Business", "Контактный центр":"Contact center",
+  "Служебный мониторинг обмена данными. Подраздел:":"Service monitoring of data exchange. Subsection:",
+  "Работа с партнёрами":"Partner operations",
+  "При клике на блок будет открываться связанная статистика.":"Clicking a block will open its related statistics.",
+  "Поступление статусов":"Status inflow", "Зависшие статусы отправок":"Stuck send statuses",
+  "Записи отправок без идентификатора клиента":"Send records without client ID",
+  "Наличие переменных Context API":"Context API variables presence",
+  "Приход статусов отправок от партнёров: объёмы, задержки, разрывы потока.":"Send status inflow from partners: volumes, delays, stream gaps.",
+  "Отправки без финального статуса дольше порога: где и на каком шаге зависли.":"Sends without a final status beyond the threshold: where and at which step they got stuck.",
+  "Отправки, которые не удаётся привязать к клиенту: объёмы и источники записей.":"Sends that cannot be linked to a client: volumes and record sources.",
+  "Заполненность переменных Context API в коммуникациях: пропуски и ошибки подстановки.":"Context API variable completeness in communications: gaps and substitution errors.",
+  "← К блокам мониторинга":"← Back to monitoring blocks",
+  "Мониторинг · Работа с партнёрами":"Monitoring · Partner operations",
+  "Статистика в разработке":"Statistics under development",
+  "HTML-инструменты, загруженные в раздел «Загруженные инструменты» пользовательской панели. Хранятся в localStorage браузера и открываются в исходном оформлении.":"HTML tools uploaded in the panel's Uploaded tools section. Stored in the browser localStorage and opened in their original design.",
+  "Инструментов пока нет. Загрузите первый в разделе «Загруженные инструменты» пользовательской панели.":"No tools yet. Upload the first one in the panel's Uploaded tools section.",
+  "Название":"Name", "Загружен":"Uploaded", "Размер":"Size", "Действия":"Actions",
+  "Переименовать":"Rename", "Удалить":"Delete",
+  "Настроечные версии общих параметров панели. Значения сохраняются в браузере и будут применяться панелью по мере подключения (сейчас интерфейс — тёмная тема, русский язык).":"Admin versions of the panel's general settings. Values are stored in the browser and applied by the panel.",
+  "Тема оформления":"Theme", "Как панель выбирает тему интерфейса.":"How the panel picks the interface theme.",
+  "Системная":"System", "по настройке ОС":"follows the OS setting",
+  "Тёмная":"Dark", "текущая тема панели":"the panel's current theme",
+  "Светлая":"Light", "визуал в разработке":"visuals in progress",
+  "Язык интерфейса":"Interface language", "Переводы интерфейса будут подключаться поэтапно.":"Interface translations are rolled out step by step.",
+  "Что панель хранит в localStorage браузера (префикс crmpanel:).":"What the panel stores in the browser localStorage (crmpanel: prefix).",
+  "Ключ":"Key", "Панель ещё ничего не сохранила.":"The panel has not saved anything yet.",
+  "Итого:":"Total:", "(лимит браузера ≈ 5 МБ на сайт)":"(browser limit ≈ 5 MB per site)",
+  "Новое название инструмента:":"New tool name:",
+  "Доступно только администраторам":"Available to administrators only",
+  "Не удалось загрузить настройки с сервера":"Failed to load settings from the server",
+  "Не удалось сохранить":"Failed to save",
+};
+function t2(s){ return (LANG === "en" && S_EN[s]) ? S_EN[s] : s; }
+const S_HTML = {
+  ru: { h_over:'Настроечная <span class="grad">админка</span>', h_apps:'Приложения <span class="grad">и разделы</span>',
+        h_mon:'Мониторинг <span class="grad">интеграций</span>', h_up:'Загруженные <span class="grad">инструменты</span>',
+        h_gen:'Общие <span class="grad">параметры</span>', h_diag:'Диагностика <span class="grad">хранилища</span>' },
+  en: { h_over:'Admin <span class="grad">settings</span>', h_apps:'Apps <span class="grad">& sections</span>',
+        h_mon:'Integration <span class="grad">monitoring</span>', h_up:'Uploaded <span class="grad">tools</span>',
+        h_gen:'General <span class="grad">settings</span>', h_diag:'Storage <span class="grad">diagnostics</span>' }
+};
+function translateStatic(){
+  document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t2(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = (S_HTML[LANG] && S_HTML[LANG][el.dataset.i18nHtml]) || S_HTML.ru[el.dataset.i18nHtml]; });
+}
+
+/* Справочники — синхронизированы с пользовательской панелью */
+const APPS = ["Администрирование","Аналитика","Маркетинг","Бизнес","Контактный центр"];
+const SECTIONS = [
+  { id:"home",       label:"Главная", locked:true },
+  { id:"comms",      label:"Управление коммуникациями" },
+  { id:"dash",       label:"Дашборд" },
+  { id:"monitoring", label:"Мониторинг" },
+  { id:"uploads",    label:"Загруженные инструменты" },
+];
+
+/* ---------- меню настроек ---------- */
+const PANES = [
+  { id:"over",       label:"Обзор", desc:"Все настройки на одной странице.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>' },
+  { id:"apps",       label:"Приложения и разделы", desc:"Какие разделы панели видит каждое приложение из App Launcher.",
+    ico:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg>' },
+  { id:"monitoring", label:"Мониторинг", desc:"Работа с партнёрами: статусы, зависшие отправки, Context API.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>' },
+  { id:"uploads",    label:"Загруженные инструменты", desc:"Переименование и удаление загруженных HTML-инструментов.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' },
+  { id:"general",    label:"Общие параметры", desc:"Тема оформления (светлая, тёмная, системная) и язык интерфейса.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>' },
+  { id:"diag",       label:"Диагностика", desc:"Занятость localStorage браузера данными панели.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>' },
+];
+
+const snav = $("#snav");
+function openPane(id){
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.id === id));
+  document.querySelectorAll(".pane").forEach(x => x.classList.remove("active"));
+  document.getElementById("pane-" + id).classList.add("active");
+  if (id === "uploads") renderTools();
+  if (id === "diag") renderDiag();
+  if (id === "monitoring") monBack();
+}
+PANES.forEach(p => {
+  const el = document.createElement("div");
+  el.className = "nav-item" + (p.id === "over" ? " active" : "");
+  el.dataset.id = p.id;
+  el.innerHTML = `<span class="ico">${p.ico}</span>${t2(p.label)}`;
+  el.onclick = () => openPane(p.id);
+  snav.appendChild(el);
+});
+
+/* ---------- обзор (страница с блоками главных разделов) ---------- */
+const overGrid = $("#overGrid");
+PANES.filter(p => p.id !== "over").forEach(p => {
+  const card = document.createElement("div");
+  card.className = "ov-card";
+  card.innerHTML = `<div class="ov-ico">${p.ico}</div><h3>${t2(p.label)}</h3><p>${t2(p.desc)}</p><span class="ov-go">${t2('Открыть →')}</span>`;
+  card.onclick = () => openPane(p.id);
+  overGrid.appendChild(card);
+});
+
+/* ---------- Приложения и разделы (сервер: /api/panel-settings/appSections) ----------
+   Источник истины — БД (app.panel_settings). Сохранённое значение дополнительно
+   зеркалится в localStorage crmpanel:appSections, чтобы оболочка панели, читающая
+   localStorage, сразу видела изменения (серверное чтение оболочкой подключается отдельно). */
+const APPS_KEY = "appSections";
+let appsCfg = {};   /* текущий конфиг: { "Приложение": ["home", ...] }; {} = все разделы всем */
+
+async function apiFetch(url, opts){
+  const r = await fetch(url, Object.assign({ credentials: "same-origin" }, opts || {}));
+  if (r.status === 401){ location.href = "/login.html"; throw new Error("unauthorized"); }
+  return r;
+}
+function appsError(msg){
+  const n = $("#appsError");
+  n.textContent = msg;
+  n.classList.add("show");
+  setTimeout(() => n.classList.remove("show"), 4000);
+}
+function appsSavedNote(){
+  const n = $("#appsSaved");
+  n.classList.add("show");
+  setTimeout(() => n.classList.remove("show"), 2500);
+}
+
+function renderApps(){
+  const cfg = appsCfg || {};
+  const box = $("#appsBox"); box.innerHTML = "";
+  APPS.forEach(app => {
+    const allowed = Array.isArray(cfg[app]) ? cfg[app] : null;  /* null = все */
+    const card = document.createElement("div");
+    card.className = "card";
+    card.dataset.app = app;
+    card.innerHTML = `<h3><span class="app-badge">${app[0]}</span>${t2(app)}</h3>
+      <div class="note">${allowed ? t2("Настроенный набор разделов") : t2("Все разделы (по умолчанию)")}</div>` +
+      SECTIONS.map(s => `
+        <label class="check-row">
+          <input type="checkbox" data-sec="${s.id}" ${s.locked ? "checked disabled" : (!allowed || allowed.includes(s.id)) ? "checked" : ""}>
+          ${t2(s.label)}
+          ${s.locked ? '<span class="muted">' + t2("всегда доступна") + '</span>' : ""}
+        </label>`).join("");
+    box.appendChild(card);
+  });
+}
+
+async function loadApps(){
+  try{
+    const r = await apiFetch("/api/panel-settings/" + APPS_KEY);
+    if (r.status === 404){ appsCfg = {}; }
+    else if (r.status === 403){ appsCfg = {}; appsError(t2("Доступно только администраторам")); }
+    else if (!r.ok){ throw new Error("HTTP " + r.status); }
+    else {
+      const data = await r.json();
+      appsCfg = (data && data.value && typeof data.value === "object" && !Array.isArray(data.value)) ? data.value : {};
+    }
+  }catch(e){
+    if (e.message === "unauthorized") return;
+    appsCfg = appsCfg || {};
+    appsError(t2("Не удалось загрузить настройки с сервера"));
+  }
+  renderApps();
+}
+
+async function saveAppsCfg(cfg){
+  try{
+    const r = await apiFetch("/api/panel-settings/" + APPS_KEY, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cfg)
+    });
+    if (r.status === 403){ appsError(t2("Доступно только администраторам")); return false; }
+    if (!r.ok){ appsError(t2("Не удалось сохранить") + " (HTTP " + r.status + ")"); return false; }
+    /* зеркало для оболочки панели, читающей localStorage при загрузке */
+    store.set(APPS_KEY, cfg);
+    appsCfg = cfg;
+    renderApps();
+    return true;
+  }catch(e){
+    if (e.message !== "unauthorized") appsError(t2("Не удалось сохранить"));
+    return false;
+  }
+}
+
+$("#saveApps").onclick = async () => {
+  const cfg = {};
+  document.querySelectorAll("#appsBox .card").forEach(card => {
+    const ids = ["home"];
+    card.querySelectorAll("input[data-sec]:not(:disabled)").forEach(ch => { if (ch.checked) ids.push(ch.dataset.sec); });
+    cfg[card.dataset.app] = ids;
+  });
+  if (await saveAppsCfg(cfg)) appsSavedNote();
+};
+$("#resetApps").onclick = async () => {
+  /* пустой объект = все разделы всем приложениям (умолчание) */
+  if (await saveAppsCfg({})) appsSavedNote();
+};
+
+/* ---------- Мониторинг: заглушки статистики ---------- */
+function monDetail(title){
+  $("#monHome").style.display = "none";
+  const box = $("#monDetailBox");
+  box.style.display = "";
+  const stub = LANG === "en"
+    ? `Charts and control metrics for the "${esc(t2(title))}" block will appear here: dynamics, thresholds and alerts.`
+    : `Здесь появятся графики и контрольные метрики блока «${esc(title)}»: динамика, пороги и алерты.`;
+  box.innerHTML = `<button class="mon-back" onclick="monBack()">${t2("← К блокам мониторинга")}</button>
+    <h1>${esc(t2(title))}</h1>
+    <div class="sub">${t2("Мониторинг · Работа с партнёрами")}</div>
+    <div class="mon-stub"><b>${t2("Статистика в разработке")}</b>
+      ${stub}</div>`;
+}
+function monBack(){
+  $("#monHome").style.display = "";
+  const box = $("#monDetailBox");
+  box.style.display = "none"; box.innerHTML = "";
+}
+
+/* ---------- Загруженные инструменты ---------- */
+function renderTools(){
+  const tools = store.get("uploadedTools", []);
+  const card = $("#toolsCard");
+  if (!tools.length){
+    card.innerHTML = `<div class="empty">${t2("Инструментов пока нет. Загрузите первый в разделе «Загруженные инструменты» пользовательской панели.")}</div>`;
+    return;
+  }
+  card.innerHTML = `<table>
+    <thead><tr><th>${t2('Название')}</th><th>${t2('Загружен')}</th><th>${t2('Размер')}</th><th style="text-align:right">${t2('Действия')}</th></tr></thead>
+    <tbody>` + tools.map(t => `
+      <tr data-id="${t.id}">
+        <td><span class="t-name">${esc(t.name)}</span></td>
+        <td><span class="mono">${new Date(t.ts).toLocaleDateString("ru-RU")}</span></td>
+        <td><span class="mono">${(t.html.length/1024).toFixed(0)} КБ</span></td>
+        <td style="text-align:right">
+          <button class="btn t-rename">${t2('Переименовать')}</button>
+          <button class="btn ghost-danger t-del">${t2('Удалить')}</button>
+        </td>
+      </tr>`).join("") + `</tbody></table>`;
+  card.querySelectorAll("tr[data-id]").forEach(row => {
+    const id = row.dataset.id;
+    row.querySelector(".t-rename").onclick = () => {
+      const tools2 = store.get("uploadedTools", []);
+      const t = tools2.find(x => x.id === id); if (!t) return;
+      const n = prompt(t2("Новое название инструмента:"), t.name);
+      if (n && n.trim()){ t.name = n.trim(); store.set("uploadedTools", tools2); renderTools(); }
+    };
+    row.querySelector(".t-del").onclick = () => {
+      const tools2 = store.get("uploadedTools", []);
+      const t = tools2.find(x => x.id === id); if (!t) return;
+      if (confirm("Удалить инструмент «" + t.name + "»?")){
+        store.set("uploadedTools", tools2.filter(x => x.id !== id));
+        renderTools();
+      }
+    };
+  });
+}
+
+/* ---------- Общие параметры: тема и язык (клиентские, localStorage) ---------- */
+function loadGeneral(){
+  const theme = store.get("theme", "dark");
+  const lang = store.get("lang", "ru");
+  const r = document.querySelector(`input[name="theme"][value="${theme}"]`) ||
+            document.querySelector('input[name="theme"][value="dark"]');
+  r.checked = true;
+  $("#langSel").value = lang;
+}
+$("#saveGeneral").onclick = () => {
+  const theme = (document.querySelector('input[name="theme"]:checked') || {}).value || "dark";
+  store.set("theme", theme);
+  const newLang = $("#langSel").value;
+  const langChanged = newLang !== LANG;
+  store.set("lang", newLang);
+  applyTheme();
+  if (langChanged){ location.reload(); return; }   /* страница перерисуется на выбранном языке */
+  const n = $("#generalSaved"); n.classList.add("show"); setTimeout(() => n.classList.remove("show"), 2500);
+};
+
+/* ---------- применение темы (light/dark/system) ---------- */
+function applyTheme(){
+  const pref = store.get("theme", "dark");
+  const light = pref === "light" || (pref === "system" && window.matchMedia("(prefers-color-scheme: light)").matches);
+  document.documentElement.classList.toggle("theme-light", light);
+}
+window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", applyTheme);
+window.addEventListener("storage", e => { if (e.key === "crmpanel:theme") applyTheme(); });
+applyTheme();
+
+/* ---------- Диагностика ---------- */
+function renderDiag(){
+  const box = $("#diagBox");
+  const rows = [];
+  for (let i = 0; i < localStorage.length; i++){
+    const k = localStorage.key(i);
+    if (k && k.startsWith("crmpanel:")){
+      const v = localStorage.getItem(k) || "";
+      rows.push({ k, size: v.length });
+    }
+  }
+  rows.sort((a,b) => b.size - a.size);
+  const total = rows.reduce((s,r) => s + r.size, 0);
+  box.innerHTML = rows.length
+    ? `<table><thead><tr><th>${t2('Ключ')}</th><th style="text-align:right">${t2('Размер')}</th></tr></thead><tbody>` +
+      rows.map(r => `<tr><td><span class="mono">${esc(r.k)}</span></td>
+        <td style="text-align:right"><span class="mono">${(r.size/1024).toFixed(1)} ${LANG==='en'?'KB':'КБ'}</span></td></tr>`).join("") +
+      `</tbody></table><div class="empty" style="margin-top:10px">${t2('Итого:')} ${(total/1024).toFixed(1)} ${LANG==='en'?'KB':'КБ'} ${t2('(лимит браузера ≈ 5 МБ на сайт)')}</div>`
+    : `<div class="empty">${t2('Панель ещё ничего не сохранила.')}</div>`;
+}
+
+renderApps();   /* мгновенный каркас (умолчания), затем данные с сервера */
+loadApps();
+loadGeneral();
+translateStatic();
+document.title = LANG === "en" ? "CRM Team · Settings" : "CRM Team · Настройки";
+</script>
+</body>
+</html>

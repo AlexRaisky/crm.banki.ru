@@ -1,41 +1,142 @@
 services:
-  db:
+  # ================= PROD =================
+  db-prod:
     image: postgres:16
-    container_name: crm-admin-db
+    container_name: crm-admin-db-prod
     environment:
       POSTGRES_DB: ${DB_NAME:-crm}
       POSTGRES_USER: ${DB_USER:-crm}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-crm}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${DB_BIND:-127.0.0.1}:${DB_PORT:-5432}:5432"
     volumes:
-      - crm_db_data:/var/lib/postgresql/data
+      - crm_db_data:/var/lib/postgresql/data   # прежний том — данные прод-контура сохраняются
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-crm} -d ${DB_NAME:-crm}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  app:
+  app-prod:
     build: .
-    container_name: crm-admin-app
+    image: crm-admin:local
+    container_name: crm-admin-app-prod
     depends_on:
-      db:
+      db-prod:
         condition: service_healthy
     environment:
-      # Spring profile: "docker" = bundled DB + Flyway schema + dev seed.
-      # Switch to "prod" (external DB, no schema migrations) when connecting to the real corporate DB.
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
-      DB_URL: ${DB_URL:-jdbc:postgresql://db:5432/crm}
+      DB_URL: jdbc:postgresql://db-prod:5432/${DB_NAME:-crm}
       DB_USER: ${DB_USER:-crm}
       DB_PASSWORD: ${DB_PASSWORD:-crm}
-      # First super-admin, created idempotently on startup:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@banki.ru}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
-      # Restrict registration/login email domain (empty = no restriction):
       APP_EMAIL_DOMAIN: ${APP_EMAIL_DOMAIN:-}
+      REMEMBER_ME_KEY: ${REMEMBER_ME_KEY:-crm-admin-remember-me-key-change-me}-prod
+      REMEMBER_ME_DAYS: ${REMEMBER_ME_DAYS:-30}
+      SESSION_TIMEOUT: ${SESSION_TIMEOUT:-7d}
+      JOURNEYS_MOCK: ${JOURNEYS_MOCK:-false}
+      # Среда: имя, dev-разделы выключены, свои имена кук
+      APP_ENV: prod
+      FEATURES_DEV: "false"
+      SESSION_COOKIE: CRMSID_PROD
+      REMEMBER_COOKIE: crm-remember-prod
     ports:
-      - "${APP_PORT:-8080}:8080"
+      # На сервере ставим APP_BIND=127.0.0.1 — наружу приложения смотрят только через nginx (см. docker-compose.server.yml)
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-8080}:8080"
+
+  # ================ PREPROD ================
+  db-preprod:
+    image: postgres:16
+    container_name: crm-admin-db-preprod
+    environment:
+      POSTGRES_DB: ${DB_NAME:-crm}
+      POSTGRES_USER: ${DB_USER:-crm}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-crm}
+    ports:
+      - "${DB_BIND:-127.0.0.1}:${DB_PORT_PREPROD:-5433}:5432"
+    volumes:
+      - crm_db_preprod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-crm} -d ${DB_NAME:-crm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app-preprod:
+    image: crm-admin:local
+    container_name: crm-admin-app-preprod
+    depends_on:
+      db-preprod:
+        condition: service_healthy
+      app-prod:
+        condition: service_started   # ждём сборку образа crm-admin:local
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
+      DB_URL: jdbc:postgresql://db-preprod:5432/${DB_NAME:-crm}
+      DB_USER: ${DB_USER:-crm}
+      DB_PASSWORD: ${DB_PASSWORD:-crm}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@banki.ru}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
+      APP_EMAIL_DOMAIN: ${APP_EMAIL_DOMAIN:-}
+      REMEMBER_ME_KEY: ${REMEMBER_ME_KEY:-crm-admin-remember-me-key-change-me}-preprod
+      REMEMBER_ME_DAYS: ${REMEMBER_ME_DAYS:-30}
+      SESSION_TIMEOUT: ${SESSION_TIMEOUT:-7d}
+      JOURNEYS_MOCK: ${JOURNEYS_MOCK:-false}
+      APP_ENV: preprod
+      FEATURES_DEV: "false"
+      SESSION_COOKIE: CRMSID_PREPROD
+      REMEMBER_COOKIE: crm-remember-preprod
+    ports:
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT_PREPROD:-8081}:8080"
+
+  # ================== TEST =================
+  db-test:
+    image: postgres:16
+    container_name: crm-admin-db-test
+    environment:
+      POSTGRES_DB: ${DB_NAME:-crm}
+      POSTGRES_USER: ${DB_USER:-crm}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-crm}
+    ports:
+      - "${DB_BIND:-127.0.0.1}:${DB_PORT_TEST:-5434}:5432"
+    volumes:
+      - crm_db_test:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-crm} -d ${DB_NAME:-crm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app-test:
+    image: crm-admin:local
+    container_name: crm-admin-app-test
+    depends_on:
+      db-test:
+        condition: service_healthy
+      app-prod:
+        condition: service_started   # ждём сборку образа crm-admin:local
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
+      DB_URL: jdbc:postgresql://db-test:5432/${DB_NAME:-crm}
+      DB_USER: ${DB_USER:-crm}
+      DB_PASSWORD: ${DB_PASSWORD:-crm}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@banki.ru}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
+      APP_EMAIL_DOMAIN: ${APP_EMAIL_DOMAIN:-}
+      REMEMBER_ME_KEY: ${REMEMBER_ME_KEY:-crm-admin-remember-me-key-change-me}-test
+      REMEMBER_ME_DAYS: ${REMEMBER_ME_DAYS:-30}
+      SESSION_TIMEOUT: ${SESSION_TIMEOUT:-7d}
+      # test: цепочки в БД (app.journeys) — нужно для материализации (FK journey_id)
+      JOURNEYS_MOCK: "false"
+      APP_ENV: test
+      FEATURES_DEV: "true"
+      SESSION_COOKIE: CRMSID_TEST
+      REMEMBER_COOKIE: crm-remember-test
+    ports:
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT_TEST:-8082}:8080"
 
 volumes:
-  crm_db_data:
+  crm_db_data:      # prod (прежнее имя тома — данные сохранены)
+  crm_db_preprod:
+  crm_db_test:

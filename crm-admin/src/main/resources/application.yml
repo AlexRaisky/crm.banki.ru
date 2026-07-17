@@ -22,6 +22,13 @@ spring:
 server:
   port: 8080
   forward-headers-strategy: framework
+  servlet:
+    session:
+      # Дольше держим сессию; при её истечении вход восстановит remember-me кука.
+      timeout: ${SESSION_TIMEOUT:7d}
+      cookie:
+        # Своё имя на среду (prod/preprod/test на одном хосте) — иначе куки сред затирают друг друга.
+        name: ${SESSION_COOKIE:JSESSIONID}
   error:
     include-message: always
     include-binding-errors: always
@@ -31,21 +38,37 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  # Среда инстанса: prod | preprod | test. Отдаётся фронту через GET /api/env (бейдж в шапке).
+  env:
+    name: ${APP_ENV:prod}
+  # Разделы в разработке (Цепочки и далее) видны только там, где флаг включён (preprod/test).
+  features:
+    dev: ${FEATURES_DEV:false}
   # First super-admin, created idempotently on startup.
   admin:
     email: ${ADMIN_EMAIL:admin@banki.ru}
     password: ${ADMIN_PASSWORD:admin12345}
   # Restrict login/registration email domain (empty = no restriction).
   email-domain: ${APP_EMAIL_DOMAIN:}
+  # Постоянная авторизация (remember-me). Ключ должен быть стабильным между рестартами.
+  remember-me:
+    key: ${REMEMBER_ME_KEY:crm-admin-remember-me-key-change-me}
+    days: ${REMEMBER_ME_DAYS:30}
+    cookie-name: ${REMEMBER_COOKIE:crm-remember}
   # Write app.current_user before mutating queries (audit trigger on arch.arch_log).
   audit:
     enabled: true
+  # Цепочки-схемы: по умолчанию в БД (app.journeys, jsonb); true = мок в памяти (dev без БД).
+  journeys:
+    mock: ${JOURNEYS_MOCK:false}
   # Physical table locations — override per environment without touching code.
   tables:
     push: notice.push_template
     email: notice.email_template
     sms: notice.d_com_sms_template
     cc: callcenter.d_segment_properties
+    # журнал действий админки (в проде укажи реальное расположение t_admin_log)
+    admin-log: ${ADMIN_LOG_TABLE:arch.t_admin_log}
 
 logging:
   level:
@@ -59,6 +82,9 @@ spring:
       on-profile: docker
   flyway:
     locations: classpath:db/migration,classpath:db/seed
+    # Сиды заняли версии V900+; новые схемные миграции (V3, V4, …) выходят «младше» уже
+    # применённых — разрешаем применять их задним числом (только dev-БД этого профиля).
+    out-of-order: true
 
 ---
 # Production: connect to the existing corporate PostgreSQL. Tables already exist there,

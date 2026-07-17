@@ -1,0 +1,31 @@
+# Серверная надстройка поверх docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build
+# Даёт: nginx на :80 (домен -> ТОЛЬКО прод), автоперезапуск всех контейнеров.
+# В .env на сервере обязательно: APP_BIND=127.0.0.1 (приложения наружу не торчат,
+# preprod/test доступны только с самого сервера/по SSH-туннелю).
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: crm-admin-nginx
+    restart: unless-stopped
+    depends_on:
+      - app-prod
+    volumes:
+      - ./nginx/crm-admin.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "80:80"
+      # для TLS раскомментируй и добавь серты в ./nginx/certs + server{listen 443 ssl;...}
+      # - "443:443"
+
+  app-prod:
+    restart: unless-stopped
+  app-preprod:
+    restart: unless-stopped
+  app-test:
+    restart: unless-stopped
+  db-prod:
+    restart: unless-stopped
+  db-preprod:
+    restart: unless-stopped
+  db-test:
+    restart: unless-stopped

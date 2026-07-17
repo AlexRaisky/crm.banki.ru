@@ -143,8 +143,11 @@
   var CRM = {
     meReady: null,
     me: null,
+    envReady: null,
+    envInfo: null,
 
     fetchMe: function () { return req("GET", "/api/me"); },
+    fetchEnv: function () { return req("GET", "/api/env"); },
 
     listTemplates: function (filters) {
       var qs = [];
@@ -164,6 +167,17 @@
     dictPartners: function () { return req("GET", "/api/dictionaries/partners"); },
     dictCcSegments: function () { return req("GET", "/api/dictionaries/cc-segments"); },
     dictCommNames: function (channel) { return req("GET", "/api/dictionaries/comm-names?channel=" + encodeURIComponent(channel)); },
+
+    // flow: материализация цепочек (предпросмотр инсертов слоя B и выполнение)
+    flowPreview: function (journey) { return req("POST", "/api/flow/preview", journey); },
+    flowMaterialize: function (journey, rows) { return req("POST", "/api/flow/materialize", { journey: journey, rows: rows }); },
+
+    // journeys (цепочки-схемы)
+    journeysList: function () { return req("GET", "/api/journeys"); },
+    journeyGet: function (id) { return req("GET", "/api/journeys/" + encodeURIComponent(id)); },
+    journeyCreate: function (j) { return req("POST", "/api/journeys", j); },
+    journeyUpdate: function (id, j) { return req("PUT", "/api/journeys/" + encodeURIComponent(id), j); },
+    journeyDelete: function (id) { return req("DELETE", "/api/journeys/" + encodeURIComponent(id)); },
 
     // admin
     adminSections: function () { return req("GET", "/api/admin/sections"); },
@@ -194,7 +208,7 @@
 
   window.CRM = CRM;
 
-  // ---- bootstrap: кто я + фильтрация NAV по разрешённым разделам ----
+  // ---- bootstrap: кто я + среда инстанса + фильтрация NAV ----
   CRM.meReady = CRM.fetchMe().then(function (me) {
     CRM.me = me;
     window.CRM_ME = me;
@@ -202,9 +216,32 @@
     return me;
   }).catch(function () { /* redirect уже произошёл в req() при 401 */ });
 
+  CRM.envReady = CRM.fetchEnv().then(function (env) {
+    CRM.envInfo = env;
+    window.CRM_ENV = env;
+    return env;
+  }).catch(function () { return null; });
+
+  /* Конфиг «приложение → разделы» (App Launcher): истина в БД (app.panel_settings),
+     оболочка читает localStorage — синкаем при загрузке и перерисовываем сайдбар. */
+  function syncAppSections() {
+    return req("GET", "/api/panel-settings/appSections").then(function (res) {
+      if (!res || res.value == null) return;
+      var next = JSON.stringify(res.value);
+      var prev = null;
+      try { prev = localStorage.getItem("crmpanel:appSections"); } catch (e) {}
+      if (prev === next) return;
+      try { localStorage.setItem("crmpanel:appSections", next); } catch (e) {}
+      if (typeof window.renderNav === "function") window.renderNav();
+    }).catch(function () { /* нет доступа/сети — остаёмся на localStorage */ });
+  }
+
   function applyNavAcl() {
     var me = CRM.me;
     if (!me) return;
+    // Шестерёнка настроечной админки (/settings) — только админам
+    var gear = document.getElementById("settingsLink");
+    if (gear) gear.style.display = me.isAdmin ? "" : "none";
     document.body.setAttribute("data-role", me.role);
     if (!me.canEdit) document.body.setAttribute("data-readonly", "1");
     var ue = document.getElementById("userEmail");
@@ -212,22 +249,58 @@
       ue.textContent = me.email;
       ue.title = (me.displayName ? me.displayName + " · " : "") + me.email + " (" + me.role + ")";
     }
-    // Показ пунктов навигации только для разрешённых разделов (nav id == section id).
+    var envName = (CRM.envInfo && CRM.envInfo.name) || null;
+    // Виден ли раздел по персональному ACL (nav id == section id).
+    function sectionVisible(id) {
+      return !(id && me.sections && me.sections.indexOf(id) < 0);
+    }
     document.querySelectorAll(".nav-item").forEach(function (el) {
       var id = el.dataset.id;
-      if (id && me.sections && me.sections.indexOf(id) < 0) {
-        el.style.display = "none";
+      // Разделы, ограниченные средой (data-envs): показываем только на перечисленных средах.
+      if (el.dataset.envs) {
+        var allowed = envName && el.dataset.envs.split(",").indexOf(envName) >= 0;
+        if (!allowed) { el.remove(); return; }
+        el.style.display = "";
       }
+      // Разделы только для админов (data-admin-only) — прочим убираем совсем.
+      if (el.dataset.adminOnly && !me.isAdmin) { el.remove(); return; }
+      // Группа сайдбара (data-group): её id — не раздел, ACL по sections не применяем.
+      // Скрываем группу, если все её ACL-подразделы (data-children) скрыты;
+      // группа с data-no-acl (есть клиентские дети без серверной секции) видима всегда.
+      if (el.dataset.group) {
+        if (el.dataset.noAcl) { el.style.display = ""; return; }
+        var kids = (el.dataset.children || "").split(",").filter(Boolean);
+        var anyVisible = kids.some(sectionVisible);
+        el.style.display = anyVisible ? "" : "none";
+        return;
+      }
+      // Клиентские инструменты без серверной секции (data-no-acl) — по sections не фильтруем.
+      if (el.dataset.noAcl) return;
+      // data-acl-section: пункт следует правам другого раздела (viewer → admin).
+      if (!sectionVisible(el.dataset.aclSection || id)) el.style.display = "none";
     });
-    // Открыть первый разрешённый раздел, если текущий скрыт.
-    var firstVisible = document.querySelector('.nav-item:not([style*="display: none"])');
-    if (firstVisible && typeof window.openSection === "function") {
-      window.openSection(firstVisible.dataset.id);
+    // Карточки подразделов на обзорных страницах групп — скрываем синхронно с ACL.
+    document.querySelectorAll("[data-nav-ref]").forEach(function (el) {
+      if (el.dataset.noAcl) return; // видимостью управляет оболочка (напр. тепловая карта — по приложению)
+      el.style.display = sectionVisible(el.dataset.aclSection || el.dataset.navRef) ? "" : "none";
+    });
+    // Открыть первый доступный раздел, если текущий активный скрыт/удалён.
+    var active = document.querySelector("#nav .nav-item.active");
+    if (!active || active.style.display === "none") {
+      var firstVisible = document.querySelector('#nav .nav-item:not([style*="display: none"])');
+      if (firstVisible && typeof window.openSection === "function") {
+        window.openSection(firstVisible.dataset.id);
+      }
     }
   }
+  // Оболочка перерисовывает сайдбар (смена приложения/языка) — даём ей переприменить ACL.
+  window.applyNavAcl = applyNavAcl;
 
-  // NAV строится в инлайновом скрипте на DOMContentLoaded-порядке; применяем ACL после.
+  // NAV строится в инлайновом скрипте; применяем ACL, когда известны и права, и среда.
   document.addEventListener("DOMContentLoaded", function () {
-    CRM.meReady.then(applyNavAcl);
+    Promise.all([CRM.meReady, CRM.envReady]).then(function () {
+      applyNavAcl();
+      syncAppSections(); // конфиг приложений из БД (перерисует сайдбар при изменениях)
+    });
   });
 })();

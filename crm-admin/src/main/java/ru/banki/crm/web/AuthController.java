@@ -30,8 +30,16 @@ public class AuthController {
         AppUser u = p.user();
         boolean canEdit = u.getRole() == Role.EDITOR || u.getRole() == Role.ADMIN;
         boolean isAdmin = u.getRole() == Role.ADMIN;
+        // ADMIN обходит ACL разделов на сервере — в NAV ему тоже отдаём всё,
+        // чтобы новые разделы появлялись у админов без правки user_sections.
+        // «Цепочки» — только админам: не-админу раздел не отдаём даже при ACL.
+        java.util.Set<String> sections = isAdmin
+                ? java.util.Set.copyOf(ru.banki.crm.service.Sections.ALL)
+                : u.getSections().stream()
+                        .filter(s -> !ru.banki.crm.service.Sections.JOURNEYS.equals(s))
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet());
         return new MeDto(u.getEmail(), u.getDisplayName(), u.getRole().name(),
-                canEdit, isAdmin, u.getSections());
+                canEdit, isAdmin, sections);
     }
 
     @PutMapping("/me/password")
