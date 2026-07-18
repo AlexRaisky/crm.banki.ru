@@ -2476,7 +2476,7 @@ button:hover{filter:brightness(1.08)}
 <div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
 <div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
 <div class="field"><label>Touch point</label><select class="touch" onchange="buildSource(this)"></select></div>
-<div class="field"><label>Sending Day</label><input type="number" class="day" oninput="buildSource(this)"></div>
+<div class="field"><label>Sending Day</label><input type="number" class="day" min="0" step="1" value="0" onkeydown="return !['e','E','+','-','.',','].includes(event.key)" oninput="buildSource(this)"></div>
 <div class="field">
     <label>Communication Name</label>
     <div class="combo">
@@ -2563,8 +2563,8 @@ button:hover{filter:brightness(1.08)}
 <div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
 <div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
 <div class="field"><label>Touch Point</label><select class="touch" onchange="buildSource(this)"></select></div>
-<div class="field"><label>Sending Day</label><input type="number" class="day" oninput="buildSource(this)"></div>
-<div class="field"><label>Deep Link</label><input class="deeplink"></div>
+<div class="field"><label>Sending Day</label><input type="number" class="day" min="0" step="1" value="0" onkeydown="return !['e','E','+','-','.',','].includes(event.key)" oninput="buildSource(this)"></div>
+<div class="field"><label>Deep Link</label><input class="deeplink" value="https://www.banki.ru/deepLink/webview?webviewUrl="></div>
 <div class="field"><label>Webview link</label><input class="webview"></div>
 <div class="field">
     <label>Communication Name</label>
@@ -2639,7 +2639,7 @@ button:hover{filter:brightness(1.08)}
 
 <div class="form-block form-block-required">
 <div class="form-block-title" data-i18n="1. Обязательные параметры">1. Обязательные параметры</div>
-<div class="field full"><label>Letteros Id</label><input class="letteros_id"></div>
+<div class="field full"><label>Letteros Id</label><input class="letteros_id" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
 <div class="field"><label>Sender Email</label><input class="email_from"></div>
 <div class="field">
     <label>Sender Type</label>
@@ -2651,7 +2651,7 @@ button:hover{filter:brightness(1.08)}
 <div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
 <div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
 <div class="field"><label>Touch Point</label><select class="touch" onchange="buildSource(this)"></select></div>
-<div class="field"><label>Sending Day</label><input type="number" class="day" oninput="buildSource(this)"></div>
+<div class="field"><label>Sending Day</label><input type="number" class="day" min="0" step="1" value="0" onkeydown="return !['e','E','+','-','.',','].includes(event.key)" oninput="buildSource(this)"></div>
 <div class="field">
     <label>Communication Name</label>
     <div class="combo">
@@ -2668,7 +2668,7 @@ button:hover{filter:brightness(1.08)}
 </div>
 <div class="field">
     <label>Business Communication Type</label>
-    <select class="biz_type">
+    <select class="biz_type" onchange="updateEmailSenderName(this)">
         <option value="adv">adv</option>
         <option value="service">service</option>
         <option value="info">info</option>
@@ -2751,7 +2751,7 @@ button:hover{filter:brightness(1.08)}
 <div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
 <div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
 <div class="field"><label>Touch Point</label><select class="touch" onchange="buildSource(this)"></select></div>
-<div class="field"><label>Sending Day</label><input type="number" class="day" oninput="buildSource(this)"></div>
+<div class="field"><label>Sending Day</label><input type="number" class="day" min="0" step="1" value="0" onkeydown="return !['e','E','+','-','.',','].includes(event.key)" oninput="buildSource(this)"></div>
 <div class="field"><label>Kvint Campaign Id</label><input class="kvint"></div>
 <div class="field">
     <label>Communication Name</label>
@@ -5536,6 +5536,8 @@ function buildSource(el) {
     if (com) updateComNameFromContext(com);
     var sourceEl = form.querySelector('.source');
     if (sourceEl) sourceEl.value = computeCampaignName(form, undefined);
+    // email: адрес отправителя пересчитывается от trigger/touch/biz_type (алгоритм v2)
+    if (form.id === 'email') updateEmailSenderName(el);
 }
 
 function syncComName(partnerInput) {
@@ -5616,22 +5618,24 @@ function onComnameEdited(comEl) {
     const sourceEl = form.querySelector('.source');
     if (sourceEl) sourceEl.value = computeCampaignName(form, undefined);
 }
+/* Sender Email — алгоритм generateEmail из v2 (порядок проверок как в исходнике):
+   renewal → service → info → trigger+adv → promo+adv → newsletter. Формат: Банки.ру<email>. */
 function updateEmailSenderName(el) {
     const form = el.closest('.form');
     if (!form || form.id !== 'email') return;
-    const senderInput = form.querySelector('input.sender_name');
+    const senderInput = form.querySelector('input.email_from');
     if (!senderInput) return;
-    const bizTypeSelect = form.querySelector('select.biz_type');
-    const bizType = (bizTypeSelect && bizTypeSelect.value) || '';
+    const bizType = (form.querySelector('select.biz_type') && form.querySelector('select.biz_type').value) || '';
     const touch = (form.querySelector('.touch') && form.querySelector('.touch').value) || '';
     const trigger = (form.querySelector('.trigger') && form.querySelector('.trigger').value) || '';
-    let value = '';
-    if (bizType === 'service') value = 'no-reply@email.banki.ru';
-    else if (bizType === 'info') value = 'inform@email.banki.ru';
-    else if (touch === 'renewal') value = 'renewal@email.banki.ru';
-    else if (trigger === 'trigger') value = 'offers@email.banki.ru';
-    else if (trigger === 'promo') value = 'advice@email.banki.ru';
-    senderInput.value = value;
+    let email;
+    if (touch === 'renewal') email = 'renewal@email.banki.ru';
+    else if (bizType === 'service') email = 'no-reply@email.banki.ru';
+    else if (bizType === 'info') email = 'inform@email.banki.ru';
+    else if (trigger === 'trigger' && bizType === 'adv') email = 'offers@email.banki.ru';
+    else if (trigger === 'promo' && bizType === 'adv') email = 'advice@email.banki.ru';
+    else email = 'newsletter@email.banki.ru';
+    senderInput.value = 'Банки.ру<' + email + '>';
 }
 
 function toggleAbTestField(el) {
