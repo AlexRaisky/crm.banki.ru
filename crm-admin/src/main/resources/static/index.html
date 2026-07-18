@@ -472,7 +472,8 @@
   /* SF-детали и список: тёмные подложки секций/футера */
   html.theme-light #sec-admin .sfd-sec-title{background:rgba(20,60,100,.05)}
   html.theme-light #sec-admin .sfd-footer{background:rgba(255,255,255,.92)}
-  html.theme-light #sec-admin .form-block-title{background:rgba(20,60,100,.05)}
+  /* заголовки блоков форм — вид донора: без заливки, цвет текста + нижняя граница */
+  html.theme-light #sec-admin .form-block-title{background:none;color:var(--ink);border-bottom:1px solid var(--line)}
   /* Drawflow-удаление и мультивыделение читаемы на светлом как есть (акцентные цвета) */
 
   @media (max-width:1100px){
@@ -919,26 +920,26 @@ button {
     background: #f0f0f0;
 }
 
-/* Нормальный редактируемый combobox (combobox.js) */
+/* Нормальный редактируемый combobox (combobox.js).
+   Вид приведён к донорскому .editable-dropdown/.dropdown-list (инпут со стрелкой,
+   список без тени, hover как у dropdown-list); логика combobox.js не менялась. */
 .combo { position: relative; display: flex; flex-direction: column; }
 .combo-pop {
     position: absolute;
     top: 100%;
     left: 0;
     right: 0;
-    margin-top: 2px;
-    max-height: 220px;
+    max-height: 150px;
     overflow-y: auto;
     border: 1px solid #cfd3da;
-    border-radius: 6px;
+    border-radius: 4px;
     background: #fff;
     z-index: 40;
     display: none;
-    box-shadow: 0 8px 24px rgba(0,0,0,.12);
 }
 .combo-pop.open { display: block; }
-.combo-item { padding: 7px 10px; cursor: pointer; font-size: 14px; }
-.combo-item:hover, .combo-item.active { background: #eef2ff; color: #1d4ed8; }
+.combo-item { padding: 6px 10px; cursor: pointer; }
+.combo-item:hover, .combo-item.active { background: #f0f0f0; }
 .combo::after {
     content: "▾";
     position: absolute;
@@ -1418,9 +1419,10 @@ button:hover{filter:brightness(1.08)}
 .dropdown-list{background:var(--card); border:1px solid var(--line)}
 .dropdown-list div{color:var(--ink)}
 .dropdown-list div:hover{background:var(--card2)}
-.combo-pop{background:var(--card); border:1px solid var(--line); box-shadow:0 10px 40px rgba(0,0,0,.45)}
+/* combobox — тот же вид, что донорский .dropdown-list */
+.combo-pop{background:var(--card); border:1px solid var(--line)}
 .combo-item{color:var(--ink)}
-.combo-item:hover,.combo-item.active{background:var(--card2); color:var(--blue)}
+.combo-item:hover,.combo-item.active{background:var(--card2)}
 
 /* Группы флагов */
 .extra-flags .flags-group-label{color:var(--dim)}
@@ -2455,8 +2457,26 @@ button:hover{filter:brightness(1.08)}
 <div class="grid">
 
 <div class="form-block form-block-required">
-<div class="form-block-title" data-i18n="1. Основные параметры">1. Основные параметры</div>
+<div class="form-block-title" data-i18n="1. Обязательные параметры (капитанские)">1. Обязательные параметры (капитанские)</div>
 <div class="field full"><label>Message Text</label><textarea></textarea></div>
+<div class="field">
+    <label>Sender Name</label>
+    <select class="sender_name">
+        <option value="Banki.ru">Banki.ru</option>
+        <option value="Bamm.ru">Bamm.ru</option>
+    </select>
+</div>
+<div class="field">
+    <label>Sender Type</label>
+    <select class="trigger" onchange="buildSource(this)">
+        <option value="promo">promo</option>
+        <option value="trigger">trigger</option>
+    </select>
+</div>
+<div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
+<div class="field"><label>Touch point</label><select class="touch" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Sending Day</label><input type="number" class="day" oninput="buildSource(this)"></div>
 <div class="field">
     <label>Communication Name</label>
     <div class="combo">
@@ -2464,10 +2484,6 @@ button:hover{filter:brightness(1.08)}
         <div class="combo-pop"></div>
     </div>
 </div>
-<div class="field"><label>Landing Page</label><input class="aff_sub3"></div>
-<div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
-<div class="field"><label>Sending Day</label><input type="number" class="day" oninput="buildSource(this)"></div>
-<div class="field full"><label>Campaign Name</label><input class="source"></div>
 <div class="field">
     <label>Communication Tunnel</label>
     <select class="communication_type">
@@ -2483,27 +2499,13 @@ button:hover{filter:brightness(1.08)}
         <option value="info">info</option>
     </select>
 </div>
-<div class="field">
-    <label>Sender Type</label>
-    <select class="trigger" onchange="buildSource(this)">
-        <option value="promo">promo</option>
-        <option value="trigger">trigger</option>
-    </select>
-</div>
-<div class="field">
-    <label>Sender Name</label>
-    <select class="sender_name">
-        <option value="Banki.ru">Banki.ru</option>
-        <option value="Bamm.ru">Bamm.ru</option>
-    </select>
-</div>
-<div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
-<div class="field"><label>Touch point</label><select class="touch" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Landing Page</label><input class="aff_sub3"></div>
+<div class="field full"><label>Campaign Name</label><input class="source"></div>
 <div class="field checkbox"><input type="checkbox" class="active_flag" checked><label>Active</label></div>
 </div>
 
 <div class="form-block form-block-flags">
-<div class="form-block-title" data-i18n="2. Флаги">2. Флаги</div>
+<div class="form-block-title" data-i18n="2. Флаги горизонталей и настроечные">2. Флаги горизонталей и настроечные</div>
 <div class="extra-flags field full">
     <div class="flags-group">
         <div class="flags-group-label">Горизонтали</div>
@@ -2527,7 +2529,7 @@ button:hover{filter:brightness(1.08)}
 </div>
 
 <div class="form-block form-block-cc">
-<div class="form-block-title" data-i18n="3. Цепочка и КЦ">3. Цепочка и КЦ</div>
+<div class="form-block-title" data-i18n="3. Для КЦ">3. Для КЦ</div>
 <div class="field checkbox"><input type="checkbox" class="cb-chain" onchange="toggleChainField(this)"><label>Is chain</label></div>
 <div class="field full chain-field" style="display:none;">
     <label>Дни цепочки — числа через запятую/пробел (напр. 0, 3, 7)</label>
@@ -2548,9 +2550,20 @@ button:hover{filter:brightness(1.08)}
 <div class="grid">
 
 <div class="form-block form-block-required">
-<div class="form-block-title" data-i18n="1. Основные параметры">1. Основные параметры</div>
+<div class="form-block-title" data-i18n="1. Обязательные параметры">1. Обязательные параметры</div>
 <div class="field full"><label>Message Text</label><textarea></textarea></div>
 <div class="field"><label>Title Text</label><input class="title"></div>
+<div class="field">
+    <label>Sender Type</label>
+    <select class="trigger" onchange="buildSource(this)">
+        <option value="promo">promo</option>
+        <option value="trigger">trigger</option>
+    </select>
+</div>
+<div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
+<div class="field"><label>Touch Point</label><select class="touch" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Sending Day</label><input type="number" class="day" oninput="buildSource(this)"></div>
 <div class="field"><label>Deep Link</label><input class="deeplink"></div>
 <div class="field"><label>Webview link</label><input class="webview"></div>
 <div class="field">
@@ -2560,10 +2573,6 @@ button:hover{filter:brightness(1.08)}
         <div class="combo-pop"></div>
     </div>
 </div>
-<div class="field"><label>Landing Page</label><input class="aff_sub3"></div>
-<div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
-<div class="field"><label>Sending Day</label><input type="number" class="day" oninput="buildSource(this)"></div>
-<div class="field full"><label>Campaign Name</label><input class="source"></div>
 <div class="field">
     <label>Communication Tunnel</label>
     <select class="communication_type">
@@ -2579,20 +2588,13 @@ button:hover{filter:brightness(1.08)}
         <option value="info">info</option>
     </select>
 </div>
-<div class="field">
-    <label>Sender Type</label>
-    <select class="trigger" onchange="buildSource(this)">
-        <option value="promo">promo</option>
-        <option value="trigger">trigger</option>
-    </select>
-</div>
-<div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
-<div class="field"><label>Touch Point</label><select class="touch" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Landing Page</label><input class="aff_sub3"></div>
+<div class="field full"><label>Campaign Name</label><input class="source"></div>
 <div class="field checkbox"><input type="checkbox" class="active_flag" checked><label>Active</label></div>
 </div>
 
 <div class="form-block form-block-flags">
-<div class="form-block-title" data-i18n="2. Флаги">2. Флаги</div>
+<div class="form-block-title" data-i18n="2. Флаги горизонталей и настроечные">2. Флаги горизонталей и настроечные</div>
 <div class="extra-flags field full">
     <div class="flags-group">
         <div class="flags-group-label">Горизонтали</div>
@@ -2636,7 +2638,20 @@ button:hover{filter:brightness(1.08)}
 <div class="grid">
 
 <div class="form-block form-block-required">
-<div class="form-block-title" data-i18n="1. Основные параметры">1. Основные параметры</div>
+<div class="form-block-title" data-i18n="1. Обязательные параметры">1. Обязательные параметры</div>
+<div class="field full"><label>Letteros Id</label><input class="letteros_id"></div>
+<div class="field"><label>Sender Email</label><input class="email_from"></div>
+<div class="field">
+    <label>Sender Type</label>
+    <select class="trigger" onchange="buildSource(this)">
+        <option value="promo">promo</option>
+        <option value="trigger">trigger</option>
+    </select>
+</div>
+<div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
+<div class="field"><label>Touch Point</label><select class="touch" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Sending Day</label><input type="number" class="day" oninput="buildSource(this)"></div>
 <div class="field">
     <label>Communication Name</label>
     <div class="combo">
@@ -2644,12 +2659,6 @@ button:hover{filter:brightness(1.08)}
         <div class="combo-pop"></div>
     </div>
 </div>
-<div class="field"><label>Sender Email</label><input class="email_from"></div>
-<div class="field"><label>Letteros Id</label><input class="letteros_id"></div>
-<div class="field"><label>Landing Page</label><input class="aff_sub3"></div>
-<div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
-<div class="field"><label>Sending Day</label><input type="number" class="day" oninput="buildSource(this)"></div>
-<div class="field full"><label>Campaign Name</label><input class="source"></div>
 <div class="field">
     <label>Communication Tunnel</label>
     <select class="communication_type">
@@ -2665,20 +2674,13 @@ button:hover{filter:brightness(1.08)}
         <option value="info">info</option>
     </select>
 </div>
-<div class="field">
-    <label>Sender Type</label>
-    <select class="trigger" onchange="buildSource(this)">
-        <option value="promo">promo</option>
-        <option value="trigger">trigger</option>
-    </select>
-</div>
-<div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
-<div class="field"><label>Touch Point</label><select class="touch" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Landing Page</label><input class="aff_sub3"></div>
+<div class="field full"><label>Campaign Name</label><input class="source"></div>
 <div class="field checkbox"><input type="checkbox" class="active_flag" checked><label>Active</label></div>
 </div>
 
 <div class="form-block form-block-flags">
-<div class="form-block-title" data-i18n="2. Флаги">2. Флаги</div>
+<div class="form-block-title" data-i18n="2. Флаги горизонталей и настроечные">2. Флаги горизонталей и настроечные</div>
 <div class="extra-flags field full">
     <div class="flags-group">
         <div class="flags-group-label">Горизонтали</div>
@@ -2702,7 +2704,7 @@ button:hover{filter:brightness(1.08)}
 </div>
 
 <div class="form-block form-block-cc">
-<div class="form-block-title" data-i18n="3. Цепочка и КЦ">3. Цепочка и КЦ</div>
+<div class="form-block-title" data-i18n="3. Для КЦ">3. Для КЦ</div>
 <div class="field checkbox"><input type="checkbox" class="cb-chain" onchange="toggleChainField(this)"><label>Is chain</label></div>
 <div class="field full chain-field" style="display:none;">
     <label>Дни цепочки — числа через запятую/пробел (напр. 0, 3, 7)</label>
@@ -2723,14 +2725,8 @@ button:hover{filter:brightness(1.08)}
 <div class="grid">
 
 <div class="form-block form-block-required">
-<div class="form-block-title" data-i18n="1. Основные параметры">1. Основные параметры</div>
-<div class="field">
-    <label>Communication Name</label>
-    <div class="combo">
-        <input type="text" class="combo-input comname" value="NoComName" data-comname-base="NoComName" oninput="onComnameEdited(this)">
-        <div class="combo-pop"></div>
-    </div>
-</div>
+<div class="form-block-title" data-i18n="1. Обязательные параметры">1. Обязательные параметры</div>
+<div class="field full"><label>Segment Descr</label><textarea class="segment_desc"></textarea></div>
 <div class="field">
     <label>Source System</label>
     <select class="source_system">
@@ -2745,12 +2741,25 @@ button:hover{filter:brightness(1.08)}
 </div>
 <div class="field"><label>Segment</label><input type="number" class="segment" oninput="buildSource(this)"></div>
 <div class="field"><label>Host Id</label><input type="number" class="host_id"></div>
-<div class="field full"><label>Segment Descr</label><textarea class="segment_desc"></textarea></div>
-<div class="field"><label>Landing Page</label><input class="aff_sub3"></div>
+<div class="field">
+    <label>Sender Type</label>
+    <select class="trigger" onchange="buildSource(this)">
+        <option value="promo">promo</option>
+        <option value="trigger">trigger</option>
+    </select>
+</div>
+<div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
 <div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
+<div class="field"><label>Touch Point</label><select class="touch" onchange="buildSource(this)"></select></div>
 <div class="field"><label>Sending Day</label><input type="number" class="day" oninput="buildSource(this)"></div>
 <div class="field"><label>Kvint Campaign Id</label><input class="kvint"></div>
-<div class="field full"><label>Campaign Name</label><input class="source"></div>
+<div class="field">
+    <label>Communication Name</label>
+    <div class="combo">
+        <input type="text" class="combo-input comname" value="NoComName" data-comname-base="NoComName" oninput="onComnameEdited(this)">
+        <div class="combo-pop"></div>
+    </div>
+</div>
 <div class="field">
     <label>Communication Tunnel</label>
     <select class="communication_type">
@@ -2766,20 +2775,13 @@ button:hover{filter:brightness(1.08)}
         <option value="info">info</option>
     </select>
 </div>
-<div class="field">
-    <label>Sender Type</label>
-    <select class="trigger" onchange="buildSource(this)">
-        <option value="promo">promo</option>
-        <option value="trigger">trigger</option>
-    </select>
-</div>
-<div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
-<div class="field"><label>Touch Point</label><select class="touch" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Landing Page</label><input class="aff_sub3"></div>
+<div class="field full"><label>Campaign Name</label><input class="source"></div>
 <div class="field checkbox"><input type="checkbox" class="active_flag" checked><label>Active Flag</label></div>
 </div>
 
 <div class="form-block form-block-flags">
-<div class="form-block-title" data-i18n="2. Флаги">2. Флаги</div>
+<div class="form-block-title" data-i18n="2. Флаги горизонталей и настроечные">2. Флаги горизонталей и настроечные</div>
 <div class="extra-flags field full">
     <div class="flags-group">
         <div class="flags-group-label">Горизонтали</div>
@@ -3571,9 +3573,11 @@ const I18N_EN = {
   "Тема":"Subject",
   "Вёрстка шаблона будет подтягиваться из Letteros":"Template markup will be pulled from Letteros",
   "Пример отображения. Точный вид зависит от устройства и версии ОС.":"Approximate rendering. The exact look depends on device and OS version.",
-  /* мастер: заголовки блоков форм и «Просмотр» */
-  "1. Основные параметры":"1. Main parameters", "2. Флаги":"2. Flags",
-  "3. Цепочка и КЦ":"3. Chain & call center", "3. Цепочка":"3. Chain",
+  /* мастер: заголовки блоков форм (тексты донора) и «Просмотр» */
+  "1. Обязательные параметры (капитанские)":"1. Required parameters (captain's)",
+  "1. Обязательные параметры":"1. Required parameters",
+  "2. Флаги горизонталей и настроечные":"2. Horizontal & tuning flags",
+  "3. Для КЦ":"3. For call center", "3. Цепочка":"3. Chain",
   "Выберите шаблон из списка или введите Code / Letteros ID":"Pick a template from the list or enter Code / Letteros ID",
   "Найти":"Find", "или":"or",
   "Режим просмотра":"View mode", "По конкретному шаблону":"By specific template",
