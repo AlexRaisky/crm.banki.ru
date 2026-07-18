@@ -22,7 +22,8 @@ public class TemplateMapper {
                 e.getTriggerType(),
                 e.getPartnerName(),
                 e.getActiveFlag(),
-                letteros
+                letteros,
+                e.getSourceType()
         );
     }
 

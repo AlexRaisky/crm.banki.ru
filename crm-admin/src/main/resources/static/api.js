@@ -48,7 +48,9 @@
       touch: t.touchPoint || "",
       trigger: t.triggerType || "",
       partner: t.partnerName || "",
-      active: !!t.active
+      active: !!t.active,
+      source: t.sourceType || "",
+      letteros: t.letterosId || ""
     };
   }
 

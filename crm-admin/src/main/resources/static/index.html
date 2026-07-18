@@ -1539,6 +1539,10 @@ button:hover{filter:brightness(1.08)}
 .tab.active{background:var(--card);color:var(--ink);border:none;border-bottom:3px solid var(--green)}
 
 /* ---- Настроечный блок канала мастера (сегмент-переключатель как у Salesforce) ---- */
+.viewer-picker{display:flex;flex-direction:column;gap:16px;margin-bottom:6px}
+.viewer-pick-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+.viewer-field{min-width:200px;flex:0 1 auto}
+.viewer-field-select{flex:1 1 280px}
 .viewer-block{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
 .viewer-block-title{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
     color:var(--faint);margin-bottom:12px;font-weight:600}
@@ -2804,35 +2808,36 @@ button:hover{filter:brightness(1.08)}
 
 <!-- ================= Просмотр настроек ================= -->
 <div id="view" class="form">
-  <div class="grid">
-    <div class="field full">
-      <label data-i18n="Выберите шаблон из списка или введите Code / Letteros ID">Выберите шаблон из списка или введите Code / Letteros ID</label>
-      <div style="display: flex; gap: 10px; align-items: center;">
-        <select id="templateSelect" onchange="loadTemplate(this.value)" style="flex: 1;">
-          <option value="">— Выберите шаблон —</option>
-          <optgroup label="SMS">
-            <option value="sms_1">1001 - Брошенная заявка</option>
-            <option value="sms_2">1002 - Промо карта</option>
-            <option value="sms_5">1005 - Страхование (неактивный)</option>
-          </optgroup>
-          <optgroup label="Push">
-            <option value="push_1">2001 - Промо пуш</option>
-            <option value="push_2">2002 - Приветственный пуш</option>
-            <option value="push_5">2005 - Старая акция (неактивный)</option>
-          </optgroup>
-          <optgroup label="Email">
-            <option value="email_1">12345 - Сброс пароля</option>
-            <option value="email_2">67890 - Подтверждение email</option>
-            <option value="email_6">44444 - Старое письмо (неактивный)</option>
-          </optgroup>
-          <optgroup label="КЦ">
-            <option value="cc_1">4001 - Сегмент удержания</option>
-            <option value="cc_2">4002 - Продление подписки (неактивный)</option>
-          </optgroup>
-        </select>
-        <span style="color: #888;" data-i18n="или">или</span>
-        <input id="searchKey" placeholder="Code / ID" style="width: 150px;">
-        <button onclick="searchTemplate()" data-i18n="Найти">Найти</button>
+  <!-- Донорский picker (main): 1. канал → 2. шаблон (поиск по source_type; Email — ещё и по Letteros ID; Code — универсально) -->
+  <div class="viewer-picker">
+    <div class="viewer-block">
+      <div class="viewer-block-title" data-i18n="1. Канал">1. Канал</div>
+      <div class="viewer-seg" id="viewChannelSeg">
+        <button type="button" data-ch="sms" onclick="viewerSetChannel('sms')">SMS</button>
+        <button type="button" data-ch="push" onclick="viewerSetChannel('push')">Push</button>
+        <button type="button" data-ch="email" onclick="viewerSetChannel('email')">Email</button>
+        <button type="button" data-ch="cc" onclick="viewerSetChannel('cc')">КЦ</button>
+      </div>
+    </div>
+    <div class="viewer-block" id="viewerPickBlock" style="display:none">
+      <div class="viewer-block-title" data-i18n="2. Шаблон">2. Шаблон</div>
+      <div class="viewer-pick-row">
+        <div class="field viewer-field">
+          <label data-i18n="Поиск по source_type">Поиск по source_type</label>
+          <input id="viewSearchSource" placeholder="например: sms_trigger_credits" oninput="viewerFilterChanged()">
+        </div>
+        <div class="field viewer-field" id="viewLetterosWrap" style="display:none">
+          <label>Letteros ID</label>
+          <input id="viewSearchLetteros" placeholder="например: 12345" oninput="viewerFilterChanged()">
+        </div>
+        <div class="field viewer-field">
+          <label>Code</label>
+          <input id="searchKey" placeholder="Code / ID" onkeydown="if(event.key==='Enter'){event.preventDefault();searchTemplate();}">
+        </div>
+        <div class="field viewer-field viewer-field-select">
+          <label data-i18n="Шаблон">Шаблон</label>
+          <select id="templateSelect" onchange="loadTemplate(this.value)"></select>
+        </div>
       </div>
     </div>
   </div>
@@ -3449,6 +3454,9 @@ const ICONS = {
    главная) — внутренности разделов не размечены.
    ========================================================= */
 const I18N_EN = {
+  "1. Канал":"1. Channel", "2. Шаблон":"2. Template",
+  "Поиск по source_type":"Search by source_type", "Шаблон":"Template",
+  "— Выберите шаблон":"— Select a template", "(неактивный)":"(inactive)",
   /* навигация и разделы */
   "Главная":"Home", "Управление коммуникациями":"Communications", "Дашборд":"Dashboard",
   "Цепочки":"Journeys", "Управление доступом":"Access management",
@@ -6398,31 +6406,52 @@ function saveFromChannelForm(channel) {
 }
 
 /* Обновить выпадающий список шаблонов во вкладке «Просмотр» (из данных бэкенда) */
+/* Picker «Просмотра настроек» (визуал из main): 1) канал → 2) шаблон,
+   поиск по source_type; для Email — дополнительно по Letteros ID. */
+var VIEWER_CHANNEL = null;
+
+function viewerSetChannel(ch) {
+    VIEWER_CHANNEL = ch;
+    document.querySelectorAll('#viewChannelSeg button').forEach(function(b) {
+        b.classList.toggle('active', b.dataset.ch === ch);
+    });
+    var block = document.getElementById('viewerPickBlock');
+    if (block) block.style.display = '';
+    var lw = document.getElementById('viewLetterosWrap');
+    if (lw) lw.style.display = ch === 'email' ? '' : 'none';
+    refreshViewTemplateSelect();
+}
+
+function viewerFilterChanged() { refreshViewTemplateSelect(); }
+
 function refreshViewTemplateSelect() {
     var sel = document.getElementById('templateSelect');
     if (!sel) return;
     var current = sel.value;
-    var byChannel = { sms: [], push: [], email: [], cc: [] };
-    ALL_TEMPLATES.forEach(function(t) {
+    var srcQ = (document.getElementById('viewSearchSource') || { value: '' }).value.trim().toLowerCase();
+    var letQ = (document.getElementById('viewSearchLetteros') || { value: '' }).value.trim().toLowerCase();
+
+    var items = [];
+    (window.ALL_TEMPLATES || []).forEach(function(t) {
         var ch = t.channel === 'mobile-push' ? 'push' : t.channel;
-        if (byChannel[ch]) {
-            byChannel[ch].push({ id: t.id, code: t.code, name: t.name || String(t.code), active: t.active });
-        }
+        if (VIEWER_CHANNEL && ch !== VIEWER_CHANNEL) return;
+        // source_type: из данных; если пуст — собираем по правилу source
+        var src = t.source || [t.channel, t.trigger, t.product, t.partner, t.touch].filter(Boolean).join('_');
+        if (srcQ && String(src).toLowerCase().indexOf(srcQ) === -1) return;
+        var lid = t.letteros != null && t.letteros !== '' ? t.letteros : t.code;
+        if (VIEWER_CHANNEL === 'email' && letQ && String(lid == null ? '' : lid).toLowerCase().indexOf(letQ) === -1) return;
+        items.push({ id: t.id, code: t.code, name: t.name || String(t.code), active: t.active });
     });
-    sel.innerHTML = '<option value="">— Выберите шаблон —</option>';
-    ['sms', 'push', 'email', 'cc'].forEach(function(ch) {
-        if (byChannel[ch].length === 0) return;
-        var gr = document.createElement('optgroup');
-        gr.label = ch === 'cc' ? 'КЦ' : ch.toUpperCase();
-        byChannel[ch].forEach(function(t) {
-            var opt = document.createElement('option');
-            opt.value = t.id;
-            opt.textContent = t.code + ' - ' + t.name + (t.active ? '' : ' (неактивный)');
-            gr.appendChild(opt);
-        });
-        sel.appendChild(gr);
+
+    var sfdTT = (typeof sfdT === 'function') ? sfdT : function(s){ return s; };
+    sel.innerHTML = '<option value="">' + sfdTT('— Выберите шаблон') + ' (' + items.length + ')</option>';
+    items.forEach(function(t) {
+        var opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.code + ' - ' + t.name + (t.active ? '' : ' ' + sfdTT('(неактивный)'));
+        sel.appendChild(opt);
     });
-    if (current && ALL_TEMPLATES.some(function(t){ return t.id === current; })) sel.value = current;
+    if (current && items.some(function(t) { return t.id === current; })) sel.value = current;
 }
 
 /* Скачать текущие данные как mock-data.json */

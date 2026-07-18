@@ -12,5 +12,6 @@ public record TemplateListItemDto(
         String triggerType,
         String partnerName,
         Boolean active,
-        String letterosId
+        String letterosId,
+        String sourceType   // source/campaign_name — по нему ищет picker «Просмотра настроек»
 ) {}
