@@ -52,12 +52,15 @@ public class MaterializationService {
     private final AdminLogService adminLog;
     private final ObjectMapper json;
     private final ru.banki.crm.service.JourneyService journeys;
+    private final ru.banki.crm.service.UnifiedTemplateService unified;
 
     public MaterializationService(AdminLogService adminLog, ObjectMapper json,
-                                  ru.banki.crm.service.JourneyService journeys) {
+                                  ru.banki.crm.service.JourneyService journeys,
+                                  ru.banki.crm.service.UnifiedTemplateService unified) {
         this.adminLog = adminLog;
         this.json = json;
         this.journeys = journeys;
+        this.unified = unified;
     }
 
     // -------------------------------------------------- разворачивание Subflow
@@ -443,44 +446,9 @@ public class MaterializationService {
         return r.isEmpty() ? null : ((Number) r.get(0)).longValue();
     }
 
-    /** Ядровые колонки: одинаковы во всех 4 канальных таблицах (email/cc не имеют night_send). */
-    private static final String CORE_COLS =
-            "communication_name, source_type, communication_type, business_communication_type, trigger_type, " +
-            "sending_day, product_type, partner_name, touch_point, aff_sub3, selection_wizard_service, " +
-            "marketplace, dialog, loyalty, national_rating, news, mobile_app, night_send, permanent_exclude, active_flag";
-
-    /** Свёртка строки канальной таблицы в единый справочник (channel_props = всё, что не ядро). */
+    /** Свёртка строки канальной таблицы в единый справочник — общая логика в UnifiedTemplateService. */
     private void syncUnifiedTemplate(String channel, Integer code) {
-        ChannelTable ct = channelTable(channel);
-        if (ct == null) return;
-        String table = ct.table(), codeCol = ct.codeCol();
-        String nightExpr = ct.hasNight() ? "coalesce(t.night_send, false)" : "false";
-        String sql =
-            "INSERT INTO template.d_template (channel, code, communication_name, campaign_name, communication_type, " +
-            "  business_communication_type, trigger_type, sending_day, product_type, partner_name, touch_point, " +
-            "  aff_sub3, selection_wizard_service, marketplace, dialog, loyalty, national_rating, news, mobile_app, " +
-            "  night_send, permanent_exclude, active_flag, channel_props) " +
-            "SELECT :ch, t." + codeCol + ", t.communication_name, t.source_type, t.communication_type, " +
-            "  t.business_communication_type, t.trigger_type, t.sending_day, t.product_type, t.partner_name, t.touch_point, " +
-            "  t.aff_sub3, t.selection_wizard_service, coalesce(t.marketplace,false), coalesce(t.dialog,false), " +
-            "  coalesce(t.loyalty,false), coalesce(t.national_rating,false), coalesce(t.news,false), " +
-            "  coalesce(t.mobile_app,false), " + nightExpr + ", coalesce(t.permanent_exclude,false), coalesce(t.active_flag,true), " +
-            "  to_jsonb(t) - string_to_array('id," + codeCol + "," + CORE_COLS.replace(" ", "") + "', ',') " +
-            "FROM " + table + " t WHERE t." + codeCol + " = :c " +
-            "ON CONFLICT (channel, code) DO UPDATE SET " +
-            "  communication_name = EXCLUDED.communication_name, campaign_name = EXCLUDED.campaign_name, " +
-            "  communication_type = EXCLUDED.communication_type, business_communication_type = EXCLUDED.business_communication_type, " +
-            "  trigger_type = EXCLUDED.trigger_type, sending_day = EXCLUDED.sending_day, product_type = EXCLUDED.product_type, " +
-            "  partner_name = EXCLUDED.partner_name, touch_point = EXCLUDED.touch_point, aff_sub3 = EXCLUDED.aff_sub3, " +
-            "  selection_wizard_service = EXCLUDED.selection_wizard_service, marketplace = EXCLUDED.marketplace, " +
-            "  dialog = EXCLUDED.dialog, loyalty = EXCLUDED.loyalty, national_rating = EXCLUDED.national_rating, " +
-            "  news = EXCLUDED.news, mobile_app = EXCLUDED.mobile_app, night_send = EXCLUDED.night_send, " +
-            "  permanent_exclude = EXCLUDED.permanent_exclude, active_flag = EXCLUDED.active_flag, " +
-            "  channel_props = EXCLUDED.channel_props, timestamp_upd = now()";
-        em.createNativeQuery(sql)
-                .setParameter("ch", channel)
-                .setParameter("c", code)
-                .executeUpdate();
+        unified.upsertFromChannel(channel, code.longValue());
     }
 
     // ---------------------------------------------------------------- слой B

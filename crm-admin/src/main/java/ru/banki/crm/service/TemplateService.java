@@ -24,10 +24,12 @@ public class TemplateService {
     private final TemplateMapper mapper;
     private final AuditContext audit;
     private final AdminLogService adminLog;
+    private final UnifiedTemplateService unified;
 
     public TemplateService(PushTemplateRepository pushRepo, EmailTemplateRepository emailRepo,
                            SmsTemplateRepository smsRepo, CcSegmentRepository ccRepo,
-                           TemplateMapper mapper, AuditContext audit, AdminLogService adminLog) {
+                           TemplateMapper mapper, AuditContext audit, AdminLogService adminLog,
+                           UnifiedTemplateService unified) {
         this.pushRepo = pushRepo;
         this.emailRepo = emailRepo;
         this.smsRepo = smsRepo;
@@ -35,6 +37,7 @@ public class TemplateService {
         this.mapper = mapper;
         this.audit = audit;
         this.adminLog = adminLog;
+        this.unified = unified;
     }
 
     // ------------------------------------------------------------------- LIST
@@ -119,6 +122,10 @@ public class TemplateService {
         }
         // Журнал заведения: пишем созданную строку в t_admin_log (та же транзакция).
         adminLog.log(channel, "INSERT", adminLog.rowJson(channel, rowId));
+        // Новая архитектура: единый справочник + очередь синка в прод-БД (payload = строка 1:1).
+        long codeL = Long.parseLong(code);
+        unified.upsertFromChannel(channel, codeL);
+        unified.enqueueProdSync(channel, "INSERT", codeL, unified.channelRowJson(channel, codeL));
         return code;
     }
 
@@ -154,7 +161,10 @@ public class TemplateService {
         adminLog.log(norm(channel), "UPDATE", adminLog.rowJson(norm(channel), idOf(e)));
         dto.setChannel(channel);
         mapper.apply(e, dto);
-        // managed entity — flush on commit
+        // Новая архитектура: единый справочник + очередь синка (нативные запросы флашат изменения).
+        long codeL = Long.parseLong(code.trim());
+        unified.upsertFromChannel(norm(channel), codeL);
+        unified.enqueueProdSync(norm(channel), "UPDATE", codeL, unified.channelRowJson(norm(channel), codeL));
     }
 
     // ----------------------------------------------------------------- DELETE
@@ -162,7 +172,9 @@ public class TemplateService {
     public void delete(String channel, String code) {
         audit.mark();
         TemplateBase e = load(channel, code);
-        // old_row: удаляемая строка
+        // old_row: удаляемая строка (тот же json уедет payload-ом DELETE в прод-очередь)
+        long codeL = Long.parseLong(code.trim());
+        String payload = unified.channelRowJson(norm(channel), codeL);
         adminLog.log(norm(channel), "DELETE", adminLog.rowJson(norm(channel), idOf(e)));
         switch (norm(channel)) {
             case "push" -> pushRepo.delete((PushTemplate) e);
@@ -171,6 +183,8 @@ public class TemplateService {
             case "cc" -> ccRepo.delete((CcSegment) e);
             default -> throw badChannel(channel);
         }
+        unified.deleteUnified(norm(channel), codeL);
+        unified.enqueueProdSync(norm(channel), "DELETE", codeL, payload);
     }
 
     /** Суррогатный PK строки (у всех четырёх таблиц колонка id). */

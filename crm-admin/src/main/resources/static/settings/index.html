@@ -275,6 +275,17 @@
         <h1 data-i18n-html="h_diag">Диагностика <span class="grad">хранилища</span></h1>
         <div class="sub">Что панель хранит в localStorage браузера (префикс crmpanel:).</div>
         <div class="card"><div id="diagBox"></div></div>
+
+        <!-- Прод-БД: соединение и очередь синка шаблонов (app.prod_sync) -->
+        <h2 style="margin-top:26px" data-i18n="Прод-БД (синк шаблонов)">Прод-БД (синк шаблонов)</h2>
+        <div class="sub" data-i18n="Соединение с внешней прод-базой и очередь доставки операций мастера.">Соединение с внешней прод-базой и очередь доставки операций мастера.</div>
+        <div class="card">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <button class="btn" id="prodHealthBtn" data-i18n="Проверить соединение">Проверить соединение</button>
+            <button class="btn" id="prodProcessBtn" data-i18n="Доставить очередь сейчас">Доставить очередь сейчас</button>
+          </div>
+          <div id="prodDbBox" class="empty" data-i18n="Нажми «Проверить соединение».">Нажми «Проверить соединение».</div>
+        </div>
       </section>
 
     </main>
@@ -617,6 +628,41 @@ function renderDiag(){
       `</tbody></table><div class="empty" style="margin-top:10px">${t2('Итого:')} ${(total/1024).toFixed(1)} ${LANG==='en'?'KB':'КБ'} ${t2('(лимит браузера ≈ 5 МБ на сайт)')}</div>`
     : `<div class="empty">${t2('Панель ещё ничего не сохранила.')}</div>`;
 }
+
+/* ---------- Прод-БД: health + очередь синка ---------- */
+function prodDbRender(d){
+  const box = $("#prodDbBox");
+  if (!d) { box.textContent = t2('Нет ответа от сервера.'); return; }
+  const rows = [];
+  rows.push(`${t2('Настроено:')} <b>${d.configured ? t2('да') : t2('нет')}</b>`);
+  if (d.hint) rows.push(esc(d.hint));
+  if (d.configured){
+    rows.push(`${t2('Доступно:')} <b>${d.reachable ? t2('да') : t2('НЕТ')}</b>` +
+      (d.latencyMs != null ? ` <span class="mono">(${d.latencyMs} ms)</span>` : ''));
+    if (d.error) rows.push(`<span style="color:var(--coral)">${esc(d.error)}</span>`);
+    if (d.tables){
+      rows.push(Object.entries(d.tables).map(([tName, okT]) =>
+        `<span class="mono">${esc(tName)}</span> ${okT ? '✓' : '<span style="color:var(--coral)">✗ нет</span>'}`).join('<br>'));
+    }
+  }
+  if (d.queue){
+    rows.push(`${t2('Очередь:')} PENDING <b>${d.queue.pending}</b> · ERROR <b>${d.queue.error}</b> · OK <b>${d.queue.ok}</b>`);
+  }
+  if (d.delivered != null) rows.push(`${t2('Доставлено сейчас:')} <b>${d.delivered}</b>`);
+  box.innerHTML = rows.join('<br>');
+}
+async function prodDbCall(url, method){
+  const box = $("#prodDbBox");
+  box.textContent = '…';
+  try {
+    const r = await fetch(url, { method: method || 'GET', credentials: 'same-origin' });
+    if (r.status === 401) { location.href = '/login.html'; return; }
+    if (r.status === 403) { box.textContent = t2('Доступно только администраторам.'); return; }
+    prodDbRender(await r.json());
+  } catch(e){ box.textContent = t2('Ошибка запроса: ') + e.message; }
+}
+$("#prodHealthBtn").addEventListener('click', () => prodDbCall('/api/admin/prod-db/health'));
+$("#prodProcessBtn").addEventListener('click', () => prodDbCall('/api/admin/prod-db/process', 'POST'));
 
 renderApps();   /* мгновенный каркас (умолчания), затем данные с сервера */
 loadApps();

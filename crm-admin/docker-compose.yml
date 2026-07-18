@@ -36,6 +36,10 @@ services:
       REMEMBER_ME_DAYS: ${REMEMBER_ME_DAYS:-30}
       SESSION_TIMEOUT: ${SESSION_TIMEOUT:-7d}
       JOURNEYS_MOCK: ${JOURNEYS_MOCK:-false}
+      # Внешняя прод-БД для синка шаблонов (пусто = очередь копится)
+      PROD_DB_URL: ${PROD_DB_URL:-}
+      PROD_DB_USER: ${PROD_DB_USER:-}
+      PROD_DB_PASSWORD: ${PROD_DB_PASSWORD:-}
       # Среда: имя, dev-разделы выключены, свои имена кук
       APP_ENV: prod
       FEATURES_DEV: "false"
@@ -83,6 +87,9 @@ services:
       REMEMBER_ME_DAYS: ${REMEMBER_ME_DAYS:-30}
       SESSION_TIMEOUT: ${SESSION_TIMEOUT:-7d}
       JOURNEYS_MOCK: ${JOURNEYS_MOCK:-false}
+      PROD_DB_URL: ${PROD_DB_URL_PREPROD:-}
+      PROD_DB_USER: ${PROD_DB_USER:-}
+      PROD_DB_PASSWORD: ${PROD_DB_PASSWORD:-}
       APP_ENV: preprod
       FEATURES_DEV: "false"
       SESSION_COOKIE: CRMSID_PREPROD
@@ -129,6 +136,9 @@ services:
       SESSION_TIMEOUT: ${SESSION_TIMEOUT:-7d}
       # test: цепочки в БД (app.journeys) — нужно для материализации (FK journey_id)
       JOURNEYS_MOCK: "false"
+      PROD_DB_URL: ${PROD_DB_URL_TEST:-}
+      PROD_DB_USER: ${PROD_DB_USER:-}
+      PROD_DB_PASSWORD: ${PROD_DB_PASSWORD:-}
       APP_ENV: test
       FEATURES_DEV: "true"
       SESSION_COOKIE: CRMSID_TEST

@@ -58,6 +58,12 @@ app:
   # Write app.current_user before mutating queries (audit trigger on arch.arch_log).
   audit:
     enabled: true
+  # Внешняя прод-БД (схемы notice/callcenter 1:1): очередь app.prod_sync доставляет
+  # туда операции мастера. Пусто = синк выключен, очередь копится в PENDING.
+  proddb:
+    url: ${PROD_DB_URL:}
+    user: ${PROD_DB_USER:}
+    password: ${PROD_DB_PASSWORD:}
   # Цепочки-схемы: по умолчанию в БД (app.journeys, jsonb); true = мок в памяти (dev без БД).
   journeys:
     mock: ${JOURNEYS_MOCK:false}
