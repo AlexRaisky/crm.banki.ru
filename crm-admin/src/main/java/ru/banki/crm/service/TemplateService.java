@@ -4,37 +4,30 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import ru.banki.crm.domain.*;
 import ru.banki.crm.dto.ChainRequest;
 import ru.banki.crm.dto.TemplateDto;
 import ru.banki.crm.dto.TemplateListItemDto;
-import ru.banki.crm.repo.*;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
+/**
+ * CRUD шаблонов новой архитектуры. Единственное хранилище — template.d_template
+ * (см. {@link TemplateStore}); канальные таблицы notice и callcenter не читаются
+ * и не пишутся. В прод-БД строка уезжает очередью синка (app.prod_sync) уже
+ * собранной в прод-структуру.
+ */
 @Service
 public class TemplateService {
 
-    private final PushTemplateRepository pushRepo;
-    private final EmailTemplateRepository emailRepo;
-    private final SmsTemplateRepository smsRepo;
-    private final CcSegmentRepository ccRepo;
-    private final TemplateMapper mapper;
+    private final TemplateStore store;
     private final AuditContext audit;
     private final AdminLogService adminLog;
     private final UnifiedTemplateService unified;
 
-    public TemplateService(PushTemplateRepository pushRepo, EmailTemplateRepository emailRepo,
-                           SmsTemplateRepository smsRepo, CcSegmentRepository ccRepo,
-                           TemplateMapper mapper, AuditContext audit, AdminLogService adminLog,
-                           UnifiedTemplateService unified) {
-        this.pushRepo = pushRepo;
-        this.emailRepo = emailRepo;
-        this.smsRepo = smsRepo;
-        this.ccRepo = ccRepo;
-        this.mapper = mapper;
+    public TemplateService(TemplateStore store, AuditContext audit,
+                           AdminLogService adminLog, UnifiedTemplateService unified) {
+        this.store = store;
         this.audit = audit;
         this.adminLog = adminLog;
         this.unified = unified;
@@ -44,14 +37,7 @@ public class TemplateService {
     @Transactional(readOnly = true)
     public List<TemplateListItemDto> list(String channel, String product, String touch,
                                           String trigger, String active) {
-        List<TemplateBase> all = new ArrayList<>();
-        all.addAll(pushRepo.findAll());
-        all.addAll(emailRepo.findAll());
-        all.addAll(smsRepo.findAll());
-        all.addAll(ccRepo.findAll());
-
-        return all.stream()
-                .map(mapper::toListItem)
+        return store.list().stream()
                 .filter(i -> channel == null || channel.isBlank() || channel.equals(i.channel()))
                 .filter(i -> touch == null || touch.isBlank() || touch.equals(i.touchPoint()))
                 .filter(i -> trigger == null || trigger.isBlank() || trigger.equals(i.triggerType()))
@@ -59,21 +45,13 @@ public class TemplateService {
                         || (i.productType() != null && i.productType().contains(product)))
                 .filter(i -> active == null || active.isBlank()
                         || ("active".equals(active) == Boolean.TRUE.equals(i.active())))
-                .sorted((a, b) -> {
-                    int c = a.channel().compareTo(b.channel());
-                    return c != 0 ? c : nullSafe(a.code()).compareTo(nullSafe(b.code()));
-                })
                 .toList();
-    }
-
-    private static String nullSafe(String s) {
-        return s == null ? "" : s;
     }
 
     // -------------------------------------------------------------------- GET
     @Transactional(readOnly = true)
     public TemplateDto get(String channel, String code) {
-        return mapper.toDto(load(channel, code));
+        return store.get(norm(channel), code);
     }
 
     // ----------------------------------------------------------------- CREATE
@@ -81,52 +59,28 @@ public class TemplateService {
     public String create(TemplateDto dto) {
         audit.mark();
         String channel = norm(dto.getChannel());
-        String code;
-        Object rowId;
-        switch (channel) {
-            case "push" -> {
-                PushTemplate p = new PushTemplate();
-                mapper.apply(p, dto);
-                p.setCode(pushRepo.maxCode() + 1);
-                PushTemplate saved = pushRepo.save(p);
-                code = String.valueOf(saved.getCode());
-                rowId = saved.getId();
-            }
-            case "sms" -> {
-                SmsTemplate s = new SmsTemplate();
-                mapper.apply(s, dto);
-                s.setCode(smsRepo.maxCode() + 1);
-                SmsTemplate saved = smsRepo.save(s);
-                code = String.valueOf(saved.getCode());
-                rowId = saved.getId();
-            }
-            case "email" -> {
-                EmailTemplate em = new EmailTemplate();
-                mapper.apply(em, dto);
-                EmailTemplate saved = emailRepo.save(em);
-                code = String.valueOf(saved.getId());
-                rowId = saved.getId();
-            }
-            case "cc" -> {
-                CcSegment c = new CcSegment();
-                if (dto.getCode() == null || dto.getCode().isBlank()) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Для КЦ обязателен номер сегмента");
-                }
-                c.setSegment(Integer.valueOf(dto.getCode().trim()));  // id (PK) is auto-generated
-                mapper.apply(c, dto);
-                CcSegment saved = ccRepo.save(c);
-                code = String.valueOf(saved.getSegment());
-                rowId = saved.getId();
-            }
-            default -> throw badChannel(dto.getChannel());
+        if (!List.of("sms", "push", "email", "cc").contains(channel)) {
+            throw badChannel(dto.getChannel());
         }
-        // Журнал заведения: пишем созданную строку в t_admin_log (та же транзакция).
-        adminLog.log(channel, "INSERT", adminLog.rowJson(channel, rowId));
-        // Новая архитектура: единый справочник + очередь синка в прод-БД (payload = строка 1:1).
-        long codeL = Long.parseLong(code);
-        unified.upsertFromChannel(channel, codeL);
-        unified.enqueueProdSync(channel, "INSERT", codeL, unified.channelRowJson(channel, codeL));
-        return code;
+        long code;
+        if ("cc".equals(channel)) {
+            // у КЦ бизнес-ключ (segment) задаёт пользователь
+            if (dto.getCode() == null || dto.getCode().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Для КЦ обязателен номер сегмента");
+            }
+            code = Long.parseLong(dto.getCode().trim());
+            if (store.exists(channel, String.valueOf(code))) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Сегмент уже заведён: " + code);
+            }
+        } else {
+            code = store.nextCode(channel);
+        }
+        store.insert(channel, code, dto);
+
+        String codeStr = String.valueOf(code);
+        adminLog.logTable("template.d_template", "INSERT", store.rowJson(channel, codeStr));
+        unified.enqueueProdSync(channel, "INSERT", code, store.prodPayload(channel, codeStr));
+        return codeStr;
     }
 
     // ------------------------------------------------------------- CREATE CHAIN
@@ -146,7 +100,6 @@ public class TemplateService {
 
     private TemplateDto cloneWithDay(TemplateDto base, String day) {
         TemplateDto d = new TemplateDto();
-        // shallow field copy is enough — DTO holds only value types / immutable lists here
         org.springframework.beans.BeanUtils.copyProperties(base, d);
         d.setSendingDay(day);
         return d;
@@ -156,59 +109,30 @@ public class TemplateService {
     @Transactional
     public void update(String channel, String code, TemplateDto dto) {
         audit.mark();
-        TemplateBase e = load(channel, code);
+        String ch = norm(channel);
         // old_row: состояние ДО изменения
-        adminLog.log(norm(channel), "UPDATE", adminLog.rowJson(norm(channel), idOf(e)));
-        dto.setChannel(channel);
-        mapper.apply(e, dto);
-        // Новая архитектура: единый справочник + очередь синка (нативные запросы флашат изменения).
-        long codeL = Long.parseLong(code.trim());
-        unified.upsertFromChannel(norm(channel), codeL);
-        unified.enqueueProdSync(norm(channel), "UPDATE", codeL, unified.channelRowJson(norm(channel), codeL));
+        adminLog.logTable("template.d_template", "UPDATE", store.rowJson(ch, code));
+        dto.setChannel(ch);
+        store.update(ch, code, dto);
+        unified.enqueueProdSync(ch, "UPDATE", Long.parseLong(code.trim()), store.prodPayload(ch, code));
     }
 
     // ----------------------------------------------------------------- DELETE
     @Transactional
     public void delete(String channel, String code) {
         audit.mark();
-        TemplateBase e = load(channel, code);
-        // old_row: удаляемая строка (тот же json уедет payload-ом DELETE в прод-очередь)
-        long codeL = Long.parseLong(code.trim());
-        String payload = unified.channelRowJson(norm(channel), codeL);
-        adminLog.log(norm(channel), "DELETE", adminLog.rowJson(norm(channel), idOf(e)));
-        switch (norm(channel)) {
-            case "push" -> pushRepo.delete((PushTemplate) e);
-            case "sms" -> smsRepo.delete((SmsTemplate) e);
-            case "email" -> emailRepo.delete((EmailTemplate) e);
-            case "cc" -> ccRepo.delete((CcSegment) e);
-            default -> throw badChannel(channel);
+        String ch = norm(channel);
+        if (!store.exists(ch, code)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Шаблон не найден: " + ch + "/" + code);
         }
-        unified.deleteUnified(norm(channel), codeL);
-        unified.enqueueProdSync(norm(channel), "DELETE", codeL, payload);
-    }
-
-    /** Суррогатный PK строки (у всех четырёх таблиц колонка id). */
-    private static Object idOf(TemplateBase e) {
-        if (e instanceof PushTemplate p) return p.getId();
-        if (e instanceof SmsTemplate s) return s.getId();
-        if (e instanceof EmailTemplate em) return em.getId();
-        if (e instanceof CcSegment c) return c.getId();
-        throw new IllegalStateException("Неизвестный тип шаблона: " + e.getClass());
+        // old_row: удаляемая строка; тот же payload уедет DELETE-ом в прод
+        String payload = store.prodPayload(ch, code);
+        adminLog.logTable("template.d_template", "DELETE", store.rowJson(ch, code));
+        store.delete(ch, code);
+        unified.enqueueProdSync(ch, "DELETE", Long.parseLong(code.trim()), payload);
     }
 
     // ------------------------------------------------------------------ helpers
-    private TemplateBase load(String channel, String code) {
-        Optional<? extends TemplateBase> found = switch (norm(channel)) {
-            case "push" -> pushRepo.findFirstByCode(Integer.valueOf(code));
-            case "sms" -> smsRepo.findFirstByCode(Integer.valueOf(code));
-            case "email" -> emailRepo.findById(Long.valueOf(code));
-            case "cc" -> ccRepo.findFirstBySegment(Integer.valueOf(code));
-            default -> throw badChannel(channel);
-        };
-        return found.orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "Шаблон не найден: " + channel + "/" + code));
-    }
-
     private static String norm(String channel) {
         return channel == null ? "" : channel.trim().toLowerCase();
     }

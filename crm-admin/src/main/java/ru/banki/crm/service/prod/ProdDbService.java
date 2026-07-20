@@ -157,14 +157,31 @@ public class ProdDbService {
         } else {
             code = localCode;                               // cc: segment как есть
         }
+        // Явно перечисляем ТОЛЬКО заполненные колонки: остальные получат дефолты прод-таблицы
+        // (передача явного NULL перебила бы DEFAULT и упала на NOT NULL).
+        JsonNode payload = om.readTree(payloadJson);
+        java.util.Set<String> prodCols = tableColumns(c, ct.table());
+        List<String> cols = new ArrayList<>();
+        for (Iterator<String> it = payload.fieldNames(); it.hasNext(); ) {
+            String k = it.next();
+            if ("id".equals(k) || ct.codeCol().equals(k)) continue;
+            if (!k.matches("[a-z_][a-z0-9_]*") || !prodCols.contains(k)) continue;
+            if (payload.get(k) == null || payload.get(k).isNull()) continue;
+            cols.add(k);
+        }
+        StringBuilder colList = new StringBuilder("id, " + ct.codeCol());
+        StringBuilder valList = new StringBuilder("?::bigint, ?::bigint");
+        for (String k : cols) {
+            colList.append(", ").append(k);
+            valList.append(", p.").append(k);
+        }
         // типы конвертирует сам Postgres: jsonb_populate_record по структуре прод-таблицы
-        String sql = "INSERT INTO " + ct.table() +
-                " SELECT * FROM jsonb_populate_record(NULL::" + ct.table() + "," +
-                " (?::jsonb || jsonb_build_object('id', ?::bigint, '" + ct.codeCol() + "', ?::bigint)))";
+        String sql = "INSERT INTO " + ct.table() + " (" + colList + ") SELECT " + valList +
+                " FROM jsonb_populate_record(NULL::" + ct.table() + ", ?::jsonb) p";
         try (PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, payloadJson);
-            ps.setLong(2, newId);
-            ps.setLong(3, code);
+            ps.setLong(1, newId);
+            ps.setLong(2, code);
+            ps.setString(3, payloadJson);
             ps.executeUpdate();
         }
         return code;
@@ -173,6 +190,8 @@ public class ProdDbService {
     /** UPDATE по бизнес-коду: SET-список из ключей payload (кроме id и кода). */
     private int update(Connection c, ChannelTable ct, long localCode, String payloadJson) throws Exception {
         JsonNode payload = om.readTree(payloadJson);
+        // payload собирается из d_template, поэтому берём только колонки, которые реально есть в прод-таблице
+        java.util.Set<String> prodCols = tableColumns(c, ct.table());
         List<String> cols = new ArrayList<>();
         for (Iterator<String> it = payload.fieldNames(); it.hasNext(); ) {
             String k = it.next();
@@ -180,6 +199,9 @@ public class ProdDbService {
             if (!k.matches("[a-z_][a-z0-9_]*")) {
                 throw new IllegalArgumentException("Недопустимая колонка payload: " + k);
             }
+            if (!prodCols.contains(k)) continue;
+            // null не переносим: в проде такие колонки NOT NULL с дефолтом — оставляем текущее значение
+            if (payload.get(k) == null || payload.get(k).isNull()) continue;
             cols.add(k);
         }
         if (cols.isEmpty()) return 0;
@@ -196,6 +218,21 @@ public class ProdDbService {
             ps.setLong(2, localCode);
             return ps.executeUpdate();
         }
+    }
+
+    /** Колонки прод-таблицы (payload из d_template может содержать лишние ключи). */
+    private static java.util.Set<String> tableColumns(Connection c, String table) throws Exception {
+        String[] st = table.split("\\.");
+        java.util.Set<String> cols = new java.util.HashSet<>();
+        try (PreparedStatement ps = c.prepareStatement(
+                "SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ?")) {
+            ps.setString(1, st[0]);
+            ps.setString(2, st[1]);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) cols.add(rs.getString(1));
+            }
+        }
+        return cols;
     }
 
     private static long maxPlusOne(Connection c, String table, String col) throws Exception {

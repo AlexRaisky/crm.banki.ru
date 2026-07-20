@@ -385,28 +385,14 @@ public class MaterializationService {
         }
     }
 
-    // ------------------------------------------------- канальные таблицы шаблонов
-    /** (таблица, колонка бизнес-кода, есть ли столбцы night_send/source) по каналу. */
-    private record ChannelTable(String table, String codeCol, boolean hasNight, boolean hasSource) {}
-
-    private static ChannelTable channelTable(String channel) {
-        return switch (channel == null ? "" : channel) {
-            case "sms" -> new ChannelTable("notice.d_com_sms_template", "code", true, true);
-            case "push" -> new ChannelTable("notice.push_template", "code", true, true);
-            case "email" -> new ChannelTable("notice.email_template", "id", false, true);
-            case "cc" -> new ChannelTable("callcenter.d_segment_properties", "segment", false, false);
-            default -> null;
-        };
-    }
-
-    /** Есть ли шаблон в канальном справочнике (гейт: без шаблона цепочку не материализовать). */
+    /** Есть ли шаблон в едином справочнике (гейт: без шаблона цепочку не материализовать). */
     private boolean templateExists(String channel, String code) {
-        ChannelTable ct = channelTable(channel);
         Integer c = parseIntOrNull(code);
-        if (ct == null || c == null) return false;
+        if (blank(channel) || c == null) return false;
         Number cnt = (Number) em.createNativeQuery(
-                        "SELECT count(*) FROM " + ct.table() + " WHERE " + ct.codeCol() + " = :c")
-                .setParameter("c", c)
+                        "SELECT count(*) FROM template.d_template WHERE channel = :ch AND code = :c")
+                .setParameter("ch", channel)
+                .setParameter("c", c.longValue())
                 .getSingleResult();
         return cnt.longValue() > 0;
     }
@@ -416,12 +402,13 @@ public class MaterializationService {
         List<JourneyNode> comms = expandedComms(j, null).stream()
                 .sorted(Comparator.comparingInt(JourneyNode::day)).toList();
         for (JourneyNode c : comms) {
-            ChannelTable ct = channelTable(c.channel());
             Integer code = parseIntOrNull(c.templateCode());
-            if (ct == null || code == null || !ct.hasSource()) continue;
+            if (blank(c.channel()) || code == null) continue;
             List<?> r = em.createNativeQuery(
-                            "SELECT source FROM " + ct.table() + " WHERE " + ct.codeCol() + " = :c")
-                    .setParameter("c", code)
+                            "SELECT coalesce(channel_props->>'source', campaign_name) FROM template.d_template" +
+                            " WHERE channel = :ch AND code = :c")
+                    .setParameter("ch", c.channel())
+                    .setParameter("c", code.longValue())
                     .getResultList();
             if (!r.isEmpty() && r.get(0) != null && !String.valueOf(r.get(0)).isBlank()) {
                 return String.valueOf(r.get(0));
@@ -438,17 +425,11 @@ public class MaterializationService {
     private Long resolveUnifiedTemplateId(JourneyNode c) {
         Integer code = parseIntOrNull(c.templateCode());
         if (code == null || blank(c.channel())) return null;
-        syncUnifiedTemplate(c.channel(), code);
         List<?> r = em.createNativeQuery("SELECT id FROM template.d_template WHERE channel = :ch AND code = :c")
                 .setParameter("ch", c.channel())
-                .setParameter("c", code)
+                .setParameter("c", code.longValue())
                 .getResultList();
         return r.isEmpty() ? null : ((Number) r.get(0)).longValue();
-    }
-
-    /** Свёртка строки канальной таблицы в единый справочник — общая логика в UnifiedTemplateService. */
-    private void syncUnifiedTemplate(String channel, Integer code) {
-        unified.upsertFromChannel(channel, code.longValue());
     }
 
     // ---------------------------------------------------------------- слой B
