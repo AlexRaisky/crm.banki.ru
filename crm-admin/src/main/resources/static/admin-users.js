@@ -52,13 +52,25 @@
     });
   }
 
+  /** Роль ADMIN доступна в списке только супер-администратору (сервер проверяет это же правило). */
+  function isSuperAdmin() {
+    return !!(window.CRM && CRM.me && CRM.me.isSuperAdmin);
+  }
+
   function roleSelect(value) {
     var sel = h("select", { style: fieldStyle() });
-    ROLES.forEach(function (r) {
-      var o = h("option", { value: r.v }, [r.t]);
+    ROLES.filter(function (r) {
+      return r.v !== "ADMIN" || isSuperAdmin() || value === "ADMIN";
+    }).forEach(function (r) {
+      var o = h("option", { value: r.v }, [tr(r.t)]);
       if (r.v === value) o.selected = true;
       sel.appendChild(o);
     });
+    // не супер-админ не может ни назначить, ни снять администратора
+    if (!isSuperAdmin() && value === "ADMIN") {
+      sel.disabled = true;
+      sel.title = tr("Менять роль администратора может только супер-администратор");
+    }
     return sel;
   }
 
@@ -85,13 +97,17 @@
           h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.role]),
           h("td", { style: "padding:8px;border-bottom:1px solid var(--line);color:var(--dim);max-width:260px" }, [secText || "—"]),
           h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.enabled ? "✓" : "—"]),
-          h("td", { style: "padding:8px;border-bottom:1px solid var(--line);white-space:nowrap" }, [
-            h("button", { style: btnStyle("#334155"), onclick: function () { editUser(u, container); } }, [tr("Изменить")]),
-            h("span", null, [" "]),
-            h("button", { style: btnStyle("#7c2d12"), onclick: function () { resetPwd(u); } }, [tr("Пароль")]),
-            h("span", null, [" "]),
-            h("button", { style: btnStyle("#991b1b"), onclick: function () { delUser(u, container); } }, [tr("Удалить")])
-          ])
+          // супер-админа не редактируем и не удаляем: он задан конфигурацией
+          h("td", { style: "padding:8px;border-bottom:1px solid var(--line);white-space:nowrap" },
+            u.role === "SUPER_ADMIN"
+              ? [h("span", { style: "color:var(--faint)" }, [tr("Учётная запись из конфигурации")])]
+              : [
+                  h("button", { style: btnStyle("#334155"), onclick: function () { editUser(u, container); } }, [tr("Изменить")]),
+                  h("span", null, [" "]),
+                  h("button", { style: btnStyle("#7c2d12"), onclick: function () { resetPwd(u); } }, [tr("Пароль")]),
+                  h("span", null, [" "]),
+                  h("button", { style: btnStyle("#991b1b"), onclick: function () { delUser(u, container); } }, [tr("Удалить")])
+                ])
         ]);
         table.appendChild(row);
       });

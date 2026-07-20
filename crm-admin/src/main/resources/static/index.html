@@ -1058,6 +1058,8 @@ button {
     margin-top: 15px;
     font-size: 13px;
 }
+/* таблицы дашборда прокручиваются внутри секции, а не ломают страницу */
+.dashboard-section{overflow-x:auto}
 .template-table th {
     background: #4a6cf7;
     color: white;
@@ -1116,7 +1118,8 @@ button {
 /* Dashboard styles */
 .dashboard-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    /* адаптивно: с сайдбаром на узком контенте 4 жёсткие колонки сплющивали карточки */
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
     gap: 15px;
     margin-bottom: 20px;
 }
@@ -1142,6 +1145,8 @@ button {
     font-weight: bold;
     color: #1f2937;
     margin: 5px 0;
+    line-height: 1.15;
+    overflow-wrap: anywhere;   /* длинные числа не растягивают карточку */
 }
 .stat-card .stat-sub {
     font-size: 12px;
@@ -1169,7 +1174,7 @@ button {
 }
 .channel-stats-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 15px;
 }
 .channel-stat-card {
@@ -1206,10 +1211,11 @@ button {
 .bar-chart {
     display: flex;
     align-items: flex-end;
-    height: 150px;
+    height: 190px;               /* запас сверху под значения и снизу под подписи */
     gap: 8px;
-    padding: 10px 0;
+    padding: 22px 0 26px;
     border-bottom: 1px solid #e5e7eb;
+    overflow-x: auto;            /* узкий контент не ломает график */
 }
 .bar-chart .bar {
     flex: 1;
@@ -3014,7 +3020,7 @@ button:hover{filter:brightness(1.08)}
   <!-- Детальная статистика для шаблона -->
   <div id="templateDetailedStats" class="dashboard-section" style="display: none;">
     <h3>Детальная статистика отправок</h3>
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 15px;">
       <div class="stat-card" style="border-left-color: var(--blue);">
         <div class="stat-label">Всего отправлено</div>
         <div class="stat-value" id="detailSent">0</div>
@@ -3033,7 +3039,7 @@ button:hover{filter:brightness(1.08)}
     </div>
     <div style="margin-top: 15px;">
       <h4 style="font-size: 14px; color: var(--ink); margin-bottom: 10px;">Причины ошибок</h4>
-      <div id="errorReasons" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;"></div>
+      <div id="errorReasons" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;"></div>
     </div>
   </div>
 
@@ -5942,7 +5948,9 @@ function sfdRowHtml(f){
             : '<span class="v">' + sfdEsc(raw) + '</span>';
     }
     var pen = (!f.ro && !editing)
-        ? '<button class="sfd-pen" data-k="' + f.k + '" title="' + sfdT('Редактировать') + '" aria-label="' + sfdT('Редактировать') + '">✎</button>'
+        ? '<button class="sfd-pen" data-k="' + f.k + '" title="' + sfdT('Редактировать') + '" aria-label="' + sfdT('Редактировать') + '">' +
+          '<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>'
         : '';
     return '<div class="sfd-row' + (f.wide ? ' wide' : '') + (editing ? ' editing' : '') + '">' +
         '<div class="l">' + sfdEsc(f.label) + '</div>' + valHtml + pen + '</div>';

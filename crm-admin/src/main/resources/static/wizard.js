@@ -14,13 +14,14 @@
     "general", "cash_register", "insurance_combo", "exchange_rate",
     "insurance_estate", "credits"
   ];
+  // Резерв на случай недоступного справочника: основной источник — dictionary.d_touch_point
   var TOUCH_OPTIONS = [
     "promo", "abandoned-view", "abandoned-form", "abandoned-showcase",
     "abandoned-application", "abandoned-approval", "abandoned-splash",
     "abandoned-rejection", "abandoned-identification", "abandoned-doc-load",
     "sign", "abandoned-payment", "abandoned-refill", "issue", "renewal", "mobile-app"
   ];
-  // Стартовые подсказки communication_name (как в v1); живые значения из БД добавятся сверху.
+  // Резерв подсказок communication_name; основной источник — dictionary.d_communication_name.
   var COMNAME_SEED = [
     "NoComName", "subscription", "out-trigger-", "promo", "reset-email",
     "reset-password", "change-email", "change-password", "change-phone",
@@ -41,6 +42,31 @@
       sel.appendChild(opt);
     });
     if (def != null && options.indexOf(def) >= 0) sel.value = def;
+  }
+
+  /* Перезаполнить селект значениями из справочника БД, сохранив выбранное. */
+  function refillSelect(sel, options, def) {
+    if (!sel || !options || !options.length) return;
+    var current = sel.value;
+    sel.innerHTML = "";
+    options.forEach(function (o) {
+      var opt = document.createElement("option");
+      opt.value = o; opt.textContent = o;
+      sel.appendChild(opt);
+    });
+    if (current && options.indexOf(current) >= 0) sel.value = current;
+    else if (def != null && options.indexOf(def) >= 0) sel.value = def;
+  }
+
+  /* Точки касания: справочник dictionary.d_touch_point (фолбэк — зашитый список). */
+  function loadTouchPoints() {
+    if (!window.CRM || !CRM.dictTouchPoints) return;
+    CRM.dictTouchPoints().then(function (list) {
+      if (!Array.isArray(list) || !list.length) return;
+      document.querySelectorAll("select.touch").forEach(function (s) {
+        refillSelect(s, list, "promo");
+      });
+    }).catch(function () { /* справочник недоступен — остаётся фолбэк */ });
   }
 
   // Столбцы таблицы цепочки по каналу (день + редактируемые поля шаблона), как в v2 generateRows.
@@ -163,6 +189,7 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     initForms(document);
-    loadLiveComNames();
+    loadTouchPoints();   // dictionary.d_touch_point
+    loadLiveComNames();  // dictionary.d_communication_name + значения из шаблонов
   });
 })();

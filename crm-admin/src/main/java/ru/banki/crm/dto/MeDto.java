@@ -6,8 +6,9 @@ import java.util.Set;
 public record MeDto(
         String email,
         String displayName,
-        String role,        // READER | EDITOR | ADMIN
-        boolean canEdit,    // EDITOR or ADMIN
-        boolean isAdmin,    // ADMIN
-        Set<String> sections
+        String role,          // READER | EDITOR | ADMIN | SUPER_ADMIN
+        boolean canEdit,      // EDITOR, ADMIN или SUPER_ADMIN
+        boolean isAdmin,      // ADMIN или SUPER_ADMIN
+        Set<String> sections,
+        boolean isSuperAdmin  // только SUPER_ADMIN: назначает и снимает администраторов
 ) {}

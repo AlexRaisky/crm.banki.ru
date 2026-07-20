@@ -33,4 +33,9 @@ public class DictionaryController {
     public List<String> commNames(@RequestParam(required = false) String channel) {
         return service.communicationNames(channel);
     }
+
+    @GetMapping("/touch-points")
+    public List<String> touchPoints() {
+        return service.touchPoints();
+    }
 }

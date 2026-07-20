@@ -32,6 +32,11 @@ public class AppUserPrincipal implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
+        // SUPER_ADMIN получает и ROLE_ADMIN — все существующие проверки hasRole('ADMIN') работают
+        if (user.getRole() == ru.banki.crm.domain.Role.SUPER_ADMIN) {
+            return List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"),
+                           new SimpleGrantedAuthority("ROLE_ADMIN"));
+        }
         return List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
     }
 

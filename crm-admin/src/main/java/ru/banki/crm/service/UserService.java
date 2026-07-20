@@ -41,10 +41,12 @@ public class UserService {
         if (users.existsByEmailIgnoreCase(email)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Пользователь уже существует: " + email);
         }
+        Role role = parseRole(req.role());
+        requireSuperAdminForAdminRole(role, Role.READER);   // создать админа может только супер-админ
         AppUser u = new AppUser();
         u.setEmail(email);
         u.setDisplayName(req.displayName());
-        u.setRole(parseRole(req.role()));
+        u.setRole(role);
         u.setPasswordHash(encoder.encode(req.password()));
         u.setSections(validSections(req.sections()));
         u.setEnabled(true);
@@ -54,8 +56,14 @@ public class UserService {
     @Transactional
     public UserView update(Long id, UpdateUser req) {
         AppUser u = get(id);
+        requireNotSuperAdmin(u, "изменить");
         if (req.displayName() != null) u.setDisplayName(req.displayName());
-        if (req.role() != null) u.setRole(parseRole(req.role()));
+        if (req.role() != null) {
+            Role target = parseRole(req.role());
+            // назначать и снимать администраторов может только супер-админ
+            if (target != u.getRole()) requireSuperAdminForAdminRole(target, u.getRole());
+            u.setRole(target);
+        }
         if (req.enabled() != null) u.setEnabled(req.enabled());
         if (req.sections() != null) u.setSections(validSections(req.sections()));
         return toView(users.save(u));
@@ -64,7 +72,12 @@ public class UserService {
     @Transactional
     public void delete(Long id) {
         AppUser u = get(id);
-        if (u.getRole() == Role.ADMIN && countAdmins() <= 1) {
+        requireNotSuperAdmin(u, "удалить");
+        if (u.getRole() == Role.ADMIN && !currentIsSuperAdmin()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Удалять администраторов может только супер-администратор");
+        }
+        if (u.getRole().isAdminLevel() && countAdmins() <= 1) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Нельзя удалить последнего администратора");
         }
         users.delete(u);
@@ -73,6 +86,7 @@ public class UserService {
     @Transactional
     public void resetPassword(Long id, String newPassword) {
         AppUser u = get(id);
+        requireNotSuperAdmin(u, "менять пароль");
         u.setPasswordHash(encoder.encode(newPassword));
         users.save(u);
     }
@@ -95,7 +109,36 @@ public class UserService {
     }
 
     private long countAdmins() {
-        return users.findAll().stream().filter(u -> u.getRole() == Role.ADMIN).count();
+        return users.findAll().stream().filter(u -> u.getRole().isAdminLevel()).count();
+    }
+
+    // ------------------------------------------- правила вокруг роли администратора
+    /** Текущий пользователь — супер-админ? */
+    private boolean currentIsSuperAdmin() {
+        return ru.banki.crm.security.CurrentUser.principal()
+                .map(p -> p.user().getRole() == Role.SUPER_ADMIN)
+                .orElse(false);
+    }
+
+    /** Назначить или снять роль администратора может только супер-админ. */
+    private void requireSuperAdminForAdminRole(Role target, Role currentRole) {
+        boolean touchesAdmin = target.isAdminLevel() || currentRole.isAdminLevel();
+        if (touchesAdmin && !currentIsSuperAdmin()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Назначать и снимать администраторов может только супер-администратор");
+        }
+        if (target == Role.SUPER_ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Роль супер-администратора выдаётся только учётной записи из конфигурации");
+        }
+    }
+
+    /** Супер-админа нельзя менять/удалять через UI — он задан конфигурацией. */
+    private void requireNotSuperAdmin(AppUser u, String action) {
+        if (u.getRole() == Role.SUPER_ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Супер-администратора нельзя " + action + " через панель");
+        }
     }
 
     /** Корпоративный домен по умолчанию: пустой APP_EMAIL_DOMAIN не отключает проверку. */

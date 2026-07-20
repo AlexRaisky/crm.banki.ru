@@ -38,14 +38,29 @@ public class DictionaryService {
                 " FROM template.d_template WHERE channel = 'cc' ORDER BY code");
     }
 
-    /** Значения communication_name для подсказок редактируемого combobox. */
+    /**
+     * Значения communication_name для подсказок редактируемого combobox:
+     * справочник dictionary.d_communication_name + то, что уже встречается в шаблонах канала.
+     */
     @Transactional(readOnly = true)
     public List<String> communicationNames(String channel) {
         boolean all = channel == null || channel.isBlank();
-        String sql = "SELECT DISTINCT communication_name FROM template.d_template" +
+        String sql = "SELECT value FROM dictionary.d_communication_name WHERE is_active ORDER BY sort_order, value";
+        List<String> out = new java.util.ArrayList<>(jdbc.queryForList(sql, String.class));
+        String used = "SELECT DISTINCT communication_name FROM template.d_template" +
                 " WHERE communication_name IS NOT NULL AND communication_name <> ''" +
                 (all ? "" : " AND channel = ?") + " ORDER BY 1";
-        return all ? jdbc.queryForList(sql, String.class)
-                   : jdbc.queryForList(sql, String.class, channel);
+        List<String> fromTemplates = all ? jdbc.queryForList(used, String.class)
+                                         : jdbc.queryForList(used, String.class, channel);
+        fromTemplates.forEach(v -> { if (!out.contains(v)) out.add(v); });
+        return out;
+    }
+
+    /** Точки касания (touch_point) из справочника. */
+    @Transactional(readOnly = true)
+    public List<String> touchPoints() {
+        return jdbc.queryForList(
+                "SELECT value FROM dictionary.d_touch_point WHERE is_active ORDER BY sort_order, value",
+                String.class);
     }
 }

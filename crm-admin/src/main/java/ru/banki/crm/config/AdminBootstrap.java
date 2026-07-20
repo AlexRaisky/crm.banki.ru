@@ -39,15 +39,24 @@ public class AdminBootstrap implements CommandLineRunner {
             log.warn("app.admin.email/password not set — skipping super-admin bootstrap");
             return;
         }
-        if (users.existsByEmailIgnoreCase(adminEmail)) {
-            log.info("Super-admin {} already present", adminEmail);
+        var existing = users.findByEmailIgnoreCase(adminEmail);
+        if (existing.isPresent()) {
+            // роль супер-админа выдаётся только этой учётке и восстанавливается при старте
+            AppUser u = existing.get();
+            if (u.getRole() != Role.SUPER_ADMIN) {
+                u.setRole(Role.SUPER_ADMIN);
+                users.save(u);
+                log.info("Upgraded {} to SUPER_ADMIN", adminEmail);
+            } else {
+                log.info("Super-admin {} already present", adminEmail);
+            }
             return;
         }
         AppUser admin = new AppUser();
         admin.setEmail(adminEmail);
         admin.setPasswordHash(encoder.encode(adminPassword));
         admin.setDisplayName("Администратор");
-        admin.setRole(Role.ADMIN);
+        admin.setRole(Role.SUPER_ADMIN);
         admin.setEnabled(true);
         admin.setSections(new HashSet<>(Sections.ALL));
         users.save(admin);
