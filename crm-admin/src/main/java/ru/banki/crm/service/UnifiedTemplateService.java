@@ -40,6 +40,14 @@ public class UnifiedTemplateService {
     @PersistenceContext
     private EntityManager em;
 
+    /** Адрес внешней прод-БД (пусто = синк не настроен, очередь не ведём). */
+    @org.springframework.beans.factory.annotation.Value("${app.proddb.url:}")
+    private String prodDbUrl;
+
+    private boolean prodConfigured() {
+        return prodDbUrl != null && !prodDbUrl.isBlank();
+    }
+
     /** Свёртка строки канальной таблицы в единый справочник (channel_props = всё, что не ядро). */
     public void upsertFromChannel(String channel, long code) {
         ChannelTable ct = channelTable(channel);
@@ -92,9 +100,13 @@ public class UnifiedTemplateService {
         return r.isEmpty() ? null : String.valueOf(r.get(0));
     }
 
-    /** Поставить операцию в очередь синка с прод-БД (outbox). payload — строка канальной таблицы 1:1. */
+    /**
+     * Поставить операцию в очередь синка с прод-БД (outbox). payload — строка канальной таблицы 1:1.
+     * Пока прод-БД не подключена (PROD_DB_URL пуст), очередь НЕ ведём: копить нечего и некуда,
+     * записи появятся только с момента реального подключения.
+     */
     public void enqueueProdSync(String channel, String operation, Long localCode, String payloadJson) {
-        if (payloadJson == null) return;
+        if (payloadJson == null || !prodConfigured()) return;
         em.createNativeQuery("INSERT INTO app.prod_sync (channel, operation, local_code, payload, created_by)" +
                         " VALUES (:ch, :op, :c, CAST(:p AS jsonb), :u)")
                 .setParameter("ch", channel)

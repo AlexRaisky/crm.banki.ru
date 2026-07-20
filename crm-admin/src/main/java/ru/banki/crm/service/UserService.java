@@ -98,10 +98,14 @@ public class UserService {
         return users.findAll().stream().filter(u -> u.getRole() == Role.ADMIN).count();
     }
 
+    /** Корпоративный домен по умолчанию: пустой APP_EMAIL_DOMAIN не отключает проверку. */
+    private static final String DEFAULT_EMAIL_DOMAIN = "banki.ru";
+
     private void validateDomain(String email) {
-        if (!emailDomain.isEmpty() && !email.endsWith("@" + emailDomain)) {
+        String domain = emailDomain.isEmpty() ? DEFAULT_EMAIL_DOMAIN : emailDomain;
+        if (!email.endsWith("@" + domain)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Разрешены только адреса @" + emailDomain);
+                    "Разрешены только адреса @" + domain);
         }
     }
 
