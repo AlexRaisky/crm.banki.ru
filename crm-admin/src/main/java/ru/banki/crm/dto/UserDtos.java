@@ -15,9 +15,10 @@ public final class UserDtos {
             Long id,
             String email,
             String displayName,
-            String role,
+            String role,        // SUPER_ADMIN наружу не показывается — маскируется под ADMIN
             boolean enabled,
-            Set<String> sections
+            Set<String> sections,
+            boolean manageable  // может ли текущий пользователь править/удалять эту запись
     ) {}
 
     public record CreateUser(

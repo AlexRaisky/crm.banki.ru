@@ -97,10 +97,10 @@
           h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.role]),
           h("td", { style: "padding:8px;border-bottom:1px solid var(--line);color:var(--dim);max-width:260px" }, [secText || "—"]),
           h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.enabled ? "✓" : "—"]),
-          // супер-админа не редактируем и не удаляем: он задан конфигурацией
+          // manageable приходит с сервера: false — запись не в зоне ответственности текущего пользователя
           h("td", { style: "padding:8px;border-bottom:1px solid var(--line);white-space:nowrap" },
-            u.role === "SUPER_ADMIN"
-              ? [h("span", { style: "color:var(--faint)" }, [tr("Учётная запись из конфигурации")])]
+            u.manageable === false
+              ? [h("span", { style: "color:var(--faint)" }, ["—"])]
               : [
                   h("button", { style: btnStyle("#334155"), onclick: function () { editUser(u, container); } }, [tr("Изменить")]),
                   h("span", null, [" "]),

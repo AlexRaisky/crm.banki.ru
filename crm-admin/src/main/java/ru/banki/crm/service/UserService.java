@@ -31,7 +31,7 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public List<UserView> list() {
-        return users.findAll().stream().map(UserService::toView).toList();
+        return users.findAll().stream().map(this::toView).toList();
     }
 
     @Transactional
@@ -56,7 +56,7 @@ public class UserService {
     @Transactional
     public UserView update(Long id, UpdateUser req) {
         AppUser u = get(id);
-        requireNotSuperAdmin(u, "изменить");
+        requireCanManage(u);
         if (req.displayName() != null) u.setDisplayName(req.displayName());
         if (req.role() != null) {
             Role target = parseRole(req.role());
@@ -72,11 +72,7 @@ public class UserService {
     @Transactional
     public void delete(Long id) {
         AppUser u = get(id);
-        requireNotSuperAdmin(u, "удалить");
-        if (u.getRole() == Role.ADMIN && !currentIsSuperAdmin()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Удалять администраторов может только супер-администратор");
-        }
+        requireCanManage(u);
         if (u.getRole().isAdminLevel() && countAdmins() <= 1) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Нельзя удалить последнего администратора");
         }
@@ -86,7 +82,7 @@ public class UserService {
     @Transactional
     public void resetPassword(Long id, String newPassword) {
         AppUser u = get(id);
-        requireNotSuperAdmin(u, "менять пароль");
+        requireCanManage(u);
         u.setPasswordHash(encoder.encode(newPassword));
         users.save(u);
     }
@@ -120,24 +116,32 @@ public class UserService {
                 .orElse(false);
     }
 
+    /**
+     * Единый текст отказа для всех админ-уровней: по сообщению нельзя понять,
+     * что у конкретной учётки есть расширенные права.
+     */
+    private static final String NO_RIGHTS = "Недостаточно прав для этой операции";
+
     /** Назначить или снять роль администратора может только супер-админ. */
     private void requireSuperAdminForAdminRole(Role target, Role currentRole) {
+        if (target == Role.SUPER_ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, NO_RIGHTS);
+        }
         boolean touchesAdmin = target.isAdminLevel() || currentRole.isAdminLevel();
         if (touchesAdmin && !currentIsSuperAdmin()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Назначать и снимать администраторов может только супер-администратор");
-        }
-        if (target == Role.SUPER_ADMIN) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Роль супер-администратора выдаётся только учётной записи из конфигурации");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, NO_RIGHTS);
         }
     }
 
-    /** Супер-админа нельзя менять/удалять через UI — он задан конфигурацией. */
-    private void requireNotSuperAdmin(AppUser u, String action) {
-        if (u.getRole() == Role.SUPER_ADMIN) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Супер-администратора нельзя " + action + " через панель");
+    /**
+     * Учётку супер-админа через панель не меняем вовсе; админ-уровень доступен
+     * только супер-админу. Отказ всегда с одинаковым текстом.
+     */
+    private void requireCanManage(AppUser u) {
+        boolean superAdminTarget = u.getRole() == Role.SUPER_ADMIN;
+        boolean adminTarget = u.getRole().isAdminLevel();
+        if (superAdminTarget || (adminTarget && !currentIsSuperAdmin())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, NO_RIGHTS);
         }
     }
 
@@ -170,8 +174,16 @@ public class UserService {
         return new HashSet<>(sections);
     }
 
-    static UserView toView(AppUser u) {
+    /**
+     * Наружу супер-админ выглядит обычным администратором: роль маскируется,
+     * а невозможность его править передаётся нейтральным флагом manageable
+     * (он же false для админов, если смотрит не супер-админ).
+     */
+    private UserView toView(AppUser u) {
+        String role = u.getRole() == Role.SUPER_ADMIN ? Role.ADMIN.name() : u.getRole().name();
+        boolean manageable = u.getRole() != Role.SUPER_ADMIN
+                && (!u.getRole().isAdminLevel() || currentIsSuperAdmin());
         return new UserView(u.getId(), u.getEmail(), u.getDisplayName(),
-                u.getRole().name(), u.isEnabled(), u.getSections());
+                role, u.isEnabled(), u.getSections(), manageable);
     }
 }
