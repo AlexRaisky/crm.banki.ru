@@ -64,6 +64,7 @@ app:
     url: ${PROD_DB_URL:}
     user: ${PROD_DB_USER:}
     password: ${PROD_DB_PASSWORD:}
+    connect-timeout-ms: ${PROD_DB_CONNECT_TIMEOUT_MS:20000}
   # Цепочки-схемы: по умолчанию в БД (app.journeys, jsonb); true = мок в памяти (dev без БД).
   journeys:
     mock: ${JOURNEYS_MOCK:false}

@@ -38,6 +38,10 @@ public class ProdDbService {
     @Value("${app.proddb.password:}")
     private String password;
 
+    /** Таймаут установления соединения, мс (PROD_DB_CONNECT_TIMEOUT_MS). */
+    @Value("${app.proddb.connect-timeout-ms:20000}")
+    private long connectTimeoutMs;
+
     private final ObjectMapper om;
     private volatile HikariDataSource ds;
 
@@ -60,7 +64,11 @@ public class ProdDbService {
                     cfg.setPassword(password);
                     cfg.setMaximumPoolSize(2);
                     cfg.setMinimumIdle(0);
-                    cfg.setConnectionTimeout(5000);
+                    // канал до прода может идти через бастион/VPN — даём запас на рукопожатие
+                    cfg.setConnectionTimeout(connectTimeoutMs);
+                    cfg.addDataSourceProperty("connectTimeout", String.valueOf(connectTimeoutMs / 1000));
+                    cfg.addDataSourceProperty("loginTimeout", String.valueOf(connectTimeoutMs / 1000));
+                    cfg.addDataSourceProperty("socketTimeout", "60");
                     cfg.setInitializationFailTimeout(-1); // пул создаётся даже при недоступном проде
                     cfg.setPoolName("prod-db");
                     ds = new HikariDataSource(cfg);
@@ -104,7 +112,13 @@ public class ProdDbService {
             out.put("tables", tables);
         } catch (Exception e) {
             out.put("reachable", false);
+            // у Hikari верхнее сообщение — «request timed out»; настоящая причина в cause
+            Throwable root = e;
+            while (root.getCause() != null && root.getCause() != root) root = root.getCause();
             out.put("error", String.valueOf(e.getMessage()));
+            if (root != e && root.getMessage() != null) out.put("cause", root.getMessage());
+            out.put("url", url);
+            out.put("user", user);
         }
         return out;
     }

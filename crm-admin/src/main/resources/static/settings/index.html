@@ -640,6 +640,8 @@ function prodDbRender(d){
     rows.push(`${t2('Доступно:')} <b>${d.reachable ? t2('да') : t2('НЕТ')}</b>` +
       (d.latencyMs != null ? ` <span class="mono">(${d.latencyMs} ms)</span>` : ''));
     if (d.error) rows.push(`<span style="color:var(--coral)">${esc(d.error)}</span>`);
+    if (d.cause) rows.push(`<span style="color:var(--coral)">${t2('Причина:')} ${esc(d.cause)}</span>`);
+    if (d.url) rows.push(`<span class="mono" style="font-size:11px">${esc(d.url)} · ${esc(d.user || '')}</span>`);
     if (d.tables){
       rows.push(Object.entries(d.tables).map(([tName, okT]) =>
         `<span class="mono">${esc(tName)}</span> ${okT ? '✓' : '<span style="color:var(--coral)">✗ нет</span>'}`).join('<br>'));
@@ -658,6 +660,12 @@ async function prodDbCall(url, method){
     const r = await fetch(url, { method: method || 'GET', credentials: 'same-origin' });
     if (r.status === 401) { location.href = '/login.html'; return; }
     if (r.status === 403) { box.textContent = t2('Доступно только администраторам.'); return; }
+    var ct = r.headers.get('content-type') || '';
+    if (ct.indexOf('application/json') < 0) {
+      // сервис перезапускается / отвечает страницей ошибки — показываем понятный статус
+      box.textContent = t2('Сервис недоступен, код ') + r.status + '. ' + t2('Подожди старта приложения и повтори.');
+      return;
+    }
     prodDbRender(await r.json());
   } catch(e){ box.textContent = t2('Ошибка запроса: ') + e.message; }
 }
