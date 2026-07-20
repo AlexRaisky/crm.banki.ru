@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import ru.banki.crm.security.CurrentUser;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Единый справочник шаблонов template.d_template — ОСНОВНОЕ хранилище новой архитектуры.
@@ -41,6 +42,18 @@ public class UnifiedTemplateService {
             // суррогатный id прод выдаёт по счётчику
             case "cc" -> new ChannelTable("callcenter.d_segment_properties", "segment", false, false, null);
             default -> null;
+        };
+    }
+
+    /**
+     * Канальные поля, которые прод-таблица требует непустыми (NOT NULL без DEFAULT).
+     * Подставляются и при записи в d_template, и при доставке — чтобы уже стоящие
+     * в очереди записи уехали без ручной правки payload.
+     */
+    public static Map<String, String> prodDefaults(String channel) {
+        return switch (channel == null ? "" : channel) {
+            case "email" -> Map.of("subject", "");
+            default -> Map.of();
         };
     }
 

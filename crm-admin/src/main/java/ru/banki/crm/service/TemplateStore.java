@@ -244,7 +244,7 @@ public class TemplateStore {
                 d.getPartnerName(), nz(d.getTouchPoint()), nz(d.getAffSub3()), d.getSelectionWizardService(),
                 flag(d.getMarketplace()), flag(d.getDialog()), flag(d.getLoyalty()), flag(d.getNationalRating()),
                 flag(d.getNews()), flag(d.getMobileApp()), flag(d.getNightSend()),
-                d.getActive() == null || d.getActive(), propsJson(d, null));
+                d.getActive() == null || d.getActive(), propsJson(d, channel));
     }
 
     /** Частичное обновление: null-поля DTO не затирают сохранённые значения. */
@@ -282,7 +282,7 @@ public class TemplateStore {
         addSet(sets, args, "active_flag", d.getActive());
         // channel_props: мержим новые значения поверх сохранённых
         sets.add("channel_props = channel_props || CAST(? AS jsonb)");
-        args.add(propsJson(d, current.get("channel_props")));
+        args.add(propsJson(d, channel));
         sets.add("timestamp_upd = now()");
 
         args.add(channel);
@@ -309,7 +309,7 @@ public class TemplateStore {
     }
 
     /** channel_props из DTO: только заполненные канальные поля (остальные сохраняются как были). */
-    private String propsJson(TemplateDto d, JsonNode existing) {
+    private String propsJson(TemplateDto d, String channel) {
         ObjectNode props = om.createObjectNode();
         putIfSet(props, "source", d.getSource());
         putIfSet(props, "msg_text", d.getMsgText());
@@ -337,6 +337,10 @@ public class TemplateStore {
         if (d.getMlProbabilityRequired() != null) props.put("ml_probability_required", d.getMlProbabilityRequired());
         if (d.getCutpercent() != null) props.put("cutpercent", d.getCutpercent());
         if (d.getNocutpercent() != null) props.put("nocutpercent", d.getNocutpercent());
+        // поля, которые прод требует непустыми (напр. email.subject) — пустая строка вместо null
+        UnifiedTemplateService.prodDefaults(channel).forEach((k, v) -> {
+            if (!props.hasNonNull(k)) props.put(k, v);
+        });
         return props.toString();
     }
 

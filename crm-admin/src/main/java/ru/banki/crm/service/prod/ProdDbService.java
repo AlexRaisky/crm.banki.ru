@@ -183,7 +183,15 @@ public class ProdDbService {
         }
         // Явно перечисляем ТОЛЬКО заполненные колонки: остальные получат дефолты прод-таблицы
         // (передача явного NULL перебила бы DEFAULT и упала на NOT NULL).
-        JsonNode payload = om.readTree(payloadJson);
+        JsonNode parsed = om.readTree(payloadJson);
+        // подстраховка для записей, уже стоявших в очереди: обязательные поля прода
+        if (parsed instanceof com.fasterxml.jackson.databind.node.ObjectNode on) {
+            UnifiedTemplateService.prodDefaults(channelOf(ct)).forEach((k, v) -> {
+                if (!on.hasNonNull(k)) on.put(k, v);
+            });
+            payloadJson = on.toString();
+        }
+        JsonNode payload = parsed;
         java.util.Set<String> prodCols = tableColumns(c, ct.table());
         List<String> cols = new ArrayList<>();
         for (Iterator<String> it = payload.fieldNames(); it.hasNext(); ) {
@@ -249,6 +257,15 @@ public class ProdDbService {
             ps.setLong(2, localCode);
             return ps.executeUpdate();
         }
+    }
+
+    /** Канал по описанию таблицы (для channel-specific дефолтов). */
+    private static String channelOf(ChannelTable ct) {
+        for (String ch : List.of("sms", "push", "email", "cc")) {
+            ChannelTable t = UnifiedTemplateService.channelTable(ch);
+            if (t != null && t.table().equals(ct.table())) return ch;
+        }
+        return "";
     }
 
     /** Колонки прод-таблицы (payload из d_template может содержать лишние ключи). */
