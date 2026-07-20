@@ -92,6 +92,20 @@
     border-left:1px solid var(--line)}
   .user-email{color:var(--dim);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     min-width:0;max-width:min(320px,26vw)}
+
+  /* Диалог смены собственного пароля */
+  .pwd-dialog{position:fixed;inset:0;z-index:200;background:rgba(4,10,18,.72);
+    display:flex;align-items:center;justify-content:center;padding:20px}
+  .pwd-card{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:20px 22px;
+    width:min(380px,94%);display:flex;flex-direction:column;gap:8px;box-shadow:0 24px 80px rgba(0,0,0,.5)}
+  .pwd-card b{font-size:15px;margin-bottom:6px}
+  .pwd-card label{font-size:11px;color:var(--faint);letter-spacing:.05em;text-transform:uppercase;margin-top:6px}
+  .pwd-card input{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;
+    padding:8px 10px;font-size:14px;width:100%;box-sizing:border-box}
+  .pwd-msg{font-size:12.5px;color:var(--coral);min-height:16px;margin-top:4px}
+  .pwd-msg.ok{color:var(--green)}
+  .pwd-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+  .btn.pwd-save{background:var(--grad);color:#08131f;border:none;font-weight:600}
   .user-box .btn{flex:0 0 auto}
 
   .btn{font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 15px;border-radius:10px;cursor:pointer;
@@ -1730,7 +1744,26 @@ button:hover{filter:brightness(1.08)}
       </a>
       <div class="user-box" id="userBox">
         <span class="user-email" id="userEmail"></span>
+        <button class="btn" data-i18n="Пароль" onclick="openPwdDialog()" title="Сменить свой пароль">Пароль</button>
         <button class="btn" data-i18n="Выйти" onclick="CRM.logout()">Выйти</button>
+      </div>
+
+      <!-- Смена собственного пароля (доступна любому пользователю) -->
+      <div id="pwdDialog" class="pwd-dialog" style="display:none">
+        <div class="pwd-card">
+          <b data-i18n="Смена пароля">Смена пароля</b>
+          <label data-i18n="Текущий пароль">Текущий пароль</label>
+          <input type="password" id="pwdCurrent" autocomplete="current-password">
+          <label data-i18n="Новый пароль">Новый пароль</label>
+          <input type="password" id="pwdNew" autocomplete="new-password">
+          <label data-i18n="Повторите новый пароль">Повторите новый пароль</label>
+          <input type="password" id="pwdRepeat" autocomplete="new-password">
+          <div class="pwd-msg" id="pwdMsg"></div>
+          <div class="pwd-actions">
+            <button class="btn" data-i18n="Отмена" onclick="closePwdDialog()">Отмена</button>
+            <button class="btn pwd-save" data-i18n="Сохранить" onclick="submitPwdDialog()">Сохранить</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -3467,6 +3500,13 @@ const ICONS = {
    ========================================================= */
 const I18N_EN = {
   "Просмотр":"View", "Открыть настройки шаблона":"Open template settings",
+  "Пароль":"Password", "Смена пароля":"Change password", "Текущий пароль":"Current password",
+  "Новый пароль":"New password", "Повторите новый пароль":"Repeat new password",
+  "Отмена":"Cancel", "Пароль изменён":"Password changed",
+  "Заполни текущий и новый пароль":"Fill in the current and new password",
+  "Новый пароль — минимум 8 символов":"New password must be at least 8 characters",
+  "Новые пароли не совпадают":"New passwords do not match",
+  "Не удалось изменить пароль":"Could not change the password",
   "1. Канал":"1. Channel", "2. Шаблон":"2. Template",
   "Поиск по source_type":"Search by source_type", "Шаблон":"Template",
   "— Выберите шаблон":"— Select a template", "(неактивный)":"(inactive)",
@@ -3873,6 +3913,31 @@ function sectionAllowed(s){
    Группа без cid открывает обзорную страницу (overviewView).
    Хуки живого приложения сохранены: setAdminMode (wizard/list/dashboard в #sec-admin),
    renderAccessSection, initJourneysSection, лечение Chart.js в «Отклонениях». */
+/* ---------- Смена собственного пароля (шапка → «Пароль») ---------- */
+function openPwdDialog(){
+  ["pwdCurrent","pwdNew","pwdRepeat"].forEach(function(id){ var e = $("#"+id); if (e) e.value = ""; });
+  var msg = $("#pwdMsg"); if (msg) { msg.textContent = ""; msg.className = "pwd-msg"; }
+  $("#pwdDialog").style.display = "";
+  setTimeout(function(){ var f = $("#pwdCurrent"); if (f) f.focus(); }, 30);
+}
+function closePwdDialog(){ $("#pwdDialog").style.display = "none"; }
+function submitPwdDialog(){
+  var cur = $("#pwdCurrent").value, next = $("#pwdNew").value, rep = $("#pwdRepeat").value;
+  var msg = $("#pwdMsg");
+  msg.className = "pwd-msg";
+  if (!cur || !next) { msg.textContent = t("Заполни текущий и новый пароль"); return; }
+  if (next.length < 8) { msg.textContent = t("Новый пароль — минимум 8 символов"); return; }
+  if (next !== rep) { msg.textContent = t("Новые пароли не совпадают"); return; }
+  CRM.changeOwnPassword(cur, next).then(function(){
+    msg.className = "pwd-msg ok";
+    msg.textContent = t("Пароль изменён");
+    setTimeout(closePwdDialog, 1200);
+  }).catch(function(e){ msg.textContent = e.message || t("Не удалось изменить пароль"); });
+}
+document.addEventListener("keydown", function(e){
+  if (e.key === "Escape" && $("#pwdDialog") && $("#pwdDialog").style.display !== "none") closePwdDialog();
+});
+
 function openSection(sid, cid){
   let s = sectionById(sid);
   if (!s){

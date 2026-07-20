@@ -39,6 +39,17 @@ public class AdminBootstrap implements CommandLineRunner {
             log.warn("app.admin.email/password not set — skipping super-admin bootstrap");
             return;
         }
+        // Роль супер-админа принадлежит ТОЛЬКО учётке из конфигурации: если адрес сменили,
+        // прежний супер-админ понижается до обычного администратора.
+        users.findAll().stream()
+                .filter(u -> u.getRole() == Role.SUPER_ADMIN)
+                .filter(u -> !u.getEmail().equalsIgnoreCase(adminEmail))
+                .forEach(u -> {
+                    u.setRole(Role.ADMIN);
+                    users.save(u);
+                    log.warn("Demoted stale super-admin {} to ADMIN (config points to {})", u.getEmail(), adminEmail);
+                });
+
         var existing = users.findByEmailIgnoreCase(adminEmail);
         if (existing.isPresent()) {
             // роль супер-админа выдаётся только этой учётке и восстанавливается при старте
