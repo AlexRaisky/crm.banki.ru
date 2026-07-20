@@ -1,0 +1,954 @@
+/* =========================================================
+   ОБОЛОЧКА: приложения (App Launcher — вафля), сайдбар
+   разделов, всплывающий сайдбар 2-го уровня (по наведению),
+   обзорные страницы групп и виджеты главной. Контент разделов
+   встроен нативно ниже по документу.
+
+   Дерево разделов: элемент с children показывает по наведению
+   flyout с подразделами, а по клику — обзорную страницу
+   (overviewView). Дочерний элемент указывает view (id секции)
+   и, для админки, adminMode (wizard|list|dashboard).
+   id разделов НЕ менять: на них завязан RBAC (me.sections). */
+const NAV = [
+  { id:"home",  label:"Главная", icon:"home", view:"view-home" },
+  { id:"comms", label:"Управление коммуникациями", icon:"megaphone", overviewView:"view-comms-overview", children:[
+      { id:"onelink",   label:"OneLink Builder",     icon:"link", view:"sec-onelink" },
+      { id:"admin",     label:"Мастер коммуникаций", icon:"pen",  view:"sec-admin", adminMode:"wizard" },
+      { id:"templates", label:"Список шаблонов",     icon:"list", view:"sec-admin", adminMode:"list" },
+      /* «Просмотр настроек» — тот же раздел admin: ACL следует правам admin (data-acl-section) */
+      { id:"viewer",    label:"Просмотр настроек",   icon:"search", view:"sec-admin", adminMode:"view", aclSection:"admin" },
+      /* клиентские инструменты без серверной секции — не фильтруются по me.sections (data-no-acl) */
+      { id:"srcbuilder",label:"Конструктор source",  icon:"pulse", view:"sec-srcbuilder", noAcl:true },
+      { id:"heatmap",   label:"Тепловая карта",      icon:"grid2", view:"view-heatmap", noAcl:true, appOnly:["Маркетинг"] },
+  ]},
+  { id:"dash", label:"Дашборд", icon:"gauge", overviewView:"view-dash-overview", children:[
+      { id:"dashboard",  label:"Общая статистика",  icon:"chart", view:"sec-admin", adminMode:"dashboard" },
+      { id:"deviations", label:"Панель отклонений", icon:"pulse", view:"sec-deviations" },
+  ]},
+  { id:"monitoring", label:"Мониторинг", icon:"monitor", overviewView:"view-mon-overview", children:[
+      { id:"mon-campaigns", label:"Базовая работа кампаний", icon:"pulse", view:"view-mon-campaigns", noAcl:true },
+  ]},
+  { id:"uploads",  label:"Загруженные инструменты", icon:"upload", view:"view-uploads", noAcl:true },
+  { id:"journeys", label:"Цепочки",             icon:"flow", view:"sec-journeys", adminOnly:true },
+  { id:"access",   label:"Управление доступом", icon:"gear", view:"sec-access", adminOnly:true },
+];
+
+/* Среды (prod / preprod / test) — это отдельные инстансы приложения со своими БД.
+   Имя среды сообщает бэкенд (GET /api/env). Пункт NAV с полем envs:[...] виден только
+   на перечисленных средах; фильтрация — в applyNavAcl (api.js).
+   «Цепочки» доступны на всех средах, но только роли ADMIN (adminOnly + серверный гейт). */
+
+const ICONS = {
+  home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z"/></svg>',
+  megaphone:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v3a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M14 8c1.5 1 1.5 6 0 7"/><path d="M17.5 5.5c3 2.5 3 9.5 0 12"/></svg>',
+  gauge:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14 15 9"/><path d="M3.5 18a9 9 0 1 1 17 0"/><circle cx="12" cy="14" r="1.5"/></svg>',
+  link:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>',
+  pen:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+  list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+  chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-6M21 20H3"/></svg>',
+  pulse:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+  flow:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="6" height="5" rx="1"/><rect x="16" y="4" width="6" height="5" rx="1"/><rect x="9" y="15" width="6" height="5" rx="1"/><path d="M5 9v3a2 2 0 0 0 2 2h2M19 9v3a2 2 0 0 1-2 2h-2"/></svg>',
+  gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>',
+  doc:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
+  grid2:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+  monitor:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
+  upload:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
+};
+
+/* =========================================================
+   ОБЩИЕ ПАРАМЕТРЫ: тема (light/dark/system) и язык (ru/en).
+   Хранятся в crmpanel:theme / crmpanel:lang, применяются сразу
+   и при изменении в другой вкладке (событие storage).
+   Переводится только ОБОЛОЧКА (сайдбар, вафля, обзорные,
+   главная) — внутренности разделов не размечены.
+   ========================================================= */
+const I18N_EN = {
+  "Просмотр":"View", "Открыть настройки шаблона":"Open template settings",
+  "Пароль":"Password", "Смена пароля":"Change password", "Текущий пароль":"Current password",
+  "Новый пароль":"New password", "Повторите новый пароль":"Repeat new password",
+  "Отмена":"Cancel", "Пароль изменён":"Password changed",
+  "Заполни текущий и новый пароль":"Fill in the current and new password",
+  "Новый пароль — минимум 8 символов":"New password must be at least 8 characters",
+  "Новые пароли не совпадают":"New passwords do not match",
+  "Не удалось изменить пароль":"Could not change the password",
+  "1. Канал":"1. Channel", "2. Шаблон":"2. Template",
+  "Поиск по source_type":"Search by source_type", "Шаблон":"Template",
+  "— Выберите шаблон":"— Select a template", "(неактивный)":"(inactive)",
+  /* навигация и разделы */
+  "Главная":"Home", "Управление коммуникациями":"Communications", "Дашборд":"Dashboard",
+  "Цепочки":"Journeys", "Управление доступом":"Access management",
+  "OneLink Builder":"OneLink Builder", "Мастер коммуникаций":"Communication wizard",
+  "Список шаблонов":"Template list", "Общая статистика":"Overall statistics",
+  "Панель отклонений":"Deviations panel",
+  "Мониторинг":"Monitoring", "Загруженные инструменты":"Uploaded tools",
+  "Просмотр настроек":"Settings viewer", "Тепловая карта":"Heat map",
+  "Конструктор source":"Source builder",
+  "Базовая работа кампаний":"Campaign basics", "Загрузить инструмент":"Upload tool",
+  "Канал коммуникации":"Communication channel",
+  /* приложения */
+  "Приложения":"Apps", "Администрирование":"Administration", "Аналитика":"Analytics",
+  "Маркетинг":"Marketing", "Бизнес":"Business", "Контактный центр":"Contact center",
+  "Полный набор разделов панели":"Full set of panel sections",
+  "Дашборды, статистика и отклонения":"Dashboards, statistics and deviations",
+  "Коммуникации, шаблоны и кампании":"Communications, templates and campaigns",
+  "Бизнес-инструменты и отчётность":"Business tools and reporting",
+  "Управление настройками контактных центров":"Contact center settings management",
+  /* оболочка */
+  "Настроить главную":"Customize home", "Готово":"Done", "Свернуть меню":"Collapse menu",
+  "Настройки (настроечная админка)":"Settings (admin settings)",
+  "Выбрать приложение":"Choose an app", "Добавить блок":"Add a block", "Выйти":"Log out",
+  /* виджеты главной */
+  "Сводка по коммуникациям":"Communications summary", "Мои задачи":"My tasks",
+  "Недавно использованные инструменты":"Recently used tools", "Быстрые ссылки":"Quick links",
+  "Статусы систем":"System status",
+  "Соберите главную под себя: добавляйте, удаляйте и перетаскивайте блоки в режиме настройки.":"Build your own home page: add, remove and drag blocks in customize mode.",
+  "Выручка CPA, нед/нед":"CPA revenue, WoW", "Активных кампаний":"Active campaigns",
+  "CTR e-mail, среднее":"Avg. e-mail CTR", "Просроченные задачи":"Overdue tasks",
+  "Демо-данные. Подключите источник в следующей итерации.":"Demo data. Connect a source in the next iteration.",
+  "Новая задача… (Enter)":"New task… (Enter)", "Задач пока нет — добавьте первую.":"No tasks yet — add the first one.",
+  "Удалить":"Delete", "Убрать блок":"Remove block",
+  "Откройте любой инструмент в меню слева — он появится здесь.":"Open any tool in the left menu — it will appear here.",
+  "Рассылки e-mail":"E-mail campaigns", "Push-шлюз":"Push gateway", "Выгрузка CPA-фида":"CPA feed export",
+  "Интеграция AppsFlyer":"AppsFlyer integration", "Задержка":"Delayed", "Демо-данные для MVP.":"Demo data for the MVP.",
+  "сейчас":"now", " мин":" min", " ч":" h", " дн":" d",
+  /* обзорные страницы */
+  "Инструменты подготовки и настройки коммуникаций. Выберите блок или воспользуйтесь меню слева.":"Tools for preparing and configuring communications. Pick a block or use the left menu.",
+  "Конструктор ретаргетинговых ссылок AppsFlyer: собирает название кампании, deep link и utm-метки автоматически.":"AppsFlyer retargeting link builder: assembles campaign name, deep link and utm tags automatically.",
+  "Создание и редактирование шаблонов SMS, Push, Email и КЦ: параметры, аудитории, тексты и настройки отправки.":"Create and edit SMS, Push, Email and call center templates: parameters, audiences, texts and delivery settings.",
+  "Реестр всех шаблонов коммуникаций с фильтрами по каналу, продукту, триггеру и статусу активности.":"Registry of all communication templates with filters by channel, product, trigger and status.",
+  "Открыть →":"Open →",
+  "Аналитика по коммуникациям и выручке. Выберите блок или наведите на раздел в меню слева.":"Communications and revenue analytics. Pick a block or hover the section in the left menu.",
+  "Отправки по каналам, доставляемость, ошибки, перегрев аудиторий и статистика по шаблонам.":"Sends by channel, deliverability, errors, audience overheating and template statistics.",
+  "Резкие выбросы и плавные снижения выручки по дням: скользящая медиана, гипотезы и комментарии.":"Sharp spikes and gradual revenue declines by day: rolling median, hypotheses and comments.",
+  "Поиск шаблона по каналу, source_type и Letteros ID; аккуратная карточка всех настроек шаблона.":"Find a template by channel, source_type and Letteros ID; a tidy card with all template settings.",
+  "Тепловая карта коммуникационной нагрузки по сегментам и каналам. Раздел в разработке.":"Heat map of communication load by segments and channels. Under development.",
+  "Сборка source по правилам названия кампании: канал, тип, продукт и параметры — в реальном времени.":"Builds source using campaign naming rules: channel, type, product and parameters — in real time.",
+  "Статистика →":"Statistics →", "Загрузить →":"Upload →",
+  "Контроль работоспособности кампаний и интеграций. Выберите подраздел.":"Health control for campaigns and integrations. Pick a subsection.",
+  "Отбор базы, поступление событий, отправки, доставки и дублирование коммуникаций.":"Base selection, event inflow, sends, deliveries and duplicated communications.",
+  "Контрольные точки жизненного цикла кампании. При клике на блок будет открываться связанная статистика.":"Campaign lifecycle checkpoints. Clicking a block will open its related statistics.",
+  "Работа отбора базы":"Base selection", "Наличие поступления событий":"Event inflow",
+  "Наличие отправок коммуникаций":"Communication sends", "Наличие доставок":"Deliveries",
+  "Дублирование отправок":"Duplicated sends",
+  "Контроль формирования сегментов: объёмы отбора, время выполнения, сбои.":"Segment building control: selection volumes, execution time, failures.",
+  "Поток триггерных событий от источников: объёмы, задержки, разрывы поступления.":"Trigger event flow from sources: volumes, delays, inflow gaps.",
+  "Факт отправок по каналам за период: объёмы, паузы, аномальные провалы.":"Actual sends by channel over the period: volumes, pauses, anomalous drops.",
+  "Подтверждения доставки от провайдеров: delivery rate, задержки статусов.":"Delivery confirmations from providers: delivery rate, status delays.",
+  "Повторные коммуникации одному клиенту: дубли по шаблонам и каналам.":"Repeated communications to one client: duplicates by template and channel.",
+  "← К блокам мониторинга":"← Back to monitoring blocks",
+  "Мониторинг · Базовая работа кампаний":"Monitoring · Campaign basics",
+  "Статистика в разработке":"Statistics under development",
+  "Управление коммуникациями · доступно в приложении «Маркетинг»":"Communications · available in the Marketing app",
+  "Раздел в разработке":"Section under development",
+  "Здесь появится тепловая карта коммуникационной нагрузки: пересечения сегментов, каналов и частоты касаний.":"A heat map of communication load will appear here: segment overlaps, channels and touch frequency.",
+  /* загруженные инструменты */
+  "Свои HTML-страницы внутри панели.":"Your own HTML pages inside the panel.",
+  "Выберите инструмент или загрузите новый.":"Pick a tool or upload a new one.",
+  "Загрузите первый инструмент.":"Upload your first tool.",
+  "Добавьте HTML-файл — он появится в этом разделе и в меню слева.":"Add an HTML file — it will appear in this section and in the left menu.",
+  "Переименовать":"Rename", "Масштаб: по ширине":"Scale: fit width", "Масштаб: 1:1":"Scale: 1:1",
+  "Название инструмента (необязательно — распознаем из файла автоматически)":"Tool name (optional — detected from the file automatically)",
+  "Перетащите файл .html сюда":"Drop an .html file here",
+  "или нажмите, чтобы выбрать файл":"or click to choose a file",
+  /* конструктор source */
+  "Итоговый source":"Resulting source",
+  "ЧЕРНОВИК — заполните обязательные поля":"DRAFT — fill in the required fields",
+  "ГОТОВО — можно копировать":"READY — you can copy",
+  "⧉ Скопировать":"⧉ Copy", "✓ Скопировано":"✓ Copied",
+  "Соберите source по правилам названия кампании. Части разделяются подчёркиванием:":"Assemble the source using campaign naming rules. Parts are joined with underscores:",
+  "Куда подставляется:":"Where it is used:",
+  "этот формат используется в поле source_type шаблонов коммуникаций и в параметре c ссылок OneLink.":"this format goes into the source_type field of communication templates and into the c parameter of OneLink links.",
+  "Название кампании (source)":"Campaign name (source)",
+  "Поля со звёздочкой * обязательны. Значение подставляется в source_type шаблона и в параметр c ссылки OneLink.":"Fields marked with * are required. The value goes into the template's source_type and into the c parameter of a OneLink link.",
+  "Канал":"Channel", "Выберите канал":"Select a channel",
+  "Тип кампании":"Campaign type", "Выберите тип":"Select a type",
+  "promo или trigger — определяет структуру названия.":"promo or trigger — defines the name structure.",
+  "Продукт":"Product", "Выберите продукт":"Select a product",
+  "Партнёр / General / Digest":"Partner / General / Digest",
+  "Уникальное название":"Unique name", "Дата рассылки":"Send date",
+  "Подставится в формате ддммгг (напр. 180326).":"Inserted as ddmmyy (e.g. 180326).",
+  "Номер сегмента":"Segment number", "Обязателен для канала callcenter.":"Required for the callcenter channel.",
+  "День отправки":"Send day", "Подставится с припиской day (напр. 3day).":"Inserted with the day suffix (e.g. 3day).",
+  "Для callcenter первая часть подставляется как contact.":"For callcenter the first part is inserted as contact.",
+  /* список шаблонов (SF list view) и карточка настроек (SF Details) */
+  "Шаблоны коммуникаций":"Communication templates", "Все шаблоны":"All templates",
+  "Поиск в списке…":"Search this list…", "Сбросить фильтры":"Reset filters",
+  "Название":"Name", "Партнёр":"Partner", "Статус":"Status",
+  "элементов":"items", "Отсортировано по":"Sorted by", "всего":"total",
+  "активных":"active", "неактивных":"inactive", "активный":"active", "неактивный":"inactive",
+  "Открыть настройки":"Open settings",
+  "Нет шаблонов по заданным фильтрам":"No templates match the filters",
+  "← К списку шаблонов":"← Back to template list",
+  "Основное":"General", "Источник и сегментация":"Source & segmentation",
+  "Контент и ссылки":"Content & links", "Служебные параметры и флаги":"Service parameters & flags",
+  "Сегмент":"Segment", "Описание сегмента":"Segment description",
+  "Сохранить":"Save", "Отменить":"Cancel", "Редактировать":"Edit",
+  "АКТИВНЫЙ":"ACTIVE", "НЕАКТИВНЫЙ":"INACTIVE", "да":"yes", "нет":"no",
+  "Предпросмотр SMS":"SMS preview", "Предпросмотр Push":"Push preview", "Предпросмотр Email":"Email preview",
+  "Тема":"Subject",
+  "Вёрстка шаблона будет подтягиваться из Letteros":"Template markup will be pulled from Letteros",
+  "Пример отображения. Точный вид зависит от устройства и версии ОС.":"Approximate rendering. The exact look depends on device and OS version.",
+  /* мастер: заголовки блоков форм (тексты донора) и «Просмотр» */
+  "1. Обязательные параметры (капитанские)":"1. Required parameters (captain's)",
+  "1. Обязательные параметры":"1. Required parameters",
+  "2. Флаги горизонталей и настроечные":"2. Horizontal & tuning flags",
+  "3. Для КЦ":"3. For call center", "3. Цепочка":"3. Chain",
+  "Выберите шаблон из списка или введите Code / Letteros ID":"Pick a template from the list or enter Code / Letteros ID",
+  "Найти":"Find", "или":"or",
+  "Режим просмотра":"View mode", "По конкретному шаблону":"By specific template",
+  /* цепочки (Flow Builder) */
+  "Название цепочки":"Journey name", "Новая":"New", "Предпросмотр":"Preview",
+  "Старт":"Start", "Действия":"Actions", "Логика":"Logic", "Данные":"Data",
+  "Настройки блока":"Block settings", "Применить":"Apply",
+  "Предпросмотр: будет записано в таблицы процесса":"Preview: what will be written to process tables",
+  "Добавить и соединить":"Add and connect",
+  /* панель отклонений */
+  "Динамика и коридор нормы":"Dynamics and normal range", "Помесячная сводка":"Monthly summary",
+  "Дни с отклонениями":"Days with deviations", "Требуют точечной проверки":"Need a targeted check",
+  "Плавные снижения":"Gradual declines", "Выгрузка":"Export",
+  "↺ Загрузить / заменить":"↺ Load / replace", "＋ Дозагрузить дни":"＋ Append days",
+  "↓ Сохранить в Excel":"↓ Save to Excel", "↓ Комментарии (CSV)":"↓ Comments (CSV)", "Очистить":"Clear",
+  /* OneLink Builder */
+  "Канал и тип рассылки":"Channel and campaign type", "Название кампании":"Campaign name",
+  "Посадочная и deep link":"Landing and deep link", "Fallback-ссылки":"Fallback links",
+  /* управление доступом (admin-users.js, через tr()) */
+  "Почта":"Email", "Имя":"Name", "Роль":"Role", "Разделы":"Sections", "Активен":"Active",
+  "Изменить":"Edit", "Пароль":"Password", "Изменение: ":"Editing: ",
+  "Новый пользователь":"New user", "Пароль (мин. 8)":"Password (min 8)", "Создать":"Create",
+  "Роль задаёт уровень возможностей, набор разделов — что видит пользователь.":"The role sets the capability level; the section set defines what the user sees.",
+};
+/* HTML-заголовки (с выделением) — токены */
+const I18N_HTML = {
+  ru: {
+    h1_home:'Добро пожаловать в <span class="grad">панель управления</span>',
+    h1_comms:'Управление <span class="grad">коммуникациями</span>',
+    h1_dash:'Дашборд <span class="grad">CRM Team</span>',
+    h1_mon:'Мониторинг <span class="grad">процессов CRM</span>',
+    h1_moncamp:'Базовая работа <span class="grad">кампаний</span>',
+    h1_heatmap:'Тепловая <span class="grad">карта</span>',
+    h1_uploads:'Загруженные <span class="grad">инструменты</span>',
+    h1_upform:'Загрузка <span class="grad">HTML-инструмента</span>',
+    h1_srcbuilder:'Конструктор <span class="grad">source</span>',
+  },
+  en: {
+    h1_home:'Welcome to the <span class="grad">control panel</span>',
+    h1_comms:'Communications <span class="grad">management</span>',
+    h1_dash:'CRM Team <span class="grad">dashboard</span>',
+    h1_mon:'CRM process <span class="grad">monitoring</span>',
+    h1_moncamp:'Campaign <span class="grad">basics</span>',
+    h1_heatmap:'Heat <span class="grad">map</span>',
+    h1_uploads:'Uploaded <span class="grad">tools</span>',
+    h1_upform:'Upload an <span class="grad">HTML tool</span>',
+    h1_srcbuilder:'Source <span class="grad">builder</span>',
+  }
+};
+function t(s){ return (UI_LANG === "en" && I18N_EN[s]) ? I18N_EN[s] : s; }
+function tt(token){ return (I18N_HTML[UI_LANG] && I18N_HTML[UI_LANG][token]) || I18N_HTML.ru[token] || ""; }
+let UI_LANG = "ru";
+
+/* Перевод статичных элементов: data-i18n (текст), data-i18n-html (токен), data-i18n-ph (placeholder) */
+function translateStatic(){
+  document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = tt(el.dataset.i18nHtml); });
+  document.querySelectorAll("[data-i18n-ph]").forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
+}
+
+function applyTheme(){
+  let pref = "dark";
+  try { const v = localStorage.getItem("crmpanel:theme"); if (v) pref = JSON.parse(v); } catch(e){}
+  const light = pref === "light" || (pref === "system" && window.matchMedia("(prefers-color-scheme: light)").matches);
+  document.documentElement.classList.toggle("theme-light", light);
+}
+function applyLang(rerender){
+  let lang = "ru";
+  try { const v = localStorage.getItem("crmpanel:lang"); if (v) lang = JSON.parse(v); } catch(e){}
+  UI_LANG = lang === "en" ? "en" : "ru";
+  document.documentElement.lang = UI_LANG;
+  if (rerender){
+    translateStatic();
+    renderLauncher(); renderNav(); renderGrid();
+    editToggle.textContent = document.body.classList.contains("edit-mode") ? t("Готово") : t("Настроить главную");
+    const ha = $("#homeActions"); if (ha) ha.style.display = cur.sid === "home" ? "flex" : "none";
+    const cb = document.querySelector("#collapseBtn span"); if (cb) cb.textContent = t("Свернуть меню");
+    const gear = document.getElementById("settingsLink"); if (gear) gear.title = t("Настройки (настроечная админка)");
+    const wf = document.getElementById("waffleBtn"); if (wf) wf.title = t("Выбрать приложение");
+    if (cur.sid === "uploads") renderUploads(cur.cid);
+    if (typeof sbUpdate === "function") sbUpdate();
+    if (typeof translateAdminChrome === "function") translateAdminChrome();
+  }
+}
+applyTheme();
+applyLang(false);
+window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", applyTheme);
+window.addEventListener("storage", e => {
+  if (e.key === "crmpanel:theme") applyTheme();
+  if (e.key === "crmpanel:lang") applyLang(true);
+  if (e.key === "crmpanel:appSections") renderNav();
+});
+
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("crmpanel:"+k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem("crmpanel:"+k, JSON.stringify(v)); }catch(e){} }
+};
+
+/* =========================================================
+   ПРИЛОЖЕНИЯ (App Launcher — как у Salesforce).
+   Набор доступных разделов для каждого приложения задаётся
+   в настроечной админке и хранится в crmpanel:appSections.
+   Пока всем доступны все разделы (null = все).
+   ========================================================= */
+const APPS = [
+  { id:"Администрирование", note:"Полный набор разделов панели" },
+  { id:"Аналитика", note:"Дашборды, статистика и отклонения" },
+  { id:"Маркетинг", note:"Коммуникации, шаблоны и кампании" },
+  { id:"Бизнес",    note:"Бизнес-инструменты и отчётность" },
+  { id:"Контактный центр", note:"Управление настройками контактных центров" },
+];
+let currentApp = store.get("app", "Администрирование");
+if (!APPS.find(a => a.id === currentApp)) currentApp = "Администрирование";
+
+function allowedSections(){
+  const cfg = store.get("appSections", null);
+  const ids = cfg && cfg[currentApp];
+  return Array.isArray(ids) ? ids : null;   /* null = все разделы */
+}
+function appAllows(sid){
+  if (sid === "home") return true;
+  const a = allowedSections();
+  return !a || a.includes(sid);
+}
+
+const launcher = $("#launcher");
+function renderLauncher(){
+  $("#appName").textContent = t(currentApp);
+  const lt = document.querySelector("#launcher .l-title"); if (lt) lt.textContent = t("Приложения");
+  const box = $("#launcherList"); box.innerHTML = "";
+  APPS.forEach(a => {
+    const el = document.createElement("div");
+    el.className = "l-app" + (a.id === currentApp ? " current" : "");
+    el.innerHTML = `<span class="l-ico">${a.id[0]}</span>
+      <span class="l-body"><b>${t(a.id)}</b><span>${t(a.note)}</span></span>
+      <span class="l-check">✓</span>`;
+    el.onclick = () => setApp(a.id);
+    box.appendChild(el);
+  });
+}
+/* элементы, доступные только в отдельных приложениях (appOnly) */
+function childVisible(k){ return !k.appOnly || k.appOnly.includes(currentApp); }
+/* элементы, видимые только в отдельных приложениях (карточка тепловой карты — «Маркетинг») */
+function updateAppSpecific(){
+  const hm = document.getElementById("ovHeatmapCard");
+  if (hm) hm.style.display = currentApp === "Маркетинг" ? "" : "none";
+}
+function setApp(id){
+  currentApp = id; store.set("app", id);
+  renderLauncher(); renderNav(); updateAppSpecific();
+  launcher.classList.remove("open");
+  if (!appAllows(cur.sid)) return openSection("home");
+  /* если открытый подраздел недоступен в новом приложении — на обзор раздела */
+  const s = NAV.find(n => n.id === cur.sid);
+  if (s && s.children && cur.cid){
+    const child = s.children.find(c => c.id === cur.cid);
+    if (child && !childVisible(child)) openSection(cur.sid);
+  }
+}
+$("#waffleBtn").onclick = e => { e.stopPropagation(); launcher.classList.toggle("open"); };
+document.addEventListener("click", e => { if (!launcher.contains(e.target)) launcher.classList.remove("open"); });
+
+/* ---------- ACL оболочки: зеркало правил applyNavAcl (api.js) для
+   динамически строящихся списков (flyout, «Быстрые ссылки») ---------- */
+function aclAllows(item){
+  if (item.envs){
+    const name = window.CRM_ENV && window.CRM_ENV.name;
+    if (!name || item.envs.indexOf(name) < 0) return false;
+  }
+  const me = window.CRM_ME;
+  if (item.adminOnly && me && !me.isAdmin) return false;
+  if (item.children) return item.children.some(aclAllows);
+  if (item.noAcl) return true;   /* клиентский инструмент без серверной секции */
+  const aclId = item.aclSection || item.id;   /* viewer следует правам admin */
+  if (me && me.sections && aclId !== "home" && me.sections.indexOf(aclId) < 0) return false;
+  return true;
+}
+
+/* ---------- сайдбар 1-го уровня ---------- */
+const sidebar = $("#sidebar");
+if (store.get("sidebarCollapsed", false)) sidebar.classList.add("collapsed");
+$("#collapseBtn").onclick = () => {
+  sidebar.classList.toggle("collapsed");
+  store.set("sidebarCollapsed", sidebar.classList.contains("collapsed"));
+};
+
+const navEl = $("#nav");
+function hasKids(item){ return !!item.children || item.id === "uploads"; }
+function renderNav(){
+  navEl.innerHTML = "";
+  NAV.forEach(item => {
+    if (!appAllows(item.id)) return;
+    const el = document.createElement("div");
+    el.className = "nav-item" + (item.id === cur.sid ? " active" : "");
+    el.dataset.id = item.id; el.title = t(item.label);
+    if (item.envs) {
+      /* раздел, ограниченный средами: скрыт, пока /api/env не подтвердит нужную среду */
+      el.dataset.envs = item.envs.join(",");
+      const envName = window.CRM_ENV && window.CRM_ENV.name;
+      if (!envName || item.envs.indexOf(envName) < 0) el.style.display = "none";
+    }
+    if (item.adminOnly) el.dataset.adminOnly = "1"; /* раздел только для роли ADMIN */
+    if (item.noAcl) el.dataset.noAcl = "1";         /* клиентский инструмент: не фильтровать по me.sections */
+    if (item.children) {
+      /* группа: её id — не раздел; applyNavAcl скрывает её, когда скрыты все ACL-дети.
+         В data-children — только дети, подчинённые серверному ACL (по их acl-id);
+         если есть хоть один no-acl ребёнок — группа всегда видима (data-no-acl). */
+      el.dataset.group = "1";
+      el.dataset.children = item.children.filter(c => !c.noAcl).map(c => c.aclSection || c.id).join(",");
+      if (item.children.some(c => c.noAcl)) el.dataset.noAcl = "1";
+    }
+    el.innerHTML = `<span class="nav-ico">${ICONS[item.icon]||""}</span><span class="nav-label">${t(item.label)}</span>`
+      + (hasKids(item) ? `<span class="nav-more">${ICONS.chev}</span>` : "");
+    el.onclick = () => { hideFlyout(); openSection(item.id); };
+    el.onmouseenter = () => { clearTimeout(flyTimer); hasKids(item) ? showFlyout(el, item) : hideFlyout(); };
+    el.onmouseleave = () => { flyTimer = setTimeout(hideFlyout, 200); };
+    navEl.appendChild(el);
+  });
+  /* сайдбар перерисован с нуля — переприменяем RBAC-фильтрацию (api.js) */
+  if (typeof window.applyNavAcl === "function") window.applyNavAcl();
+}
+
+/* ---------- всплывающий сайдбар 2-го уровня ---------- */
+let flyTimer = null;
+const flyout = $("#flyout");
+flyout.onmouseenter = () => clearTimeout(flyTimer);
+flyout.onmouseleave = () => { flyTimer = setTimeout(hideFlyout, 200); };
+
+function showFlyout(itemEl, s){
+  const kids = (s.id === "uploads" ? uploadChildren() : s.children || []).filter(childVisible).filter(aclAllows);
+  if (!kids.length){ hideFlyout(); return; }
+  $("#flyoutTitle").textContent = t(s.label);
+  const list = $("#flyoutList"); list.innerHTML = "";
+  kids.forEach(k => {
+    const el = document.createElement("div");
+    el.className = "sn-item nav-item" + (cur.sid === s.id && cur.cid === k.id ? " active" : "") + (k.action ? " sn-action" : "");
+    el.dataset.id = k.id;   /* контракт applyNavAcl: кликабельный пункт = .nav-item с dataset.id */
+    if (k.noAcl || s.id === "uploads") el.dataset.noAcl = "1";
+    if (k.aclSection) el.dataset.aclSection = k.aclSection;
+    el.title = t(k.label);
+    el.innerHTML = `<span class="sn-ico">${ICONS[k.icon]||ICONS.doc}</span><span class="sn-label">${escapeShellHtml(t(k.label))}</span>`;
+    el.onclick = e => { e.stopPropagation(); hideFlyout(); openSection(s.id, k.id); };
+    list.appendChild(el);
+  });
+  flyout.classList.add("open");
+  const r = itemEl.getBoundingClientRect();
+  const sb = sidebar.getBoundingClientRect();
+  flyout.style.left = (sb.right + 6) + "px";
+  const top = Math.min(r.top, window.innerHeight - flyout.offsetHeight - 12);
+  flyout.style.top = Math.max(62, top) + "px";
+}
+function hideFlyout(){ flyout.classList.remove("open"); }
+
+/* Бейдж среды: имя и цвет приходят с бэкенда (GET /api/env); крепится в шапку после названия приложения */
+if (window.CRM && CRM.envReady) {
+  CRM.envReady.then(env => {
+    if (!env || !env.name) return;
+    const pill = document.createElement("span");
+    pill.className = "env-pill " + env.name;
+    pill.textContent = env.name.toUpperCase();
+    pill.title = "Среда: " + env.name;
+    const an = document.getElementById("appName");
+    if (an) an.insertAdjacentElement("afterend", pill);
+  });
+}
+
+/* ---------- переключение разделов ---------- */
+let cur = { sid:"home", cid:null };
+
+function sectionById(id){ return NAV.find(n => n.id === id); }
+
+/* Доступен ли раздел на текущей среде: если у пункта задан envs:[...], он доступен только
+   на этих средах (имя приходит из /api/env). До ответа env раздел со списком сред скрыт. */
+function sectionAllowed(s){
+  if (!s || !s.envs) return true;
+  var name = window.CRM_ENV && window.CRM_ENV.name;
+  return !!name && s.envs.indexOf(name) >= 0;
+}
+
+/* openSection(sid[, cid]): sid — пункт 1-го уровня, cid — подраздел группы.
+   Группа без cid открывает обзорную страницу (overviewView).
+   Хуки живого приложения сохранены: setAdminMode (wizard/list/dashboard в #sec-admin),
+   renderAccessSection, initJourneysSection, лечение Chart.js в «Отклонениях». */
+/* ---------- Смена собственного пароля (шапка → «Пароль») ---------- */
+function openPwdDialog(){
+  ["pwdCurrent","pwdNew","pwdRepeat"].forEach(function(id){ var e = $("#"+id); if (e) e.value = ""; });
+  var msg = $("#pwdMsg"); if (msg) { msg.textContent = ""; msg.className = "pwd-msg"; }
+  $("#pwdDialog").style.display = "";
+  setTimeout(function(){ var f = $("#pwdCurrent"); if (f) f.focus(); }, 30);
+}
+function closePwdDialog(){ $("#pwdDialog").style.display = "none"; }
+function submitPwdDialog(){
+  var cur = $("#pwdCurrent").value, next = $("#pwdNew").value, rep = $("#pwdRepeat").value;
+  var msg = $("#pwdMsg");
+  msg.className = "pwd-msg";
+  if (!cur || !next) { msg.textContent = t("Заполни текущий и новый пароль"); return; }
+  if (next.length < 8) { msg.textContent = t("Новый пароль — минимум 8 символов"); return; }
+  if (next !== rep) { msg.textContent = t("Новые пароли не совпадают"); return; }
+  CRM.changeOwnPassword(cur, next).then(function(){
+    msg.className = "pwd-msg ok";
+    msg.textContent = t("Пароль изменён");
+    setTimeout(closePwdDialog, 1200);
+  }).catch(function(e){ msg.textContent = e.message || t("Не удалось изменить пароль"); });
+}
+document.addEventListener("keydown", function(e){
+  if (e.key === "Escape" && $("#pwdDialog") && $("#pwdDialog").style.display !== "none") closePwdDialog();
+});
+
+function openSection(sid, cid){
+  let s = sectionById(sid);
+  if (!s){
+    /* совместимость со старой плоской навигацией: openSection('admin') и т.п.
+       (например, из journeys.js) — ищем id среди детей групп */
+    const parent = NAV.find(n => n.children && n.children.some(c => c.id === sid));
+    if (!parent) return;
+    cid = sid; sid = parent.id; s = parent;
+  }
+  if (!appAllows(sid)) { if (sid !== "home") openSection("home"); return; }
+  // Не открываем раздел, ограниченный средами (напр. «Цепочки» — только test), на чужой среде.
+  if (!sectionAllowed(s)) { if (sid !== "home") openSection("home"); return; }
+
+  let target = s;
+  if (sid === "uploads"){
+    /* «Загруженные инструменты»: null → обзор с карточками, up-new → форма загрузки, up-<id> → инструмент */
+    const kids = uploadChildren();
+    if (cid && !kids.find(k => k.id === cid)) cid = null;
+    renderUploads(cid);
+    const k = cid ? kids.find(x => x.id === cid) : null;
+    target = { view:"view-uploads", label: (k && !k.action) ? k.label : s.label };
+    if (!k || k.action) cid = cid === "up-new" ? "up-new" : null;
+  } else if (s.children){
+    let child = cid ? s.children.find(c => c.id === cid) : null;
+    if (child && !(childVisible(child) && aclAllows(child))) child = null;
+    target = child || { view: s.overviewView, label: s.label };
+    cid = child ? cid : null;
+  } else {
+    cid = null;
+  }
+  cur = { sid, cid };
+
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === target.view));
+  document.querySelectorAll("#nav .nav-item").forEach(n => n.classList.toggle("active", n.dataset.id === sid));
+
+  if (target.view === "view-mon-campaigns") monBack();   /* мониторинг всегда начинаем с блоков */
+  if (target.adminMode && typeof setAdminMode === "function") setAdminMode(target.adminMode);
+  if (sid === "access" && typeof renderAccessSection === "function") renderAccessSection();
+  if (sid === "journeys" && typeof initJourneysSection === "function") initJourneysSection();
+  if (target.view === "sec-deviations") setTimeout(() => {
+    /* графики Chart.js, созданные в скрытой секции, имеют нулевой размер —
+       при первом показе пересоздаём их через renderAll(). setTimeout, а не rAF:
+       rAF может не срабатывать в фоновых/нерендерящихся вкладках */
+    try {
+      if (typeof CHART !== "undefined" && CHART && typeof renderAll === "function"){
+        const broken = Object.values(CHART).some(c => c && (!c.width || !c.height));
+        if (broken) renderAll();
+      }
+    } catch(e){}
+  }, 30);
+
+  if (sid !== "home" && cid !== "up-new") trackRecent({ sid, cid, label: target.label });
+  document.title = "CRM Team · " + t(target.label || s.label);
+  const ha = $("#homeActions"); if (ha) ha.style.display = sid === "home" ? "flex" : "none";
+  store.set("lastSection", { sid, cid });
+}
+
+/* Режим раздела админки: wizard (мастер) / list (шаблоны) / dashboard / view (просмотр настроек).
+   Все режимы — одна секция #sec-admin: канальные вкладки заменены настроечным
+   блоком канала (#wizardChannelBar), сами вкладки скрыты, openTab сохранён. */
+function setAdminMode(mode){
+  const tabsBar = document.getElementById("tabsBar");
+  if (!tabsBar) return;
+  tabsBar.style.display = "none";   /* вкладки заменены сайдбаром и настроечным блоком канала */
+  const chBar = document.getElementById("wizardChannelBar");
+  if (mode === "list" || mode === "dashboard" || mode === "view"){
+    if (chBar) chBar.style.display = "none";
+    document.querySelectorAll("#sec-admin .form").forEach(f => f.classList.remove("active"));
+    const target = document.getElementById(mode);
+    if (target) target.classList.add("active");
+  } else {
+    /* мастер: канал выбирается в настроечном блоке (как у Salesforce) */
+    if (chBar) chBar.style.display = "";
+    const seg = document.querySelector("#wizardChannelSeg button.active");
+    wizardSetChannel(seg ? seg.dataset.ch : "sms");
+  }
+}
+
+/* ---------- мастер: выбор канала настроечным блоком ---------- */
+function wizardSetChannel(ch){
+  document.querySelectorAll("#wizardChannelSeg button").forEach(function(b){
+    b.classList.toggle("active", b.dataset.ch === ch);
+  });
+  document.querySelectorAll("#sec-admin .form").forEach(function(f){ f.classList.remove("active"); });
+  const f = document.getElementById(ch);
+  if (f) f.classList.add("active");
+  /* как при переходе на канальную вкладку (openTab): новый шаблон → сбрасываем контекст
+     редактирования, чтобы сохранение пошло как INSERT, а не UPDATE открытого шаблона */
+  window.CRM_CURRENT = null;
+}
+
+/* ---------- мониторинг: заглушки статистики блоков ---------- */
+function monDetail(title){
+  const home = document.getElementById("monCampaignsHome");
+  const det = document.getElementById("monCampaignsDetail");
+  home.style.display = "none";
+  det.classList.add("open");
+  const stubText = UI_LANG === "en"
+    ? `Charts and control metrics for the "${escapeShellHtml(t(title))}" block will appear here: dynamics, thresholds and alerts.`
+    : `Здесь появятся графики и контрольные метрики блока «${escapeShellHtml(title)}»: динамика, пороги и алерты.`;
+  det.innerHTML = `<button class="mon-back" onclick="monBack()">${t("← К блокам мониторинга")}</button>
+    <div class="ov-head"><h1>${escapeShellHtml(t(title))}</h1></div>
+    <div class="ov-sub">${t("Мониторинг · Базовая работа кампаний")}</div>
+    <div class="mon-stub"><b>${t("Статистика в разработке")}</b>
+      ${stubText}</div>`;
+}
+function monBack(){
+  const home = document.getElementById("monCampaignsHome");
+  const det = document.getElementById("monCampaignsDetail");
+  if (home) home.style.display = "";
+  if (det){ det.classList.remove("open"); det.innerHTML = ""; }
+}
+
+/* =========================================================
+   ЗАГРУЖЕННЫЕ ИНСТРУМЕНТЫ
+   HTML-файлы хранятся в localStorage (crmpanel:uploadedTools)
+   и открываются в исходном оформлении (без адаптации).
+   ========================================================= */
+function getTools(){ return store.get("uploadedTools", []); }
+function saveTools(list){
+  try { localStorage.setItem("crmpanel:uploadedTools", JSON.stringify(list)); return true; }
+  catch(e){ alert("Не удалось сохранить инструмент: файл слишком большой для хранилища браузера (~5 МБ на все инструменты). Удалите неиспользуемые инструменты и попробуйте снова."); return false; }
+}
+function uploadChildren(){
+  /* noAcl: детей раздела «Загруженные инструменты» не фильтруем по me.sections */
+  const kids = [{ id:"up-new", label:"Загрузить инструмент", icon:"plus", action:true, noAcl:true }];
+  getTools().forEach(t => kids.push({ id:"up-"+t.id, label:t.name, icon:"doc", noAcl:true }));
+  return kids;
+}
+
+function detectToolName(html, filename){
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const title = doc.querySelector("title");
+    if (title && title.textContent.trim()) return title.textContent.trim();
+    const h1 = doc.querySelector("h1");
+    if (h1 && h1.textContent.trim()) return h1.textContent.trim().slice(0, 80);
+  } catch(e){}
+  return (filename || "Инструмент").replace(/\.html?$/i, "");
+}
+
+function uploadsOverviewHtml(){
+  const tools = getTools();
+  const cards = tools.map(tool => `
+    <div class="ov-card" data-open="up-${tool.id}">
+      <div class="ov-ico">${ICONS.doc}</div>
+      <h3>${escapeShellHtml(tool.name)}</h3>
+      <div class="ov-meta">${new Date(tool.ts).toLocaleDateString(UI_LANG === "en" ? "en-GB" : "ru-RU")} · ${(tool.html.length/1024).toFixed(0)} ${UI_LANG === "en" ? "KB" : "КБ"}</div>
+      <span class="ov-go">${t("Открыть →")}</span>
+    </div>`).join("");
+  return `<div class="up-form-wrap">
+    <div class="ov-head"><h1>${tt("h1_uploads")}</h1></div>
+    <div class="ov-sub">${t("Свои HTML-страницы внутри панели.")} ${tools.length ? t("Выберите инструмент или загрузите новый.") : t("Загрузите первый инструмент.")}</div>
+    <div class="ov-grid">${cards}
+      <div class="ov-card dashed" data-open="up-new">
+        <div class="ov-ico">${ICONS.plus}</div>
+        <h3>${t("Загрузить инструмент")}</h3>
+        <p>${t("Добавьте HTML-файл — он появится в этом разделе и в меню слева.")}</p>
+        <span class="ov-go">${t("Загрузить →")}</span>
+      </div>
+    </div></div>`;
+}
+
+function uploadFormHtml(){
+  const en = UI_LANG === "en";
+  return `<div class="up-form-wrap"><div class="up-form">
+    <h1>${tt("h1_upform")}</h1>
+    <div class="up-sub">${en
+      ? "Upload a ready HTML page — it will appear in the Uploaded tools section and open in its original design."
+      : "Загрузите готовую HTML-страницу — она появится в разделе «Загруженные инструменты» и откроется в своём исходном оформлении."}</div>
+    <div class="up-field"><label>${t("Название инструмента (необязательно — распознаем из файла автоматически)")}</label>
+      <input type="text" id="upName" placeholder="${en ? "e.g.: Audience calculator" : "например: Калькулятор аудиторий"}"></div>
+    <div class="up-drop" id="upDrop">
+      <div class="up-big">${t("Перетащите файл .html сюда")}</div>
+      <p>${t("или нажмите, чтобы выбрать файл")}</p>
+    </div>
+    <input type="file" id="upFile" accept=".html,.htm" style="display:none">
+    <div class="up-note">${en
+      ? "<b>How it works:</b> the file is stored in the browser (localStorage) and opens in an embedded window without design changes. The name comes from the field above or from the file's &lt;title&gt;/&lt;h1&gt;. Rename or delete the tool on its page."
+      : "<b>Как это работает:</b> файл сохраняется в браузере (localStorage) и открывается во встроенном окне без изменения оформления. Название берётся из поля выше либо из &lt;title&gt;/&lt;h1&gt; файла. Переименовать или удалить инструмент можно на его странице."}</div>
+  </div></div>`;
+}
+function wireUploadForm(host){
+  const drop = host.querySelector("#upDrop"), file = host.querySelector("#upFile");
+  drop.onclick = () => file.click();
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add("hover"); };
+  drop.ondragleave = () => drop.classList.remove("hover");
+  drop.ondrop = e => {
+    e.preventDefault(); drop.classList.remove("hover");
+    if (e.dataTransfer.files.length) importToolFile(e.dataTransfer.files[0], host.querySelector("#upName").value);
+  };
+  file.onchange = () => { if (file.files.length) importToolFile(file.files[0], host.querySelector("#upName").value); };
+}
+function importToolFile(f, customName){
+  if (!/\.html?$/i.test(f.name) && f.type !== "text/html"){ alert("Нужен файл .html"); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const html = String(reader.result);
+    const name = (customName || "").trim() || detectToolName(html, f.name);
+    const tool = { id: Date.now().toString(36), name, html, ts: Date.now() };
+    const list = getTools(); list.push(tool);
+    if (saveTools(list)){
+      openSection("uploads", "up-" + tool.id);
+      renderWidgetBody("quicklinks");
+    }
+  };
+  reader.readAsText(f, "utf-8");
+}
+
+function renderUploads(cid){
+  const host = $("#uploadsHost");
+  if (!cid){
+    host.innerHTML = uploadsOverviewHtml();
+    host.querySelectorAll("[data-open]").forEach(card =>
+      card.onclick = () => openSection("uploads", card.dataset.open));
+    return;
+  }
+  if (cid === "up-new"){
+    host.innerHTML = uploadFormHtml();
+    wireUploadForm(host);
+    return;
+  }
+  const tool = getTools().find(x => "up-" + x.id === cid);
+  if (!tool){ renderUploads(null); return; }
+  host.innerHTML = `<div class="up-toolbar">
+      <b>${escapeShellHtml(tool.name)}</b>
+      <span class="up-meta">${new Date(tool.ts).toLocaleDateString(UI_LANG === "en" ? "en-GB" : "ru-RU")} · ${(tool.html.length/1024).toFixed(0)} ${UI_LANG === "en" ? "KB" : "КБ"}</span>
+      <span class="spacer"></span>
+      <button class="btn" id="upFit" title="Переключить масштаб">${t("Масштаб: по ширине")}</button>
+      <button class="btn" id="upRename">${t("Переименовать")}</button>
+      <button class="btn ghost-danger" id="upDelete">${t("Удалить")}</button>
+    </div>
+    <div class="up-frame-wrap" id="upFrameWrap">
+      <iframe class="up-frame" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups" title="Загруженный инструмент"></iframe>
+    </div>`;
+  /* инструмент открывается в исходном оформлении — адаптация под айдентику отключена;
+     по умолчанию содержимое масштабируется под ширину доступного окна */
+  const frame = host.querySelector(".up-frame");
+  const wrap = host.querySelector("#upFrameWrap");
+  let fitMode = "fit";
+  function fitFrame(){
+    try {
+      const doc = frame.contentDocument;
+      if (!doc || !doc.documentElement) return;
+      const natural = Math.max(doc.documentElement.scrollWidth, doc.body ? doc.body.scrollWidth : 0, 320);
+      const w = wrap.clientWidth, h = wrap.clientHeight;
+      if (fitMode === "fit" && natural > w && w > 0){
+        const scale = w / natural;
+        frame.style.width = natural + "px";
+        frame.style.height = (h / scale) + "px";
+        frame.style.transform = "scale(" + scale + ")";
+      } else {
+        frame.style.width = "100%";
+        frame.style.height = "100%";
+        frame.style.transform = "none";
+      }
+    } catch(e){}
+  }
+  frame.addEventListener("load", () => { fitFrame(); setTimeout(fitFrame, 300); });
+  new ResizeObserver(fitFrame).observe(wrap);
+  host.querySelector("#upFit").onclick = function(){
+    fitMode = fitMode === "fit" ? "raw" : "fit";
+    this.textContent = fitMode === "fit" ? t("Масштаб: по ширине") : t("Масштаб: 1:1");
+    fitFrame();
+  };
+  frame.srcdoc = tool.html;
+  host.querySelector("#upRename").onclick = () => {
+    const n = prompt(UI_LANG === "en" ? "New tool name:" : "Новое название инструмента:", tool.name);
+    if (n && n.trim()){
+      saveTools(getTools().map(x => x.id === tool.id ? { ...x, name:n.trim() } : x));
+      openSection("uploads", "up-" + tool.id);
+      renderWidgetBody("quicklinks");
+    }
+  };
+  host.querySelector("#upDelete").onclick = () => {
+    const q = UI_LANG === "en" ? 'Delete tool "' + tool.name + '"?' : "Удалить инструмент «" + tool.name + "»?";
+    if (confirm(q)){
+      saveTools(getTools().filter(x => x.id !== tool.id));
+      openSection("uploads");
+      renderWidgetBody("quicklinks");
+    }
+  };
+}
+
+/* ---------- недавние инструменты ---------- */
+function trackRecent(r){
+  let rec = store.get("recent", []).filter(x => !(x.sid === r.sid && x.cid === r.cid));
+  rec.unshift({ sid:r.sid, cid:r.cid, label:r.label, ts:Date.now() });
+  store.set("recent", rec.slice(0, 6));
+  renderWidgetBody("recent");
+}
+
+/* =========================================================
+   ВИДЖЕТЫ ГЛАВНОЙ
+   ========================================================= */
+/* листья навигации (для «Быстрых ссылок»): дети групп + одиночные разделы */
+function navLeaves(){
+  const rows = [];
+  NAV.forEach(s => {
+    if (s.id === "home" || !appAllows(s.id) || !aclAllows(s)) return;
+    if (s.children) s.children.filter(c => childVisible(c) && aclAllows(c)).forEach(c => rows.push({ sid:s.id, cid:c.id, label:c.label }));
+    else rows.push({ sid:s.id, cid:null, label:s.label });
+  });
+  return rows;
+}
+
+const WIDGETS = {
+  summary: { title:"Сводка по коммуникациям", eyebrow:"Дашборд", render: el => {
+    el.innerHTML = `<div class="kpi-row">
+      <div class="kpi"><div class="v up">+12,4%</div><div class="l">Выручка CPA, нед/нед</div></div>
+      <div class="kpi"><div class="v flat">318</div><div class="l">Активных кампаний</div></div>
+      <div class="kpi"><div class="v up">4,8%</div><div class="l">CTR e-mail, среднее</div></div>
+      <div class="kpi"><div class="v down">−3 SLA</div><div class="l">Просроченные задачи</div></div>
+    </div>
+    <div class="empty-note" style="margin-top:10px">Демо-данные. Подключите источник в следующей итерации.</div>`;
+  }},
+  tasks: { title:"Мои задачи", eyebrow:"To-do", render: el => {
+    const tasks = store.get("tasks", []);
+    el.innerHTML = `<div class="task-add">
+        <input type="text" placeholder="Новая задача… (Enter)" id="taskInput">
+      </div><div id="taskList"></div>`;
+    const list = el.querySelector("#taskList");
+    if (!tasks.length) list.innerHTML = `<div class="empty-note">Задач пока нет — добавьте первую.</div>`;
+    tasks.forEach((t, i) => {
+      const row = document.createElement("div");
+      row.className = "task" + (t.done ? " done" : "");
+      row.innerHTML = `<input type="checkbox" ${t.done?"checked":""}><span class="task-text">${escapeShellHtml(t.text)}</span><button class="task-del" title="Удалить">×</button>`;
+      row.querySelector("input").onchange = e => { tasks[i].done = e.target.checked; store.set("tasks", tasks); renderWidgetBody("tasks"); };
+      row.querySelector(".task-del").onclick = () => { tasks.splice(i,1); store.set("tasks", tasks); renderWidgetBody("tasks"); };
+      list.appendChild(row);
+    });
+    el.querySelector("#taskInput").onkeydown = e => {
+      if (e.key === "Enter" && e.target.value.trim()){
+        tasks.unshift({ text:e.target.value.trim(), done:false });
+        store.set("tasks", tasks); renderWidgetBody("tasks");
+      }
+    };
+  }},
+  recent: { title:"Недавно использованные инструменты", eyebrow:"История", render: el => {
+    const rec = store.get("recent", []).filter(r => r.sid);
+    if (!rec.length){ el.innerHTML = `<div class="empty-note">${t("Откройте любой инструмент в меню слева — он появится здесь.")}</div>`; return; }
+    el.innerHTML = `<div class="link-list">` + rec.map((r, i) =>
+      `<div class="link-row" data-i="${i}"><span class="dot"></span>${escapeShellHtml(t(r.label))}<span class="when">${timeAgo(r.ts)}</span></div>`
+    ).join("") + `</div>`;
+    el.querySelectorAll(".link-row").forEach(row => row.onclick = () => { const r = rec[+row.dataset.i]; openSection(r.sid, r.cid); });
+  }},
+  quicklinks: { title:"Быстрые ссылки", eyebrow:"Инструменты", render: el => {
+    const rows = navLeaves();
+    el.innerHTML = `<div class="link-list">` + rows.map((r, i) =>
+      `<div class="link-row" data-i="${i}"><span class="dot"></span>${escapeShellHtml(t(r.label))}</div>`
+    ).join("") + `</div>`;
+    el.querySelectorAll(".link-row").forEach(row => row.onclick = () => { const r = rows[+row.dataset.i]; openSection(r.sid, r.cid); });
+  }},
+  status: { title:"Статусы систем", eyebrow:"Мониторинг", render: el => {
+    el.innerHTML = `
+      <div class="status-line">Рассылки e-mail<span class="pill ok">OK</span></div>
+      <div class="status-line">Push-шлюз<span class="pill ok">OK</span></div>
+      <div class="status-line">Выгрузка CPA-фида<span class="pill warn">Задержка</span></div>
+      <div class="status-line">Интеграция AppsFlyer<span class="pill ok">OK</span></div>
+      <div class="empty-note" style="margin-top:8px">Демо-данные для MVP.</div>`;
+  }},
+};
+
+const DEFAULT_LAYOUT = ["summary","tasks","recent","quicklinks"];
+let layout = store.get("layout", DEFAULT_LAYOUT).filter(id => WIDGETS[id]);
+
+const grid = $("#grid");
+function renderGrid(){
+  grid.innerHTML = "";
+  layout.forEach(id => {
+    const w = WIDGETS[id];
+    const card = document.createElement("div");
+    card.className = "widget"; card.dataset.id = id;
+    card.innerHTML = `
+      <div class="widget-head">
+        <div><div class="widget-eyebrow">${w.eyebrow}</div><div class="widget-title">${t(w.title)}</div></div>
+        <div class="widget-tools"><button class="wtool del" title="${t("Убрать блок")}">×</button></div>
+      </div>
+      <div class="widget-body"></div>`;
+    card.querySelector(".del").onclick = () => { layout = layout.filter(x => x !== id); saveLayout(); };
+    enableDrag(card);
+    grid.appendChild(card);
+    w.render(card.querySelector(".widget-body"));
+  });
+  renderChips();
+}
+function renderWidgetBody(id){
+  const card = grid.querySelector(`.widget[data-id="${id}"]`);
+  if (card && layout.includes(id)) WIDGETS[id].render(card.querySelector(".widget-body"));
+}
+function saveLayout(){ store.set("layout", layout); renderGrid(); }
+
+/* ---------- добавление блоков ---------- */
+const chipRow = $("#chipRow");
+function renderChips(){
+  chipRow.innerHTML = "";
+  Object.entries(WIDGETS).forEach(([id, w]) => {
+    const used = layout.includes(id);
+    const chip = document.createElement("div");
+    chip.className = "chip" + (used ? " used" : "");
+    chip.textContent = (used ? "✓ " : "+ ") + t(w.title);
+    if (!used) chip.onclick = () => { layout.push(id); saveLayout(); };
+    chipRow.appendChild(chip);
+  });
+}
+
+/* ---------- drag & drop (в режиме настройки) ---------- */
+let dragId = null;
+function enableDrag(card){
+  card.addEventListener("dragstart", e => { dragId = card.dataset.id; card.classList.add("dragging"); });
+  card.addEventListener("dragend", () => { dragId = null; card.classList.remove("dragging");
+    grid.querySelectorAll(".widget").forEach(w => w.classList.remove("drop-target")); });
+  card.addEventListener("dragover", e => { if (dragId && dragId !== card.dataset.id){ e.preventDefault(); card.classList.add("drop-target"); }});
+  card.addEventListener("dragleave", () => card.classList.remove("drop-target"));
+  card.addEventListener("drop", e => {
+    e.preventDefault();
+    const from = layout.indexOf(dragId), to = layout.indexOf(card.dataset.id);
+    if (from < 0 || to < 0) return;
+    layout.splice(to, 0, layout.splice(from, 1)[0]);
+    saveLayout();
+  });
+}
+
+/* ---------- режим настройки ---------- */
+const editToggle = $("#editToggle");
+editToggle.onclick = () => {
+  const on = document.body.classList.toggle("edit-mode");
+  editToggle.textContent = on ? t("Готово") : t("Настроить главную");
+  editToggle.classList.toggle("accent", on);
+  grid.querySelectorAll(".widget").forEach(w => w.draggable = on);
+};
+
+/* ---------- утилиты ---------- */
+function escapeShellHtml(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function timeAgo(ts){
+  const m = Math.round((Date.now() - ts) / 60000);
+  if (m < 1) return t("сейчас");
+  if (m < 60) return m + t(" мин");
+  const h = Math.round(m / 60);
+  if (h < 24) return h + t(" ч");
+  return Math.round(h / 24) + t(" дн");
+}
+
+/* первичная отрисовка шапки и меню (виджеты и восстановление раздела — в стартовом скрипте в конце документа) */
+renderLauncher();
+renderNav();
+updateAppSpecific();
