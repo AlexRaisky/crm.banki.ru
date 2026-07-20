@@ -160,16 +160,26 @@ public class ProdDbService {
         }
     }
 
-    /** INSERT: id и код — max+1 прод-таблицы (кроме cc: segment из payload). */
+    /**
+     * INSERT: id и код выдаёт прод (max+1). Правила нумерации:
+     *  sms / email — в диапазоне до 10000 (ct.codeLimit), push — сквозной счётчик,
+     *  cc — id по счётчику, а segment приходит из формы как есть.
+     */
     private long insert(Connection c, ChannelTable ct, long localCode, String payloadJson) throws Exception {
-        long newId = maxPlusOne(c, ct.table(), "id");
         long code;
+        long newId;
         if ("id".equals(ct.codeCol())) {
-            code = newId;                                   // email: код = id
-        } else if (ct.prodAssignsCode()) {
-            code = maxPlusOne(c, ct.table(), ct.codeCol()); // sms/push: code = max(code)+1
+            newId = maxPlusOne(c, ct.table(), "id", ct.codeLimit());  // email: код = id
+            code = newId;
         } else {
-            code = localCode;                               // cc: segment как есть
+            newId = maxPlusOne(c, ct.table(), "id", null);            // суррогатный id — без ограничения
+            code = ct.prodAssignsCode()
+                    ? maxPlusOne(c, ct.table(), ct.codeCol(), ct.codeLimit())
+                    : localCode;                                     // cc: segment как есть
+        }
+        if (ct.codeLimit() != null && code >= ct.codeLimit()) {
+            throw new IllegalStateException("Свободные коды в диапазоне до " + ct.codeLimit()
+                    + " закончились для " + ct.table());
         }
         // Явно перечисляем ТОЛЬКО заполненные колонки: остальные получат дефолты прод-таблицы
         // (передача явного NULL перебила бы DEFAULT и упала на NOT NULL).
@@ -183,8 +193,14 @@ public class ProdDbService {
             if (payload.get(k) == null || payload.get(k).isNull()) continue;
             cols.add(k);
         }
-        StringBuilder colList = new StringBuilder("id, " + ct.codeCol());
-        StringBuilder valList = new StringBuilder("?::bigint, ?::bigint");
+        // у email бизнес-код и есть id — колонку нельзя перечислять дважды
+        boolean codeIsId = "id".equals(ct.codeCol());
+        StringBuilder colList = new StringBuilder("id");
+        StringBuilder valList = new StringBuilder("?::bigint");
+        if (!codeIsId) {
+            colList.append(", ").append(ct.codeCol());
+            valList.append(", ?::bigint");
+        }
         for (String k : cols) {
             colList.append(", ").append(k);
             valList.append(", p.").append(k);
@@ -193,9 +209,10 @@ public class ProdDbService {
         String sql = "INSERT INTO " + ct.table() + " (" + colList + ") SELECT " + valList +
                 " FROM jsonb_populate_record(NULL::" + ct.table() + ", ?::jsonb) p";
         try (PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, newId);
-            ps.setLong(2, code);
-            ps.setString(3, payloadJson);
+            int i = 1;
+            ps.setLong(i++, newId);
+            if (!codeIsId) ps.setLong(i++, code);
+            ps.setString(i, payloadJson);
             ps.executeUpdate();
         }
         return code;
@@ -249,12 +266,16 @@ public class ProdDbService {
         return cols;
     }
 
-    private static long maxPlusOne(Connection c, String table, String col) throws Exception {
-        try (PreparedStatement ps = c.prepareStatement(
-                "SELECT COALESCE(MAX(" + col + "), 0) + 1 FROM " + table);
-             ResultSet rs = ps.executeQuery()) {
-            rs.next();
-            return rs.getLong(1);
+    /** max+1 по колонке; при заданном limit нумерация идёт только в диапазоне ниже него. */
+    private static long maxPlusOne(Connection c, String table, String col, Long limit) throws Exception {
+        String sql = "SELECT COALESCE(MAX(" + col + "), 0) + 1 FROM " + table
+                + (limit == null ? "" : " WHERE " + col + " < ?");
+        try (PreparedStatement ps = c.prepareStatement(sql)) {
+            if (limit != null) ps.setLong(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getLong(1);
+            }
         }
     }
 }

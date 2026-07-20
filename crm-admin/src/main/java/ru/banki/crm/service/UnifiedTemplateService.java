@@ -23,16 +23,23 @@ public class UnifiedTemplateService {
             "sending_day, product_type, partner_name, touch_point, aff_sub3, selection_wizard_service, " +
             "marketplace, dialog, loyalty, national_rating, news, mobile_app, night_send, permanent_exclude, active_flag";
 
-    public record ChannelTable(String table, String codeCol, boolean hasNight, boolean prodAssignsCode) {}
+    /**
+     * @param codeLimit верхняя граница бизнес-кода (исключительно): код выделяется
+     *                  в диапазоне ниже неё. null — без ограничения.
+     */
+    public record ChannelTable(String table, String codeCol, boolean hasNight,
+                               boolean prodAssignsCode, Long codeLimit) {}
 
-    /** (таблица, колонка бизнес-кода, есть ли night_send, генерит ли код прод-БД). */
+    /** (таблица, колонка бизнес-кода, есть ли night_send, генерит ли код прод-БД, лимит кода). */
     public static ChannelTable channelTable(String channel) {
         return switch (channel == null ? "" : channel) {
-            case "sms" -> new ChannelTable("notice.d_com_sms_template", "code", true, true);
-            case "push" -> new ChannelTable("notice.push_template", "code", true, true);
-            case "email" -> new ChannelTable("notice.email_template", "id", false, true);
-            // у КЦ код (segment) — бизнес-ключ, задаётся пользователем, прод его не переназначает
-            case "cc" -> new ChannelTable("callcenter.d_segment_properties", "segment", false, false);
+            // SMS и Email нумеруются в диапазоне до 10000 (выше — служебные коды прода)
+            case "sms" -> new ChannelTable("notice.d_com_sms_template", "code", true, true, 10000L);
+            case "push" -> new ChannelTable("notice.push_template", "code", true, true, null);
+            case "email" -> new ChannelTable("notice.email_template", "id", false, true, 10000L);
+            // у КЦ код (segment) — бизнес-ключ, задаётся пользователем, прод его не переназначает;
+            // суррогатный id прод выдаёт по счётчику
+            case "cc" -> new ChannelTable("callcenter.d_segment_properties", "segment", false, false, null);
             default -> null;
         };
     }

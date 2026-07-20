@@ -210,12 +210,24 @@ public class TemplateStore {
     }
 
     // ------------------------------------------------------------------ WRITE
-    /** Следующий бизнес-код канала (у КЦ segment задаёт пользователь). */
+    /**
+     * Следующий бизнес-код канала (у КЦ segment задаёт пользователь).
+     * Диапазон нумерации тот же, что и в проде: sms/email — до 10000, push — сквозной.
+     */
     public long nextCode(String channel) {
-        Long max = jdbc.queryForObject(
-                "SELECT COALESCE(MAX(code), 0) FROM template.d_template WHERE channel = ?",
-                Long.class, channel);
-        return (max == null ? 0 : max) + 1;
+        Long limit = UnifiedTemplateService.channelTable(channel) == null
+                ? null : UnifiedTemplateService.channelTable(channel).codeLimit();
+        Long max = limit == null
+                ? jdbc.queryForObject("SELECT COALESCE(MAX(code), 0) FROM template.d_template WHERE channel = ?",
+                        Long.class, channel)
+                : jdbc.queryForObject("SELECT COALESCE(MAX(code), 0) FROM template.d_template" +
+                        " WHERE channel = ? AND code < ?", Long.class, channel, limit);
+        long next = (max == null ? 0 : max) + 1;
+        if (limit != null && next >= limit) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Свободные коды канала " + channel + " в диапазоне до " + limit + " закончились");
+        }
+        return next;
     }
 
     public void insert(String channel, long code, TemplateDto d) {
