@@ -204,6 +204,15 @@
       }
       return req("GET", "/api/templates" + (qs.length ? "?" + qs.join("&") : ""));
     },
+    countTemplates: function (filters) {
+      var qs = [];
+      if (filters) {
+        Object.keys(filters).forEach(function (k) {
+          if (filters[k]) qs.push(encodeURIComponent(k) + "=" + encodeURIComponent(filters[k]));
+        });
+      }
+      return req("GET", "/api/templates/count" + (qs.length ? "?" + qs.join("&") : ""));
+    },
     getTemplate: function (channel, code) { return req("GET", "/api/templates/" + channel + "/" + code); },
     createTemplate: function (dto) { return req("POST", "/api/templates/" + dto.channel, dto); },
     updateTemplate: function (channel, code, dto) { return req("PUT", "/api/templates/" + channel + "/" + code, dto); },

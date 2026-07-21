@@ -1,46 +1,56 @@
 /* ========== Список шаблонов (формат Salesforce list view) ========== */
 
-/* Применение фильтров */
+/* Сколько строк тянем с сервера за раз (пагинация: не грузим весь справочник в браузер). */
+var LIST_PAGE = 50;
+var _listReqSeq = 0;      // защита от гонки: применяем только последний ответ
+var _listDebounce = null; // чтобы не бить в бэк на каждый символ поиска
+var _listCount = null;    // {total, active} под текущими фильтрами (для строки статистики)
+
+/* Текущие значения фильтров и поиска из DOM. */
+function collectListFilters() {
+    var val = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
+    var f = {
+        channel: val('filterChannel'),
+        product: val('filterProduct'),
+        touch: val('filterTouch'),
+        trigger: val('filterTrigger'),
+        active: val('filterActive')
+    };
+    var s = document.getElementById('listSearch');
+    f.q = s ? s.value.trim() : '';
+    return f;
+}
+
+/* Запрос страницы списка с сервера: фильтры + поиск + limit. Фильтрация/поиск идут по всей
+   базе на бэке, в браузер приезжают только первые LIST_PAGE строк. */
+function fetchListPage() {
+    var f = collectListFilters();
+    var my = ++_listReqSeq;
+
+    var params = {};
+    Object.keys(f).forEach(function (k) { if (f[k]) params[k] = f[k]; });
+    params.limit = LIST_PAGE;
+
+    var stats = document.getElementById('listStats');
+    if (stats && (!ALL_TEMPLATES || !ALL_TEMPLATES.length)) stats.textContent = sfdT('Загрузка…');
+
+    var p = CRM.listTemplates(params).then(function (items) {
+        if (my !== _listReqSeq) return;             // пришёл устаревший ответ — игнорируем
+        ALL_TEMPLATES = (items || []).map(CRM.apiItemToList);
+        renderTemplateList(ALL_TEMPLATES);
+    });
+    CRM.countTemplates(f).then(function (c) {
+        if (my !== _listReqSeq) return;
+        _listCount = c;
+        writeListStats((ALL_TEMPLATES || []).length);
+    }).catch(function () {});
+    return p;
+}
+
+/* Применение фильтров — дебаунсим, серверный запрос ниже. */
 function applyFilters() {
-    const channelFilter = document.getElementById('filterChannel').value;
-    const productFilter = document.getElementById('filterProduct').value;
-    const touchFilter = document.getElementById('filterTouch').value;
-    const triggerFilter = document.getElementById('filterTrigger').value;
-    const activeFilter = document.getElementById('filterActive').value;
-
-    // Начинаем со всех шаблонов
-    let filtered = [...ALL_TEMPLATES];
-
-    // Фильтр по статусу
-    if (activeFilter === 'active') {
-        filtered = filtered.filter(t => t.active);
-    } else if (activeFilter === 'inactive') {
-        filtered = filtered.filter(t => !t.active);
-    }
-
-    if (channelFilter) {
-        filtered = filtered.filter(t => t.channel === channelFilter);
-    }
-    if (productFilter) {
-        filtered = filtered.filter(t => t.product === productFilter);
-    }
-    if (touchFilter) {
-        filtered = filtered.filter(t => t.touch === touchFilter);
-    }
-    if (triggerFilter) {
-        filtered = filtered.filter(t => t.trigger === triggerFilter);
-    }
-
-    // Поиск по списку (как в Salesforce): code / название / продукт / партнёр / точка / триггер
-    const searchEl = document.getElementById('listSearch');
-    const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
-    if (q) {
-        filtered = filtered.filter(t =>
-            [t.code, t.name, t.product, t.partner, t.touch, t.trigger]
-                .some(v => String(v || '').toLowerCase().indexOf(q) !== -1));
-    }
-
-    renderTemplateList(filtered);
+    if (_listDebounce) clearTimeout(_listDebounce);
+    _listDebounce = setTimeout(fetchListPage, 180);
 }
 
 /* Сброс фильтров */
@@ -55,8 +65,18 @@ function resetFilters() {
     applyFilters();
 }
 
-/* Максимум строк для отрисовки списка (данные все в памяти, отсекается только рендер) */
-var LIST_RENDER_CAP = 300;
+/* Строка статистики: сколько показано из общего числа под фильтрами (total/active — с сервера). */
+function writeListStats(shown) {
+    var stats = document.getElementById('listStats');
+    if (!stats) return;
+    var total = _listCount ? _listCount.total : shown;
+    var active = _listCount ? _listCount.active : null;
+    var more = total > shown;
+    stats.innerHTML = shown + ' ' + sfdT('элементов') +
+        (more ? ' <span style="color:var(--coral,#e06)">(' + sfdT('первые') + ' ' + shown + ' ' + sfdT('из') + ' ' + total + ' — ' + sfdT('уточните фильтр/поиск') + ')</span>' : '') +
+        ' · ' + sfdT('Отсортировано по') + ' «' + sfdT(LIST_SORT_LABELS[LIST_SORT.col] || LIST_SORT.col) + '»' +
+        (active != null ? ' · ' + sfdT('всего') + ' ' + total + ' (' + sfdT('активных') + ': ' + active + ', ' + sfdT('неактивных') + ': ' + (total - active) + ')' : '');
+}
 
 /* Сортировка списка по колонке (клик по заголовку) */
 var LIST_SORT = { col: 'code', dir: 1 };
@@ -67,10 +87,10 @@ function listSortBy(col) {
     applyFilters();
 }
 
-/* Отрисовка списка (формат Salesforce list view) */
+/* Отрисовка списка (формат Salesforce list view). templates — это уже страница (≤ LIST_PAGE),
+   пришедшая с сервера отфильтрованной; сортируем и рисуем её целиком. */
 function renderTemplateList(templates) {
     const tbody = document.getElementById('templateListBody');
-    const stats = document.getElementById('listStats');
 
     const sorted = templates.slice().sort((a, b) => {
         let va = a[LIST_SORT.col], vb = b[LIST_SORT.col];
@@ -85,22 +105,14 @@ function renderTemplateList(templates) {
         if (mark) mark.textContent = th.dataset.col === LIST_SORT.col ? (LIST_SORT.dir === 1 ? '▲' : '▼') : '';
     });
 
-    const totalAll = ALL_TEMPLATES.length;
-    const totalActive = ALL_TEMPLATES.filter(x => x.active).length;
-    // Рендерим не больше LIST_RENDER_CAP строк — иначе на десятках тысяч шаблонов DOM подвисает.
-    // Всё в памяти для фильтрации/поиска; отсекается только отрисовка. Уточните фильтр/поиск, чтобы увидеть нужное.
-    const capped = sorted.length > LIST_RENDER_CAP;
-    const shown = capped ? sorted.slice(0, LIST_RENDER_CAP) : sorted;
-    stats.innerHTML = `${sorted.length} ${sfdT('элементов')}` +
-        (capped ? ` <span style="color:var(--coral,#e06)">(${sfdT('показаны первые')} ${LIST_RENDER_CAP} — ${sfdT('уточните фильтр/поиск')})</span>` : '') +
-        ` · ${sfdT('Отсортировано по')} «${sfdT(LIST_SORT_LABELS[LIST_SORT.col] || LIST_SORT.col)}» · ${sfdT('всего')} ${totalAll} (${sfdT('активных')}: ${totalActive}, ${sfdT('неактивных')}: ${totalAll - totalActive})`;
+    writeListStats(sorted.length);
 
     if (sorted.length === 0) {
         tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 30px; color: #888;">${sfdT('Нет шаблонов по заданным фильтрам')}</td></tr>`;
         return;
     }
 
-    tbody.innerHTML = shown.map(tpl => {
+    tbody.innerHTML = sorted.map(tpl => {
         const channelLabels = { sms: 'SMS', push: 'Push', 'mobile-push': 'Push', email: 'Email', cc: 'КЦ', fa: 'FA', vk: 'VK', la: 'Live Activity' };
         return `
             <tr>
@@ -119,16 +131,26 @@ function renderTemplateList(templates) {
     }).join('');
 }
 
-/* Открыть шаблон из списка */
+/* Открыть шаблон из списка (или из узла цепочки — тогда строки может не быть на текущей странице). */
 function viewFromList(templateId) {
-    const listItem = ALL_TEMPLATES.find(t => t.id === templateId);
-    if (!listItem) return;
+    var listItem = (ALL_TEMPLATES || []).find(function (t) { return t.id === templateId; });
+    var channel, code;
+    if (listItem) {
+        channel = listItem.channel; code = listItem.code;
+    } else {
+        // id = "channel:code"; кода с двоеточием нет, режем по первому
+        var i = templateId.indexOf(':');
+        if (i < 0) return;
+        channel = templateId.slice(0, i);
+        code = templateId.slice(i + 1);
+    }
     // Помечаем контекст редактирования, чтобы сохранение пошло как UPDATE именно этого шаблона.
-    window.CRM_CURRENT = { channel: listItem.channel, code: listItem.code };
-    // Тянем полные данные шаблона из бэкенда; при ошибке — частичные из строки списка.
-    CRM.getTemplate(listItem.channel, listItem.code)
+    window.CRM_CURRENT = { channel: channel, code: code };
+    // Тянем полные данные шаблона из бэкенда; при ошибке — частичные из строки списка (если она есть).
+    CRM.getTemplate(channel, code)
         .then(function (dto) { showTemplateInViewer(templateId, CRM.dtoToV1(dto)); })
         .catch(function () {
+            if (!listItem) { alert('Не удалось загрузить шаблон: ' + templateId); return; }
             showTemplateInViewer(templateId, {
                 channel: listItem.channel, code: listItem.code, name: listItem.name, brief: listItem.name,
                 trigger: listItem.trigger, product: listItem.product, partner: listItem.partner,
@@ -243,16 +265,15 @@ function templateToListItem(t, id) {
     };
 }
 
-/* Данные списка шаблонов приходят из бэкенда (GET /api/templates), а не из mock-data.json.
+/* Данные списка шаблонов приходят из бэкенда (GET /api/templates) постранично — грузим первую
+   страницу (LIST_PAGE строк) под текущими фильтрами, а не весь справочник.
    Дашборд пока вне скоупа — оставляем демо-данные (FALLBACK_DASHBOARD). */
 function loadMockData() {
-    return CRM.listTemplates()
-        .then(function (items) {
-            ALL_TEMPLATES = (items || []).map(CRM.apiItemToList);
-            MOCK_TEMPLATES = {};
-            if (typeof FALLBACK_DASHBOARD !== 'undefined') DASHBOARD_DATA = FALLBACK_DASHBOARD;
-            if (typeof refreshViewTemplateSelect === 'function') refreshViewTemplateSelect();
-        });
+    if (typeof MOCK_TEMPLATES === 'undefined' || !MOCK_TEMPLATES) MOCK_TEMPLATES = {};
+    if (typeof FALLBACK_DASHBOARD !== 'undefined') DASHBOARD_DATA = FALLBACK_DASHBOARD;
+    return fetchListPage().then(function () {
+        if (typeof refreshViewTemplateSelect === 'function') refreshViewTemplateSelect();
+    });
 }
 
 /* Минимальный HTML писем для fallback (когда mock-data.json не загружен) */

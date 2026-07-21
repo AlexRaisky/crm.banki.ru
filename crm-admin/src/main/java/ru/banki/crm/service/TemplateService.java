@@ -36,7 +36,26 @@ public class TemplateService {
     // ------------------------------------------------------------------- LIST
     @Transactional(readOnly = true)
     public List<TemplateListItemDto> list(String channel, String product, String touch,
-                                          String trigger, String active) {
+                                          String trigger, String active, String q, Integer limit) {
+        var s = filtered(channel, product, touch, trigger, active, q);
+        if (limit != null && limit > 0) s = s.limit(limit);
+        return s.toList();
+    }
+
+    /** Счётчик под теми же фильтрами (для строки «всего N, активных M») — без выгрузки строк на клиент. */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Long> count(String channel, String product, String touch,
+                                             String trigger, String active, String q) {
+        var rows = filtered(channel, product, touch, trigger, active, q).toList();
+        long total = rows.size();
+        long act = rows.stream().filter(i -> Boolean.TRUE.equals(i.active())).count();
+        return java.util.Map.of("total", total, "active", act);
+    }
+
+    /** Общий пайплайн фильтрации (канал/продукт/точка/триггер/статус + свободный поиск q). */
+    private java.util.stream.Stream<TemplateListItemDto> filtered(String channel, String product, String touch,
+                                                                  String trigger, String active, String q) {
+        String needle = q == null ? "" : q.trim().toLowerCase();
         return store.list().stream()
                 .filter(i -> channel == null || channel.isBlank() || channel.equals(i.channel()))
                 .filter(i -> touch == null || touch.isBlank() || touch.equals(i.touchPoint()))
@@ -45,7 +64,23 @@ public class TemplateService {
                         || (i.productType() != null && i.productType().contains(product)))
                 .filter(i -> active == null || active.isBlank()
                         || ("active".equals(active) == Boolean.TRUE.equals(i.active())))
-                .toList();
+                .filter(i -> needle.isEmpty() || matches(i, needle));
+    }
+
+    /** Поиск как в списке на клиенте: code / название / продукт / партнёр / точка / триггер / source. */
+    private static boolean matches(TemplateListItemDto i, String needle) {
+        return contains(i.code(), needle)
+                || contains(i.communicationName(), needle)
+                || contains(i.partnerName(), needle)
+                || contains(i.touchPoint(), needle)
+                || contains(i.triggerType(), needle)
+                || contains(i.sourceType(), needle)
+                || contains(i.letterosId(), needle)
+                || (i.productType() != null && i.productType().stream().anyMatch(p -> contains(p, needle)));
+    }
+
+    private static boolean contains(String v, String needle) {
+        return v != null && v.toLowerCase().contains(needle);
     }
 
     // -------------------------------------------------------------------- GET

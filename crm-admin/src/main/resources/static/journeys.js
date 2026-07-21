@@ -829,22 +829,17 @@
     var code = inp ? (inp.value || "").trim() : "";
     if (!channel || !code) { alert("В блоке не указан канал или код шаблона."); return; }
 
-    var open = function () {
-      var id = channel + ":" + code;
-      var exists = (window.ALL_TEMPLATES || []).some(function (t) { return t.id === id; });
-      if (!exists) {
+    // Проверяем наличие шаблона запросом к бэку (список в браузере теперь постраничный, всего не держим).
+    var id = channel + ":" + code;
+    CRM.getTemplate(channel, code)
+      .then(function () {
+        window.jrEditClose();
+        if (typeof openSection === "function") openSection("admin");
+        if (typeof viewFromList === "function") viewFromList(id); // сам переключит вкладку «Просмотр настроек»
+      })
+      .catch(function () {
         alert("Шаблон " + channel.toUpperCase() + " с кодом " + code + " не найден. Заведи его в «Мастере коммуникаций».");
-        return;
-      }
-      window.jrEditClose();
-      if (typeof openSection === "function") openSection("admin");
-      if (typeof viewFromList === "function") viewFromList(id); // сам переключит вкладку «Просмотр настроек»
-    };
-    if ((window.ALL_TEMPLATES || []).length === 0 && typeof loadMockData === "function") {
-      loadMockData().then(open);
-    } else {
-      open();
-    }
+      });
   };
 
   // ↗ у Subflow: открыть выбранную вложенную цепочку в этом же редакторе.

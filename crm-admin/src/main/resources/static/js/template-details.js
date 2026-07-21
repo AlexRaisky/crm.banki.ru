@@ -721,36 +721,43 @@ function viewerSetChannel(ch) {
 
 function viewerFilterChanged() { refreshViewTemplateSelect(); }
 
+var VIEWER_PICK_CAP = 500;     // столько <option> максимум тянем с сервера
+var _viewSelSeq = 0;           // защита от гонки ответов
 function refreshViewTemplateSelect() {
     var sel = document.getElementById('templateSelect');
     if (!sel) return;
     var current = sel.value;
-    var srcQ = (document.getElementById('viewSearchSource') || { value: '' }).value.trim().toLowerCase();
-    var letQ = (document.getElementById('viewSearchLetteros') || { value: '' }).value.trim().toLowerCase();
+    var srcQ = (document.getElementById('viewSearchSource') || { value: '' }).value.trim();
+    var letQ = (document.getElementById('viewSearchLetteros') || { value: '' }).value.trim();
 
-    var items = [];
-    (window.ALL_TEMPLATES || []).forEach(function(t) {
-        var ch = t.channel === 'mobile-push' ? 'push' : t.channel;
-        if (VIEWER_CHANNEL && ch !== VIEWER_CHANNEL) return;
-        // source_type: из данных; если пуст — собираем по правилу source
-        var src = t.source || [t.channel, t.trigger, t.product, t.partner, t.touch].filter(Boolean).join('_');
-        if (srcQ && String(src).toLowerCase().indexOf(srcQ) === -1) return;
-        var lid = t.letteros != null && t.letteros !== '' ? t.letteros : t.code;
-        if (VIEWER_CHANNEL === 'email' && letQ && String(lid == null ? '' : lid).toLowerCase().indexOf(letQ) === -1) return;
-        items.push({ id: t.id, code: t.code, name: t.name || String(t.code), active: t.active });
-    });
+    // Тянем с сервера отфильтрованно (по каналу + поиску), а не перебираем весь справочник в браузере.
+    var params = { limit: VIEWER_PICK_CAP };
+    if (VIEWER_CHANNEL) params.channel = VIEWER_CHANNEL;
+    var q = srcQ || letQ;
+    if (q) params.q = q;
 
     var sfdTT = (typeof sfdT === 'function') ? sfdT : function(s){ return s; };
-    // на десятках тысяч шаблонов не строим тысячи <option> — первые 500, остальное сужается поиском по source
-    var VCAP = 500, vcapped = items.length > VCAP, vlist = vcapped ? items.slice(0, VCAP) : items;
-    sel.innerHTML = '<option value="">' + sfdTT('— Выберите шаблон') + ' (' + items.length + (vcapped ? ', ' + sfdTT('показаны первые') + ' ' + VCAP : '') + ')</option>';
-    vlist.forEach(function(t) {
-        var opt = document.createElement('option');
-        opt.value = t.id;
-        opt.textContent = t.code + ' - ' + t.name + (t.active ? '' : ' ' + sfdTT('(неактивный)'));
-        sel.appendChild(opt);
-    });
-    if (current && items.some(function(t) { return t.id === current; })) sel.value = current;
+    var my = ++_viewSelSeq;
+    CRM.listTemplates(params).then(function(raw) {
+        if (my !== _viewSelSeq) return;                     // устаревший ответ — игнор
+        var items = (raw || []).map(CRM.apiItemToList).filter(function(t) {
+            // для email доп. сужаем по letteros-коду (server q ищет по всем полям)
+            if (VIEWER_CHANNEL === 'email' && letQ) {
+                var lid = (t.letteros != null && t.letteros !== '') ? t.letteros : t.code;
+                return String(lid == null ? '' : lid).toLowerCase().indexOf(letQ.toLowerCase()) !== -1;
+            }
+            return true;
+        });
+        var capped = items.length >= VIEWER_PICK_CAP;
+        sel.innerHTML = '<option value="">' + sfdTT('— Выберите шаблон') + ' (' + items.length + (capped ? ', ' + sfdTT('первые') + ' ' + VIEWER_PICK_CAP + ' — ' + sfdTT('уточните поиск') : '') + ')</option>';
+        items.forEach(function(t) {
+            var opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.code + ' - ' + (t.name || String(t.code)) + (t.active ? '' : ' ' + sfdTT('(неактивный)'));
+            sel.appendChild(opt);
+        });
+        if (current && items.some(function(t) { return t.id === current; })) sel.value = current;
+    }).catch(function(){});
 }
 
 /* Скачать текущие данные как mock-data.json */

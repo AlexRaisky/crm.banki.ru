@@ -25,15 +25,30 @@ public class TemplateController {
         this.access = access;
     }
 
-    /** Unified list for "Список шаблонов" (v2 FetchAllTemplates). */
+    /** Unified list for "Список шаблонов" (v2 FetchAllTemplates).
+     *  q — свободный поиск, limit — сколько строк вернуть (пагинация: грузим первые N, не весь справочник). */
     @GetMapping
     public List<TemplateListItemDto> list(@RequestParam(required = false) String channel,
                                           @RequestParam(required = false) String product,
                                           @RequestParam(required = false) String touch,
                                           @RequestParam(required = false) String trigger,
-                                          @RequestParam(required = false) String active) {
+                                          @RequestParam(required = false) String active,
+                                          @RequestParam(required = false) String q,
+                                          @RequestParam(required = false) Integer limit) {
         access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN);
-        return service.list(channel, product, touch, trigger, active);
+        return service.list(channel, product, touch, trigger, active, q, limit);
+    }
+
+    /** Итоги под теми же фильтрами: {total, active} — для строки статистики без выгрузки всех строк. */
+    @GetMapping("/count")
+    public Map<String, Long> count(@RequestParam(required = false) String channel,
+                                   @RequestParam(required = false) String product,
+                                   @RequestParam(required = false) String touch,
+                                   @RequestParam(required = false) String trigger,
+                                   @RequestParam(required = false) String active,
+                                   @RequestParam(required = false) String q) {
+        access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN);
+        return service.count(channel, product, touch, trigger, active, q);
     }
 
     @GetMapping("/{channel}/{code}")
