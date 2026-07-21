@@ -171,7 +171,11 @@ var PROMO_MONTHS = ['Январь','Февраль','Март','Апрель','�
 var PROMO_STATUS_NEW = 'К планированию';
 var PROMO_STATUS_ASK = 'Нужен статус по рассылке';
 var PROMO_STATUSES = ['', PROMO_STATUS_NEW, 'запланировано', 'в работе', 'отправлено', 'отменено'];
-var PROMO_COLS = 11;          /* колонок до кнопки «+» в строке-дате */
+var PROMO_COLS = 12;          /* колонок до кнопки «+» в строке-дате */
+/* иконка календаря в колонке «Дата»: по клику дату можно переназначить */
+var PROMO_CAL_ICO = '<svg class="cal-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>';
 var PROMO_VER = 3;            /* версия схемы строк */
 var PROMO_ROWS = [];
 var PROMO_EDIT = null;        /* { i, k, v } — v это черновик правки */
@@ -429,20 +433,6 @@ function promoAnalyze(){
       if (Object.keys(uniqGroups).length > 1)
         chanUse[c].forEach(function(i){ add(i, 'bad', pmT('Промо одного продукта должны идти в разных каналах') + ' (' + c + ')'); });
     });
-  });
-
-  /* — одна база по продукту в день — только в одном канале — */
-  var byBase = {};
-  PROMO_ROWS.forEach(function(r, i){
-    if (!r.base) return;
-    var k = r.d + '|' + r.product + '|' + r.base;
-    (byBase[k] = byBase[k] || []).push(i);
-  });
-  Object.keys(byBase).forEach(function(k){
-    var chans = {};
-    byBase[k].forEach(function(i){ (PROMO_ROWS[i].chan || []).forEach(function(c){ chans[c] = 1; }); });
-    if (Object.keys(chans).length > 1)
-      byBase[k].forEach(function(i){ add(i, 'bad', pmT('База по одному продукту в день должна использоваться только в одном канале')); });
   });
 
   /* — не больше 4 промо в день (разные каналы одной акции = одно промо) — */
@@ -721,7 +711,14 @@ function promoRowHtml(x){
   var warnIcon = f.warn.length
     ? '<span class="flag warn" title="' + pmAttr(f.warn.join('\n')) + '">⚠</span>' : '';
 
+  /* дата: иконка календаря — перенос записи в другой день без перезаведения */
+  var dateEd = '<input type="date" class="cell-in" value="' + pmAttr(draft != null ? draft : r.d) +
+    '" onchange="promoDraft(this.value)" onkeydown="promoKey(event)">';
+  var dateHtml = '<span class="date-pick" title="' + pmT('Перенести на другую дату') + '">' +
+    PROMO_CAL_ICO + '<span class="dv">' + pmEsc(promoFmtDate(r.d)) + '</span></span>';
+
   return '<tr class="' + (r.total ? 'total-row ' : '') + (f.bad.length ? 'rule-bad' : '') + '">' +
+    promoCell(x, 'd', dateHtml, dateEd) +
     promoCell(x, 'product', badIcon + (pmEsc(r.product) || '—'), prodEd) +
     promoCell(x, 'partner', pmEsc(r.partner) || '—', partEd) +
     promoCell(x, 'base', r.base ? '<span class="multi">' + pmEsc(r.base) + '</span>' : '—', baseEd) +
@@ -797,6 +794,8 @@ function promoNewRowHtml(){
   var n = PROMO_NEW;
   var prodOpts = PROMO_PRODUCTS.map(function(p){ return p.name; });
   return '<tr class="new-row">' +
+    '<td class="c-d"><input type="date" id="promoNewDate" class="cell-in" value="' + pmAttr(n.d) +
+      '" onchange="promoNewSet(\'d\',this.value)"></td>' +
     '<td><select class="cell-in" onchange="promoNewSet(\'product\',this.value)">' +
       '<option value="">' + pmT('Продукт') + '…</option>' +
       prodOpts.map(function(p){ return '<option value="' + pmAttr(p) + '"' + (p === n.product ? ' selected' : '') + '>' + pmEsc(p) + '</option>'; }).join('') +
@@ -828,8 +827,6 @@ function promoNewRowHtml(){
   '</tr>' +
   '<tr class="new-foot"><td colspan="' + (PROMO_COLS + 1) + '">' +
     '<div class="nf">' +
-      '<label class="nf-date"><span>' + pmT('Дата') + '</span>' +
-        '<input type="date" id="promoNewDate" class="cell-in" value="' + pmAttr(n.d) + '" onchange="promoNewSet(\'d\',this.value)"></label>' +
       '<div class="np" id="promoNewPreview"></div>' +
       '<div class="nf-btns">' +
         '<button class="btn accent" type="button" id="promoNewSave" onclick="promoNewSave()">' + pmT('Создать') + '</button>' +
@@ -883,6 +880,7 @@ function promoCommit(){
       v = String(v || '').trim();
       if (v && !promoUniqOk(v)){ promoDraftUniq(v); return; }
     }
+    if (e.k === 'd' && !String(v || '').trim()){ PROMO_EDIT = null; promoRender(); return; }  /* дату не очищаем */
     if (e.k === 'task') v = promoTaskKey(v) || String(v || '').trim();
     if (e.k === 'chan'){
       var list = promoNormChan(v);
