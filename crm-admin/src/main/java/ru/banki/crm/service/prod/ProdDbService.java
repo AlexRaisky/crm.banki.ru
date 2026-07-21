@@ -162,19 +162,24 @@ public class ProdDbService {
     }
 
     /**
-     * Читает ВСЕ строки прод-таблицы канала (для сверки и обратного импорта).
-     * Возвращает список jsonb-строк с прод-именами колонок. Read-only, отдельным соединением.
+     * ПОТОКОВО отдаёт строки прод-таблицы канала (для сверки) — по одной, серверным курсором,
+     * без загрузки всей таблицы в память (иначе на больших таблицах — OutOfMemory).
+     * autoCommit=false + fetchSize включают курсор на стороне Postgres.
      */
-    public List<String> readAll(String channel) throws Exception {
+    public void readEach(String channel, java.util.function.Consumer<JsonNode> consumer) throws Exception {
         ChannelTable ct = UnifiedTemplateService.channelTable(channel);
         if (ct == null) throw new IllegalArgumentException("Неизвестный канал: " + channel);
-        List<String> out = new ArrayList<>();
-        try (Connection c = ds().getConnection();
-             PreparedStatement ps = c.prepareStatement("SELECT to_jsonb(t)::text FROM " + ct.table() + " t");
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) out.add(rs.getString(1));
+        try (Connection c = ds().getConnection()) {
+            c.setAutoCommit(false);
+            try (PreparedStatement ps = c.prepareStatement("SELECT to_jsonb(t)::text FROM " + ct.table() + " t")) {
+                ps.setFetchSize(500);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) consumer.accept(om.readTree(rs.getString(1)));
+                }
+            } finally {
+                c.setAutoCommit(true);
+            }
         }
-        return out;
     }
 
     /** Одна прод-строка канала по бизнес-коду (для импорта выбранной строки). null — нет такой. */

@@ -12,6 +12,7 @@ import ru.banki.crm.service.TemplateStore;
 import ru.banki.crm.service.UnifiedTemplateService;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -60,66 +61,63 @@ public class ProdReconcileService {
         List<Map<String, Object>> diverged = new ArrayList<>();
         List<Map<String, Object>> onlyInOurs = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
-        int inSync = 0;
+        int[] inSync = {0};
 
         for (String ch : CHANNELS) {
             String codeCol = UnifiedTemplateService.channelTable(ch).codeCol();
-            Map<Long, JsonNode> prodByCode = new LinkedHashMap<>();
+            // наша сторона (сотни строк) в прод-виде: code -> нормализованный ряд
+            Map<Long, JsonNode> ourView = new HashMap<>();
+            for (Long code : jdbc.queryForList(
+                    "SELECT code FROM template.d_template WHERE channel = ?", Long.class, ch)) {
+                try {
+                    String pj = store.prodPayload(ch, String.valueOf(code));
+                    if (pj != null) ourView.put(code, om.readTree(pj));
+                } catch (Exception ignore) { /* пропускаем битую строку */ }
+            }
+            Set<Long> seen = new HashSet<>();
             try {
-                for (String rowJson : prod.readAll(ch)) {
-                    JsonNode row = om.readTree(rowJson);
+                // прод — потоково, строки в памяти не держим, копим только компактные сводки
+                prod.readEach(ch, row -> {
                     JsonNode cn = row.get(codeCol);
-                    if (cn != null && !cn.isNull()) prodByCode.put(cn.asLong(), row);
-                }
+                    if (cn == null || cn.isNull()) return;
+                    long code = cn.asLong();
+                    JsonNode our = ourView.get(code);
+                    if (our == null) { onlyInProd.add(entry(ch, code, srcType(row))); return; }
+                    seen.add(code);
+                    List<Map<String, Object>> diffs = diffNodes(our, row, codeCol);
+                    if (diffs.isEmpty()) inSync[0]++;
+                    else { Map<String, Object> e = entry(ch, code, srcType(row)); e.put("diffs", diffs); diverged.add(e); }
+                });
             } catch (Exception e) {
                 // нет прод-таблицы канала или ошибка чтения — канал пропускаем, отчёт не роняем
                 skipped.add(ch);
                 log.warn("reconcile: канал {} пропущен: {}", ch, e.getMessage());
                 continue;
             }
-            List<Long> ourCodes = jdbc.queryForList(
-                    "SELECT code FROM template.d_template WHERE channel = ?", Long.class, ch);
-            Set<Long> ourSet = new HashSet<>(ourCodes);
-
-            for (Long code : ourCodes) {
-                JsonNode prodRow = prodByCode.get(code);
-                if (prodRow == null) { onlyInOurs.add(entry(ch, code, null)); continue; }
-                List<Map<String, Object>> diffs = diff(ch, code, prodRow);
-                if (diffs.isEmpty()) inSync++;
-                else { Map<String, Object> e = entry(ch, code, srcType(prodRow)); e.put("diffs", diffs); diverged.add(e); }
-            }
-            for (Map.Entry<Long, JsonNode> pe : prodByCode.entrySet()) {
-                if (!ourSet.contains(pe.getKey())) onlyInProd.add(entry(ch, pe.getKey(), srcType(pe.getValue())));
+            for (Long code : ourView.keySet()) {
+                if (!seen.contains(code)) onlyInOurs.add(entry(ch, code, null));
             }
         }
         out.put("onlyInProd", onlyInProd);
         out.put("diverged", diverged);
         out.put("onlyInOurs", onlyInOurs);
-        out.put("inSync", inSync);
+        out.put("inSync", inSync[0]);
         out.put("skipped", skipped);
         return out;
     }
 
-    /** Пофайловый дифф: наш ряд в прод-виде (prodPayload) vs прод-строка, по управляемым нами полям. */
-    private List<Map<String, Object>> diff(String ch, long code, JsonNode prodRow) {
+    /** Пофайловый дифф двух рядов в прод-виде (наш vs прод), по управляемым нами полям. */
+    private static List<Map<String, Object>> diffNodes(JsonNode our, JsonNode prodRow, String codeCol) {
         List<Map<String, Object>> diffs = new ArrayList<>();
-        try {
-            String ourJson = store.prodPayload(ch, String.valueOf(code));
-            if (ourJson == null) return diffs;
-            JsonNode our = om.readTree(ourJson);
-            String codeCol = UnifiedTemplateService.channelTable(ch).codeCol();
-            our.fieldNames().forEachRemaining(k -> {
-                if (k.equals(codeCol) || k.equals("id")) return;
-                String os = asStr(our.get(k)), ps = asStr(prodRow.get(k));
-                if (!os.equals(ps)) {
-                    Map<String, Object> d = new LinkedHashMap<>();
-                    d.put("field", k); d.put("ours", os); d.put("prod", ps);
-                    diffs.add(d);
-                }
-            });
-        } catch (Exception e) {
-            log.warn("reconcile diff {}/{} failed: {}", ch, code, e.getMessage());
-        }
+        our.fieldNames().forEachRemaining(k -> {
+            if (k.equals(codeCol) || k.equals("id")) return;
+            String os = asStr(our.get(k)), ps = asStr(prodRow.get(k));
+            if (!os.equals(ps)) {
+                Map<String, Object> d = new LinkedHashMap<>();
+                d.put("field", k); d.put("ours", os); d.put("prod", ps);
+                diffs.add(d);
+            }
+        });
         return diffs;
     }
 
