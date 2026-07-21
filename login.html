@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Вход · CRM Панель</title>
+  <style>
+    :root {
+      --bg: #0f1420; --panel: #171e2e; --border: #263145;
+      --text: #e6ebf5; --muted: #8a97ad; --accent: #4a6cf7; --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--text);
+    }
+    .card {
+      width: 360px; max-width: 92vw; background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 32px 28px; box-shadow: 0 20px 60px rgba(0,0,0,.4);
+    }
+    .logo { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 13px; margin: 0 0 24px; }
+    label { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+    input {
+      width: 100%; padding: 11px 12px; border-radius: 9px; border: 1px solid var(--border);
+      background: #0c1120; color: var(--text); font-size: 14px; outline: none;
+    }
+    input:focus { border-color: var(--accent); }
+    button {
+      width: 100%; margin-top: 22px; padding: 12px; border: 0; border-radius: 9px;
+      background: var(--accent); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+    }
+    button:disabled { opacity: .6; cursor: default; }
+    .err { color: var(--danger); font-size: 13px; margin-top: 14px; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <form class="card" id="loginForm">
+    <h1 class="logo">CRM · Панель управления</h1>
+    <p class="sub">Вход по корпоративной почте</p>
+
+    <label for="email">Почта</label>
+    <input id="email" name="email" type="email" autocomplete="username" required placeholder="name@banki.ru">
+
+    <label for="password">Пароль</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+    <button type="submit" id="submitBtn">Войти</button>
+    <div class="err" id="err"></div>
+  </form>
+
+  <script>
+    var form = document.getElementById("loginForm");
+    var err = document.getElementById("err");
+    var btn = document.getElementById("submitBtn");
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      err.textContent = "";
+      btn.disabled = true;
+      var body = new URLSearchParams();
+      body.set("email", document.getElementById("email").value.trim());
+      body.set("password", document.getElementById("password").value);
+      fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        credentials: "same-origin",
+        body: body.toString()
+      }).then(function (r) {
+        if (r.ok) { location.href = "/"; return; }
+        err.textContent = "Неверная почта или пароль";
+        btn.disabled = false;
+      }).catch(function () {
+        err.textContent = "Ошибка сети";
+        btn.disabled = false;
+      });
+    });
+  </script>
+</body>
+</html>

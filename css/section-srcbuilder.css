@@ -1,0 +1,57 @@
+/* ===== Конструктор source — стили, изолированы ===== */
+@scope (#sec-srcbuilder){
+  :scope{color:var(--ink);font-family:var(--sans);font-size:15.5px;line-height:1.6;padding:32px 24px 90px}
+  .wrap{max-width:1080px;margin:0 auto}
+  header.hero{padding-bottom:18px;margin-bottom:10px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--blue);margin-bottom:12px}
+  h1{font-size:30px;font-weight:700;letter-spacing:-.015em;line-height:1.12}
+  h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--dim);margin-top:12px;font-size:15px;max-width:820px}
+  .sub b{color:var(--ink)}
+  .fmt{font-family:var(--mono);font-size:12.5px;background:var(--card2);color:var(--blue);
+    padding:2px 8px;border-radius:6px;white-space:nowrap}
+
+  .result-dock{position:sticky;top:0;z-index:50;padding-top:14px;margin-bottom:22px}
+  .result-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;
+    box-shadow:0 14px 40px rgba(4,12,22,.55);backdrop-filter:blur(6px)}
+  .result-card.is-draft{border-color:rgba(255,184,77,.55);box-shadow:0 0 0 1px rgba(255,184,77,.25),0 14px 40px rgba(4,12,22,.55)}
+  .result-card.is-ready{border-color:rgba(60,250,180,.45)}
+  .result-top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+  .result-top b{font-size:15px}
+  .banner{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;font-weight:700;
+    padding:7px 13px;border-radius:20px;letter-spacing:.03em}
+  .banner.draft{background:var(--amber-bg);color:var(--amber);border:1px solid rgba(255,184,77,.4)}
+  .banner.ready{background:var(--green-bg);color:var(--green);border:1px solid rgba(60,250,180,.4)}
+  .banner .pulse{width:8px;height:8px;border-radius:50%;background:currentColor}
+  .copy-btn{border:0;border-radius:9px;padding:11px 17px;font-family:var(--mono);font-size:13px;font-weight:600;
+    cursor:pointer;background:var(--grad);color:#06202B;margin-left:auto}
+  .copy-btn:disabled{opacity:.45;cursor:not-allowed}
+  .output{font-family:var(--mono);font-size:14px;word-break:break-all;padding:16px;border-radius:12px;
+    background:#06101B;border:1px solid var(--line);color:#CFE8FF;min-height:56px;line-height:1.8}
+  .output .part{color:var(--green)} .output .us{color:var(--faint)}
+  .note{margin-top:11px;font-size:12.5px;color:var(--faint)}
+  .note code{font-family:var(--mono);background:var(--card2);color:var(--blue);padding:1px 6px;border-radius:5px;font-size:12px}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;margin-bottom:20px}
+  .sec-head{display:flex;align-items:center;gap:13px;margin-bottom:18px}
+  .sec-num{font-family:var(--mono);font-size:12px;color:var(--bg);background:var(--grad);
+    border-radius:6px;padding:3px 9px;font-weight:700}
+  h2{font-size:19px;font-weight:640;letter-spacing:-.01em}
+
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+  label{font-weight:600;font-size:14.5px;display:block;margin-bottom:8px}
+  .req{color:var(--coral);font-weight:700}
+  input,select{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;
+    background:var(--bg2);color:var(--ink);font:inherit;font-size:15px;transition:.15s}
+  input::placeholder{color:var(--faint)}
+  select{cursor:pointer;appearance:none;-webkit-appearance:none;
+    background-image:linear-gradient(45deg,transparent 50%,var(--blue) 50%),linear-gradient(135deg,var(--blue) 50%,transparent 50%);
+    background-position:calc(100% - 18px) 20px,calc(100% - 12px) 20px;background-size:6px 6px,6px 6px;background-repeat:no-repeat;padding-right:38px}
+  select option{background:#0D1826;color:#F2F7FD}
+  input:focus,select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(80,195,255,.1)}
+  input[type=date]{color-scheme:dark}
+  .field.missing input,.field.missing select{border-color:rgba(255,184,77,.55);background-color:rgba(255,184,77,.05)}
+  .hint{color:var(--faint);font-size:12.5px;margin-top:7px;line-height:1.5}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}:scope{padding:20px 14px 60px}}
+}
