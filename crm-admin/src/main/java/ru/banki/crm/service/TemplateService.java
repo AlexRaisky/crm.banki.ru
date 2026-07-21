@@ -59,7 +59,7 @@ public class TemplateService {
     public String create(TemplateDto dto) {
         audit.mark();
         String channel = norm(dto.getChannel());
-        if (!List.of("sms", "push", "email", "cc").contains(channel)) {
+        if (!List.of("sms", "push", "email", "cc", "fa", "vk", "la").contains(channel)) {
             throw badChannel(dto.getChannel());
         }
         long code;

@@ -203,7 +203,7 @@ public class TemplateStore {
     /** Имя колонки бизнес-кода в прод-таблице канала. */
     public static String codeColumn(String channel) {
         return switch (channel == null ? "" : channel) {
-            case "email" -> "id";
+            case "email", "fa", "vk", "la" -> "id";
             case "cc" -> "segment";
             default -> "code";
         };

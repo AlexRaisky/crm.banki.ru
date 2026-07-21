@@ -35,6 +35,11 @@ public class UnifiedTemplateService {
             // у КЦ код (segment) — бизнес-ключ, задаётся пользователем, прод его не переназначает;
             // суррогатный id прод выдаёт по счётчику
             case "cc" -> new ChannelTable("callcenter.d_segment_properties", "segment", false, false, null);
+            // Новые типы. Схема прод-таблиц (notice.*) — предварительная, уточняется при
+            // подключении доставки; PK = id, отдельной «code»-колонки нет → codeCol = id (прод присваивает).
+            case "fa" -> new ChannelTable("notice.fa_template", "id", false, true, null);
+            case "vk" -> new ChannelTable("notice.vk_template", "id", false, true, null);
+            case "la" -> new ChannelTable("notice.live_activity_template", "id", true, true, null);
             default -> null;
         };
     }

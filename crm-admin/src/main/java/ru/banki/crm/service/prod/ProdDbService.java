@@ -96,7 +96,7 @@ public class ProdDbService {
             out.put("reachable", true);
             out.put("latencyMs", System.currentTimeMillis() - t0);
             Map<String, Boolean> tables = new LinkedHashMap<>();
-            for (String ch : List.of("sms", "push", "email", "cc")) {
+            for (String ch : List.of("sms", "push", "email", "cc", "fa", "vk", "la")) {
                 ChannelTable ct = UnifiedTemplateService.channelTable(ch);
                 String[] st = ct.table().split("\\.");
                 try (PreparedStatement ps = c.prepareStatement(
@@ -278,7 +278,7 @@ public class ProdDbService {
 
     /** Канал по описанию таблицы (для channel-specific дефолтов). */
     private static String channelOf(ChannelTable ct) {
-        for (String ch : List.of("sms", "push", "email", "cc")) {
+        for (String ch : List.of("sms", "push", "email", "cc", "fa", "vk", "la")) {
             ChannelTable t = UnifiedTemplateService.channelTable(ch);
             if (t != null && t.table().equals(ct.table())) return ch;
         }
