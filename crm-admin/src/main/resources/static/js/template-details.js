@@ -90,6 +90,7 @@ function sfdRecalcNames(){
 function sfdFieldDefs(d){
     var ch = d.channel;
     var isEmail = ch === 'email', isCC = ch === 'cc', isPush = (ch === 'push' || ch === 'mobile-push'), isSms = ch === 'sms';
+    var isFa = ch === 'fa', isVk = ch === 'vk', isLa = ch === 'la';
     var content = [];
     if (isEmail){
         content.push({ k:'subject', label:'Subject', wide:true });
@@ -103,6 +104,37 @@ function sfdFieldDefs(d){
     if (isPush){
         content.push({ k:'deeplink', label:'Deep link', wide:true });
         content.push({ k:'webview', label:'Webview link', wide:true });
+    }
+    if (isFa){
+        content.push({ k:'fa_id', label:'FA ID' });
+        content.push({ k:'channel_id', label:'Channel ID' });
+        content.push({ k:'need_push', label:'Need push', type:'bool' });
+        content.push({ k:'c2d_transport', label:'C2D transport' });
+        content.push({ k:'c2d_account', label:'C2D account' });
+        content.push({ k:'ch2d_operator_id', label:'CH2D operator ID' });
+        content.push({ k:'deeplink', label:'Deep link', wide:true });
+        content.push({ k:'webview', label:'Webview link', wide:true });
+        content.push({ k:'web_url', label:'Web URL', wide:true });
+        content.push({ k:'link_title', label:'Link title' });
+        content.push({ k:'action_buttons', label:'Action buttons (JSON)', wide:true, type:'textarea' });
+    }
+    if (isVk){
+        content.push({ k:'vk_template_name', label:'VK template name' });
+        content.push({ k:'ttl', label:'TTL' });
+        content.push({ k:'ab_group', label:'AB group' });
+        content.push({ k:'buttons', label:'Buttons (JSON)', wide:true, type:'textarea' });
+    }
+    if (isLa){
+        content.push({ k:'activity_name', label:'Activity name' });
+        content.push({ k:'la_event', label:'LA event' });
+        content.push({ k:'la_visualization', label:'LA visualization' });
+        content.push({ k:'la_status', label:'LA status' });
+        content.push({ k:'current_step', label:'Current step' });
+        content.push({ k:'title', label:'Title' });
+        content.push({ k:'deeplink', label:'Deep link', wide:true });
+        content.push({ k:'webview', label:'Webview link', wide:true });
+        content.push({ k:'action_buttons', label:'Action buttons (JSON)', wide:true, type:'textarea' });
+        content.push({ k:'la_visualization_attributes', label:'LA visualization attributes (JSON)', wide:true, type:'textarea' });
     }
     var segRows = [
         { k:'source', label:'Source_type (campaign_name)', wide:true, ro:true, fmt:function(){ return SFD_STATE.work.source; } },
@@ -121,7 +153,7 @@ function sfdFieldDefs(d){
     }
     var secs = [
         { sec:'Основное', rows:[
-            { k:'channel', label:sfdT('Канал'), ro:true, fmt:function(v){ return ({sms:'SMS',push:'Push','mobile-push':'Push',email:'Email',cc:'КЦ'})[v] || v; } },
+            { k:'channel', label:sfdT('Канал'), ro:true, fmt:function(v){ return ({sms:'SMS',push:'Push','mobile-push':'Push',email:'Email',cc:'КЦ',fa:'FA',vk:'VK',la:'Live Activity'})[v] || v; } },
             { k:'code', label:'Code', ro:true },
             { k:'active', label:sfdT('Статус'), type:'bool' },
             { k:'comname', label:'communication_name', wide:true, fmt:function(){ return SFD_STATE.work.comname; } }
@@ -184,7 +216,7 @@ function sfdRender(){
     var output = document.getElementById('settingsOutput');
     if (!output) return;
     var d = st.work;
-    var chLabels = { sms:'SMS', push:'Push', 'mobile-push':'Push', email:'Email', cc:'КЦ' };
+    var chLabels = { sms:'SMS', push:'Push', 'mobile-push':'Push', email:'Email', cc:'КЦ', fa:'FA', vk:'VK', la:'Live Activity' };
     var isEmail = d.channel === 'email';
     var mainId = isEmail
         ? (d.letteros_id != null && d.letteros_id !== '' ? d.letteros_id : d.code)
@@ -550,6 +582,25 @@ function collectFormData(formEl, channel) {
         else if (classes.includes('title')) data.title = val;
         else if (classes.includes('deeplink')) data.deeplink = val;
         else if (classes.includes('webview')) data.webview = val;
+        else if (classes.includes('fa_id')) data.fa_id = val;
+        else if (classes.includes('channel_id')) data.channel_id = val;
+        else if (classes.includes('cb-need_push')) data.need_push = val;
+        else if (classes.includes('c2d_transport')) data.c2d_transport = val;
+        else if (classes.includes('c2d_account')) data.c2d_account = val;
+        else if (classes.includes('ch2d_operator_id')) data.ch2d_operator_id = val;
+        else if (classes.includes('web_url')) data.web_url = val;
+        else if (classes.includes('link_title')) data.link_title = val;
+        else if (classes.includes('action_buttons')) data.action_buttons = val;
+        else if (classes.includes('vk_template_name')) data.vk_template_name = val;
+        else if (classes.includes('ttl')) data.ttl = val;
+        else if (classes.includes('ab_group')) data.ab_group = val;
+        else if (classes.includes('buttons')) data.buttons = val;
+        else if (classes.includes('activity_name')) data.activity_name = val;
+        else if (classes.includes('la_event')) data.la_event = val;
+        else if (classes.includes('la_visualization_attributes')) data.la_visualization_attributes = val;
+        else if (classes.includes('la_visualization')) data.la_visualization = val;
+        else if (classes.includes('la_status')) data.la_status = val;
+        else if (classes.includes('current_step')) data.current_step = val;
         else if (classes.includes('cb-marketplace')) data.marketplace = val;
         else if (classes.includes('cb-dialog')) data.dialog = val;
         else if (classes.includes('cb-loyalty')) data.loyalty = val;

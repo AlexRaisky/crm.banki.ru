@@ -9,7 +9,7 @@ function openTab(id, el) {
     document.getElementById(id).classList.add('active');
     // Переход на вкладку создания канала = новый шаблон: сбрасываем контекст редактирования,
     // чтобы сохранение пошло как INSERT, а не UPDATE ранее открытого шаблона.
-    if (id === 'sms' || id === 'push' || id === 'email' || id === 'cc') {
+    if (id === 'sms' || id === 'push' || id === 'email' || id === 'cc' || id === 'fa' || id === 'vk' || id === 'la') {
         window.CRM_CURRENT = null;
     }
     if (id === 'dashboard' && DASHBOARD_DATA && Object.keys(DASHBOARD_DATA).length) {

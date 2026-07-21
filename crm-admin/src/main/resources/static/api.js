@@ -97,7 +97,29 @@
       nationalRating: bool(d.national_rating),
       news: bool(d.news),
       mobileApp: bool(d.mobile_app),
-      nightSend: bool(d.night_send)
+      nightSend: bool(d.night_send),
+      // fa
+      faId: d.fa_id || null,
+      channelId: d.channel_id != null && d.channel_id !== "" ? Number(d.channel_id) : null,
+      needPush: bool(d.need_push),
+      c2dTransport: d.c2d_transport || null,
+      c2dAccount: d.c2d_account || null,
+      ch2dOperatorId: d.ch2d_operator_id != null && d.ch2d_operator_id !== "" ? Number(d.ch2d_operator_id) : null,
+      webUrl: d.web_url || null,
+      linkTitle: d.link_title || null,
+      actionButtons: d.action_buttons || null,
+      // vk
+      vkTemplateName: d.vk_template_name || null,
+      ttl: d.ttl != null && d.ttl !== "" ? Number(d.ttl) : null,
+      abGroup: d.ab_group || null,
+      buttons: d.buttons || null,
+      // la
+      activityName: d.activity_name || null,
+      laEvent: d.la_event || null,
+      laVisualization: d.la_visualization || null,
+      laVisualizationAttributes: d.la_visualization_attributes || null,
+      laStatus: d.la_status || null,
+      currentStep: d.current_step != null && d.current_step !== "" ? Number(d.current_step) : null
     };
   }
 
@@ -138,7 +160,29 @@
       national_rating: !!t.nationalRating,
       news: !!t.news,
       mobile_app: !!t.mobileApp,
-      night_send: !!t.nightSend
+      night_send: !!t.nightSend,
+      // fa
+      fa_id: t.faId || "",
+      channel_id: t.channelId != null ? t.channelId : "",
+      need_push: !!t.needPush,
+      c2d_transport: t.c2dTransport || "",
+      c2d_account: t.c2dAccount || "",
+      ch2d_operator_id: t.ch2dOperatorId != null ? t.ch2dOperatorId : "",
+      web_url: t.webUrl || "",
+      link_title: t.linkTitle || "",
+      action_buttons: t.actionButtons || "",
+      // vk
+      vk_template_name: t.vkTemplateName || "",
+      ttl: t.ttl != null ? t.ttl : "",
+      ab_group: t.abGroup || "",
+      buttons: t.buttons || "",
+      // la
+      activity_name: t.activityName || "",
+      la_event: t.laEvent || "",
+      la_visualization: t.laVisualization || "",
+      la_visualization_attributes: t.laVisualizationAttributes || "",
+      la_status: t.laStatus || "",
+      current_step: t.currentStep != null ? t.currentStep : ""
     };
   }
 

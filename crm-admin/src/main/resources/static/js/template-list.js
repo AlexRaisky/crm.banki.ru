@@ -92,7 +92,7 @@ function renderTemplateList(templates) {
     }
 
     tbody.innerHTML = sorted.map(tpl => {
-        const channelLabels = { sms: 'SMS', push: 'Push', 'mobile-push': 'Push', email: 'Email', cc: 'КЦ' };
+        const channelLabels = { sms: 'SMS', push: 'Push', 'mobile-push': 'Push', email: 'Email', cc: 'КЦ', fa: 'FA', vk: 'VK', la: 'Live Activity' };
         return `
             <tr>
                 <td class="sf-check-col"><input type="checkbox"></td>

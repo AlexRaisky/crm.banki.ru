@@ -808,6 +808,8 @@
         <button type="button" data-ch="push" onclick="wizardSetChannel('push')">Push</button>
         <button type="button" data-ch="email" onclick="wizardSetChannel('email')">Email</button>
         <button type="button" data-ch="cc" onclick="wizardSetChannel('cc')">КЦ</button>
+        <button type="button" data-ch="fa" onclick="wizardSetChannel('fa')">FA</button>
+        <button type="button" data-ch="vk" onclick="wizardSetChannel('vk')">VK</button>
     </div>
 </div>
 
@@ -1166,6 +1168,99 @@
 
 </div>
 <div class="actions"><button type="button" onclick="saveFromChannelForm('cc')">Сохранить КЦ</button></div>
+</div>
+
+<!-- ================= FA (финансовый ассистент) ================= -->
+<div id="fa" class="form">
+<input type="hidden" class="channel" value="fa">
+<div class="grid">
+<div class="form-block form-block-required">
+<div class="form-block-title">1. Обязательные параметры</div>
+<div class="field full"><label>Message Text</label><textarea></textarea></div>
+<div class="field"><label>FA ID</label><input class="fa_id"></div>
+<div class="field"><label>Channel ID</label><input type="number" class="channel_id" min="0" step="1" onkeydown="return !['e','E','+','-','.',','].includes(event.key)"></div>
+<div class="field checkbox"><input type="checkbox" class="cb-need_push"><label>Need Push</label></div>
+<div class="field"><label>C2D Transport</label><input class="c2d_transport"></div>
+<div class="field"><label>C2D Account</label><input class="c2d_account"></div>
+<div class="field"><label>CH2D Operator ID</label><input type="number" class="ch2d_operator_id" min="0" step="1" onkeydown="return !['e','E','+','-','.',','].includes(event.key)"></div>
+<div class="field"><label>Sender Type</label><select class="trigger" onchange="buildSource(this)"><option value="promo">promo</option><option value="trigger">trigger</option></select></div>
+<div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
+<div class="field"><label>Touch Point</label><select class="touch" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Sending Day</label><input type="number" class="day" min="0" step="1" value="0" onkeydown="return !['e','E','+','-','.',','].includes(event.key)" oninput="buildSource(this)"></div>
+<div class="field"><label>Deep Link</label><input class="deeplink"></div>
+<div class="field"><label>Webview link</label><input class="webview"></div>
+<div class="field"><label>Web URL</label><input class="web_url"></div>
+<div class="field"><label>Link Title</label><input class="link_title"></div>
+<div class="field"><label>Communication Name</label><div class="combo"><input type="text" class="combo-input comname" value="NoComName" data-comname-base="NoComName" oninput="onComnameEdited(this)"><div class="combo-pop"></div></div></div>
+<div class="field"><label>Communication Tunnel</label><select class="communication_type"><option value="adv">adv</option><option value="service">service</option></select></div>
+<div class="field"><label>Business Communication Type</label><select class="biz_type"><option value="adv">adv</option><option value="service">service</option><option value="info">info</option></select></div>
+<div class="field"><label>Landing Page</label><input class="aff_sub3"></div>
+<div class="field full"><label>Campaign Name</label><input class="source"></div>
+<div class="field full"><label>Action Buttons (JSON)</label><textarea class="action_buttons" placeholder='[{"title":"...","action":"..."}]'></textarea></div>
+<div class="field checkbox"><input type="checkbox" class="active_flag" checked><label>Active</label></div>
+</div>
+<div class="form-block form-block-flags">
+<div class="form-block-title">2. Флаги горизонталей и настроечные</div>
+<div class="extra-flags field full">
+    <div class="flags-group"><div class="flags-group-label">Горизонтали</div><div class="flags-row">
+        <div class="field checkbox"><input type="checkbox" class="cb-marketplace" onchange="updateComnameFromCheckboxes(this)"><label>Marketplace</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-dialog" onchange="updateComnameFromCheckboxes(this)"><label>Dialog</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-loyalty" onchange="updateComnameFromCheckboxes(this)"><label>loyalty</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-national_rating" onchange="updateComnameFromCheckboxes(this)"><label>National Rating</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-news" onchange="updateComnameFromCheckboxes(this)"><label>News</label></div>
+    </div></div>
+    <div class="flags-group"><div class="flags-group-label">Настроечные</div><div class="flags-row">
+        <div class="field checkbox"><input type="checkbox" class="cb-mobile_app" onchange="updateComnameFromCheckboxes(this)"><label>Mobile App</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-cross" onchange="updateComnameFromCheckboxes(this)"><label>Cross</label></div>
+    </div></div>
+</div>
+</div>
+</div>
+<div class="actions"><button type="button" onclick="saveFromChannelForm('fa')">Сохранить FA</button></div>
+</div>
+
+<!-- ================= VK ================= -->
+<div id="vk" class="form">
+<input type="hidden" class="channel" value="vk">
+<div class="grid">
+<div class="form-block form-block-required">
+<div class="form-block-title">1. Обязательные параметры</div>
+<div class="field"><label>VK Template Name</label><input class="vk_template_name"></div>
+<div class="field full"><label>Message Text</label><textarea></textarea></div>
+<div class="field"><label>TTL</label><input type="number" class="ttl" min="0" step="1" onkeydown="return !['e','E','+','-','.',','].includes(event.key)"></div>
+<div class="field"><label>AB Group</label><input class="ab_group"></div>
+<div class="field"><label>Sender Type</label><select class="trigger" onchange="buildSource(this)"><option value="promo">promo</option><option value="trigger">trigger</option></select></div>
+<div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
+<div class="field"><label>Touch Point</label><select class="touch" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Sending Day</label><input type="number" class="day" min="0" step="1" value="0" onkeydown="return !['e','E','+','-','.',','].includes(event.key)" oninput="buildSource(this)"></div>
+<div class="field"><label>Communication Name</label><div class="combo"><input type="text" class="combo-input comname" value="NoComName" data-comname-base="NoComName" oninput="onComnameEdited(this)"><div class="combo-pop"></div></div></div>
+<div class="field"><label>Communication Tunnel</label><select class="communication_type"><option value="adv">adv</option><option value="service">service</option></select></div>
+<div class="field"><label>Business Communication Type</label><select class="biz_type"><option value="adv">adv</option><option value="service">service</option><option value="info">info</option></select></div>
+<div class="field"><label>Landing Page</label><input class="aff_sub3"></div>
+<div class="field full"><label>Campaign Name</label><input class="source"></div>
+<div class="field full"><label>Buttons (JSON)</label><textarea class="buttons" placeholder='[{"label":"...","link":"..."}]'></textarea></div>
+<div class="field checkbox"><input type="checkbox" class="active_flag" checked><label>Active</label></div>
+</div>
+<div class="form-block form-block-flags">
+<div class="form-block-title">2. Флаги горизонталей и настроечные</div>
+<div class="extra-flags field full">
+    <div class="flags-group"><div class="flags-group-label">Горизонтали</div><div class="flags-row">
+        <div class="field checkbox"><input type="checkbox" class="cb-marketplace" onchange="updateComnameFromCheckboxes(this)"><label>Marketplace</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-dialog" onchange="updateComnameFromCheckboxes(this)"><label>Dialog</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-loyalty" onchange="updateComnameFromCheckboxes(this)"><label>loyalty</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-national_rating" onchange="updateComnameFromCheckboxes(this)"><label>National Rating</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-news" onchange="updateComnameFromCheckboxes(this)"><label>News</label></div>
+    </div></div>
+    <div class="flags-group"><div class="flags-group-label">Настроечные</div><div class="flags-row">
+        <div class="field checkbox"><input type="checkbox" class="cb-mobile_app" onchange="updateComnameFromCheckboxes(this)"><label>Mobile App</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-cross" onchange="updateComnameFromCheckboxes(this)"><label>Cross</label></div>
+    </div></div>
+</div>
+</div>
+</div>
+<div class="actions"><button type="button" onclick="saveFromChannelForm('vk')">Сохранить VK</button></div>
 </div>
 
 <!-- ================= Просмотр настроек ================= -->
