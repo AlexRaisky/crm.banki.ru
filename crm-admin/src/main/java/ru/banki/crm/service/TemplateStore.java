@@ -317,6 +317,54 @@ public class TemplateStore {
         jdbc.update("DELETE FROM template.d_template WHERE channel = ? AND code = ?", channel, asLong(code));
     }
 
+    /**
+     * Обратный импорт: строка внешней прод-таблицы (jsonb, прод-имена колонок) → d_template.
+     * Ядро по CORE_TO_PROD (source_type→campaign_name и т.д.), остальное (кроме id и кода) →
+     * channel_props. Идемпотентно (ON CONFLICT DO UPDATE). НЕ ставит в очередь синка (тянем ИЗ прода).
+     */
+    public void upsertFromProdRow(String channel, JsonNode prod) {
+        String codeCol = UnifiedTemplateService.channelTable(channel).codeCol();
+        JsonNode codeNode = prod.get(codeCol);
+        if (codeNode == null || codeNode.isNull()) return;
+        long code = codeNode.asLong();
+        java.util.Set<String> coreProd = new java.util.HashSet<>(CORE_TO_PROD.values());
+        ObjectNode props = om.createObjectNode();
+        prod.fieldNames().forEachRemaining(k -> {
+            if (k.equals("id") || k.equals(codeCol) || coreProd.contains(k)) return;
+            props.set(k, prod.get(k));
+        });
+        List<String> products = new ArrayList<>();
+        JsonNode pt = prod.get("product_type");
+        if (pt != null && pt.isArray()) pt.forEach(n -> products.add(n.asText()));
+        jdbc.update(
+            "INSERT INTO template.d_template (channel, code, communication_name, campaign_name, communication_type," +
+            " business_communication_type, trigger_type, sending_day, product_type, partner_name, touch_point," +
+            " aff_sub3, selection_wizard_service, marketplace, dialog, loyalty, national_rating, news, mobile_app," +
+            " night_send, active_flag, channel_props)" +
+            " VALUES (?,?,?,?,?,?,?,?,CAST(? AS text[]),?,?,?,?,?,?,?,?,?,?,?,?,CAST(? AS jsonb))" +
+            " ON CONFLICT (channel, code) DO UPDATE SET communication_name=EXCLUDED.communication_name," +
+            " campaign_name=EXCLUDED.campaign_name, communication_type=EXCLUDED.communication_type," +
+            " business_communication_type=EXCLUDED.business_communication_type, trigger_type=EXCLUDED.trigger_type," +
+            " sending_day=EXCLUDED.sending_day, product_type=EXCLUDED.product_type, partner_name=EXCLUDED.partner_name," +
+            " touch_point=EXCLUDED.touch_point, aff_sub3=EXCLUDED.aff_sub3, selection_wizard_service=EXCLUDED.selection_wizard_service," +
+            " marketplace=EXCLUDED.marketplace, dialog=EXCLUDED.dialog, loyalty=EXCLUDED.loyalty," +
+            " national_rating=EXCLUDED.national_rating, news=EXCLUDED.news, mobile_app=EXCLUDED.mobile_app," +
+            " night_send=EXCLUDED.night_send, active_flag=EXCLUDED.active_flag, channel_props=EXCLUDED.channel_props," +
+            " timestamp_upd=now()",
+            channel, code,
+            nz(text(prod, "communication_name")), nz(text(prod, "source_type")), nz(text(prod, "communication_type")),
+            nz(text(prod, "business_communication_type")), nz(text(prod, "trigger_type")),
+            jbInt(prod, "sending_day"), pgArray(products),
+            text(prod, "partner_name"), nz(text(prod, "touch_point")), nz(text(prod, "aff_sub3")), text(prod, "selection_wizard_service"),
+            jbBool(prod, "marketplace"), jbBool(prod, "dialog"), jbBool(prod, "loyalty"), jbBool(prod, "national_rating"),
+            jbBool(prod, "news"), jbBool(prod, "mobile_app"), jbBool(prod, "night_send"),
+            jbBoolTrue(prod, "active_flag"), props.toString());
+    }
+
+    private static int jbInt(JsonNode row, String f) { JsonNode v = row.get(f); return v == null || v.isNull() ? 0 : v.asInt(); }
+    private static boolean jbBool(JsonNode row, String f) { JsonNode v = row.get(f); return v != null && v.asBoolean(); }
+    private static boolean jbBoolTrue(JsonNode row, String f) { JsonNode v = row.get(f); return v == null || v.isNull() || v.asBoolean(); }
+
     // ---------------------------------------------------------------- helpers
     private JsonNode rowNode(String channel, String code) {
         List<String> r = jdbc.queryForList(

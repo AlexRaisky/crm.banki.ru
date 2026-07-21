@@ -162,6 +162,36 @@ public class ProdDbService {
     }
 
     /**
+     * Читает ВСЕ строки прод-таблицы канала (для сверки и обратного импорта).
+     * Возвращает список jsonb-строк с прод-именами колонок. Read-only, отдельным соединением.
+     */
+    public List<String> readAll(String channel) throws Exception {
+        ChannelTable ct = UnifiedTemplateService.channelTable(channel);
+        if (ct == null) throw new IllegalArgumentException("Неизвестный канал: " + channel);
+        List<String> out = new ArrayList<>();
+        try (Connection c = ds().getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT to_jsonb(t)::text FROM " + ct.table() + " t");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) out.add(rs.getString(1));
+        }
+        return out;
+    }
+
+    /** Одна прод-строка канала по бизнес-коду (для импорта выбранной строки). null — нет такой. */
+    public String readOne(String channel, long code) throws Exception {
+        ChannelTable ct = UnifiedTemplateService.channelTable(channel);
+        if (ct == null) return null;
+        try (Connection c = ds().getConnection();
+             PreparedStatement ps = c.prepareStatement(
+                     "SELECT to_jsonb(t)::text FROM " + ct.table() + " t WHERE t." + ct.codeCol() + " = ?")) {
+            ps.setLong(1, code);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString(1) : null;
+            }
+        }
+    }
+
+    /**
      * Прокидывает актёра в сессионную переменную app.current_user на прод-соединении,
      * чтобы BEFORE-триггеры аудита записали в log.t_admin_log реального пользователя
      * (аналог set_config('app.current_user', ...) из старой Appsmith-админки).

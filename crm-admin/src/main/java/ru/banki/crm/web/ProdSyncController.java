@@ -4,10 +4,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import ru.banki.crm.service.prod.ProdDbService;
+import ru.banki.crm.service.prod.ProdReconcileService;
 import ru.banki.crm.service.prod.ProdSyncService;
 
 import java.util.LinkedHashMap;
@@ -25,11 +27,28 @@ public class ProdSyncController {
     private final ProdDbService prod;
     private final ProdSyncService sync;
     private final JdbcTemplate jdbc;
+    private final ProdReconcileService reconcile;
 
-    public ProdSyncController(ProdDbService prod, ProdSyncService sync, JdbcTemplate jdbc) {
+    public ProdSyncController(ProdDbService prod, ProdSyncService sync, JdbcTemplate jdbc,
+                             ProdReconcileService reconcile) {
         this.prod = prod;
         this.sync = sync;
         this.jdbc = jdbc;
+        this.reconcile = reconcile;
+    }
+
+    /** Сверка d_template с внешним продом: корзины «только в проде / разошлись / только у нас». */
+    @GetMapping("/reconcile")
+    public Map<String, Object> reconcile() throws Exception {
+        return reconcile.report();
+    }
+
+    /** Импорт выбранных строк из прода в d_template (без очереди). Тело — список {channel, code}. */
+    @PostMapping("/reconcile/import")
+    public Map<String, Object> reconcileImport(@RequestBody List<Map<String, Object>> rows) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("imported", reconcile.importRows(rows));
+        return out;
     }
 
     /** Соединение + наличие таблиц + счётчики очереди. */
