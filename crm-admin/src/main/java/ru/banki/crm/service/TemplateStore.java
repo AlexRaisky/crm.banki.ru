@@ -159,6 +159,28 @@ public class TemplateStore {
             d.setSegmentDescr(txt(props, "segment_descr"));
             if (props.hasNonNull("host_id")) d.setHostId(props.get("host_id").asLong());
             d.setKvintCampaignId(txt(props, "kvint_campaign_id"));
+            // fa
+            d.setFaId(txt(props, "fa_id"));
+            d.setC2dTransport(txt(props, "c2d_transport"));
+            d.setC2dAccount(txt(props, "c2d_account"));
+            d.setWebUrl(txt(props, "web_url"));
+            d.setLinkTitle(txt(props, "link_title"));
+            if (props.has("need_push")) d.setNeedPush(bool(props, "need_push"));
+            if (props.hasNonNull("ch2d_operator_id")) d.setCh2dOperatorId(props.get("ch2d_operator_id").asLong());
+            if (props.hasNonNull("channel_id")) d.setChannelId(props.get("channel_id").asInt());
+            d.setActionButtons(jsonTxt(props, "action_buttons"));
+            // vk
+            d.setVkTemplateName(txt(props, "vk_template_name"));
+            d.setAbGroup(txt(props, "ab_group"));
+            if (props.hasNonNull("ttl")) d.setTtl(props.get("ttl").asInt());
+            d.setButtons(jsonTxt(props, "buttons"));
+            // la
+            d.setActivityName(txt(props, "activity_name"));
+            d.setLaEvent(txt(props, "la_event"));
+            d.setLaVisualization(txt(props, "la_visualization"));
+            d.setLaStatus(txt(props, "la_status"));
+            if (props.hasNonNull("current_step")) d.setCurrentStep(props.get("current_step").asInt());
+            d.setLaVisualizationAttributes(jsonTxt(props, "la_visualization_attributes"));
         }
         return d;
     }
@@ -337,6 +359,28 @@ public class TemplateStore {
         if (d.getMlProbabilityRequired() != null) props.put("ml_probability_required", d.getMlProbabilityRequired());
         if (d.getCutpercent() != null) props.put("cutpercent", d.getCutpercent());
         if (d.getNocutpercent() != null) props.put("nocutpercent", d.getNocutpercent());
+        // fa
+        putIfSet(props, "fa_id", d.getFaId());
+        putIfSet(props, "c2d_transport", d.getC2dTransport());
+        putIfSet(props, "c2d_account", d.getC2dAccount());
+        putIfSet(props, "web_url", d.getWebUrl());
+        putIfSet(props, "link_title", d.getLinkTitle());
+        if (d.getNeedPush() != null) props.put("need_push", d.getNeedPush());
+        if (d.getCh2dOperatorId() != null) props.put("ch2d_operator_id", d.getCh2dOperatorId());
+        if (d.getChannelId() != null) props.put("channel_id", d.getChannelId());
+        putJsonIfSet(props, "action_buttons", d.getActionButtons());
+        // vk
+        putIfSet(props, "vk_template_name", d.getVkTemplateName());
+        putIfSet(props, "ab_group", d.getAbGroup());
+        if (d.getTtl() != null) props.put("ttl", d.getTtl());
+        putJsonIfSet(props, "buttons", d.getButtons());
+        // la
+        putIfSet(props, "activity_name", d.getActivityName());
+        putIfSet(props, "la_event", d.getLaEvent());
+        putIfSet(props, "la_visualization", d.getLaVisualization());
+        putIfSet(props, "la_status", d.getLaStatus());
+        if (d.getCurrentStep() != null) props.put("current_step", d.getCurrentStep());
+        putJsonIfSet(props, "la_visualization_attributes", d.getLaVisualizationAttributes());
         // поля, которые прод требует непустыми (напр. email.subject) — пустая строка вместо null
         UnifiedTemplateService.prodDefaults(channel).forEach((k, v) -> {
             if (!props.hasNonNull(k)) props.put(k, v);
@@ -346,6 +390,22 @@ public class TemplateStore {
 
     private static void putIfSet(ObjectNode n, String key, String value) {
         if (value != null) n.put(key, value);
+    }
+
+    /** jsonb-поле: парсим строку в узел; если не валидный JSON — кладём как строку (данные не теряем). */
+    private void putJsonIfSet(ObjectNode n, String key, String jsonText) {
+        if (jsonText == null || jsonText.isBlank()) return;
+        try {
+            n.set(key, om.readTree(jsonText));
+        } catch (Exception e) {
+            n.put(key, jsonText);
+        }
+    }
+
+    /** Читает jsonb-поле обратно как JSON-строку (для DTO). */
+    private static String jsonTxt(JsonNode props, String key) {
+        JsonNode v = props.get(key);
+        return (v == null || v.isNull()) ? null : v.toString();
     }
 
     private static void addSet(List<String> sets, List<Object> args, String col, Object value) {

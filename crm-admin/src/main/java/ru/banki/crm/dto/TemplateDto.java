@@ -63,4 +63,29 @@ public class TemplateDto {
     private Integer cutpercent;
     private Integer nocutpercent;
     private String kvintCampaignId;
+
+    // --- fa (финансовый ассистент, fa_template) ---
+    private String faId;
+    private Boolean needPush;
+    private String c2dTransport;
+    private String c2dAccount;
+    private Long ch2dOperatorId;
+    private String webUrl;
+    private String linkTitle;
+    private Integer channelId;
+    private String actionButtons;   // jsonb (общий с la)
+
+    // --- vk (vk_template) ---
+    private String vkTemplateName;
+    private Integer ttl;
+    private String abGroup;         // общий с la
+    private String buttons;         // jsonb
+
+    // --- la (live activity, live_activity_template) ---
+    private String activityName;
+    private String laEvent;
+    private String laVisualization;
+    private String laVisualizationAttributes;  // jsonb
+    private String laStatus;
+    private Integer currentStep;
 }
