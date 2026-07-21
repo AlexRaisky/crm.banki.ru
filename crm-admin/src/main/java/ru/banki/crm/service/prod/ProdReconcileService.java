@@ -195,7 +195,10 @@ public class ProdReconcileService {
             if (k.equals(codeCol) || k.equals("id")) return;
             String os = asStr(our.get(k)), ps = asStr(prodRow.get(k));
             if (os.equals(ps)) return;
-            // прод-NULL и наш дефолт — по смыслу одно и то же: пусто/false/0 взаимозаменяемы, не расхождение
+            // прод НЕ задал поле (NULL/пусто) — не расхождение: прод его не диктует, а наши
+            // boolean-колонки не умеют хранить NULL (active_flag дефолтится в true и т.п.)
+            if (ps.isEmpty()) return;
+            // наш дефолт vs прод: пусто/false/0 взаимозаменяемы
             if (emptyish(os) && emptyish(ps)) return;
             Map<String, Object> d = new LinkedHashMap<>();
             d.put("field", k); d.put("ours", os); d.put("prod", ps);

@@ -340,8 +340,8 @@ public class TemplateStore {
             "INSERT INTO template.d_template (channel, code, communication_name, campaign_name, communication_type," +
             " business_communication_type, trigger_type, sending_day, product_type, partner_name, touch_point," +
             " aff_sub3, selection_wizard_service, marketplace, dialog, loyalty, national_rating, news, mobile_app," +
-            " night_send, active_flag, channel_props)" +
-            " VALUES (?,?,?,?,?,?,?,?,CAST(? AS text[]),?,?,?,?,?,?,?,?,?,?,?,?,CAST(? AS jsonb))" +
+            " night_send, active_flag, permanent_exclude, channel_props)" +
+            " VALUES (?,?,?,?,?,?,?,?,CAST(? AS text[]),?,?,?,?,?,?,?,?,?,?,?,?,?,CAST(? AS jsonb))" +
             " ON CONFLICT (channel, code) DO UPDATE SET communication_name=EXCLUDED.communication_name," +
             " campaign_name=EXCLUDED.campaign_name, communication_type=EXCLUDED.communication_type," +
             " business_communication_type=EXCLUDED.business_communication_type, trigger_type=EXCLUDED.trigger_type," +
@@ -349,7 +349,8 @@ public class TemplateStore {
             " touch_point=EXCLUDED.touch_point, aff_sub3=EXCLUDED.aff_sub3, selection_wizard_service=EXCLUDED.selection_wizard_service," +
             " marketplace=EXCLUDED.marketplace, dialog=EXCLUDED.dialog, loyalty=EXCLUDED.loyalty," +
             " national_rating=EXCLUDED.national_rating, news=EXCLUDED.news, mobile_app=EXCLUDED.mobile_app," +
-            " night_send=EXCLUDED.night_send, active_flag=EXCLUDED.active_flag, channel_props=EXCLUDED.channel_props," +
+            " night_send=EXCLUDED.night_send, active_flag=EXCLUDED.active_flag," +
+            " permanent_exclude=EXCLUDED.permanent_exclude, channel_props=EXCLUDED.channel_props," +
             " timestamp_upd=now()",
             channel, code,
             nz(text(prod, "communication_name")), nz(text(prod, "source_type")), nz(text(prod, "communication_type")),
@@ -358,7 +359,7 @@ public class TemplateStore {
             text(prod, "partner_name"), nz(text(prod, "touch_point")), nz(text(prod, "aff_sub3")), text(prod, "selection_wizard_service"),
             jbBool(prod, "marketplace"), jbBool(prod, "dialog"), jbBool(prod, "loyalty"), jbBool(prod, "national_rating"),
             jbBool(prod, "news"), jbBool(prod, "mobile_app"), jbBool(prod, "night_send"),
-            jbBoolTrue(prod, "active_flag"), props.toString());
+            jbBoolTrue(prod, "active_flag"), jbBool(prod, "permanent_exclude"), props.toString());
     }
 
     private static int jbInt(JsonNode row, String f) { JsonNode v = row.get(f); return v == null || v.isNull() ? 0 : v.asInt(); }
