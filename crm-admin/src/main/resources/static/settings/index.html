@@ -368,6 +368,8 @@ const S_EN = {
   "не доставлены после всех попыток, нужен ручной повтор":"not delivered after all attempts, manual retry needed",
   "успешно доставлены в прод":"delivered to prod successfully",
   "Канал":"Channel", "Статус":"Status", "Очередь пуста.":"Queue is empty.",
+  "Проблема / действия":"Problem / actions", "Повтор":"Retry", "Отмена":"Cancel",
+  "Отменить операцию? Изменение не будет доставлено в прод, запись удалится из очереди.":"Cancel the operation? The change will not be delivered to prod and the entry will be removed from the queue.",
   "Новое название инструмента:":"New tool name:",
   "Доступно только администраторам":"Available to administrators only",
   "Не удалось загрузить настройки с сервера":"Failed to load settings from the server",
@@ -670,7 +672,8 @@ async function renderQueueStats(){
   } catch(e){ box.textContent = t2('Ошибка запроса: ') + e.message; }
 }
 
-/* Последние записи очереди: source (source_type) · канал · статус. */
+/* Последние записи очереди: source (source_type) · канал · статус · причина+действия.
+   Для ERROR — текст проблемы (last_error) и кнопки «Повтор» (ещё попытка) / «Отмена» (убрать). */
 async function renderQueueList(){
   const box = $("#diagQueueList");
   if (!box) return;
@@ -683,17 +686,40 @@ async function renderQueueList(){
     const rows = await r.json();
     if (!rows.length) { box.innerHTML = `<div class="empty">${t2('Очередь пуста.')}</div>`; return; }
     box.innerHTML =
-      `<table><thead><tr><th>Source</th><th>${t2('Канал')}</th><th>${t2('Статус')}</th></tr></thead><tbody>` +
+      `<table><thead><tr><th>Source</th><th>${t2('Канал')}</th><th>${t2('Статус')}</th><th>${t2('Проблема / действия')}</th></tr></thead><tbody>` +
       rows.map(function(x){
         const st = String(x.status || '');
         const color = st === 'ERROR' ? 'var(--coral)' : (st === 'OK' ? 'var(--green)' : 'inherit');
         const src = x.source || ('#' + (x.local_code != null ? x.local_code : ''));
+        let details = '';
+        if (st === 'ERROR') {
+          const reason = x.last_error
+            ? `<div style="color:var(--coral);font-size:12px;margin-bottom:6px" title="${esc(x.last_error)}">${esc(x.last_error)}</div>`
+            : '';
+          details = reason +
+            `<button class="btn" style="padding:3px 10px;font-size:12px" onclick="queueRetry(${x.id})">${t2('Повтор')}</button> ` +
+            `<button class="btn" style="padding:3px 10px;font-size:12px" onclick="queueCancel(${x.id})">${t2('Отмена')}</button>`;
+        }
         return `<tr><td><span class="mono">${esc(src)}</span></td>` +
                `<td>${esc(x.channel || '')}</td>` +
-               `<td><b style="color:${color}">${esc(st)}</b></td></tr>`;
+               `<td><b style="color:${color}">${esc(st)}</b></td>` +
+               `<td>${details}</td></tr>`;
       }).join('') +
       `</tbody></table>`;
   } catch(e){ box.textContent = t2('Ошибка запроса: ') + e.message; }
+}
+/* Повтор — ещё попытка доставки (сброс в PENDING, фоновый воркер добьёт за ~20 с). */
+async function queueRetry(id){
+  try { await fetch('/api/admin/prod-db/retry/' + id, { method: 'POST', credentials: 'same-origin' }); }
+  catch(e){}
+  renderQueueStats();
+}
+/* Отмена — убрать операцию из очереди совсем (в прод НЕ поедет). */
+async function queueCancel(id){
+  if (!confirm(t2('Отменить операцию? Изменение не будет доставлено в прод, запись удалится из очереди.'))) return;
+  try { await fetch('/api/admin/prod-db/cancel/' + id, { method: 'POST', credentials: 'same-origin' }); }
+  catch(e){}
+  renderQueueStats();
 }
 
 /* ---------- Прод-БД: health + очередь синка ---------- */

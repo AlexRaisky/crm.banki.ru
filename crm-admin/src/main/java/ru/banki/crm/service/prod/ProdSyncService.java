@@ -2,6 +2,7 @@ package ru.banki.crm.service.prod;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,10 @@ public class ProdSyncService {
     private final UnifiedTemplateService unified;
     private final TransactionTemplate tx;
 
+    /** Сколько минут держать доставленные (OK) записи, потом удалять из очереди. */
+    @Value("${app.prodsync.ok-ttl-minutes:10}")
+    private int okTtlMinutes;
+
     public ProdSyncService(JdbcTemplate jdbc, ProdDbService prod,
                            UnifiedTemplateService unified, TransactionTemplate tx) {
         this.jdbc = jdbc;
@@ -44,6 +49,23 @@ public class ProdSyncService {
             process(50);
         } catch (Exception e) {
             log.warn("prod-sync tick failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Уборка очереди: доставленные (OK) записи держим коротко, потом удаляем — очередь
+     * это список задач, а не журнал (аудит доставок лежит в log.t_admin_log / arch.t_admin_log).
+     * ERROR и PENDING НЕ трогаем: ERROR убирается только вручную (кнопки «Повтор»/«Отмена»),
+     * иначе несинхронизированное изменение потерялось бы без следа.
+     */
+    @Scheduled(fixedDelay = 60000, initialDelay = 30000)
+    public void cleanup() {
+        try {
+            int ok = jdbc.update("DELETE FROM app.prod_sync WHERE status = 'OK'" +
+                    " AND timestamp_upd < now() - make_interval(mins => ?)", okTtlMinutes);
+            if (ok > 0) log.debug("prod-sync cleanup: удалено {} OK (> {} мин)", ok, okTtlMinutes);
+        } catch (Exception e) {
+            log.warn("prod-sync cleanup failed: {}", e.getMessage());
         }
     }
 

@@ -77,4 +77,10 @@ public class ProdSyncController {
         jdbc.update("UPDATE app.prod_sync SET status = 'PENDING', attempts = 0, last_error = NULL," +
                 " timestamp_upd = now() WHERE id = ?", id);
     }
+
+    /** Отменить операцию: убрать из очереди (только PENDING/ERROR — доставленные не трогаем). */
+    @PostMapping("/cancel/{id}")
+    public void cancel(@PathVariable long id) {
+        jdbc.update("DELETE FROM app.prod_sync WHERE id = ? AND status IN ('PENDING','ERROR')", id);
+    }
 }
