@@ -5,9 +5,9 @@
 /* Тумблер Live Activity в форме Push: показывает/прячет LA-поля.
    При сохранении saveFromChannelForm подменяет канал push → la (live_activity_template). */
 function toggleLiveActivity(cb) {
-    var block = cb.closest('.form-block-la');
-    var box = block ? block.querySelector('.la-fields') : null;
-    if (box) box.style.display = cb.checked ? '' : 'none';
+    var form = cb.closest('.form');
+    var block = form ? form.querySelector('.form-block-la') : null;
+    if (block) block.style.display = cb.checked ? '' : 'none';
 }
 
 function openTab(id, el) {

@@ -911,6 +911,10 @@
 <input type="hidden" class="channel" value="mobile-push">
 <div class="grid">
 
+<div class="form-block form-block-la-toggle">
+<div class="field checkbox"><input type="checkbox" class="cb-live-activity" onchange="toggleLiveActivity(this)"><label>Это Live Activity (сохранить в live_activity_template вместо обычного push)</label></div>
+</div>
+
 <div class="form-block form-block-required">
 <div class="form-block-title" data-i18n="1. Обязательные параметры">1. Обязательные параметры</div>
 <div class="field full"><label>Message Text</label><textarea></textarea></div>
@@ -979,19 +983,16 @@
 </div>
 </div>
 
-<div class="form-block form-block-la">
-<div class="form-block-title">Live Activity</div>
-<div class="field checkbox"><input type="checkbox" class="cb-live-activity" onchange="toggleLiveActivity(this)"><label>Это Live Activity (сохранить в live_activity_template)</label></div>
-<div class="la-fields" style="display:none">
-    <div class="field"><label>Activity Name</label><input class="activity_name"></div>
-    <div class="field"><label>LA Event</label><select class="la_event"><option value="start">start</option><option value="update">update</option><option value="end">end</option></select></div>
-    <div class="field"><label>LA Visualization</label><input class="la_visualization"></div>
-    <div class="field"><label>LA Status</label><input class="la_status"></div>
-    <div class="field"><label>Current Step</label><input type="number" class="current_step" min="0" step="1" onkeydown="return !['e','E','+','-','.',','].includes(event.key)"></div>
-    <div class="field"><label>AB Group</label><input class="ab_group"></div>
-    <div class="field full"><label>Action Buttons (JSON)</label><textarea class="action_buttons" placeholder='[{"title":"...","action":"..."}]'></textarea></div>
-    <div class="field full"><label>LA Visualization Attributes (JSON)</label><textarea class="la_visualization_attributes" placeholder='{}'></textarea></div>
-</div>
+<div class="form-block form-block-la" style="display:none">
+<div class="form-block-title">Live Activity — поля</div>
+<div class="field"><label>Activity Name</label><input class="activity_name"></div>
+<div class="field"><label>LA Event</label><select class="la_event"><option value="start">start</option><option value="update">update</option><option value="end">end</option></select></div>
+<div class="field"><label>LA Visualization</label><input class="la_visualization"></div>
+<div class="field"><label>LA Status</label><input class="la_status"></div>
+<div class="field"><label>Current Step</label><input type="number" class="current_step" min="0" step="1" onkeydown="return !['e','E','+','-','.',','].includes(event.key)"></div>
+<div class="field"><label>AB Group</label><input class="ab_group"></div>
+<div class="field full"><label>Action Buttons (JSON)</label><textarea class="action_buttons" placeholder='[{"title":"...","action":"..."}]'></textarea></div>
+<div class="field full"><label>LA Visualization Attributes (JSON)</label><textarea class="la_visualization_attributes" placeholder='{}'></textarea></div>
 </div>
 
 <div class="form-block form-block-cc">
