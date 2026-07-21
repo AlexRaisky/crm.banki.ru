@@ -295,8 +295,10 @@
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
             <button class="btn" id="prodHealthBtn" data-i18n="Проверить соединение">Проверить соединение</button>
             <button class="btn" id="prodProcessBtn" data-i18n="Доставить очередь сейчас">Доставить очередь сейчас</button>
+            <button class="btn" id="prodReconcileBtn" data-i18n="Сверка с продом">Сверка с продом</button>
           </div>
           <div id="prodDbBox" class="empty" data-i18n="Нажми «Проверить соединение».">Нажми «Проверить соединение».</div>
+          <div id="reconcileBox" style="margin-top:14px"></div>
         </div>
       </section>
 
@@ -764,6 +766,64 @@ async function prodDbCall(url, method){
 }
 $("#prodHealthBtn").addEventListener('click', () => prodDbCall('/api/admin/prod-db/health'));
 $("#prodProcessBtn").addEventListener('click', () => prodDbCall('/api/admin/prod-db/process', 'POST'));
+
+/* ---------- Сверка с продом (обратный импорт: прод — источник истины) ---------- */
+var RECON = null;
+async function reconcileRun(){
+  var box = $("#reconcileBox");
+  box.innerHTML = '<div class="empty">…</div>';
+  try {
+    var r = await fetch('/api/admin/prod-db/reconcile', { credentials: 'same-origin' });
+    if (r.status === 401) { location.href = '/login.html'; return; }
+    if (r.status === 403) { box.textContent = t2('Доступно только администраторам.'); return; }
+    var ct = r.headers.get('content-type') || '';
+    if (ct.indexOf('application/json') < 0) { box.textContent = t2('Сервис недоступен, код ') + r.status + '.'; return; }
+    RECON = await r.json();
+    if (!RECON.configured) { box.innerHTML = '<div class="empty">' + esc(RECON.hint || 'Прод-БД не настроена.') + '</div>'; return; }
+    reconcileRender();
+  } catch(e){ box.textContent = t2('Ошибка запроса: ') + e.message; }
+}
+function reconRows(list, withDiffs, selectable){
+  if (!list || !list.length) return '<div class="empty" style="margin:6px 0">—</div>';
+  return '<table><thead><tr>' + (selectable ? '<th></th>' : '') +
+    '<th>' + t2('Канал') + '</th><th>Code</th><th>Source</th>' + (withDiffs ? '<th>Различия</th>' : '') + '</tr></thead><tbody>' +
+    list.map(function(x){
+      var diffs = (withDiffs && x.diffs) ? x.diffs.map(function(df){
+        return '<div class="mono" style="font-size:11px">' + esc(df.field) + ': <span style="color:var(--coral)">' + esc(df.ours || '∅') + '</span> → <span style="color:var(--green)">' + esc(df.prod || '∅') + '</span></div>';
+      }).join('') : '';
+      return '<tr>' + (selectable ? '<td><input type="checkbox" class="recon-cb" data-ch="' + esc(x.channel) + '" data-code="' + x.code + '"></td>' : '') +
+        '<td>' + esc(x.channel) + '</td><td class="mono">' + x.code + '</td><td class="mono">' + esc(x.source || '') + '</td>' +
+        (withDiffs ? '<td>' + diffs + '</td>' : '') + '</tr>';
+    }).join('') + '</tbody></table>';
+}
+function reconcileRender(){
+  var d = RECON, box = $("#reconcileBox");
+  box.innerHTML =
+    '<div class="sub" style="margin-bottom:10px">Совпадает: <b>' + d.inSync + '</b> · Только в проде: <b>' + d.onlyInProd.length +
+      '</b> · Разошлось: <b style="color:var(--coral)">' + d.diverged.length + '</b> · Только у нас: <b>' + d.onlyInOurs.length + '</b>' +
+      (d.skipped && d.skipped.length ? ' · Пропущено: ' + d.skipped.join(', ') : '') + '</div>' +
+    '<b>Только в проде</b> — импортировать к нам:' + reconRows(d.onlyInProd, false, true) +
+    '<b style="display:block;margin-top:12px">Разошлось</b> — прод перезапишет наше:' + reconRows(d.diverged, true, true) +
+    '<div style="margin-top:12px"><button class="btn" onclick="reconcileImportSelected()">Импортировать выбранные</button></div>' +
+    '<details style="margin-top:12px"><summary>Только у нас (' + d.onlyInOurs.length + ') — не трогаем</summary>' + reconRows(d.onlyInOurs, false, false) + '</details>';
+}
+async function reconcileImportSelected(){
+  var cbs = document.querySelectorAll('#reconcileBox .recon-cb:checked');
+  var rows = Array.prototype.map.call(cbs, function(cb){ return { channel: cb.getAttribute('data-ch'), code: Number(cb.getAttribute('data-code')) }; });
+  if (!rows.length) { alert('Ничего не выбрано.'); return; }
+  if (!confirm('Импортировать ' + rows.length + ' шаблон(ов) из прода в d_template (прод перезапишет наши значения)?')) return;
+  try {
+    var r = await fetch('/api/admin/prod-db/reconcile/import', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rows)
+    });
+    if (r.status === 403) { alert(t2('Доступно только администраторам.')); return; }
+    var res = await r.json();
+    alert('Импортировано: ' + (res.imported || 0));
+    reconcileRun();
+  } catch(e){ alert(t2('Ошибка запроса: ') + e.message); }
+}
+$("#prodReconcileBtn").addEventListener('click', reconcileRun);
 
 renderApps();   /* мгновенный каркас (умолчания), затем данные с сервера */
 loadApps();
