@@ -60,6 +60,16 @@
   .waffle svg{width:19px;height:19px}
   .app-name{font-weight:700;font-size:16px;letter-spacing:-.01em;white-space:nowrap}
 
+  /* Название текущего раздела в шапке */
+  .page-crumb{display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden}
+  .page-crumb .pc-sep,.page-crumb .pc-arrow{color:var(--faint);font-size:14px}
+  .page-crumb .pc-parent{color:var(--dim);font-size:13.5px;white-space:nowrap}
+  .page-crumb .pc-title{color:var(--ink);font-size:14.5px;font-weight:600;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .page-crumb.no-parent .pc-parent,.page-crumb.no-parent .pc-arrow{display:none}
+  @media (max-width:1000px){.page-crumb .pc-parent,.page-crumb .pc-arrow{display:none}}
+  @media (max-width:760px){.page-crumb{display:none}}
+
   .gheader-actions{display:flex;align-items:center;gap:8px;margin-left:auto;padding-left:12px;min-width:0}
   #homeActions{display:flex;align-items:center;gap:8px}
   .iconbtn{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;

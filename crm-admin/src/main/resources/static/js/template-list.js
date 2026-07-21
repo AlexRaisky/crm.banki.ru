@@ -1,12 +1,149 @@
-/* ========== Список шаблонов (формат Salesforce list view) ========== */
+/* ========== Список шаблонов (формат Salesforce list view) ==========
+
+   Настройка списка (какие колонки и фильтры показывать) хранится
+   в localStorage: crmpanel:listCols / crmpanel:listFilters.
+   Ячейки редактируются по карандашу; правка применяется галочкой ✓
+   и уходит на бэкенд (PUT /api/templates/{channel}/{code}). */
+
+var LIST_COLUMNS = [
+    { k:'channel',  label:'Канал',       edit:'select', opts:['sms','push','email','cc'] },
+    { k:'code',     label:'Code / ID',   edit:'text', link:true },
+    { k:'name',     label:'Название',    edit:'text', link:true },
+    { k:'product',  label:'Продукт',     edit:'text' },
+    { k:'touch',    label:'Touch point', edit:'text' },
+    { k:'trigger',  label:'Trigger',     edit:'select', opts:['','trigger','promo'] },
+    { k:'partner',  label:'Партнёр',     edit:'text' },
+    { k:'active',   label:'Статус',      edit:'bool' },
+];
+var LIST_FILTERS = [
+    { k:'channel', label:'Канал' }, { k:'product', label:'Продукт' }, { k:'touch', label:'Touch point' },
+    { k:'trigger', label:'Trigger type' }, { k:'active', label:'Статус' },
+];
+var DEFAULT_LIST_COLS = LIST_COLUMNS.map(function(c){ return c.k; });
+var DEFAULT_LIST_FILTERS = LIST_FILTERS.map(function(f){ return f.k; });
+
+function lsGet(key, def){
+    try { var v = localStorage.getItem('crmpanel:' + key); return v ? JSON.parse(v) : def; } catch(e){ return def; }
+}
+function lsSet(key, val){
+    try { localStorage.setItem('crmpanel:' + key, JSON.stringify(val)); } catch(e){}
+}
+function listVisibleCols(){
+    var saved = lsGet('listCols', null);
+    var ids = Array.isArray(saved) && saved.length ? saved : DEFAULT_LIST_COLS;
+    return LIST_COLUMNS.filter(function(c){ return ids.indexOf(c.k) !== -1; });
+}
+function listVisibleFilters(){
+    var saved = lsGet('listFilters', null);
+    return Array.isArray(saved) ? saved : DEFAULT_LIST_FILTERS;
+}
+function toggleListPanel(e){
+    if (e) e.stopPropagation();
+    var p = document.getElementById('listPanel');
+    if (!p) return;
+    var willOpen = !p.classList.contains('open');
+    p.classList.toggle('open', willOpen);
+    if (willOpen) renderListPanel();
+}
+document.addEventListener('click', function(e){
+    var p = document.getElementById('listPanel');
+    if (p && p.classList.contains('open') && !e.target.closest('.sf-settings')) p.classList.remove('open');
+});
+function renderListPanel(){
+    var colsBox = document.getElementById('listColsBox');
+    var filtBox = document.getElementById('listFiltersBox');
+    if (!colsBox || !filtBox) return;
+    var visCols = listVisibleCols().map(function(c){ return c.k; });
+    var visFilt = listVisibleFilters();
+    colsBox.innerHTML = LIST_COLUMNS.map(function(c){
+        return '<label><input type="checkbox" data-col="' + c.k + '"' + (visCols.indexOf(c.k) !== -1 ? ' checked' : '') + '>' + sfdT(c.label) + '</label>';
+    }).join('');
+    filtBox.innerHTML = LIST_FILTERS.map(function(f){
+        return '<label><input type="checkbox" data-filt="' + f.k + '"' + (visFilt.indexOf(f.k) !== -1 ? ' checked' : '') + '>' + sfdT(f.label) + '</label>';
+    }).join('');
+    colsBox.querySelectorAll('input[data-col]').forEach(function(ch){
+        ch.onchange = function(){
+            var ids = [];
+            colsBox.querySelectorAll('input[data-col]').forEach(function(x){ if (x.checked) ids.push(x.dataset.col); });
+            if (!ids.length){ ch.checked = true; return; }   /* хотя бы одна колонка */
+            lsSet('listCols', ids);
+            applyFilters();
+        };
+    });
+    filtBox.querySelectorAll('input[data-filt]').forEach(function(ch){
+        ch.onchange = function(){
+            var ids = [];
+            filtBox.querySelectorAll('input[data-filt]').forEach(function(x){ if (x.checked) ids.push(x.dataset.filt); });
+            lsSet('listFilters', ids);
+            applyListFilterVisibility();
+            applyFilters();
+        };
+    });
+}
+function resetListSettings(){
+    lsSet('listCols', DEFAULT_LIST_COLS);
+    lsSet('listFilters', DEFAULT_LIST_FILTERS);
+    renderListPanel();
+    applyListFilterVisibility();
+    applyFilters();
+}
+/* показать/скрыть блоки фильтров согласно настройке */
+function applyListFilterVisibility(){
+    var vis = listVisibleFilters();
+    document.querySelectorAll('#list .filters-row .field[data-filter]').forEach(function(f){
+        f.style.display = vis.indexOf(f.dataset.filter) !== -1 ? '' : 'none';
+    });
+    var row = document.querySelector('#list .filters-row');
+    if (row) row.style.display = vis.length ? '' : 'none';
+}
+
+/* ---------- inline-редактирование ячеек списка ---------- */
+var LIST_EDIT = null;   /* { id, k } */
+function listCellEdit(id, k){ LIST_EDIT = { id: id, k: k }; applyFilters(); }
+function listCellCancel(){ LIST_EDIT = null; applyFilters(); }
+function listCellSave(id, k){
+    var wrap = document.querySelector('#templateListBody .sf-cell-edit[data-id="' + id + '"]');
+    if (!wrap) return;
+    var inp = wrap.querySelector('input, select');
+    var col = LIST_COLUMNS.find(function(c){ return c.k === k; });
+    var val = (col && col.edit === 'bool') ? inp.checked : inp.value;
+    if (k === 'code' && val !== '' && !isNaN(Number(val))) val = Number(val);
+
+    var li = ALL_TEMPLATES.find(function(x){ return x.id === id; });
+    if (!li) return;
+    var prevChannel = li.channel, prevCode = li.code;
+    li[k] = val;
+    LIST_EDIT = null;
+    applyFilters();
+
+    /* правка уходит на бэкенд: тянем шаблон целиком, меняем поле и сохраняем */
+    CRM.getTemplate(prevChannel, prevCode)
+        .then(function(dto){
+            var v1 = CRM.dtoToV1(dto);
+            v1[k] = val;
+            if (k === 'code' && v1.channel === 'email') v1.letteros_id = val;
+            window.CRM_CURRENT = { channel: prevChannel, code: prevCode };
+            return CRM.saveFromV1(v1);
+        })
+        .then(function(){ if (typeof refreshViewTemplateSelect === 'function') refreshViewTemplateSelect(); })
+        .catch(function(err){
+            console.error('Не удалось сохранить правку списка:', err);
+            li[k] = k === 'channel' ? prevChannel : (k === 'code' ? prevCode : li[k]);
+            alert(sfdT('Не удалось сохранить изменение на сервере. Значение возвращено.'));
+            applyFilters();
+        });
+}
 
 /* Применение фильтров */
 function applyFilters() {
-    const channelFilter = document.getElementById('filterChannel').value;
-    const productFilter = document.getElementById('filterProduct').value;
-    const touchFilter = document.getElementById('filterTouch').value;
-    const triggerFilter = document.getElementById('filterTrigger').value;
-    const activeFilter = document.getElementById('filterActive').value;
+    /* скрытые в настройках фильтры не применяются */
+    const visF = listVisibleFilters();
+    const fval = (id, key) => visF.indexOf(key) === -1 ? '' : (document.getElementById(id) || { value: '' }).value;
+    const channelFilter = fval('filterChannel', 'channel');
+    const productFilter = fval('filterProduct', 'product');
+    const touchFilter = fval('filterTouch', 'touch');
+    const triggerFilter = fval('filterTrigger', 'trigger');
+    const activeFilter = fval('filterActive', 'active');
 
     // Начинаем со всех шаблонов
     let filtered = [...ALL_TEMPLATES];
@@ -76,38 +213,78 @@ function renderTemplateList(templates) {
         return String(va || '').localeCompare(String(vb || ''), 'ru') * LIST_SORT.dir;
     });
 
-    // индикатор сортировки в заголовках
-    document.querySelectorAll('#list th.sf-sortable').forEach(th => {
-        const mark = th.querySelector('.sf-sort');
-        if (mark) mark.textContent = th.dataset.col === LIST_SORT.col ? (LIST_SORT.dir === 1 ? '▲' : '▼') : '';
-    });
+    const cols = listVisibleCols();
+
+    /* шапка таблицы строится по настройке отображаемых полей */
+    const thead = document.getElementById('templateListHead');
+    if (thead) {
+        thead.innerHTML = '<tr>' +
+            '<th class="sf-check-col"><input type="checkbox" onclick="this.closest(\'table\').querySelectorAll(\'tbody input[type=checkbox]\').forEach(c=>c.checked=this.checked)"></th>' +
+            cols.map(c => `<th class="sf-sortable" data-col="${c.k}" onclick="listSortBy('${c.k}')">${sfdT(c.label)} <span class="sf-sort">${c.k === LIST_SORT.col ? (LIST_SORT.dir === 1 ? '▲' : '▼') : ''}</span></th>`).join('') +
+            '<th></th></tr>';
+    }
 
     const totalAll = ALL_TEMPLATES.length;
     const totalActive = ALL_TEMPLATES.filter(x => x.active).length;
     stats.innerHTML = `${sorted.length} ${sfdT('элементов')} · ${sfdT('Отсортировано по')} «${sfdT(LIST_SORT_LABELS[LIST_SORT.col] || LIST_SORT.col)}» · ${sfdT('всего')} ${totalAll} (${sfdT('активных')}: ${totalActive}, ${sfdT('неактивных')}: ${totalAll - totalActive})`;
 
     if (sorted.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 30px; color: #888;">${sfdT('Нет шаблонов по заданным фильтрам')}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${cols.length + 2}" style="text-align: center; padding: 30px; color: #888;">${sfdT('Нет шаблонов по заданным фильтрам')}</td></tr>`;
         return;
     }
 
-    tbody.innerHTML = sorted.map(tpl => {
-        const channelLabels = { sms: 'SMS', push: 'Push', 'mobile-push': 'Push', email: 'Email', cc: 'КЦ' };
-        return `
+    const channelLabels = { sms: 'SMS', push: 'Push', 'mobile-push': 'Push', email: 'Email', cc: 'КЦ' };
+
+    /* ячейка: просмотр (значение + карандаш) либо правка (поле + ✓ / ✕) */
+    function cellHtml(tpl, c) {
+        const editing = LIST_EDIT && LIST_EDIT.id === tpl.id && LIST_EDIT.k === c.k;
+        if (editing) {
+            let input;
+            if (c.edit === 'bool') {
+                input = `<input type="checkbox" ${tpl[c.k] ? 'checked' : ''}>`;
+            } else if (c.edit === 'select') {
+                input = `<select>${c.opts.map(o => `<option value="${o}" ${String(tpl[c.k] || '') === o ? 'selected' : ''}>${o ? (channelLabels[o] || o) : '—'}</option>`).join('')}</select>`;
+            } else {
+                input = `<input type="text" value="${sfdEsc(tpl[c.k] == null ? '' : tpl[c.k])}">`;
+            }
+            return `<td class="sf-cell"><div class="sf-cell-edit" data-id="${tpl.id}">${input}
+                <button class="sf-cell-ok" title="${sfdT('Применить')}" onclick="listCellSave('${tpl.id}','${c.k}')">✓</button>
+                <button class="sf-cell-no" title="${sfdT('Отменить')}" onclick="listCellCancel()">✕</button></div></td>`;
+        }
+        let view;
+        if (c.k === 'channel') {
+            view = `<span class="channel-badge channel-${tpl.channel}">${channelLabels[tpl.channel] || tpl.channel}</span>`;
+        } else if (c.edit === 'bool') {
+            view = `<span class="${tpl[c.k] ? 'status-active' : 'status-inactive'}">${tpl[c.k] ? '● ' + sfdT('активный') : '○ ' + sfdT('неактивный')}</span>`;
+        } else if (c.link) {
+            view = `<button class="sf-link" onclick="viewFromList('${tpl.id}')">${sfdEsc(tpl[c.k])}</button>`;
+        } else {
+            view = sfdEsc(tpl[c.k]);
+        }
+        const pen = `<button class="sf-cell-pen" title="${sfdT('Редактировать')}" onclick="listCellEdit('${tpl.id}','${c.k}')"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>`;
+        return `<td class="sf-cell">${view}${pen}</td>`;
+    }
+
+    tbody.innerHTML = sorted.map(tpl => `
             <tr>
                 <td class="sf-check-col"><input type="checkbox"></td>
-                <td><span class="channel-badge channel-${tpl.channel}">${channelLabels[tpl.channel] || tpl.channel}</span></td>
-                <td><button class="sf-link" onclick="viewFromList('${tpl.id}')">${sfdEsc(tpl.code)}</button></td>
-                <td><button class="sf-link" onclick="viewFromList('${tpl.id}')">${sfdEsc(tpl.name)}</button></td>
-                <td>${sfdEsc(tpl.product)}</td>
-                <td>${sfdEsc(tpl.touch)}</td>
-                <td>${sfdEsc(tpl.trigger)}</td>
-                <td>${sfdEsc(tpl.partner)}</td>
-                <td class="${tpl.active ? 'status-active' : 'status-inactive'}">${tpl.active ? '● ' + sfdT('активный') : '○ ' + sfdT('неактивный')}</td>
+                ${cols.map(c => cellHtml(tpl, c)).join('')}
                 <td><button class="sf-row-menu" title="${sfdT('Открыть настройки шаблона')}" onclick="viewFromList('${tpl.id}')">${sfdT('Просмотр')}</button></td>
             </tr>
-        `;
-    }).join('');
+        `).join('');
+
+    /* фокус в поле правки + Enter/Esc */
+    const editWrap = tbody.querySelector('.sf-cell-edit');
+    if (editWrap && LIST_EDIT) {
+        const inp = editWrap.querySelector('input, select');
+        if (inp) {
+            inp.focus();
+            inp.onkeydown = ev => {
+                if (ev.key === 'Enter') listCellSave(LIST_EDIT.id, LIST_EDIT.k);
+                if (ev.key === 'Escape') listCellCancel();
+            };
+        }
+    }
 }
 
 /* Открыть шаблон из списка */
@@ -286,6 +463,7 @@ function applyOnlyMode() {
 /* Инициализация списка и подсказок при загрузке */
 document.addEventListener('DOMContentLoaded', () => {
     applyOnlyMode();
+    applyListFilterVisibility();
     loadMockData()
         .then(() => {
             applyFilters();

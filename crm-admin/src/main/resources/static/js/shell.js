@@ -19,6 +19,7 @@ const NAV = [
       { id:"viewer",    label:"Просмотр настроек",   icon:"search", view:"sec-admin", adminMode:"view", aclSection:"admin" },
       /* клиентские инструменты без серверной секции — не фильтруются по me.sections (data-no-acl) */
       { id:"srcbuilder",label:"Конструктор source",  icon:"pulse", view:"sec-srcbuilder", noAcl:true },
+      { id:"promo",     label:"Планирование промо",  icon:"calendar", view:"sec-promo", noAcl:true },
       { id:"heatmap",   label:"Тепловая карта",      icon:"grid2", view:"view-heatmap", noAcl:true, appOnly:["Маркетинг"] },
   ]},
   { id:"dash", label:"Дашборд", icon:"gauge", overviewView:"view-dash-overview", children:[
@@ -51,6 +52,7 @@ const ICONS = {
   gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>',
   doc:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
   search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
+  calendar:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
   grid2:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
   monitor:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
   upload:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
@@ -220,6 +222,35 @@ const I18N_EN = {
   "Новый пользователь":"New user", "Пароль (мин. 8)":"Password (min 8)", "Создать":"Create",
   "Роль задаёт уровень возможностей, набор разделов — что видит пользователь.":"The role sets the capability level; the section set defines what the user sees.",
 };
+/* ---- планирование промо, настройка списка, заголовки разделов ---- */
+Object.assign(I18N_EN, {
+  "Планирование промо":"Promo planning",
+  "Планирование промо-кампаний: календарь по дням, продуктам, каналам и ответственным.":"Promo campaign planning: calendar by day, product, channel and owner.",
+  "Календарь промо-коммуникаций: продукт, база, каналы и ответственные. Поля таблицы редактируются по клику, «День недели» и сводка считаются автоматически.":"Promo communications calendar: product, audience, channels and owners. Table cells are editable on click; weekday and summary are calculated automatically.",
+  "Дата":"Date", "День недели":"Weekday", "База":"Audience", "Тотал":"Total",
+  "Название коммуникации":"Communication name", "Ответственный":"Owner", "Комментарий":"Comment",
+  "Месяц":"Month", "Поиск":"Search", "Название коммуникации…":"Communication name…",
+  "Все месяцы":"All months", "Все продукты":"All products", "Все каналы":"All channels",
+  "Все ответственные":"All owners", "+ Строка":"+ Row", "Экспорт CSV":"Export CSV",
+  "Сбросить данные":"Reset data", "Сбросить таблицу к исходным данным?":"Reset the table to the original data?",
+  "Удалить строку":"Delete row", "Удалить строку?":"Delete this row?",
+  "Нет строк по заданным фильтрам":"No rows match the current filters",
+  "Коммуникаций":"Communications", "по текущему фильтру":"for the current filter",
+  "Тотал-рассылок":"Total sends", "признак «Тотал»":"the Total flag",
+  "Запланировано":"Planned", "от строк":"of rows", "Каналы":"Channels",
+  "Формулы:":"Formulas:",
+  "«День недели» вычисляется из даты; выходные подсвечиваются; строки с признаком «Тотал» выделяются; сводка сверху считает количество коммуникаций, тоталов, задействованных каналов и заполненность статусов по текущему фильтру. Правки сохраняются в браузере.":"Weekday is derived from the date; weekends are highlighted; rows flagged as Total are emphasised; the summary above counts communications, totals, channels in use and status coverage for the current filter. Edits are stored in the browser.",
+  "Понедельник":"Monday", "Вторник":"Tuesday", "Среда":"Wednesday", "Четверг":"Thursday",
+  "Пятница":"Friday", "Суббота":"Saturday", "Воскресенье":"Sunday",
+  "Январь":"January", "Февраль":"February", "Март":"March", "Апрель":"April", "Май":"May", "Июнь":"June",
+  "Июль":"July", "Август":"August", "Сентябрь":"September", "Октябрь":"October", "Ноябрь":"November", "Декабрь":"December",
+  /* настройка списка и правка ячеек */
+  "Отображаемые поля":"Displayed fields", "Показывать фильтры":"Visible filters",
+  "По умолчанию":"Reset to default", "Закрыть":"Close", "Применить":"Apply",
+  "Настройка полей и фильтров":"Fields and filters settings",
+  "Не удалось сохранить изменение на сервере. Значение возвращено.":"Could not save the change on the server. The value was reverted.",
+});
+
 /* HTML-заголовки (с выделением) — токены */
 const I18N_HTML = {
   ru: {
@@ -232,6 +263,7 @@ const I18N_HTML = {
     h1_uploads:'Загруженные <span class="grad">инструменты</span>',
     h1_upform:'Загрузка <span class="grad">HTML-инструмента</span>',
     h1_srcbuilder:'Конструктор <span class="grad">source</span>',
+    h1_promo:'Планирование <span class="grad">промо</span>',
   },
   en: {
     h1_home:'Welcome to the <span class="grad">control panel</span>',
@@ -243,6 +275,7 @@ const I18N_HTML = {
     h1_uploads:'Uploaded <span class="grad">tools</span>',
     h1_upform:'Upload an <span class="grad">HTML tool</span>',
     h1_srcbuilder:'Source <span class="grad">builder</span>',
+    h1_promo:'Promo <span class="grad">planning</span>',
   }
 };
 function t(s){ return (UI_LANG === "en" && I18N_EN[s]) ? I18N_EN[s] : s; }
@@ -278,6 +311,10 @@ function applyLang(rerender){
     if (cur.sid === "uploads") renderUploads(cur.cid);
     if (typeof sbUpdate === "function") sbUpdate();
     if (typeof translateAdminChrome === "function") translateAdminChrome();
+    if (typeof promoRender === "function") promoRender();
+    /* заголовок раздела в шапке — на выбранном языке */
+    const s0 = NAV.find(n => n.id === cur.sid);
+    if (s0) renderPageCrumb(s0, cur.cid, $("#pageTitle") ? $("#pageTitle").textContent : "");
   }
 }
 applyTheme();
@@ -557,9 +594,22 @@ function openSection(sid, cid){
   }, 30);
 
   if (sid !== "home" && cid !== "up-new") trackRecent({ sid, cid, label: target.label });
+  renderPageCrumb(s, cid, target.label);
   document.title = "CRM Team · " + t(target.label || s.label);
   const ha = $("#homeActions"); if (ha) ha.style.display = sid === "home" ? "flex" : "none";
   store.set("lastSection", { sid, cid });
+}
+
+/* Название текущего раздела в шапке: «родитель › раздел».
+   Для загруженных инструментов заголовок — имя файла, не переводится. */
+function renderPageCrumb(s, cid, label){
+  const crumb = $("#pageCrumb");
+  if (!crumb || !s) return;
+  const child = (cid && s.children) ? s.children.find(c => c.id === cid) : null;
+  const isTool = s.id === "uploads" && cid && cid !== "up-new";
+  crumb.classList.toggle("no-parent", !child && !isTool);
+  $("#pageParent").textContent = (child || isTool) ? t(s.label) : "";
+  $("#pageTitle").textContent = isTool ? (label || t(s.label)) : t(child ? child.label : s.label);
 }
 
 /* Режим раздела админки: wizard (мастер) / list (шаблоны) / dashboard / view (просмотр настроек).
