@@ -55,6 +55,9 @@ function resetFilters() {
     applyFilters();
 }
 
+/* Максимум строк для отрисовки списка (данные все в памяти, отсекается только рендер) */
+var LIST_RENDER_CAP = 300;
+
 /* Сортировка списка по колонке (клик по заголовку) */
 var LIST_SORT = { col: 'code', dir: 1 };
 var LIST_SORT_LABELS = { channel: 'Канал', code: 'Code / ID', name: 'Название', product: 'Продукт', touch: 'Touch point', trigger: 'Trigger', partner: 'Партнёр', active: 'Статус' };
@@ -84,14 +87,20 @@ function renderTemplateList(templates) {
 
     const totalAll = ALL_TEMPLATES.length;
     const totalActive = ALL_TEMPLATES.filter(x => x.active).length;
-    stats.innerHTML = `${sorted.length} ${sfdT('элементов')} · ${sfdT('Отсортировано по')} «${sfdT(LIST_SORT_LABELS[LIST_SORT.col] || LIST_SORT.col)}» · ${sfdT('всего')} ${totalAll} (${sfdT('активных')}: ${totalActive}, ${sfdT('неактивных')}: ${totalAll - totalActive})`;
+    // Рендерим не больше LIST_RENDER_CAP строк — иначе на десятках тысяч шаблонов DOM подвисает.
+    // Всё в памяти для фильтрации/поиска; отсекается только отрисовка. Уточните фильтр/поиск, чтобы увидеть нужное.
+    const capped = sorted.length > LIST_RENDER_CAP;
+    const shown = capped ? sorted.slice(0, LIST_RENDER_CAP) : sorted;
+    stats.innerHTML = `${sorted.length} ${sfdT('элементов')}` +
+        (capped ? ` <span style="color:var(--coral,#e06)">(${sfdT('показаны первые')} ${LIST_RENDER_CAP} — ${sfdT('уточните фильтр/поиск')})</span>` : '') +
+        ` · ${sfdT('Отсортировано по')} «${sfdT(LIST_SORT_LABELS[LIST_SORT.col] || LIST_SORT.col)}» · ${sfdT('всего')} ${totalAll} (${sfdT('активных')}: ${totalActive}, ${sfdT('неактивных')}: ${totalAll - totalActive})`;
 
     if (sorted.length === 0) {
         tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 30px; color: #888;">${sfdT('Нет шаблонов по заданным фильтрам')}</td></tr>`;
         return;
     }
 
-    tbody.innerHTML = sorted.map(tpl => {
+    tbody.innerHTML = shown.map(tpl => {
         const channelLabels = { sms: 'SMS', push: 'Push', 'mobile-push': 'Push', email: 'Email', cc: 'КЦ', fa: 'FA', vk: 'VK', la: 'Live Activity' };
         return `
             <tr>

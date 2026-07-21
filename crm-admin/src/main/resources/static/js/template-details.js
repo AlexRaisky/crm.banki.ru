@@ -741,8 +741,10 @@ function refreshViewTemplateSelect() {
     });
 
     var sfdTT = (typeof sfdT === 'function') ? sfdT : function(s){ return s; };
-    sel.innerHTML = '<option value="">' + sfdTT('— Выберите шаблон') + ' (' + items.length + ')</option>';
-    items.forEach(function(t) {
+    // на десятках тысяч шаблонов не строим тысячи <option> — первые 500, остальное сужается поиском по source
+    var VCAP = 500, vcapped = items.length > VCAP, vlist = vcapped ? items.slice(0, VCAP) : items;
+    sel.innerHTML = '<option value="">' + sfdTT('— Выберите шаблон') + ' (' + items.length + (vcapped ? ', ' + sfdTT('показаны первые') + ' ' + VCAP : '') + ')</option>';
+    vlist.forEach(function(t) {
         var opt = document.createElement('option');
         opt.value = t.id;
         opt.textContent = t.code + ' - ' + t.name + (t.active ? '' : ' ' + sfdTT('(неактивный)'));
