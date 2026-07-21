@@ -194,13 +194,19 @@ public class ProdReconcileService {
         our.fieldNames().forEachRemaining(k -> {
             if (k.equals(codeCol) || k.equals("id")) return;
             String os = asStr(our.get(k)), ps = asStr(prodRow.get(k));
-            if (!os.equals(ps)) {
-                Map<String, Object> d = new LinkedHashMap<>();
-                d.put("field", k); d.put("ours", os); d.put("prod", ps);
-                diffs.add(d);
-            }
+            if (os.equals(ps)) return;
+            // прод-NULL и наш дефолт — по смыслу одно и то же: пусто/false/0 взаимозаменяемы, не расхождение
+            if (emptyish(os) && emptyish(ps)) return;
+            Map<String, Object> d = new LinkedHashMap<>();
+            d.put("field", k); d.put("ours", os); d.put("prod", ps);
+            diffs.add(d);
         });
         return diffs;
+    }
+
+    /** «Пустышные» значения: NULL/пусто, false, 0 — считаем эквивалентными при сверке. */
+    private static boolean emptyish(String s) {
+        return s.isEmpty() || s.equals("false") || s.equals("0");
     }
 
     /** Импорт выбранных строк из прода в d_template (upsert, без очереди), в одной транзакции + аудит. */
