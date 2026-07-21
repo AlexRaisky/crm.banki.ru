@@ -651,6 +651,9 @@ function afterChannelSave() {
 }
 function saveFromChannelForm(channel) {
     var formEl = document.getElementById(channel);
+    // Live Activity: тумблер в форме Push → сохраняем как канал la (live_activity_template)
+    var laCb = formEl && formEl.querySelector('.cb-live-activity');
+    if (channel === 'push' && laCb && laCb.checked) channel = 'la';
     var data = collectFormData(formEl, channel);
     if (!data) return;
 
