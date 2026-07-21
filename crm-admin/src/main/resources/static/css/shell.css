@@ -74,7 +74,7 @@
 
   /* Диалог смены собственного пароля */
   .pwd-dialog{position:fixed;inset:0;z-index:200;background:rgba(4,10,18,.72);
-    display:flex;align-items:center;justify-content:center;padding:20px}
+    display:flex;align-items:flex-start;justify-content:center;padding:10vh 20px 20px}
   .pwd-card{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:20px 22px;
     width:min(380px,94%);display:flex;flex-direction:column;gap:8px;box-shadow:0 24px 80px rgba(0,0,0,.5)}
   .pwd-card b{font-size:15px;margin-bottom:6px}

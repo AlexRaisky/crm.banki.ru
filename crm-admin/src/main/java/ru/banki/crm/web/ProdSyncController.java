@@ -40,6 +40,12 @@ public class ProdSyncController {
         return out;
     }
 
+    /** Только счётчики очереди (быстро, без коннекта к проду) — для авто-показа в /settings. */
+    @GetMapping("/queue-stats")
+    public Map<String, Object> queueStats() {
+        return sync.stats();
+    }
+
     /** Последние записи очереди (по умолчанию — проблемные и ожидающие). */
     @GetMapping("/queue")
     public List<Map<String, Object>> queue(@RequestParam(defaultValue = "50") int limit,

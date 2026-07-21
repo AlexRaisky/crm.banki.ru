@@ -276,6 +276,18 @@
         <div class="sub">Что панель хранит в localStorage браузера (префикс crmpanel:).</div>
         <div class="card"><div id="diagBox"></div></div>
 
+        <!-- Очередь синка шаблонов: авто-показ счётчиков (снизу под диагностикой хранилища) -->
+        <h2 style="margin-top:26px" data-i18n="Очередь синка шаблонов">Очередь синка шаблонов</h2>
+        <div class="sub" data-i18n="Операции мастера, ожидающие доставки во внешнюю прод-базу.">Операции мастера, ожидающие доставки во внешнюю прод-базу.</div>
+        <div class="card">
+          <div id="diagQueueBox" class="empty">…</div>
+          <div class="sub" style="margin-top:12px;line-height:1.7">
+            <b>PENDING</b> — <span data-i18n="в очереди, ждут доставки в прод">в очереди, ждут доставки в прод</span><br>
+            <b>ERROR</b> — <span data-i18n="не доставлены после всех попыток, нужен ручной повтор">не доставлены после всех попыток, нужен ручной повтор</span><br>
+            <b>OK</b> — <span data-i18n="успешно доставлены в прод">успешно доставлены в прод</span>
+          </div>
+        </div>
+
         <!-- Прод-БД: соединение и очередь синка шаблонов (app.prod_sync) -->
         <h2 style="margin-top:26px" data-i18n="Прод-БД (синк шаблонов)">Прод-БД (синк шаблонов)</h2>
         <div class="sub" data-i18n="Соединение с внешней прод-базой и очередь доставки операций мастера.">Соединение с внешней прод-базой и очередь доставки операций мастера.</div>
@@ -350,6 +362,11 @@ const S_EN = {
   "Что панель хранит в localStorage браузера (префикс crmpanel:).":"What the panel stores in the browser localStorage (crmpanel: prefix).",
   "Ключ":"Key", "Панель ещё ничего не сохранила.":"The panel has not saved anything yet.",
   "Итого:":"Total:", "(лимит браузера ≈ 5 МБ на сайт)":"(browser limit ≈ 5 MB per site)",
+  "Очередь синка шаблонов":"Template sync queue",
+  "Операции мастера, ожидающие доставки во внешнюю прод-базу.":"Wizard operations awaiting delivery to the external prod database.",
+  "в очереди, ждут доставки в прод":"queued, awaiting delivery to prod",
+  "не доставлены после всех попыток, нужен ручной повтор":"not delivered after all attempts, manual retry needed",
+  "успешно доставлены в прод":"delivered to prod successfully",
   "Новое название инструмента:":"New tool name:",
   "Доступно только администраторам":"Available to administrators only",
   "Не удалось загрузить настройки с сервера":"Failed to load settings from the server",
@@ -627,6 +644,27 @@ function renderDiag(){
         <td style="text-align:right"><span class="mono">${(r.size/1024).toFixed(1)} ${LANG==='en'?'KB':'КБ'}</span></td></tr>`).join("") +
       `</tbody></table><div class="empty" style="margin-top:10px">${t2('Итого:')} ${(total/1024).toFixed(1)} ${LANG==='en'?'KB':'КБ'} ${t2('(лимит браузера ≈ 5 МБ на сайт)')}</div>`
     : `<div class="empty">${t2('Панель ещё ничего не сохранила.')}</div>`;
+  renderQueueStats();
+}
+
+/* Счётчики очереди синка — лёгкий запрос без коннекта к проду, авто-показ под диагностикой. */
+async function renderQueueStats(){
+  const box = $("#diagQueueBox");
+  if (!box) return;
+  box.textContent = '…';
+  try {
+    const r = await fetch('/api/admin/prod-db/queue-stats', { credentials: 'same-origin' });
+    if (r.status === 401) { location.href = '/login.html'; return; }
+    if (r.status === 403) { box.textContent = t2('Доступно только администраторам.'); return; }
+    const ct = r.headers.get('content-type') || '';
+    if (ct.indexOf('application/json') < 0) { box.textContent = t2('Сервис недоступен, код ') + r.status + '.'; return; }
+    const q = await r.json();
+    const err = Number(q.error) || 0, pend = Number(q.pending) || 0, ok = Number(q.ok) || 0;
+    box.innerHTML =
+      `<span class="mono">PENDING</span> <b>${pend}</b> &nbsp;·&nbsp; ` +
+      `<span class="mono">ERROR</span> <b style="color:${err > 0 ? 'var(--coral)' : 'inherit'}">${err}</b> &nbsp;·&nbsp; ` +
+      `<span class="mono">OK</span> <b style="color:var(--green)">${ok}</b>`;
+  } catch(e){ box.textContent = t2('Ошибка запроса: ') + e.message; }
 }
 
 /* ---------- Прод-БД: health + очередь синка ---------- */
