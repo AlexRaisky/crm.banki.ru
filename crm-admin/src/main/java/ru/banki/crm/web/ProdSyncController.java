@@ -50,14 +50,15 @@ public class ProdSyncController {
     @GetMapping("/queue")
     public List<Map<String, Object>> queue(@RequestParam(defaultValue = "50") int limit,
                                            @RequestParam(required = false) String status) {
-        String where = (status == null || status.isBlank())
-                ? "status IN ('PENDING','ERROR')" : "status = ?";
+        boolean all = status != null && status.equalsIgnoreCase("all");
+        boolean filter = status != null && !status.isBlank() && !all;
+        String where = filter ? "status = ?" : (all ? "1=1" : "status IN ('PENDING','ERROR')");
+        // source = source_type из payload (jsonb-строка канальной таблицы 1:1)
         String sql = "SELECT id, channel, operation, local_code, prod_code, status, attempts," +
+                " payload->>'source_type' AS source," +
                 " left(coalesce(last_error,''), 300) AS last_error, timestamp_cr, timestamp_upd" +
                 " FROM app.prod_sync WHERE " + where + " ORDER BY id DESC LIMIT " + Math.min(Math.max(limit, 1), 500);
-        return (status == null || status.isBlank())
-                ? jdbc.queryForList(sql)
-                : jdbc.queryForList(sql, status);
+        return filter ? jdbc.queryForList(sql, status) : jdbc.queryForList(sql);
     }
 
     /** Запустить доставку очереди прямо сейчас (не ждать шедулер). */

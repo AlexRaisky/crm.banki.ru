@@ -367,6 +367,7 @@ const S_EN = {
   "в очереди, ждут доставки в прод":"queued, awaiting delivery to prod",
   "не доставлены после всех попыток, нужен ручной повтор":"not delivered after all attempts, manual retry needed",
   "успешно доставлены в прод":"delivered to prod successfully",
+  "Канал":"Channel", "Статус":"Status", "Очередь пуста.":"Queue is empty.",
   "Новое название инструмента:":"New tool name:",
   "Доступно только администраторам":"Available to administrators only",
   "Не удалось загрузить настройки с сервера":"Failed to load settings from the server",
@@ -663,7 +664,35 @@ async function renderQueueStats(){
     box.innerHTML =
       `<span class="mono">PENDING</span> <b>${pend}</b> &nbsp;·&nbsp; ` +
       `<span class="mono">ERROR</span> <b style="color:${err > 0 ? 'var(--coral)' : 'inherit'}">${err}</b> &nbsp;·&nbsp; ` +
-      `<span class="mono">OK</span> <b style="color:var(--green)">${ok}</b>`;
+      `<span class="mono">OK</span> <b style="color:var(--green)">${ok}</b>` +
+      `<div id="diagQueueList" style="margin-top:14px">…</div>`;
+    renderQueueList();
+  } catch(e){ box.textContent = t2('Ошибка запроса: ') + e.message; }
+}
+
+/* Последние записи очереди: source (source_type) · канал · статус. */
+async function renderQueueList(){
+  const box = $("#diagQueueList");
+  if (!box) return;
+  try {
+    const r = await fetch('/api/admin/prod-db/queue?status=all&limit=25', { credentials: 'same-origin' });
+    if (r.status === 401) { location.href = '/login.html'; return; }
+    if (r.status === 403) { box.textContent = t2('Доступно только администраторам.'); return; }
+    const ct = r.headers.get('content-type') || '';
+    if (ct.indexOf('application/json') < 0) { box.textContent = ''; return; }
+    const rows = await r.json();
+    if (!rows.length) { box.innerHTML = `<div class="empty">${t2('Очередь пуста.')}</div>`; return; }
+    box.innerHTML =
+      `<table><thead><tr><th>Source</th><th>${t2('Канал')}</th><th>${t2('Статус')}</th></tr></thead><tbody>` +
+      rows.map(function(x){
+        const st = String(x.status || '');
+        const color = st === 'ERROR' ? 'var(--coral)' : (st === 'OK' ? 'var(--green)' : 'inherit');
+        const src = x.source || ('#' + (x.local_code != null ? x.local_code : ''));
+        return `<tr><td><span class="mono">${esc(src)}</span></td>` +
+               `<td>${esc(x.channel || '')}</td>` +
+               `<td><b style="color:${color}">${esc(st)}</b></td></tr>`;
+      }).join('') +
+      `</tbody></table>`;
   } catch(e){ box.textContent = t2('Ошибка запроса: ') + e.message; }
 }
 
