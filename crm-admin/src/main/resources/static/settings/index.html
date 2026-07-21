@@ -144,6 +144,22 @@
   td .mono{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
   td .btn{padding:6px 11px;font-size:12px;margin-left:6px}
   .empty{color:var(--faint);font-size:13.5px;padding:8px 2px}
+
+  /* Подключения к БД: форма и статус-бейджи */
+  .dbc-form{margin-top:14px;border-top:1px solid var(--line);padding-top:16px}
+  .dbc-grid{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:12px 16px}
+  .dbc-fld{display:flex;flex-direction:column;gap:5px}
+  .dbc-fld.wide{grid-column:1/-1}
+  .dbc-fld label{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+  .dbc-in{background:var(--bg2);border:1px solid var(--line);border-radius:10px;color:var(--ink);
+    font-family:var(--sans);font-size:14px;padding:9px 12px;width:100%}
+  .dbc-in:focus{outline:none;border-color:var(--blue)}
+  .dbc-in.mono{font-family:var(--mono);font-size:12.5px}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;letter-spacing:.03em}
+  .badge.ok{background:var(--green-bg);color:var(--green)}
+  .badge.err{background:var(--coral-bg);color:var(--coral)}
+  .badge.off{background:var(--card2);color:var(--faint)}
+  .badge.unk{background:var(--amber-bg);color:var(--amber)}
 </style>
 </head>
 <body>
@@ -273,7 +289,59 @@
       <!-- ===== Диагностика ===== -->
       <section class="pane" id="pane-diag">
         <h1 data-i18n-html="h_diag">Диагностика <span class="grad">хранилища</span></h1>
-        <div class="sub">Что панель хранит в localStorage браузера (префикс crmpanel:).</div>
+
+        <!-- ===== Подключения к БД ===== -->
+        <h2 style="margin-top:2px" data-i18n="Подключения к БД">Подключения к БД</h2>
+        <div class="sub" data-i18n="Базы, к которым подключается панель. Встроенные (наша и прод) — только для чтения; свои можно добавлять. Пароль хранится на сервере и в списке не показывается.">Базы, к которым подключается панель. Встроенные (наша и прод) — только для чтения; свои можно добавлять. Пароль хранится на сервере и в списке не показывается.</div>
+        <div class="card">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+            <button class="btn accent" id="dbcAddBtn" data-i18n="+ Добавить подключение">+ Добавить подключение</button>
+            <button class="btn" id="dbcTestAllBtn" data-i18n="Проверить все">Проверить все</button>
+            <button class="btn" id="dbcRefreshBtn" data-i18n="Обновить">Обновить</button>
+          </div>
+          <div id="dbcBox" class="empty">…</div>
+
+          <!-- Форма добавления / редактирования (скрыта до нажатия) -->
+          <form class="dbc-form" id="dbcForm" style="display:none" autocomplete="off">
+            <input type="hidden" id="dbcId">
+            <div class="dbc-grid">
+              <div class="dbc-fld">
+                <label data-i18n="Имя">Имя</label>
+                <input class="dbc-in" id="dbcName" placeholder="greenplum-dwh">
+              </div>
+              <div class="dbc-fld">
+                <label data-i18n="Назначение (заметка)">Назначение (заметка)</label>
+                <input class="dbc-in" id="dbcPurpose" placeholder="Витрина для SQL-шагов">
+              </div>
+              <div class="dbc-fld wide">
+                <label>JDBC URL</label>
+                <input class="dbc-in mono" id="dbcUrl" placeholder="jdbc:postgresql://host:5432/dbname">
+              </div>
+              <div class="dbc-fld">
+                <label data-i18n="Пользователь">Пользователь</label>
+                <input class="dbc-in" id="dbcUser" autocomplete="off" placeholder="reader">
+              </div>
+              <div class="dbc-fld">
+                <label data-i18n="Пароль">Пароль</label>
+                <input class="dbc-in" id="dbcPass" type="password" autocomplete="new-password" placeholder="••••••">
+                <span class="mono" id="dbcPassHint" style="color:var(--faint);font-size:11px;display:none" data-i18n="оставьте пустым — прежний пароль сохранится">оставьте пустым — прежний пароль сохранится</span>
+              </div>
+              <div class="dbc-fld wide">
+                <label class="opt-row" style="border:none;padding:2px 0;cursor:pointer">
+                  <input type="checkbox" id="dbcActive" checked style="accent-color:#3CFAB4;width:16px;height:16px">
+                  <span data-i18n="Активно">Активно</span>
+                </label>
+              </div>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn accent" id="dbcSaveBtn" data-i18n="Сохранить">Сохранить</button>
+              <button type="button" class="btn" id="dbcCancelBtn" data-i18n="Отмена">Отмена</button>
+              <span class="save-note" id="dbcNote"></span>
+            </div>
+          </form>
+        </div>
+
+        <div class="sub" style="margin-top:22px">Что панель хранит в localStorage браузера (префикс crmpanel:).</div>
         <div class="card"><div id="diagBox"></div></div>
 
         <!-- Очередь синка шаблонов: авто-показ счётчиков (снизу под диагностикой хранилища) -->
@@ -650,6 +718,7 @@ function renderDiag(){
         <td style="text-align:right"><span class="mono">${(r.size/1024).toFixed(1)} ${LANG==='en'?'KB':'КБ'}</span></td></tr>`).join("") +
       `</tbody></table><div class="empty" style="margin-top:10px">${t2('Итого:')} ${(total/1024).toFixed(1)} ${LANG==='en'?'KB':'КБ'} ${t2('(лимит браузера ≈ 5 МБ на сайт)')}</div>`
     : `<div class="empty">${t2('Панель ещё ничего не сохранила.')}</div>`;
+  renderDbConnections();
   renderQueueStats();
 }
 
@@ -860,6 +929,143 @@ async function importAllPoll(){
   } catch(e){ /* сеть моргнула — продолжаем поллинг */ }
 }
 $("#prodImportAllBtn").addEventListener('click', importAllRun);
+
+/* ================= Подключения к БД (реестр + статус) ================= */
+var DBC = [];   // последний загруженный список (для формы редактирования)
+
+function dbcBadge(st){
+  var s = String(st || '').toUpperCase();
+  if (s === 'OK')    return '<span class="badge ok">OK</span>';
+  if (s === 'ERROR') return '<span class="badge err">ERROR</span>';
+  if (s === 'OFF')   return '<span class="badge off">' + t2('выключено') + '</span>';
+  return '<span class="badge unk">' + t2('не проверялось') + '</span>';
+}
+
+function dbcRenderList(list){
+  DBC = list || [];
+  var box = $("#dbcBox");
+  if (!box) return;
+  if (!DBC.length){ box.innerHTML = '<div class="empty">' + t2('Нет подключений.') + '</div>'; return; }
+  box.innerHTML =
+    '<table><thead><tr>' +
+      '<th>' + t2('Имя') + '</th><th>JDBC URL</th><th>' + t2('Пользователь') + '</th>' +
+      '<th>' + t2('Статус') + '</th><th style="text-align:right">' + t2('Действия') + '</th>' +
+    '</tr></thead><tbody>' +
+    DBC.map(function(c){
+      var lat = (c.latencyMs != null) ? ' <span class="mono">(' + c.latencyMs + ' ms)</span>' : '';
+      var err = (c.status === 'ERROR' && c.error)
+        ? '<div class="mono" style="color:var(--coral);font-size:11px;margin-top:3px" title="' + esc(c.error) + '">' + esc(String(c.error).slice(0,120)) + '</div>' : '';
+      var purpose = c.purpose ? '<div class="mono" style="margin-top:3px">' + esc(c.purpose) + '</div>' : '';
+      var tag = c.builtin ? ' <span class="badge off">' + t2('встроенное') + '</span>' : '';
+      var idAttr = esc(String(c.id));
+      var actions =
+        '<button class="btn" onclick="dbcTest(\'' + idAttr + '\')">' + t2('Проверить') + '</button>' +
+        (c.builtin ? '' :
+          '<button class="btn" onclick="dbcEdit(' + c.id + ')">' + t2('Править') + '</button>' +
+          '<button class="btn ghost-danger" onclick="dbcDelete(' + c.id + ')">' + t2('Удалить') + '</button>');
+      return '<tr' + (c.active === false ? ' style="opacity:.55"' : '') + '>' +
+        '<td><span class="t-name">' + esc(c.name) + '</span>' + tag + purpose + '</td>' +
+        '<td><span class="mono">' + esc(c.jdbcUrl || '') + '</span></td>' +
+        '<td><span class="mono">' + esc(c.username || '') + '</span></td>' +
+        '<td>' + dbcBadge(c.status) + lat + err + '</td>' +
+        '<td style="text-align:right;white-space:nowrap">' + actions + '</td>' +
+      '</tr>';
+    }).join('') +
+    '</tbody></table>';
+}
+
+async function dbcCall(url, method, body){
+  var r = await fetch(url, {
+    method: method || 'GET', credentials: 'same-origin',
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (r.status === 401) { location.href = '/login.html'; throw new Error('401'); }
+  if (r.status === 403) { throw new Error(t2('Доступно только администраторам.')); }
+  var ct = r.headers.get('content-type') || '';
+  var data = ct.indexOf('application/json') >= 0 ? await r.json() : null;
+  if (!r.ok) throw new Error((data && (data.message || data.error)) || (t2('Ошибка, код ') + r.status));
+  return data;
+}
+
+async function renderDbConnections(){
+  var box = $("#dbcBox");
+  if (!box) return;
+  box.innerHTML = '<div class="empty">…</div>';
+  try { dbcRenderList(await dbcCall('/api/admin/db-connections')); }
+  catch(e){ box.innerHTML = '<div class="empty" style="color:var(--coral)">' + esc(e.message) + '</div>'; }
+}
+
+async function dbcTestAll(){
+  var box = $("#dbcBox");
+  box.innerHTML = '<div class="empty">' + t2('Проверяю…') + '</div>';
+  try { dbcRenderList(await dbcCall('/api/admin/db-connections/test-all', 'POST')); }
+  catch(e){ box.innerHTML = '<div class="empty" style="color:var(--coral)">' + esc(e.message) + '</div>'; }
+}
+
+async function dbcTest(id){
+  try { await dbcCall('/api/admin/db-connections/' + encodeURIComponent(id) + '/test', 'POST'); }
+  catch(e){ alert(e.message); }
+  renderDbConnections();
+}
+
+/* ---- форма добавления/редактирования ---- */
+function dbcFormOpen(row){
+  $("#dbcId").value      = row ? row.id : '';
+  $("#dbcName").value    = row ? (row.name || '') : '';
+  $("#dbcPurpose").value = row ? (row.purpose || '') : '';
+  $("#dbcUrl").value     = row ? (row.jdbcUrl || '') : '';
+  $("#dbcUser").value    = row ? (row.username || '') : '';
+  $("#dbcPass").value    = '';
+  $("#dbcActive").checked = row ? (row.active !== false) : true;
+  $("#dbcPassHint").style.display = row ? 'inline' : 'none';
+  $("#dbcNote").className = 'save-note';
+  $("#dbcForm").style.display = 'block';
+  $("#dbcName").focus();
+}
+function dbcFormClose(){ $("#dbcForm").style.display = 'none'; }
+function dbcEdit(id){
+  var row = DBC.find(function(c){ return c.id === id; });
+  if (row) dbcFormOpen(row);
+}
+async function dbcSave(){
+  var id = $("#dbcId").value;
+  var body = {
+    name: $("#dbcName").value.trim(),
+    jdbcUrl: $("#dbcUrl").value.trim(),
+    username: $("#dbcUser").value.trim(),
+    purpose: $("#dbcPurpose").value.trim(),
+    active: $("#dbcActive").checked
+  };
+  var pw = $("#dbcPass").value;
+  if (pw) body.password = pw;
+  if (!body.name || !body.jdbcUrl) { dbcNote(t2('Нужны имя и JDBC URL.'), true); return; }
+  try {
+    if (id) await dbcCall('/api/admin/db-connections/' + id, 'PUT', body);
+    else    await dbcCall('/api/admin/db-connections', 'POST', body);
+    dbcFormClose();
+    renderDbConnections();
+  } catch(e){ dbcNote(e.message, true); }
+}
+function dbcNote(msg, err){
+  var n = $("#dbcNote");
+  n.textContent = msg;
+  n.className = 'save-note show' + (err ? ' err' : '');
+  if (!err) setTimeout(function(){ n.className = 'save-note'; }, 2500);
+}
+async function dbcDelete(id){
+  var row = DBC.find(function(c){ return c.id === id; });
+  if (!confirm(t2('Удалить подключение') + ' «' + (row ? row.name : id) + '»?')) return;
+  try { await dbcCall('/api/admin/db-connections/' + id, 'DELETE'); }
+  catch(e){ alert(e.message); }
+  renderDbConnections();
+}
+
+$("#dbcAddBtn").addEventListener('click', function(){ dbcFormOpen(null); });
+$("#dbcTestAllBtn").addEventListener('click', dbcTestAll);
+$("#dbcRefreshBtn").addEventListener('click', renderDbConnections);
+$("#dbcSaveBtn").addEventListener('click', dbcSave);
+$("#dbcCancelBtn").addEventListener('click', dbcFormClose);
 
 renderApps();   /* мгновенный каркас (умолчания), затем данные с сервера */
 loadApps();
