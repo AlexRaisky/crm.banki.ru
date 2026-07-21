@@ -1,12 +1,20 @@
 /* =========================================================
    ПЛАНИРОВАНИЕ ПРОМО — календарь промо-коммуникаций.
-   Даты вынесены в строки-разделители (в конце строки «+»
-   добавляет запись на эту дату). Каналы — множественный выбор,
-   партнёры и продукты — из справочников CRM, «Название
-   коммуникации» проверяется по правилам Конструктора source,
-   «Задача» принимает ссылку или номер и показывается ссылкой.
-   Правка ячейки подтверждается ✓ (или кликом мимо), Esc — отмена.
-   Данные хранятся в localStorage.
+
+   Логика раздела:
+   · даты — строки-разделители, «+» в конце добавляет запись на эту дату;
+   · «Запланировать промо-рассылку» открывает форму новой записи прямо
+     под шапкой таблицы (дата, каналы, статус «К планированию» и т.д.);
+   · одна запись = один канал: при сохранении нескольких каналов
+     создаётся столько записей, сколько выбрано каналов;
+   · «Название коммуникации» собирается автоматически по правилам
+     Конструктора source из канала, продукта, партнёра, уникального
+     имени и даты;
+   · вкладки «Актуальные» / «Архивные» (дата отправки уже прошла);
+   · правила планирования (тоталы по неделям, лимиты промо на день
+     и т.д.) подсвечивают проблемные строки.
+
+   Данные хранятся в localStorage (crmpanel:promoPlan).
    ========================================================= */
 
 /* ---------- справочники ---------- */
@@ -20,8 +28,12 @@ var PROMO_CHAN_ALIAS = {
   'callcenter':'callcenter', 'call-center':'callcenter', 'cc':'callcenter', 'кц':'callcenter',
   'fin-assistent':'fin-assistent', 'fin-assistant':'fin-assistent', 'финассистент':'fin-assistent'
 };
-/* канал коммуникации → часть source (см. Конструктор source) */
-var PROMO_CHAN_SRC = { 'callcenter':'contact', 'sms':'sms', 'e-mail':'email', 'mobile-push':'mobile-push' };
+/* канал коммуникации → часть source (см. Конструктор source).
+   vk и fin-assistent в конструкторе не описаны — подставляем как есть. */
+var PROMO_CHAN_SRC = { 'callcenter':'contact', 'sms':'sms', 'e-mail':'email', 'mobile-push':'mobile-push',
+                       'vk':'vk', 'fin-assistent':'fin-assistent' };
+/* каналы, по которым считаются лимиты промо на продукт */
+var PROMO_MAIN_CHAN = ['e-mail', 'mobile-push', 'sms'];
 
 /* продукты: crm_product_segment (код + описание) */
 var PROMO_PRODUCTS = [
@@ -156,18 +168,49 @@ var PROMO_SEED = [
 
 var PROMO_DOW = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
 var PROMO_MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-var PROMO_STATUSES = ['', 'запланировано', 'в работе', 'отправлено', 'отменено'];
-var PROMO_COLS = 10;          /* колонок до кнопки «+» в строке-дате */
-var PROMO_VER = 2;            /* версия схемы строк */
+var PROMO_STATUS_NEW = 'К планированию';
+var PROMO_STATUS_ASK = 'Нужен статус по рассылке';
+var PROMO_STATUSES = ['', PROMO_STATUS_NEW, 'запланировано', 'в работе', 'отправлено', 'отменено'];
+var PROMO_COLS = 11;          /* колонок до кнопки «+» в строке-дате */
+var PROMO_VER = 3;            /* версия схемы строк */
 var PROMO_ROWS = [];
 var PROMO_EDIT = null;        /* { i, k, v } — v это черновик правки */
+var PROMO_NEW = null;         /* форма новой записи над таблицей */
+var PROMO_TAB = 'active';     /* active | archive */
+var PROMO_FLAGS = {};         /* индекс строки → { bad:[…], warn:[…] } */
 
 function pmT(s){ return (typeof t === 'function') ? t(s) : s; }
 function pmEsc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
 function pmAttr(s){ return pmEsc(s); }
 
-/* ---------- нормализация и миграция ---------- */
+/* ---------- даты ---------- */
+function promoToday(){
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function promoDow(iso){
+  var d = new Date(iso + 'T00:00:00');
+  return isNaN(d) ? '' : PROMO_DOW[d.getDay()];
+}
+function promoIsWeekend(iso){
+  var d = new Date(iso + 'T00:00:00');
+  return !isNaN(d) && (d.getDay() === 0 || d.getDay() === 6);
+}
+function promoFmtDate(iso){
+  var p = (iso || '').split('-');
+  return p.length === 3 ? p[2] + '.' + p[1] + '.' + p[0] : iso;
+}
+function promoMonthKey(iso){ return (iso || '').slice(0, 7); }
+/* начало недели (понедельник) — ключ для правила по тоталам */
+function promoWeekKey(iso){
+  var d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return '';
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function promoIsPast(iso){ return !!iso && iso < promoToday(); }
 
+/* ---------- нормализация и миграция ---------- */
 function promoNormChan(v){
   var list = Array.isArray(v) ? v.slice() : String(v || '').split(/[,;/]/);
   var out = [];
@@ -175,7 +218,6 @@ function promoNormChan(v){
     var mapped = PROMO_CHAN_ALIAS[c] || (PROMO_CHANNELS.indexOf(c) > -1 ? c : '');
     if (mapped && out.indexOf(mapped) === -1) out.push(mapped);
   });
-  /* порядок всегда как в справочнике */
   return PROMO_CHANNELS.filter(function(c){ return out.indexOf(c) > -1; });
 }
 function promoNormProduct(v){
@@ -193,36 +235,70 @@ function promoTaskKey(v){
   var m = String(v || '').match(/([A-Za-z][A-Za-z0-9]*-\d+)/);
   return m ? m[1].toUpperCase() : '';
 }
-function promoMigrateRow(r){
-  var o = {
-    d: r.d || '',
-    product: promoNormProduct(r.product),
-    partner: r.partner || '',
-    base: r.base || '',
-    chan: promoNormChan(r.chan),
-    total: !!r.total,
-    name: '',
-    task: r.task || '',
-    owner: r.owner || '',
-    status: r.status || '',
-    note: r.note || ''
-  };
-  /* номер задачи вытаскиваем из комментария */
-  if (!o.task){
-    var key = promoTaskKey(o.note);
-    if (key){
-      o.task = key;
-      /* если в комментарии была только ссылка — она больше не нужна */
-      if (/^https?:\/\/\S+$/.test(o.note.trim())) o.note = '';
-    }
-  }
-  /* прежнее «Название коммуникации» переезжает в комментарий:
-     теперь название обязано соответствовать формату Конструктора source */
-  var old = (r.name || '').trim();
-  if (old) o.note = o.note ? (o.note + '; ' + old) : old;
-  return o;
+/* уникальное имя: латиница, цифры, разделитель — только дефис */
+function promoUniqOk(v){ return /^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$/.test(String(v || '').trim()); }
+function promoUniqSlug(v){
+  return String(v || '').trim().toLowerCase()
+    .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
-function promoSeedRows(){ return PROMO_SEED.map(promoMigrateRow); }
+
+/* v1/v2 → v3: продукт и каналы к справочникам, задача из комментария,
+   прежнее название в комментарий, одна запись — один канал */
+function promoMigrateRows(rows){
+  var out = [];
+  rows.forEach(function(r){
+    var o = {
+      d: r.d || '',
+      product: promoNormProduct(r.product),
+      partner: r.partner || '',
+      base: r.base || '',
+      chan: promoNormChan(r.chan),
+      total: !!r.total,
+      uniq: r.uniq || '',
+      task: r.task || '',
+      owner: r.owner || '',
+      status: r.status || '',
+      note: r.note || ''
+    };
+    if (!o.task){
+      var key = promoTaskKey(o.note);
+      if (key){
+        o.task = key;
+        if (/^https?:\/\/\S+$/.test(o.note.trim())) o.note = '';
+      }
+    }
+    /* прежнее «Название коммуникации» переезжает в комментарий:
+       теперь название собирается автоматически по формату source */
+    var old = (r.name || '').trim();
+    if (old && !/^[a-z-]+_(promo|trigger)_/.test(old)){
+      o.note = o.note ? (o.note + '; ' + old) : old;
+      if (!o.uniq) o.uniq = promoUniqSlug(old).slice(0, 40);
+    }
+    /* одна запись = один канал */
+    if (o.chan.length <= 1){ out.push(o); return; }
+    o.chan.forEach(function(c){
+      var copy = Object.assign({}, o);
+      copy.chan = [c];
+      out.push(copy);
+    });
+  });
+  return out;
+}
+function promoSeedRows(){ return promoMigrateRows(PROMO_SEED); }
+
+/* архив: у прошедших дат «запланировано» → «отправлено» */
+function promoArchiveSync(){
+  var changed = false;
+  PROMO_ROWS.forEach(function(r){
+    if (promoIsPast(r.d) && r.status === 'запланировано'){ r.status = 'отправлено'; changed = true; }
+  });
+  return changed;
+}
+function promoStatusShown(r){
+  if (!promoIsPast(r.d)) return r.status || '';
+  if (r.status === 'отправлено' || r.status === 'отменено') return r.status;
+  return PROMO_STATUS_ASK;
+}
 
 function promoLoad(){
   var raw = null, ver = 0;
@@ -230,14 +306,15 @@ function promoLoad(){
     raw = localStorage.getItem('crmpanel:promoPlan');
     ver = parseInt(localStorage.getItem('crmpanel:promoPlanVer') || '0', 10) || 0;
   } catch(e){}
-  if (!raw){ PROMO_ROWS = promoSeedRows(); promoSave(); return; }
+  if (!raw){ PROMO_ROWS = promoSeedRows(); promoArchiveSync(); promoSave(); return; }
   try {
     var rows = JSON.parse(raw);
     PROMO_ROWS = (ver >= PROMO_VER)
       ? rows.map(function(r){ r.chan = promoNormChan(r.chan); return r; })
-      : rows.map(promoMigrateRow);
-    if (ver < PROMO_VER) promoSave();
-  } catch(e){ PROMO_ROWS = promoSeedRows(); promoSave(); }
+      : promoMigrateRows(rows);
+    promoArchiveSync();
+    promoSave();
+  } catch(e){ PROMO_ROWS = promoSeedRows(); promoArchiveSync(); promoSave(); }
 }
 function promoSave(){
   try {
@@ -248,81 +325,168 @@ function promoSave(){
 function promoReset(){
   if (!confirm(pmT('Сбросить таблицу к исходным данным?'))) return;
   PROMO_ROWS = promoSeedRows();
-  PROMO_EDIT = null;
+  promoArchiveSync();
+  PROMO_EDIT = null; PROMO_NEW = null;
   promoSave(); promoRender();
 }
 
-/* ---------- формулы даты ---------- */
-function promoDow(iso){
-  var d = new Date(iso + 'T00:00:00');
-  return isNaN(d) ? '' : PROMO_DOW[d.getDay()];
+/* ---------- название коммуникации (формат Конструктора source) ---------- */
+function promoProdCode(product){
+  var first = String(product || '').split(',')[0].trim();
+  var p = PROMO_PRODUCTS.filter(function(x){ return x.name === first; })[0];
+  return p ? p.code : '';
 }
-function promoIsWeekend(iso){
-  var d = new Date(iso + 'T00:00:00');
-  return !isNaN(d) && (d.getDay() === 0 || d.getDay() === 6);
-}
-function promoFmtDate(iso){
+function promoDatePart(iso, chan){
   var p = (iso || '').split('-');
-  return p.length === 3 ? p[2] + '.' + p[1] + '.' + p[0] : iso;
+  if (p.length !== 3) return '';
+  var v = p[2] + p[1] + p[0].slice(2);
+  return (chan === 'callcenter') ? v + 'day' : v;
 }
-function promoMonthKey(iso){ return (iso || '').slice(0, 7); }
+/* собирает source-имя; при нехватке частей возвращает список недостающих */
+function promoBuildName(r, chan){
+  var c = chan || (r.chan || [])[0] || '';
+  var miss = [];
+  if (!c) miss.push(pmT('канал'));
+  if (!promoProdCode(r.product)) miss.push(pmT('продукт'));
+  if (!String(r.partner || '').trim()) miss.push(pmT('партнёр'));
+  if (!promoUniqOk(r.uniq)) miss.push(pmT('уникальное имя'));
+  if (!r.d) miss.push(pmT('дата'));
+  if (miss.length) return { ok:false, miss: miss, value:'' };
+  return { ok:true, miss: [], value: [
+    PROMO_CHAN_SRC[c] || c, 'promo', promoProdCode(r.product),
+    String(r.partner).trim().replace(/\s+/g, '-'), String(r.uniq).trim(), promoDatePart(r.d, c)
+  ].join('_') };
+}
 
-/* ---------- название коммуникации: правила Конструктора source ---------- */
-var PROMO_NAME_HINT = 'канал_promo_продукт_партнёр_имя_ддммгг · канал_trigger_продукт_имя_Nday';
+/* ---------- правила планирования ---------- */
+/* ключ «одного промо»: одна акция может идти в нескольких каналах */
+function promoGroupKey(r){ return [r.d, r.product, r.partner, r.uniq || r.base].join('|'); }
 
-function promoNameCheck(v){
-  v = String(v || '').trim();
-  if (!v) return { ok: true, empty: true, msg: PROMO_NAME_HINT };
-  var p = v.split('_');
-  var codes = PROMO_PRODUCTS.map(function(x){ return x.code; });
-  var chans = ['sms','mobile-push','email','contact'];
-  if (chans.indexOf(p[0]) === -1)
-    return { ok:false, msg: pmT('1-я часть — канал: sms, mobile-push, email или contact (для callcenter).') };
-  if (p[1] !== 'promo' && p[1] !== 'trigger')
-    return { ok:false, msg: pmT('2-я часть — тип кампании: promo или trigger.') };
-  if (codes.indexOf(p[2]) === -1)
-    return { ok:false, msg: pmT('3-я часть — код продукта из справочника, напр. creditcards.') };
-  if (p[1] === 'promo'){
-    if (p.length !== 6)
-      return { ok:false, msg: pmT('Формат promo: канал_promo_продукт_партнёр_имя_ддммгг') };
-    if (!p[3]) return { ok:false, msg: pmT('4-я часть — партнёр (или General / Digest).') };
-    if (!p[4]) return { ok:false, msg: pmT('5-я часть — уникальное имя кампании.') };
-    if (!/^\d{6}(day)?$/.test(p[5]))
-      return { ok:false, msg: pmT('Последняя часть — дата ддммгг (для callcenter — ддммггday).') };
-    if (p[0] === 'contact' && !/day$/.test(p[5]))
-      return { ok:false, msg: pmT('Для contact дата заканчивается на day, напр. 180326day.') };
-  } else {
-    var need = (p[0] === 'contact') ? 6 : 5;
-    if (p.length !== need)
-      return { ok:false, msg: (p[0] === 'contact')
-        ? pmT('Формат trigger для contact: contact_trigger_продукт_имя_сегмент_Nday')
-        : pmT('Формат trigger: канал_trigger_продукт_имя_Nday') };
-    if (!p[3]) return { ok:false, msg: pmT('4-я часть — уникальное имя кампании.') };
-    if (need === 6 && !p[4]) return { ok:false, msg: pmT('5-я часть — сегмент.') };
-    if (!/^\d+day$/.test(p[need - 1]))
-      return { ok:false, msg: pmT('Последняя часть — Nday, напр. 3day.') };
+function promoAnalyze(){
+  var flags = {};
+  function add(i, kind, msg){
+    if (!flags[i]) flags[i] = { bad: [], warn: [] };
+    if (flags[i][kind].indexOf(msg) === -1) flags[i][kind].push(msg);
   }
-  return { ok:true, msg: pmT('Формат соответствует Конструктору source.') };
+
+  /* — тоталы: 1 в неделю, 2 если в уникальном имени есть -cb (ставка ЦБ) — */
+  var weeks = {};
+  PROMO_ROWS.forEach(function(r, i){
+    if (!r.total) return;
+    var wk = promoWeekKey(r.d);
+    (weeks[wk] = weeks[wk] || []).push(i);
+  });
+  Object.keys(weeks).forEach(function(wk){
+    var idx = weeks[wk].slice().sort(function(a, b){
+      return PROMO_ROWS[a].d === PROMO_ROWS[b].d ? a - b : (PROMO_ROWS[a].d < PROMO_ROWS[b].d ? -1 : 1);
+    });
+    var groups = [], seen = {};
+    idx.forEach(function(i){
+      var k = promoGroupKey(PROMO_ROWS[i]);
+      if (!(k in seen)){ seen[k] = groups.length; groups.push([]); }
+      groups[seen[k]].push(i);
+    });
+    var hasCb = groups.some(function(g){ return /-cb/i.test(PROMO_ROWS[g[0]].uniq || ''); });
+    var limit = hasCb ? 2 : 1;
+    groups.slice(limit).forEach(function(g){
+      g.forEach(function(i){
+        add(i, 'warn', pmT('Лимит тоталов на неделю') + ': ' + limit +
+          (hasCb ? ' (' + pmT('есть рассылка по ставке ЦБ') + ')' : '') + ' — ' + pmT('эта рассылка сверх лимита'));
+      });
+    });
+  });
+
+  /* — по одному продукту не больше 3 промо в день (в разных каналах) — */
+  var byDayProd = {};
+  PROMO_ROWS.forEach(function(r, i){
+    if (!r.product) return;
+    var k = r.d + '|' + r.product;
+    (byDayProd[k] = byDayProd[k] || []).push(i);
+  });
+  Object.keys(byDayProd).forEach(function(k){
+    var groups = [], seen = {};
+    byDayProd[k].forEach(function(i){
+      var gk = promoGroupKey(PROMO_ROWS[i]);
+      if (!(gk in seen)){ seen[gk] = groups.length; groups.push([]); }
+      groups[seen[gk]].push(i);
+    });
+    groups.slice(3).forEach(function(g){
+      g.forEach(function(i){ add(i, 'bad', pmT('По одному продукту допускается не больше 3 промо в день')); });
+    });
+    /* один и тот же канал у нескольких промо одного продукта */
+    var chanUse = {};
+    groups.forEach(function(g){
+      g.forEach(function(i){
+        (PROMO_ROWS[i].chan || []).forEach(function(c){
+          if (PROMO_MAIN_CHAN.indexOf(c) === -1) return;
+          (chanUse[c] = chanUse[c] || []).push(i);
+        });
+      });
+    });
+    Object.keys(chanUse).forEach(function(c){
+      var uniqGroups = {};
+      chanUse[c].forEach(function(i){ uniqGroups[promoGroupKey(PROMO_ROWS[i])] = 1; });
+      if (Object.keys(uniqGroups).length > 1)
+        chanUse[c].forEach(function(i){ add(i, 'bad', pmT('Промо одного продукта должны идти в разных каналах') + ' (' + c + ')'); });
+    });
+  });
+
+  /* — одна база по продукту в день — только в одном канале — */
+  var byBase = {};
+  PROMO_ROWS.forEach(function(r, i){
+    if (!r.base) return;
+    var k = r.d + '|' + r.product + '|' + r.base;
+    (byBase[k] = byBase[k] || []).push(i);
+  });
+  Object.keys(byBase).forEach(function(k){
+    var chans = {};
+    byBase[k].forEach(function(i){ (PROMO_ROWS[i].chan || []).forEach(function(c){ chans[c] = 1; }); });
+    if (Object.keys(chans).length > 1)
+      byBase[k].forEach(function(i){ add(i, 'bad', pmT('База по одному продукту в день должна использоваться только в одном канале')); });
+  });
+
+  /* — не больше 4 промо в день (разные каналы одной акции = одно промо) — */
+  var byDay = {};
+  PROMO_ROWS.forEach(function(r, i){ (byDay[r.d] = byDay[r.d] || []).push(i); });
+  Object.keys(byDay).forEach(function(d){
+    var groups = [], seen = {};
+    byDay[d].forEach(function(i){
+      var gk = promoGroupKey(PROMO_ROWS[i]);
+      if (!(gk in seen)){ seen[gk] = groups.length; groups.push([]); }
+      groups[seen[gk]].push(i);
+    });
+    groups.slice(4).forEach(function(g){
+      g.forEach(function(i){ add(i, 'bad', pmT('В день допускается не больше 4 промо') + ' (' + groups.length + ')'); });
+    });
+    /* — в день с тоталом остальные промо в том же канале подсвечиваются — */
+    var totalChans = {};
+    byDay[d].forEach(function(i){ if (PROMO_ROWS[i].total) (PROMO_ROWS[i].chan || []).forEach(function(c){ totalChans[c] = 1; }); });
+    if (Object.keys(totalChans).length){
+      byDay[d].forEach(function(i){
+        var r = PROMO_ROWS[i];
+        if (r.total) return;
+        (r.chan || []).forEach(function(c){
+          if (totalChans[c]) add(i, 'bad', pmT('В этот день в этом канале уже запланирован тотал') + ' (' + c + ')');
+        });
+      });
+    }
+  });
+
+  PROMO_FLAGS = flags;
+  return flags;
 }
-/* черновик названия из данных строки */
-function promoNameSuggest(){
-  if (!PROMO_EDIT || PROMO_EDIT.k !== 'name') return;
-  var r = PROMO_ROWS[PROMO_EDIT.i];
-  if (!r) return;
-  var chan = '';
-  (r.chan || []).some(function(c){ if (PROMO_CHAN_SRC[c]){ chan = PROMO_CHAN_SRC[c]; return true; } return false; });
-  var first = (r.product || '').split(',')[0].trim();
-  var prod = PROMO_PRODUCTS.filter(function(x){ return x.name === first; })[0];
-  var p = (r.d || '').split('-');
-  var date = p.length === 3 ? (p[2] + p[1] + p[0].slice(2)) : '';
-  if (chan === 'contact' && date) date += 'day';
-  var partner = (r.partner || 'General').trim().replace(/\s+/g, '-');
-  var val = [chan || 'email', 'promo', prod ? prod.code : 'general', partner, 'nazvanie', date].join('_');
-  PROMO_EDIT.v = val;
+
+/* ---------- фильтры и вкладки ---------- */
+function promoSetTab(tab){
+  PROMO_TAB = tab === 'archive' ? 'archive' : 'active';
+  PROMO_EDIT = null;
   promoRender();
 }
+function promoTabRows(){
+  return PROMO_ROWS.map(function(r, i){ return { r: r, i: i }; })
+    .filter(function(x){ return PROMO_TAB === 'archive' ? promoIsPast(x.r.d) : !promoIsPast(x.r.d); });
+}
 
-/* ---------- фильтры ---------- */
 function promoFillSelects(){
   var monthSel = document.getElementById('promoMonth');
   if (!monthSel) return;
@@ -332,10 +496,11 @@ function promoFillSelects(){
   var ownSel = document.getElementById('promoOwner');
 
   var months = [], prods = [], partners = [], owners = [];
-  PROMO_ROWS.forEach(function(r){
+  promoTabRows().forEach(function(x){
+    var r = x.r;
     var mk = promoMonthKey(r.d);
     if (mk && months.indexOf(mk) === -1) months.push(mk);
-    (r.product || '').split(',').map(function(x){ return x.trim(); }).filter(Boolean)
+    (r.product || '').split(',').map(function(p){ return p.trim(); }).filter(Boolean)
       .forEach(function(p){ if (prods.indexOf(p) === -1) prods.push(p); });
     if (r.partner && partners.indexOf(r.partner) === -1) partners.push(r.partner);
     if (r.owner && owners.indexOf(r.owner) === -1) owners.push(r.owner);
@@ -365,15 +530,22 @@ function promoFiltered(){
   var rv = (document.getElementById('promoPartner') || {}).value || '';
   var cv = (document.getElementById('promoChannel') || {}).value || '';
   var ov = (document.getElementById('promoOwner') || {}).value || '';
+  var tv = (document.getElementById('promoTotal') || {}).value || '';
   var q = ((document.getElementById('promoSearch') || {}).value || '').trim().toLowerCase();
-  return PROMO_ROWS.map(function(r, i){ return { r: r, i: i }; }).filter(function(x){
+  return promoTabRows().filter(function(x){
     var r = x.r;
     if (mv && promoMonthKey(r.d) !== mv) return false;
     if (pv && (r.product || '').indexOf(pv) === -1) return false;
     if (rv && r.partner !== rv) return false;
     if (cv && (r.chan || []).indexOf(cv) === -1) return false;
     if (ov && r.owner !== ov) return false;
-    if (q && [r.name, r.base, r.product, r.partner, r.task, r.note].join(' ').toLowerCase().indexOf(q) === -1) return false;
+    if (tv === 'yes' && !r.total) return false;
+    if (tv === 'no' && r.total) return false;
+    if (q){
+      var nm = promoBuildName(r);
+      var hay = [nm.value, r.base, r.product, r.partner, r.uniq, r.task, r.note].join(' ').toLowerCase();
+      if (hay.indexOf(q) === -1) return false;
+    }
     return true;
   }).sort(function(a, b){
     if (a.r.d === b.r.d) return a.i - b.i;
@@ -385,20 +557,24 @@ function promoFiltered(){
 function promoRenderKpis(rows){
   var box = document.getElementById('promoKpis');
   if (!box) return;
-  var totals = rows.filter(function(x){ return x.r.total; }).length;
+  var groups = {};
+  rows.forEach(function(x){ if (x.r.total) groups[promoGroupKey(x.r)] = 1; });
+  var totals = Object.keys(groups).length;
   var planned = rows.filter(function(x){ return (x.r.status || '') === 'запланировано'; }).length;
+  var issues = rows.filter(function(x){ return PROMO_FLAGS[x.i] && (PROMO_FLAGS[x.i].bad.length || PROMO_FLAGS[x.i].warn.length); }).length;
   var chans = {};
   rows.forEach(function(x){ (x.r.chan || []).forEach(function(c){ chans[c] = (chans[c] || 0) + 1; }); });
   var chanStr = PROMO_CHANNELS.filter(function(c){ return chans[c]; })
     .map(function(c){ return c + ' · ' + chans[c]; }).join(', ') || '—';
-  var pct = rows.length ? Math.round(planned / rows.length * 100) : 0;
   box.innerHTML =
     '<div class="kpi"><div class="l">' + pmT('Коммуникаций') + '</div><div class="v">' + rows.length + '</div>' +
       '<div class="s">' + pmT('по текущему фильтру') + '</div></div>' +
     '<div class="kpi"><div class="l">' + pmT('Тотал-рассылок') + '</div><div class="v amber">' + totals + '</div>' +
-      '<div class="s">' + pmT('признак «Тотал»') + '</div></div>' +
+      '<div class="s">' + pmT('акций с признаком «Тотал»') + '</div></div>' +
     '<div class="kpi"><div class="l">' + pmT('Запланировано') + '</div><div class="v green">' + planned + '</div>' +
-      '<div class="s">' + pct + '% ' + pmT('от строк') + '</div></div>' +
+      '<div class="s">' + (rows.length ? Math.round(planned / rows.length * 100) : 0) + '% ' + pmT('от строк') + '</div></div>' +
+    '<div class="kpi"><div class="l">' + pmT('Требуют внимания') + '</div><div class="v' + (issues ? ' coral' : '') + '">' + issues + '</div>' +
+      '<div class="s">' + pmT('нарушают правила планирования') + '</div></div>' +
     '<div class="kpi"><div class="l">' + pmT('Каналы') + '</div><div class="v blue">' + Object.keys(chans).length + '</div>' +
       '<div class="s">' + pmEsc(chanStr) + '</div></div>';
 }
@@ -411,9 +587,9 @@ function promoActs(disabled){
       ' onclick="promoCommit()">✓</button>' +
     '<button class="cell-no" type="button" title="' + pmT('Отмена') + '" onclick="promoCancel()">✕</button></div>';
 }
-function promoCell(x, k, html, editor, acts){
+function promoCell(x, k, html, editor){
   if (promoIsEditing(x.i, k))
-    return '<td class="c-' + k + ' cell-edit"><div class="ed">' + editor + (acts === false ? '' : promoActs(false)) + '</div></td>';
+    return '<td class="c-' + k + ' cell-edit"><div class="ed">' + editor + promoActs(false) + '</div></td>';
   return '<td class="c-' + k + ' editable" data-i="' + x.i + '" data-k="' + k + '">' + html + '</td>';
 }
 function promoChanCls(c){
@@ -423,53 +599,73 @@ function promoChanCls(c){
   if (c === 'fin-assistent') return 'fa';
   return '';
 }
+function promoChanBadges(list){
+  return (list || []).map(function(c){
+    return '<span class="chan ' + promoChanCls(c) + '">' + pmEsc(c) + '</span>';
+  }).join('') || '—';
+}
 
 /* ---------- отрисовка ---------- */
 function promoRender(){
   var body = document.getElementById('promoBody');
   if (!body) return;
+  promoAnalyze();
   promoFillSelects();
   var rows = promoFiltered();
   promoRenderKpis(rows);
+  promoRenderTabs();
+
+  var html = PROMO_NEW ? promoNewRowHtml() : '';
 
   if (!rows.length){
-    body.innerHTML = '<tr><td colspan="' + (PROMO_COLS + 1) + '" style="text-align:center;padding:26px;color:var(--faint)">' +
+    html += '<tr><td colspan="' + (PROMO_COLS + 1) + '" style="text-align:center;padding:26px;color:var(--faint)">' +
       pmT('Нет строк по заданным фильтрам') + '</td></tr>';
-    return;
+  } else {
+    var curDate = null;
+    rows.forEach(function(x){
+      var r = x.r;
+      if (r.d !== curDate){
+        curDate = r.d;
+        html += '<tr class="date-row' + (promoIsWeekend(r.d) ? ' weekend' : '') + '">' +
+          '<td class="date-cell" colspan="' + PROMO_COLS + '">' +
+            '<span class="d-num">' + pmEsc(promoFmtDate(r.d)) + '</span>' +
+            '<span class="d-dow">' + pmT(promoDow(r.d)) + '</span>' +
+          '</td>' +
+          '<td class="date-add"><button class="row-add" type="button" title="' + pmT('Добавить запись на эту дату') +
+            '" onclick="promoNewOpen(\'' + r.d + '\')">+</button></td></tr>';
+      }
+      html += promoRowHtml(x);
+    });
   }
-
-  var html = '', curDate = null;
-  rows.forEach(function(x){
-    var r = x.r;
-    if (r.d !== curDate){
-      curDate = r.d;
-      html += '<tr class="date-row' + (promoIsWeekend(r.d) ? ' weekend' : '') + '">' +
-        '<td class="date-cell" colspan="' + PROMO_COLS + '">' +
-          '<span class="d-num">' + pmEsc(promoFmtDate(r.d)) + '</span>' +
-          '<span class="d-dow">' + pmT(promoDow(r.d)) + '</span>' +
-        '</td>' +
-        '<td class="date-add"><button class="row-add" type="button" title="' + pmT('Добавить запись на эту дату') +
-          '" onclick="promoAddRow(\'' + r.d + '\')">+</button></td></tr>';
-    }
-    html += promoRowHtml(x);
-  });
   body.innerHTML = html;
 
-  var focusEl = body.querySelector('.cell-in');
+  var focusEl = body.querySelector('.cell-edit .cell-in');
   if (focusEl && PROMO_EDIT){
     focusEl.focus();
     if (focusEl.setSelectionRange && focusEl.type !== 'date'){
       try { focusEl.setSelectionRange(focusEl.value.length, focusEl.value.length); } catch(e){}
     }
   }
-  promoSyncName();
+  promoNewPreview();
+}
+
+function promoRenderTabs(){
+  var box = document.getElementById('promoTabs');
+  if (!box) return;
+  var act = PROMO_ROWS.filter(function(r){ return !promoIsPast(r.d); }).length;
+  var arc = PROMO_ROWS.length - act;
+  box.innerHTML =
+    '<button type="button" class="tab' + (PROMO_TAB === 'active' ? ' on' : '') + '" onclick="promoSetTab(\'active\')">' +
+      pmT('Актуальные') + '<span class="n">' + act + '</span></button>' +
+    '<button type="button" class="tab' + (PROMO_TAB === 'archive' ? ' on' : '') + '" onclick="promoSetTab(\'archive\')">' +
+      pmT('Архивные') + '<span class="n">' + arc + '</span></button>';
 }
 
 function promoRowHtml(x){
   var r = x.r, i = x.i;
   var draft = PROMO_EDIT && PROMO_EDIT.i === i ? PROMO_EDIT.v : null;
+  var f = PROMO_FLAGS[i] || { bad: [], warn: [] };
 
-  /* продукт */
   var prodOpts = PROMO_PRODUCTS.map(function(p){ return p.name; });
   if (r.product && prodOpts.indexOf(r.product) === -1) prodOpts = [r.product].concat(prodOpts);
   var prodEd = '<select class="cell-in" onchange="promoDraft(this.value)">' +
@@ -478,40 +674,32 @@ function promoRowHtml(x){
       return '<option value="' + pmAttr(n) + '"' + (n === (draft != null ? draft : r.product) ? ' selected' : '') + '>' + pmEsc(n) + '</option>';
     }).join('') + '</select>';
 
-  /* партнёр */
   var partEd = '<input class="cell-in" list="promoPartnerList" value="' + pmAttr(draft != null ? draft : r.partner) +
     '" placeholder="General" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
 
-  /* база — расширенный текст */
   var baseEd = '<textarea class="cell-in ta" rows="3" placeholder="' + pmT('Словесное описание базы') +
     '" oninput="promoDraft(this.value)" onkeydown="promoKey(event,true)">' + pmEsc(draft != null ? draft : r.base) + '</textarea>';
 
-  /* каналы — множественный выбор */
   var chanSel = (draft != null ? draft : r.chan) || [];
   var chanEd = '<div class="ms">' + PROMO_CHANNELS.map(function(c){
-    return '<label class="ms-i"><input type="checkbox"' + (chanSel.indexOf(c) > -1 ? ' checked' : '') +
-      ' onchange="promoDraftChan(\'' + c + '\',this.checked)"><span class="chan ' + promoChanCls(c) + '">' + c + '</span></label>';
-  }).join('') + '</div>';
-  var chanHtml = (r.chan || []).map(function(c){
-    return '<span class="chan ' + promoChanCls(c) + '">' + pmEsc(c) + '</span>';
-  }).join('') || '—';
+      return '<label class="ms-i"><input type="checkbox"' + (chanSel.indexOf(c) > -1 ? ' checked' : '') +
+        ' onchange="promoDraftChan(\'' + c + '\',this.checked)"><span class="chan ' + promoChanCls(c) + '">' + c + '</span></label>';
+    }).join('') +
+    '<div class="ms-note">' + pmT('Несколько каналов — будет создано по записи на каждый') + '</div></div>';
 
-  /* название — формат Конструктора source */
-  var nameVal = draft != null ? draft : r.name;
-  var chk = promoNameCheck(nameVal);
-  var nameEd = '<div class="name-ed">' +
-    '<input class="cell-in mono' + (chk.ok ? '' : ' bad') + '" id="promoNameIn" value="' + pmAttr(nameVal) +
-      '" placeholder="email_promo_creditcards_Alfa_nazvanie_160726" oninput="promoDraftName(this.value)" onkeydown="promoKey(event)">' +
-    '<div class="name-hint' + (chk.ok ? '' : ' bad') + '" id="promoNameHint">' + pmEsc(chk.msg) + '</div>' +
-    '<button class="mini" type="button" onclick="promoNameSuggest()">' + pmT('Собрать из строки') + '</button>' +
-    '</div>';
-  var nameHtml = r.name
-    ? '<span class="src-name' + (promoNameCheck(r.name).ok ? '' : ' bad') + '">' + pmEsc(r.name) + '</span>'
-    : '<span class="need">' + pmT('по формату source') + '</span>';
+  var uniqVal = draft != null ? draft : r.uniq;
+  var uniqEd = '<div class="uniq-ed">' +
+    '<input class="cell-in mono' + (uniqVal && !promoUniqOk(uniqVal) ? ' bad' : '') + '" id="promoUniqIn" value="' + pmAttr(uniqVal) +
+      '" placeholder="spring-sale-2026" oninput="promoDraftUniq(this.value)" onkeydown="promoKey(event)">' +
+    '<div class="hint-s" id="promoUniqHint">' + pmT('Латиница, цифры и дефис') + '</div></div>';
 
-  /* задача */
+  var nm = promoBuildName(r);
+  var nameHtml = nm.ok
+    ? '<span class="src-name">' + pmEsc(nm.value) + '</span>'
+    : '<span class="need" title="' + pmT('Название собирается автоматически') + '">' + pmT('нужно заполнить') + ': ' + pmEsc(nm.miss.join(', ')) + '</span>';
+
   var taskEd = '<input class="cell-in" value="' + pmAttr(draft != null ? draft : r.task) +
-    '" placeholder="CRM-8748 · ' + PROMO_JIRA_BASE + 'CRM-8748" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
+    '" placeholder="CRM-8748" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
   var taskKey = promoTaskKey(r.task);
   var taskHtml = taskKey
     ? '<a class="jira" href="' + PROMO_JIRA_BASE + pmAttr(taskKey) + '" target="_blank" rel="noopener">' + pmEsc(taskKey) + '</a>'
@@ -526,23 +714,132 @@ function promoRowHtml(x){
   var noteEd = '<textarea class="cell-in ta" rows="3" oninput="promoDraft(this.value)" onkeydown="promoKey(event,true)">' +
     pmEsc(draft != null ? draft : r.note) + '</textarea>';
 
-  return '<tr class="' + (r.total ? 'total-row' : '') + '">' +
-    promoCell(x, 'product', pmEsc(r.product) || '—', prodEd) +
+  var shown = promoStatusShown(r);
+  var stCls = shown === 'запланировано' ? 'plan' : (shown === PROMO_STATUS_ASK ? 'ask' : (shown === 'отправлено' ? 'sent' : 'none'));
+  var badIcon = f.bad.length
+    ? '<span class="flag bad" title="' + pmAttr(f.bad.join('\n')) + '">▲</span>' : '';
+  var warnIcon = f.warn.length
+    ? '<span class="flag warn" title="' + pmAttr(f.warn.join('\n')) + '">⚠</span>' : '';
+
+  return '<tr class="' + (r.total ? 'total-row ' : '') + (f.bad.length ? 'rule-bad' : '') + '">' +
+    promoCell(x, 'product', badIcon + (pmEsc(r.product) || '—'), prodEd) +
     promoCell(x, 'partner', pmEsc(r.partner) || '—', partEd) +
     promoCell(x, 'base', r.base ? '<span class="multi">' + pmEsc(r.base) + '</span>' : '—', baseEd) +
-    promoCell(x, 'chan', chanHtml, chanEd) +
+    promoCell(x, 'chan', promoChanBadges(r.chan), chanEd) +
     '<td class="c-total"><input type="checkbox" ' + (r.total ? 'checked' : '') +
-      ' onchange="promoSetTotal(' + i + ',this.checked)"></td>' +
-    promoCell(x, 'name', nameHtml, nameEd) +
+      ' onchange="promoSetTotal(' + i + ',this.checked)">' + warnIcon + '</td>' +
+    promoCell(x, 'uniq', r.uniq ? '<span class="src-name">' + pmEsc(r.uniq) + '</span>' : '—', uniqEd) +
+    '<td class="c-name">' + nameHtml + '</td>' +
     promoCell(x, 'task', taskHtml, taskEd) +
     promoCell(x, 'owner', pmEsc(r.owner) || '—', ownerEd) +
-    promoCell(x, 'status', '<span class="st ' + (r.status === 'запланировано' ? 'plan' : 'none') + '">' + (pmEsc(r.status) || '—') + '</span>', statusEd) +
+    promoCell(x, 'status', '<span class="st ' + stCls + '">' + (pmEsc(shown) || '—') + '</span>', statusEd) +
     promoCell(x, 'note', r.note ? '<span class="multi">' + pmEsc(r.note) + '</span>' : '—', noteEd) +
     '<td><button class="row-del" type="button" title="' + pmT('Удалить строку') + '" onclick="promoDelRow(' + i + ')">×</button></td>' +
   '</tr>';
 }
 
-/* ---------- правка ---------- */
+/* ---------- форма новой записи ---------- */
+function promoNewOpen(iso){
+  PROMO_EDIT = null;
+  PROMO_NEW = { d: iso || promoToday(), product:'', partner:'', base:'', chan: [], total:false,
+                uniq:'', task:'', owner:'', status: PROMO_STATUS_NEW, note:'', err:'' };
+  promoRender();
+  var el = document.getElementById('promoNewDate');
+  if (el) el.focus();
+  var wrap = document.querySelector('#sec-promo .tbl-wrap');
+  if (wrap) wrap.scrollTop = 0;
+}
+function promoNewClose(){ PROMO_NEW = null; promoRender(); }
+function promoNewSet(k, v){ if (PROMO_NEW){ PROMO_NEW[k] = v; promoNewPreview(); } }
+function promoNewChan(c, on){
+  if (!PROMO_NEW) return;
+  var list = PROMO_NEW.chan.slice();
+  var at = list.indexOf(c);
+  if (on && at === -1) list.push(c);
+  if (!on && at > -1) list.splice(at, 1);
+  PROMO_NEW.chan = PROMO_CHANNELS.filter(function(x){ return list.indexOf(x) > -1; });
+  promoNewPreview();
+}
+/* живой предпросмотр: какие записи будут созданы */
+function promoNewPreview(){
+  var box = document.getElementById('promoNewPreview');
+  if (!box || !PROMO_NEW) return;
+  var n = PROMO_NEW;
+  var probs = [];
+  if (!n.d) probs.push(pmT('укажите дату'));
+  if (!n.chan.length) probs.push(pmT('выберите хотя бы один канал'));
+  if (n.uniq && !promoUniqOk(n.uniq)) probs.push(pmT('уникальное имя: латиница, цифры и дефис'));
+  var names = n.chan.map(function(c){
+    var nm = promoBuildName(n, c);
+    return nm.ok ? nm.value : (c + ' — ' + pmT('нужно заполнить') + ': ' + nm.miss.join(', '));
+  });
+  box.innerHTML =
+    '<b>' + pmT('Будет создано записей') + ': ' + (n.chan.length || 0) + '</b>' +
+    (names.length ? '<div class="np-list">' + names.map(function(s){ return '<span class="np-i">' + pmEsc(s) + '</span>'; }).join('') + '</div>' : '') +
+    (probs.length ? '<div class="np-err">' + pmEsc(probs.join('; ')) + '</div>' : '');
+  var btn = document.getElementById('promoNewSave');
+  if (btn) btn.disabled = !!probs.length;
+}
+function promoNewSave(){
+  if (!PROMO_NEW) return;
+  var n = PROMO_NEW;
+  if (!n.d || !n.chan.length) return;
+  if (n.uniq && !promoUniqOk(n.uniq)) return;
+  n.chan.forEach(function(c){
+    PROMO_ROWS.push({ d:n.d, product:n.product, partner:n.partner, base:n.base, chan:[c],
+                      total:!!n.total, uniq:n.uniq, task: promoTaskKey(n.task) || n.task,
+                      owner:n.owner, status:n.status || PROMO_STATUS_NEW, note:n.note });
+  });
+  PROMO_NEW = null;
+  promoSave(); promoRender();
+}
+function promoNewRowHtml(){
+  var n = PROMO_NEW;
+  var prodOpts = PROMO_PRODUCTS.map(function(p){ return p.name; });
+  return '<tr class="new-row">' +
+    '<td><select class="cell-in" onchange="promoNewSet(\'product\',this.value)">' +
+      '<option value="">' + pmT('Продукт') + '…</option>' +
+      prodOpts.map(function(p){ return '<option value="' + pmAttr(p) + '"' + (p === n.product ? ' selected' : '') + '>' + pmEsc(p) + '</option>'; }).join('') +
+      '</select></td>' +
+    '<td><input class="cell-in" list="promoPartnerList" placeholder="' + pmT('Партнёр') + '" value="' + pmAttr(n.partner) +
+      '" oninput="promoNewSet(\'partner\',this.value)"></td>' +
+    '<td><textarea class="cell-in ta" rows="3" placeholder="' + pmT('Словесное описание базы') +
+      '" oninput="promoNewSet(\'base\',this.value)">' + pmEsc(n.base) + '</textarea></td>' +
+    '<td><div class="ms">' + PROMO_CHANNELS.map(function(c){
+        return '<label class="ms-i"><input type="checkbox"' + (n.chan.indexOf(c) > -1 ? ' checked' : '') +
+          ' onchange="promoNewChan(\'' + c + '\',this.checked)"><span class="chan ' + promoChanCls(c) + '">' + c + '</span></label>';
+      }).join('') + '</div></td>' +
+    '<td class="c-total"><input type="checkbox"' + (n.total ? ' checked' : '') +
+      ' onchange="promoNewSet(\'total\',this.checked)"></td>' +
+    '<td><input class="cell-in mono" placeholder="spring-sale-2026" value="' + pmAttr(n.uniq) +
+      '" oninput="promoNewSet(\'uniq\',this.value)"></td>' +
+    '<td class="c-name"><span class="need">' + pmT('соберётся автоматически') + '</span></td>' +
+    '<td><input class="cell-in" placeholder="CRM-8748" value="' + pmAttr(n.task) +
+      '" oninput="promoNewSet(\'task\',this.value)"></td>' +
+    '<td><input class="cell-in" placeholder="' + pmT('Ответственный') + '" value="' + pmAttr(n.owner) +
+      '" oninput="promoNewSet(\'owner\',this.value)"></td>' +
+    '<td><select class="cell-in" onchange="promoNewSet(\'status\',this.value)">' +
+      PROMO_STATUSES.map(function(s){
+        return '<option value="' + pmAttr(s) + '"' + (s === n.status ? ' selected' : '') + '>' + (pmEsc(s) || '—') + '</option>';
+      }).join('') + '</select></td>' +
+    '<td><textarea class="cell-in ta" rows="3" placeholder="' + pmT('Комментарий') +
+      '" oninput="promoNewSet(\'note\',this.value)">' + pmEsc(n.note) + '</textarea></td>' +
+    '<td></td>' +
+  '</tr>' +
+  '<tr class="new-foot"><td colspan="' + (PROMO_COLS + 1) + '">' +
+    '<div class="nf">' +
+      '<label class="nf-date"><span>' + pmT('Дата') + '</span>' +
+        '<input type="date" id="promoNewDate" class="cell-in" value="' + pmAttr(n.d) + '" onchange="promoNewSet(\'d\',this.value)"></label>' +
+      '<div class="np" id="promoNewPreview"></div>' +
+      '<div class="nf-btns">' +
+        '<button class="btn accent" type="button" id="promoNewSave" onclick="promoNewSave()">' + pmT('Создать') + '</button>' +
+        '<button class="btn" type="button" onclick="promoNewClose()">' + pmT('Отмена') + '</button>' +
+      '</div>' +
+    '</div>' +
+  '</td></tr>';
+}
+
+/* ---------- правка ячеек ---------- */
 function promoEdit(i, k){
   var r = PROMO_ROWS[i];
   if (!r) return;
@@ -559,38 +856,47 @@ function promoDraftChan(c, on){
   if (!on && at > -1) list.splice(at, 1);
   PROMO_EDIT.v = PROMO_CHANNELS.filter(function(x){ return list.indexOf(x) > -1; });
 }
-function promoDraftName(v){
+function promoDraftUniq(v){
   if (PROMO_EDIT) PROMO_EDIT.v = v;
-  promoSyncName();
-}
-/* подсказка и доступность ✓ для названия — без перерисовки, чтобы не терять фокус */
-function promoSyncName(){
-  if (!PROMO_EDIT || PROMO_EDIT.k !== 'name') return;
-  var inp = document.getElementById('promoNameIn');
-  var hint = document.getElementById('promoNameHint');
-  if (!inp || !hint) return;
-  var chk = promoNameCheck(PROMO_EDIT.v);
-  inp.classList.toggle('bad', !chk.ok);
-  hint.classList.toggle('bad', !chk.ok);
-  hint.textContent = chk.msg;
-  var ok = inp.closest('.ed') ? inp.closest('.ed').querySelector('.cell-ok') : null;
-  if (ok) ok.disabled = !chk.ok;
+  var inp = document.getElementById('promoUniqIn');
+  var hint = document.getElementById('promoUniqHint');
+  if (!inp) return;
+  var ok = !v || promoUniqOk(v);
+  inp.classList.toggle('bad', !ok);
+  if (hint){
+    hint.classList.toggle('bad', !ok);
+    hint.textContent = ok ? pmT('Латиница, цифры и дефис') : pmT('Только латиница, цифры и дефис');
+  }
+  var okBtn = inp.closest('.ed') ? inp.closest('.ed').querySelector('.cell-ok') : null;
+  if (okBtn) okBtn.disabled = !ok;
 }
 function promoKey(e, multiline){
   if (e.key === 'Escape'){ e.preventDefault(); promoCancel(); return; }
   if (e.key === 'Enter' && !(multiline && !e.ctrlKey)){ e.preventDefault(); promoCommit(); }
 }
 function promoCommit(){
-  if (!PROMO_EDIT){ return; }
+  if (!PROMO_EDIT) return;
   var e = PROMO_EDIT, r = PROMO_ROWS[e.i];
   if (r){
     var v = e.v;
-    if (e.k === 'name'){
+    if (e.k === 'uniq'){
       v = String(v || '').trim();
-      if (!promoNameCheck(v).ok){ promoSyncName(); return; }   /* формат обязателен */
+      if (v && !promoUniqOk(v)){ promoDraftUniq(v); return; }
     }
     if (e.k === 'task') v = promoTaskKey(v) || String(v || '').trim();
-    if (e.k === 'chan') v = promoNormChan(v);
+    if (e.k === 'chan'){
+      var list = promoNormChan(v);
+      r.chan = list.slice(0, 1);
+      /* один канал = одна запись: остальные каналы уходят в копии строки */
+      list.slice(1).forEach(function(c){
+        var copy = Object.assign({}, r);
+        copy.chan = [c];
+        PROMO_ROWS.push(copy);
+      });
+      PROMO_EDIT = null;
+      promoSave(); promoRender();
+      return;
+    }
     if (typeof v === 'string' && e.k !== 'base' && e.k !== 'note') v = v.trim();
     r[e.k] = v;
   }
@@ -603,13 +909,7 @@ function promoSetTotal(i, on){
   PROMO_ROWS[i].total = !!on;
   promoSave(); promoRender();
 }
-function promoAddRow(iso){
-  var d = iso || new Date().toISOString().slice(0, 10);
-  PROMO_ROWS.push({ d: d, product:'', partner:'', base:'', chan:[], total:false,
-                    name:'', task:'', owner:'', status:'', note:'' });
-  PROMO_EDIT = null;
-  promoSave(); promoRender();
-}
+function promoAddRow(iso){ promoNewOpen(iso); }
 function promoDelRow(i){
   if (!confirm(pmT('Удалить строку?'))) return;
   PROMO_ROWS.splice(i, 1);
@@ -621,7 +921,7 @@ function promoDelRow(i){
 document.addEventListener('mousedown', function(e){
   if (!PROMO_EDIT) return;
   var t0 = e.target;
-  if (t0.closest && t0.closest('.cell-edit')) return;
+  if (t0.closest && (t0.closest('.cell-edit') || t0.closest('.new-row') || t0.closest('.new-foot'))) return;
   var next = t0.closest ? t0.closest('#promoBody td.editable') : null;
   promoCommit();
   if (next && !PROMO_EDIT){
@@ -642,14 +942,16 @@ document.addEventListener('click', function(e){
 });
 
 function promoExportCsv(){
-  var head = ['Дата','День недели','Продукт','Партнёр','База','Канал','Тотал',
-              'Название коммуникации','Задача','Ответственный','Статус','Комментарий'];
+  var head = ['Дата','День недели','Продукт','Партнёр','База','Канал','Тотал','Уникальное имя',
+              'Название коммуникации','Задача','Ответственный','Статус','Комментарий','Замечания'];
   var rows = promoFiltered().map(function(x){
-    var r = x.r;
+    var r = x.r, f = PROMO_FLAGS[x.i] || { bad: [], warn: [] };
     var key = promoTaskKey(r.task);
+    var nm = promoBuildName(r);
     return [promoFmtDate(r.d), promoDow(r.d), r.product, r.partner, r.base,
-            (r.chan || []).join(', '), r.total ? 'TRUE' : 'FALSE', r.name,
-            key ? PROMO_JIRA_BASE + key : '', r.owner, r.status, r.note];
+            (r.chan || []).join(', '), r.total ? 'TRUE' : 'FALSE', r.uniq,
+            nm.ok ? nm.value : '', key ? PROMO_JIRA_BASE + key : '', r.owner,
+            promoStatusShown(r), r.note, f.bad.concat(f.warn).join(' | ')];
   });
   var csv = [head].concat(rows).map(function(line){
     return line.map(function(c){ return '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"'; }).join(',');

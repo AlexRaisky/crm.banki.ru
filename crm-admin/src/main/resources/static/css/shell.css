@@ -442,6 +442,20 @@
   .up-note b{color:var(--dim)}
 
   /* ============================================================
+     Шапка описания раздела (как на странице OneLink Builder):
+     надзаголовок, название и пояснение. Добавляется shell.js
+     тем разделам, у которых нет собственного заголовка.
+     ============================================================ */
+  .sec-hero{display:block;padding:22px 26px 4px;max-width:1180px}
+  .sec-hero .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:8px}
+  .sec-hero h1{font-family:var(--sans);font-size:26px;font-weight:700;letter-spacing:-.015em;
+    color:var(--ink);margin:0 0 8px}
+  .sec-hero .sub{font-family:var(--sans);font-size:13.5px;line-height:1.6;color:var(--dim);
+    margin:0;max-width:880px;text-transform:none;letter-spacing:normal}
+  @media(max-width:820px){.sec-hero{padding:16px 14px 2px}.sec-hero h1{font-size:22px}}
+
+  /* ============================================================
      СВЕТЛАЯ ТЕМА — добивка хардкодов внутри секций.
      Базовую работу делает переопределение var(--...) выше
      (для body и @scope-корней sec-admin/onelink/deviations);

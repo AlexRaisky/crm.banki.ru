@@ -63,8 +63,8 @@
       <div id="homeActions">
         <button class="btn" id="editToggle">Настроить главную</button>
       </div>
-      <!-- Шестерёнка настроечной админки: раздела ещё нет — пока скрыта -->
-      <a class="iconbtn" href="settings/" id="settingsLink" title="Настройки (настроечная админка)" style="display:none">
+      <!-- Шестерёнка настроечной админки (settings/) -->
+      <a class="iconbtn" href="settings/" id="settingsLink" title="Настройки (настроечная админка)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
       </a>
       <div class="user-box" id="userBox">
@@ -714,15 +714,23 @@
       <select id="promoChannel" onchange="promoRender()"></select></div>
     <div class="f"><label data-i18n="Ответственный">Ответственный</label>
       <select id="promoOwner" onchange="promoRender()"></select></div>
+    <div class="f"><label data-i18n="Тотал">Тотал</label>
+      <select id="promoTotal" onchange="promoRender()">
+        <option value="" data-i18n="Все рассылки">Все рассылки</option>
+        <option value="yes" data-i18n="Только тотал">Только тотал</option>
+        <option value="no" data-i18n="Без тотала">Без тотала</option>
+      </select></div>
     <div class="f"><label data-i18n="Поиск">Поиск</label>
       <input id="promoSearch" placeholder="Название, база, задача…" data-i18n-ph="Название, база, задача…" oninput="promoRender()"></div>
     <span class="spacer"></span>
-    <button class="btn accent" onclick="promoAddRow()" data-i18n="+ Строка">+ Строка</button>
+    <button class="btn accent" onclick="promoNewOpen()" data-i18n="Запланировать промо-рассылку">Запланировать промо-рассылку</button>
     <button class="btn" onclick="promoExportCsv()" data-i18n="Экспорт CSV">Экспорт CSV</button>
     <button class="btn" onclick="promoReset()" data-i18n="Сбросить данные">Сбросить данные</button>
   </div>
 
   <datalist id="promoPartnerList"></datalist>
+
+  <div class="tabs" id="promoTabs"></div>
 
   <div class="tbl-wrap">
     <table>
@@ -733,6 +741,7 @@
           <th data-i18n="База">База</th>
           <th data-i18n="Канал">Канал</th>
           <th data-i18n="Тотал">Тотал</th>
+          <th data-i18n="Уникальное имя">Уникальное имя</th>
           <th data-i18n="Название коммуникации">Название коммуникации</th>
           <th data-i18n="Задача">Задача</th>
           <th data-i18n="Ответственный">Ответственный</th>
@@ -746,8 +755,15 @@
   </div>
 
   <div class="note">
-    <b data-i18n="Формулы:">Формулы:</b>
-    <span data-i18n="Строки сгруппированы по датам, день недели вычисляется из даты, выходные подсвечиваются; строки с признаком «Тотал» выделяются; сводка сверху считает коммуникации, тоталы, каналы и заполненность статусов по текущему фильтру. «Название коммуникации» проверяется по правилам Конструктора source, «Задача» принимает ссылку или номер и показывается ссылкой на Jira. Правки сохраняются в браузере.">Строки сгруппированы по датам, день недели вычисляется из даты, выходные подсвечиваются; строки с признаком «Тотал» выделяются; сводка сверху считает коммуникации, тоталы, каналы и заполненность статусов по текущему фильтру. «Название коммуникации» проверяется по правилам Конструктора source, «Задача» принимает ссылку или номер и показывается ссылкой на Jira. Правки сохраняются в браузере.</span>
+    <b data-i18n="Правила планирования:">Правила планирования:</b>
+    <ul class="rules">
+      <li><span class="flag warn">⚠</span> <span data-i18n="В неделю допускается один тотал (каналов у него может быть несколько). Если в уникальном имени есть -cb (рассылка по ставке ЦБ) — в неделе допускаются два тотала. Всё, что сверх лимита, помечается жёлтым треугольником.">В неделю допускается один тотал (каналов у него может быть несколько). Если в уникальном имени есть -cb (рассылка по ставке ЦБ) — в неделе допускаются два тотала. Всё, что сверх лимита, помечается жёлтым треугольником.</span></li>
+      <li><span class="flag bad">▲</span> <span data-i18n="По одному продукту — максимум 3 промо в день, с разными названиями и в разных каналах (e-mail, mobile-push, sms).">По одному продукту — максимум 3 промо в день, с разными названиями и в разных каналах (e-mail, mobile-push, sms).</span></li>
+      <li><span class="flag bad">▲</span> <span data-i18n="База по одному продукту в один день используется только в одном канале.">База по одному продукту в один день используется только в одном канале.</span></li>
+      <li><span class="flag bad">▲</span> <span data-i18n="Не больше 4 промо в день; одна акция в нескольких каналах считается за одно промо.">Не больше 4 промо в день; одна акция в нескольких каналах считается за одно промо.</span></li>
+      <li><span class="flag bad">▲</span> <span data-i18n="Если на день запланирован тотал, остальные промо в том же канале подсвечиваются.">Если на день запланирован тотал, остальные промо в том же канале подсвечиваются.</span></li>
+    </ul>
+    <span data-i18n="Одна запись — один канал: при сохранении нескольких каналов создаётся отдельная запись на каждый. «Название коммуникации» собирается автоматически по формату Конструктора source из канала, продукта, партнёра, уникального имени и даты. Записи с прошедшей датой уходят на вкладку «Архивные». Правки сохраняются в браузере.">Одна запись — один канал: при сохранении нескольких каналов создаётся отдельная запись на каждый. «Название коммуникации» собирается автоматически по формату Конструктора source из канала, продукта, партнёра, уникального имени и даты. Записи с прошедшей датой уходят на вкладку «Архивные». Правки сохраняются в браузере.</span>
   </div>
     </section>
 
@@ -861,8 +877,8 @@
      openTab и разметка сохранены для совместимости. -->
 <div class="tabs" id="tabsBar" style="display:none">
     <div class="tab active" onclick="openTab('sms', this)">SMS</div>
-    <div class="tab" onclick="openTab('push', this)">Push</div>
-    <div class="tab" onclick="openTab('email', this)">Email</div>
+    <div class="tab" onclick="openTab('push', this)">Mobile-push</div>
+    <div class="tab" onclick="openTab('email', this)">E-mail</div>
     <div class="tab" onclick="openTab('cc', this)">КЦ</div>
     <div class="tab" onclick="openTab('view', this)">Просмотр настроек</div>
     <div class="tab tab-list" onclick="openTab('list', this)">Список шаблонов</div>
@@ -874,10 +890,15 @@
     <div class="viewer-block-title" data-i18n="Канал коммуникации">Канал коммуникации</div>
     <div class="viewer-seg" id="wizardChannelSeg">
         <button type="button" data-ch="sms" class="active" onclick="wizardSetChannel('sms')">SMS</button>
-        <button type="button" data-ch="push" onclick="wizardSetChannel('push')">Push</button>
-        <button type="button" data-ch="email" onclick="wizardSetChannel('email')">Email</button>
+        <button type="button" data-ch="push" onclick="wizardSetChannel('push')">Mobile-push</button>
+        <button type="button" data-ch="email" onclick="wizardSetChannel('email')">E-mail</button>
         <button type="button" data-ch="cc" onclick="wizardSetChannel('cc')">КЦ</button>
     </div>
+</div>
+
+<!-- Мастер: карточка нового шаблона в оформлении «Просмотра настроек» + предпросмотр -->
+<div id="wizard" class="form">
+    <div id="wizardOutput"></div>
 </div>
 
 <!-- ================= SMS ================= -->
@@ -1245,8 +1266,8 @@
       <div class="viewer-block-title" data-i18n="1. Канал">1. Канал</div>
       <div class="viewer-seg" id="viewChannelSeg">
         <button type="button" data-ch="sms" onclick="viewerSetChannel('sms')">SMS</button>
-        <button type="button" data-ch="push" onclick="viewerSetChannel('push')">Push</button>
-        <button type="button" data-ch="email" onclick="viewerSetChannel('email')">Email</button>
+        <button type="button" data-ch="push" onclick="viewerSetChannel('push')">Mobile-push</button>
+        <button type="button" data-ch="email" onclick="viewerSetChannel('email')">E-mail</button>
         <button type="button" data-ch="cc" onclick="viewerSetChannel('cc')">КЦ</button>
       </div>
     </div>
@@ -1313,8 +1334,8 @@
       <select id="filterChannel" onchange="applyFilters()">
         <option value="">Все каналы</option>
         <option value="sms">SMS</option>
-        <option value="push">Push</option>
-        <option value="email">Email</option>
+        <option value="push">Mobile-push</option>
+        <option value="email">E-mail</option>
         <option value="cc">КЦ</option>
       </select>
     </div>
@@ -1391,12 +1412,12 @@
           <option value="sms_2">SMS_PROMO_CARD - Промо карта</option>
           <option value="sms_3">SMS_RENEWAL - Продление подписки</option>
         </optgroup>
-        <optgroup label="Push">
+        <optgroup label="Mobile-push">
           <option value="push_1">PUSH_PROMO - Промо пуш</option>
           <option value="push_2">PUSH_WELCOME - Приветственный</option>
           <option value="push_3">PUSH_LOAN_ABANDON - Брошенный кредит</option>
         </optgroup>
-        <optgroup label="Email">
+        <optgroup label="E-mail">
           <option value="email_1">12345 - Сброс пароля</option>
           <option value="email_2">67890 - Подтверждение email</option>
           <option value="email_3">11111 - Промо кредит</option>
@@ -1477,7 +1498,7 @@
         </div>
       </div>
       <div class="channel-stat-card push">
-        <div class="channel-name">Push</div>
+        <div class="channel-name">Mobile-push</div>
         <div class="channel-total" id="pushSends">5,892</div>
         <div class="channel-details">
           <span style="color: var(--green);">✓ 5,614</span> · <span style="color: var(--coral);">✗ 278</span>
@@ -1487,7 +1508,7 @@
         </div>
       </div>
       <div class="channel-stat-card email">
-        <div class="channel-name">Email</div>
+        <div class="channel-name">E-mail</div>
         <div class="channel-total" id="emailSends">1,987</div>
         <div class="channel-details">
           <span style="color: var(--green);">✓ 1,812</span> · <span style="color: var(--coral);">✗ 175</span>
@@ -1519,12 +1540,12 @@
         <div class="per-user-minmax"><span class="min">мин: —</span> · <span class="max">макс: —</span></div>
       </div>
       <div class="channel-stat-card push per-user-card">
-        <div class="channel-name">Push</div>
+        <div class="channel-name">Mobile-push</div>
         <div class="per-user-avg" data-channel="push">—</div>
         <div class="per-user-minmax"><span class="min">мин: —</span> · <span class="max">макс: —</span></div>
       </div>
       <div class="channel-stat-card email per-user-card">
-        <div class="channel-name">Email</div>
+        <div class="channel-name">E-mail</div>
         <div class="per-user-avg" data-channel="email">—</div>
         <div class="per-user-minmax"><span class="min">мин: —</span> · <span class="max">макс: —</span></div>
       </div>
@@ -1546,12 +1567,12 @@
         <div class="overheat-detail" id="overheat-detail-sms"></div>
       </div>
       <div class="channel-stat-card push overheat-card" data-channel="push">
-        <div class="channel-name">Push</div>
+        <div class="channel-name">Mobile-push</div>
         <div class="overheat-status" id="overheat-push">—</div>
         <div class="overheat-detail" id="overheat-detail-push"></div>
       </div>
       <div class="channel-stat-card email overheat-card" data-channel="email">
-        <div class="channel-name">Email</div>
+        <div class="channel-name">E-mail</div>
         <div class="overheat-status" id="overheat-email">—</div>
         <div class="overheat-detail" id="overheat-detail-email"></div>
       </div>
@@ -1568,8 +1589,8 @@
     <p style="font-size: 12px; color: var(--dim); margin-bottom: 12px;">Уникальные пользователи, доступные для контакта в каждом канале (сегодня)</p>
     <div class="channel-stats-grid" id="activeAudienceGrid">
       <div class="channel-stat-card sms"><div class="channel-name">SMS</div><div class="channel-total" id="audienceSms">—</div></div>
-      <div class="channel-stat-card push"><div class="channel-name">Push</div><div class="channel-total" id="audiencePush">—</div></div>
-      <div class="channel-stat-card email"><div class="channel-name">Email</div><div class="channel-total" id="audienceEmail">—</div></div>
+      <div class="channel-stat-card push"><div class="channel-name">Mobile-push</div><div class="channel-total" id="audiencePush">—</div></div>
+      <div class="channel-stat-card email"><div class="channel-name">E-mail</div><div class="channel-total" id="audienceEmail">—</div></div>
       <div class="channel-stat-card cc"><div class="channel-name">КЦ</div><div class="channel-total" id="audienceCc">—</div></div>
     </div>
   </div>

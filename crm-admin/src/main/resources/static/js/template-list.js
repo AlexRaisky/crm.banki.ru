@@ -233,7 +233,7 @@ function renderTemplateList(templates) {
         return;
     }
 
-    const channelLabels = { sms: 'SMS', push: 'Push', 'mobile-push': 'Push', email: 'Email', cc: 'КЦ' };
+    const channelLabels = { sms: 'SMS', push: 'Mobile-push', 'mobile-push': 'Mobile-push', email: 'E-mail', cc: 'КЦ' };
 
     /* ячейка: просмотр (значение + карандаш) либо правка (поле + ✓ / ✕) */
     function cellHtml(tpl, c) {

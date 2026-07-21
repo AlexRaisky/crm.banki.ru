@@ -750,15 +750,23 @@ button:hover{filter:brightness(1.08)}
     color:var(--ink);font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer}
 .sf-btn:hover{border-color:var(--blue);color:var(--blue)}
 .sf-count{font-size:12px;color:var(--faint);margin:2px 0 10px}
-.sf-table-wrap{max-height:540px;overflow:auto;border:1px solid var(--line);border-radius:12px}
+/* окно списка подстраивается под высоту экрана (шапка раздела ≈ 320px) */
+.sf-table-wrap{max-height:calc(100vh - 320px);min-height:320px;overflow:auto;
+    border:1px solid var(--line);border-radius:12px}
 .sf-table{width:100%;border-collapse:collapse}
 .sf-table thead th{position:sticky;top:0;background:var(--card2);z-index:2;font-size:12px;color:var(--dim);
-    text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+    text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap;
+    border-right:1px solid var(--line)}
+.sf-table thead th:last-child{border-right:none}
 .sf-table th.sf-sortable{cursor:pointer;user-select:none}
 .sf-table th.sf-sortable:hover{color:var(--ink)}
 .sf-table .sf-sort{font-size:10px;color:var(--blue)}
-.sf-table tbody td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle}
+/* лёгкая сетка: видно, к какому полю относится карандаш */
+.sf-table tbody td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle;
+    border-right:1px solid var(--line)}
+.sf-table tbody td:last-child{border-right:none}
 .sf-table tbody tr:hover{background:rgba(80,195,255,.05)}
+.sf-table tbody td:hover{background:rgba(80,195,255,.07)}
 .sf-check-col{width:34px}
 .sf-table input[type=checkbox]{accent-color:#3CFAB4;width:15px;height:15px;cursor:pointer}
 .sf-link{color:var(--blue);cursor:pointer;font-weight:600;background:none;border:none;padding:0;
@@ -817,15 +825,23 @@ button:hover{filter:brightness(1.08)}
 .pv-os button{flex:1;padding:7px 10px;border-radius:9px;border:1px solid var(--line);background:var(--card2);
     color:var(--dim);font-family:var(--sans);font-size:12.5px;font-weight:600;cursor:pointer}
 .pv-os button.active{background:var(--blue-bg);border-color:rgba(80,195,255,.45);color:var(--ink)}
-.pv-push{border-radius:14px;padding:12px 14px;max-width:320px;margin:0 auto}
-.pv-push.ios{background:rgba(245,247,250,.96);color:#111}
-.pv-push.android{background:#1F2937;color:#F3F4F6;border:1px solid #374151}
+.pv-push{border-radius:14px;padding:12px 14px;max-width:320px;margin:0 auto;
+    background:rgba(245,247,250,.96);color:#111}
 .pv-push-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .pv-push-appico{width:20px;height:20px;border-radius:5px;background:linear-gradient(120deg,#3CFAB4,#50C3FF);flex:0 0 auto}
 .pv-push-app{font-size:10.5px;font-weight:600;opacity:.75;text-transform:uppercase;letter-spacing:.03em}
 .pv-push-when{margin-left:auto;font-size:10px;opacity:.55}
-.pv-push-title{font-size:13px;font-weight:700;margin-bottom:3px;word-break:break-word}
-.pv-push-body{font-size:12.5px;line-height:1.4;opacity:.9;word-break:break-word;white-space:pre-wrap}
+/* заголовок — одна строка, текст — до четырёх: так пуш выглядит на экране блокировки.
+   Переполнение ловит sfdPushFit() и показывает предупреждение под карточкой. */
+.pv-push-title{font-size:13px;font-weight:700;margin-bottom:3px;word-break:break-word;
+    display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.pv-push-body{font-size:12.5px;line-height:1.4;opacity:.9;word-break:break-word;white-space:pre-wrap;
+    display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.pv-fit{margin-top:10px;font-size:11.5px;line-height:1.5;padding:8px 10px;border-radius:9px}
+.pv-fit.ok{background:var(--green-bg);color:var(--green)}
+.pv-fit.bad{background:rgba(255,107,138,.14);color:var(--coral)}
+.sfd-miss{font-size:12px;color:var(--coral);margin-right:auto}
+.sf-btn:disabled{opacity:.5;cursor:not-allowed}
 
 /* Email: вкладыш Letteros */
 .pv-em{border:1px solid var(--line);border-radius:12px;overflow:hidden}

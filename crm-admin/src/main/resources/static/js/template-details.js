@@ -121,8 +121,9 @@ function sfdFieldDefs(d){
     }
     var secs = [
         { sec:'Основное', rows:[
-            { k:'channel', label:sfdT('Канал'), ro:true, fmt:function(v){ return ({sms:'SMS',push:'Push','mobile-push':'Push',email:'Email',cc:'КЦ'})[v] || v; } },
-            { k:'code', label:'Code', ro:true },
+            { k:'channel', label:sfdT('Канал'), ro:true, fmt:function(v){ return ({sms:'SMS',push:'Mobile-push','mobile-push':'Mobile-push',email:'E-mail',cc:'КЦ'})[v] || v; } },
+            /* code задаётся только при создании шаблона, потом это ключ записи */
+            { k:'code', label: isCC ? sfdT('Сегмент (code)') : 'Code', ro: !(SFD_STATE && SFD_STATE.mode === 'create') },
             { k:'active', label:sfdT('Статус'), type:'bool' },
             { k:'comname', label:'communication_name', wide:true, fmt:function(){ return SFD_STATE.work.comname; } }
         ]},
@@ -145,10 +146,108 @@ function sfdFieldDefs(d){
     return secs;
 }
 
+/* ---------- подсказки к полям: назначение + поле в БД ----------
+   Таблицы: push → notice.push_template, sms → notice.d_com_sms_template,
+   email → notice.email_template, КЦ → callcenter.d_segment_properties. */
+var SFD_TABLES = { push:'notice.push_template', 'mobile-push':'notice.push_template',
+                   sms:'notice.d_com_sms_template', email:'notice.email_template',
+                   cc:'callcenter.d_segment_properties' };
+var SFD_DB = {
+    channel:            { all:'—' },
+    code:               { push:'code', sms:'code', email:'trigger_code', cc:'segment' },
+    active:             { all:'active_flag' },
+    comname:            { all:'communication_name' },
+    source:             { all:'source_type' },
+    trigger:            { all:'trigger_type' },
+    product:            { all:'product_type' },
+    partner:            { all:'partner_name' },
+    touch:              { all:'touch_point' },
+    day:                { all:'sending_day' },
+    segment:            { cc:'segment' },
+    segment_desc:       { cc:'segment_descr' },
+    source_system:      { cc:'source_system' },
+    host_id:            { cc:'host_id' },
+    kvint:              { cc:'kvint_campaign_id' },
+    subject:            { email:'subject' },
+    email_from:         { email:'email_from' },
+    letteros_id:        { email:'letteros_id' },
+    message:            { all:'msg_text' },
+    title:              { push:'title' },
+    sender_name:        { sms:'sender_name' },
+    deeplink:           { push:'deep_link' },
+    webview:            { push:'webview_url' },
+    communication_type: { all:'communication_type' },
+    biz_type:           { all:'business_communication_type' },
+    aff_sub3:           { all:'aff_sub3' },
+    marketplace:        { all:'marketplace' },
+    cross:              { all:'—' },
+    dialog:             { all:'dialog' },
+    loyalty:            { all:'loyalty' },
+    national_rating:    { all:'national_rating' },
+    news:               { all:'news' },
+    mobile_app:         { all:'mobile_app' },
+    night_send:         { push:'night_send', sms:'night_send' }
+};
+var SFD_HELP = {
+    channel:            'Канал шаблона: SMS, Mobile-push, E-mail или КЦ. Определяет таблицу, в которой хранится шаблон.',
+    code:               'Уникальный код шаблона. Для E-mail это Letteros ID, для КЦ — номер сегмента.',
+    active:             'Шаблон активен и участвует в рассылках.',
+    comname:            'Имя коммуникации: база + флаги (marketplace- впереди; -cross, -dialog, -loyalty, -nr, -news, -mobile-app в конце).',
+    source:             'Собирается автоматически: promo — канал_promo_продукт_партнёр_comname_ддммгг, trigger — канал_trigger_продукт_comname_Nday. Для КЦ канал заменяется на contact.',
+    trigger:            'Тип рассылки: promo или trigger. Определяет формулу source_type.',
+    product:            'Продукт (creditcards, credits, deposits и др.). Попадает в source_type.',
+    partner:            'Партнёр. В promo попадает в source_type; для базы out-trigger- достраивает communication_name.',
+    touch:              'Точка касания: abandoned-form, sign, renewal, issue и др.',
+    day:                'День отправки для триггерных рассылок, подставляется в source_type как Nday.',
+    segment:            'Код сегмента КЦ — бизнес-ключ записи в справочнике сегментов.',
+    segment_desc:       'Описание сегмента для КЦ.',
+    source_system:      'Исходная система для КЦ (CRM, Billing и др.).',
+    host_id:            'Идентификатор хоста для выгрузки сегмента КЦ.',
+    kvint:              'Идентификатор кампании в Kvint (робот-обзвон КЦ).',
+    subject:            'Тема письма.',
+    email_from:         'Адрес отправителя: service → no-reply@, info → inform@, trigger → offers@, promo → advice@.',
+    letteros_id:        'Идентификатор письма в Letteros, он же код email-шаблона.',
+    message:            'Текст сообщения: тело SMS или push-уведомления, для e-mail — вёрстка письма.',
+    title:              'Заголовок push-уведомления — первая строка карточки на экране.',
+    sender_name:        'Отправитель SMS: Banki.ru или Bamm.ru.',
+    deeplink:           'Диплинк — переход в раздел мобильного приложения.',
+    webview:            'Ссылка веб-вью, открывается внутри приложения.',
+    communication_type: 'Тип коммуникации: adv, service.',
+    biz_type:           'Бизнес-тип: adv (реклама), info (информация), service (сервис). Для e-mail влияет на адрес отправителя.',
+    aff_sub3:           'Метка aff_sub3 для партнёрской аналитики.',
+    marketplace:        'Продукт маркетплейса: в communication_name добавляется префикс marketplace-.',
+    cross:              'Кросс-коммуникация: суффикс -cross. Отдельного поля в БД нет — признак живёт в communication_name.',
+    dialog:             'Ведёт на страницу диалога: суффикс -dialog.',
+    loyalty:            'Ссылка на продукты лояльности: суффикс -loyalty.',
+    national_rating:    'Народный рейтинг: суффикс -nr.',
+    news:               'Новостная рассылка: суффикс -news.',
+    mobile_app:         'Ведёт на скачивание мобильного приложения: суффикс -mobile-app.',
+    night_send:         'Разрешена отправка коммуникации ночью.'
+};
+function sfdDbField(k, channel){
+    /* канал сам по себе не колонка — он определяет таблицу хранения */
+    if (k === 'channel') return SFD_TABLES[channel] ? sfdT('таблица') + ' ' + SFD_TABLES[channel] : '';
+    var m = SFD_DB[k];
+    if (!m) return '';
+    var col = m.all || m[channel] || m[channel === 'mobile-push' ? 'push' : channel] || '';
+    if (!col) return '';
+    if (col === '—') return sfdT('отдельного поля нет');
+    return (SFD_TABLES[channel] || '') + '.' + col;
+}
+/* значок (i) с тултипом — как на странице OneLink Builder */
+function sfdHintHtml(f){
+    var help = f.help || SFD_HELP[f.k];
+    var db = sfdDbField(f.k, SFD_STATE.work.channel);
+    if (!help && !db) return '';
+    var text = (help ? sfdT(help) : '') + (db ? '\n' + sfdT('Поле в БД') + ': ' + db : '');
+    return '<span class="info" tabindex="0">i<span class="tip">' + sfdEsc(text) + '</span></span>';
+}
+
 function sfdRowHtml(f){
     var st = SFD_STATE, d = st.work;
     var raw = f.fmt ? f.fmt(d[f.k]) : d[f.k];
-    var editing = !!st.editing[f.k];
+    /* в мастере (создание) поля сразу открыты для ввода, в карточке — по карандашу */
+    var editing = (st.mode === 'create') ? !f.ro : !!st.editing[f.k];
     var valHtml;
     if (editing){
         if (f.type === 'bool'){
@@ -175,40 +274,129 @@ function sfdRowHtml(f){
           '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>'
         : '';
     return '<div class="sfd-row' + (f.wide ? ' wide' : '') + (editing ? ' editing' : '') + '">' +
-        '<div class="l">' + sfdEsc(f.label) + '</div>' + valHtml + pen + '</div>';
+        '<div class="l">' + sfdEsc(f.label) + sfdHintHtml(f) + '</div>' + valHtml + pen + '</div>';
+}
+
+/* ---------- Мастер коммуникаций: та же карточка в режиме создания ---------- */
+function sfdBlank(channel){
+    return { channel: channel, code:'', active:true, comname:'NoComName', source:'',
+             trigger:'promo', product:'', partner:'', touch:'', day:'0',
+             message:'', title:'', sender_name: channel === 'sms' ? 'Banki.ru' : '',
+             deeplink:'', webview:'', subject:'', email_from:'', letteros_id:'',
+             segment:'', segment_desc:'', source_system:'', host_id:'', kvint:'',
+             communication_type:'', biz_type:'', aff_sub3:'',
+             marketplace:false, cross:false, dialog:false, loyalty:false,
+             national_rating:false, news:false, mobile_app:false, night_send:false };
+}
+function wizardCardOpen(channel){
+    SFD_STATE = { id:null, orig:null, work: sfdBlank(channel), editing:{}, mode:'create' };
+    sfdRecalcNames();
+    sfdRender();
+}
+/* обязательные поля нового шаблона */
+function sfdCreateMissing(d){
+    var miss = [];
+    if (!String(d.code == null ? '' : d.code).trim()) miss.push(d.channel === 'cc' ? sfdT('Сегмент') : 'Code');
+    if (!String(d.product || '').trim()) miss.push('Product type');
+    if (!String(d.touch || '').trim()) miss.push('Touch point');
+    if (!d.comname || d.comname === 'NoComName') miss.push('communication_name');
+    if (d.channel === 'email'){ if (!String(d.subject || '').trim()) miss.push('Subject'); }
+    else if (d.channel !== 'cc'){ if (!String(d.message || '').trim()) miss.push('Message text'); }
+    return miss;
+}
+function sfdCreate(){
+    var st = SFD_STATE;
+    if (!st || st.mode !== 'create') return;
+    sfdRecalcNames();
+    var d = Object.assign({}, st.work);
+    if (sfdCreateMissing(d).length) return;
+    if (d.channel === 'email' && !d.letteros_id) d.letteros_id = d.code;
+    window.CRM_CURRENT = null;   /* новый шаблон — POST, а не PUT */
+    CRM.saveFromV1(d).then(function(res){
+        var code = (res && res.code != null) ? res.code : d.code;
+        alert(sfdT('Шаблон создан') + '.\ncommunication_name: ' + (d.comname || '') + '\nCode: ' + code);
+        if (typeof loadMockData === 'function'){
+            loadMockData().then(function(){
+                if (typeof applyFilters === 'function' && document.getElementById('templateListBody')) applyFilters();
+            });
+        }
+        wizardCardOpen(d.channel);
+    }).catch(function(e){ alert(sfdT('Ошибка сохранения') + ': ' + (e && e.message ? e.message : e)); });
+}
+/* мастер: обновляем подвал (чего не хватает) без перерисовки — чтобы не терять фокус */
+function sfdSyncCreate(){
+    var st = SFD_STATE;
+    if (!st || st.mode !== 'create') return;
+    var miss = sfdCreateMissing(st.work);
+    var box = document.querySelector('#wizardOutput .sfd-miss');
+    var btn = document.getElementById('sfdCreateBtn');
+    if (btn) btn.disabled = !!miss.length;
+    if (box) box.textContent = miss.length ? (sfdT('Заполните') + ': ' + miss.join(', ')) : '';
+    else if (miss.length){
+        var foot = document.querySelector('#wizardOutput .sfd-footer');
+        if (foot){
+            var s = document.createElement('span');
+            s.className = 'sfd-miss';
+            s.textContent = sfdT('Заполните') + ': ' + miss.join(', ');
+            foot.insertBefore(s, foot.firstChild);
+        }
+    }
+}
+/* запасной путь: старая развёрнутая форма канала (цепочки и редкие поля) */
+function wizardLegacyForm(){
+    var st = SFD_STATE;
+    var ch = st && st.work ? st.work.channel : 'sms';
+    document.querySelectorAll('#sec-admin .form').forEach(function(f){ f.classList.remove('active'); });
+    var f = document.getElementById(ch);
+    if (f) f.classList.add('active');
 }
 
 function sfdRender(){
     var st = SFD_STATE;
     if (!st) return;
-    var output = document.getElementById('settingsOutput');
+    var isCreate = st.mode === 'create';
+    var output = document.getElementById(isCreate ? 'wizardOutput' : 'settingsOutput');
     if (!output) return;
     var d = st.work;
-    var chLabels = { sms:'SMS', push:'Push', 'mobile-push':'Push', email:'Email', cc:'КЦ' };
+    var chLabels = { sms:'SMS', push:'Mobile-push', 'mobile-push':'Mobile-push', email:'E-mail', cc:'КЦ' };
     var isEmail = d.channel === 'email';
     var mainId = isEmail
         ? (d.letteros_id != null && d.letteros_id !== '' ? d.letteros_id : d.code)
         : (d.code != null && d.code !== '' ? d.code : d.letteros_id);
     var dirty = Object.keys(st.editing).length > 0;
     var secs = sfdFieldDefs(d);
+    var miss = isCreate ? sfdCreateMissing(d) : [];
 
     output.innerHTML =
-        '<div class="sfd-top"><button type="button" class="sf-btn" onclick="openSection(\'comms\',\'templates\')">' + sfdT('← К списку шаблонов') + '</button></div>' +
+        (isCreate
+            ? '<div class="sfd-top"><button type="button" class="sf-btn" onclick="wizardLegacyForm()">' +
+                sfdT('Расширенная форма (цепочки)') + '</button></div>'
+            : '<div class="sfd-top"><button type="button" class="sf-btn" onclick="openSection(\'comms\',\'templates\')">' +
+                sfdT('← К списку шаблонов') + '</button></div>') +
         '<div class="sfd-layout"><div class="sfd">' +
         '<div class="sfd-head">' +
             '<span class="sfd-ch">' + sfdEsc(chLabels[d.channel] || d.channel) + '</span>' +
-            '<b>' + sfdEsc(mainId == null ? '' : mainId) + ' — ' + sfdEsc(d.comname || '') + '</b>' +
+            '<b>' + (isCreate
+                ? sfdT('Новый шаблон') + (String(d.code || '').trim() ? ' · ' + sfdEsc(d.code) : '') + ' — ' + sfdEsc(d.comname || '')
+                : sfdEsc(mainId == null ? '' : mainId) + ' — ' + sfdEsc(d.comname || '')) + '</b>' +
             '<span class="sfd-status ' + (d.active ? 'on' : 'off') + '">' + sfdT(d.active ? 'АКТИВНЫЙ' : 'НЕАКТИВНЫЙ') + '</span>' +
         '</div>' +
         secs.map(function(s){
             return '<div class="sfd-sec"><div class="sfd-sec-title" onclick="this.parentElement.classList.toggle(\'closed\')">' + sfdEsc(sfdT(s.sec)) + '</div>' +
                 '<div class="sfd-grid">' + s.rows.map(sfdRowHtml).join('') + '</div></div>';
         }).join('') +
-        (dirty ? '<div class="sfd-footer">' +
-            '<button type="button" class="sf-btn accent" id="sfdSaveBtn">' + sfdT('Сохранить') + '</button>' +
-            '<button type="button" class="sf-btn" id="sfdCancelBtn">' + sfdT('Отменить') + '</button>' +
-        '</div>' : '') +
-        '</div><div class="sfd-side" id="sfdSide"></div></div>';
+        (isCreate
+            ? '<div class="sfd-footer">' +
+                (miss.length ? '<span class="sfd-miss">' + sfdT('Заполните') + ': ' + sfdEsc(miss.join(', ')) + '</span>' : '') +
+                '<button type="button" class="sf-btn accent" id="sfdCreateBtn"' + (miss.length ? ' disabled' : '') + '>' +
+                    sfdT('Создать шаблон') + '</button>' +
+                '<button type="button" class="sf-btn" id="sfdResetBtn">' + sfdT('Очистить') + '</button>' +
+              '</div>'
+            : (dirty ? '<div class="sfd-footer">' +
+                '<button type="button" class="sf-btn accent" id="sfdSaveBtn">' + sfdT('Сохранить') + '</button>' +
+                '<button type="button" class="sf-btn" id="sfdCancelBtn">' + sfdT('Отменить') + '</button>' +
+              '</div>' : '')) +
+        '</div><div class="sfd-side"></div></div>';
 
     /* карандаши: включают редактирование поля */
     output.querySelectorAll('.sfd-pen').forEach(function(btn){
@@ -228,14 +416,19 @@ function sfdRender(){
             if (SFD_NAME_KEYS[k] || k === 'biz_type') sfdRecalcNames();
             sfdRenderPreview();
         };
-        inp.addEventListener('input', handler);
+        inp.addEventListener('input', function(){ handler(); if (isCreate) sfdSyncCreate(); });
         /* чекбоксы и селекты: после change перерисовываем карточку,
-           чтобы пересчитанные comname/source сразу были видны */
+           чтобы пересчитанные comname/source сразу были видны.
+           В мастере то же делаем по потере фокуса у текстовых полей */
         inp.addEventListener('change', function(){
             handler();
-            if (inp.type === 'checkbox' || inp.tagName === 'SELECT') sfdRender();
+            if (inp.type === 'checkbox' || inp.tagName === 'SELECT' || isCreate) sfdRender();
         });
     });
+    var createBtn = document.getElementById('sfdCreateBtn');
+    if (createBtn) createBtn.onclick = sfdCreate;
+    var resetBtn = document.getElementById('sfdResetBtn');
+    if (resetBtn) resetBtn.onclick = function(){ wizardCardOpen(d.channel); };
     var saveBtn = document.getElementById('sfdSaveBtn');
     if (saveBtn) saveBtn.onclick = sfdSave;
     var cancelBtn = document.getElementById('sfdCancelBtn');
@@ -278,13 +471,33 @@ function sfdSave(){
 }
 
 /* ---------- предпросмотр коммуникации ---------- */
-function sfdSetPushOS(os){
-    if (SFD_STATE){ SFD_STATE.pushOS = os; sfdRenderPreview(); }
+/* Проверяем, помещается ли текст в карточку уведомления: заголовок обрезается
+   одной строкой, тело — четырьмя (как в свёрнутом пуше на экране блокировки). */
+function sfdPushFit(side){
+    var box = side.querySelector('.pv-fit');
+    if (!box) return;
+    var over = [];
+    var ttl = side.querySelector('.pv-push-title');
+    var bdy = side.querySelector('.pv-push-body');
+    if (ttl && ttl.scrollHeight - ttl.clientHeight > 1) over.push(sfdT('заголовок'));
+    if (bdy && bdy.scrollHeight - bdy.clientHeight > 1) over.push(sfdT('текст'));
+    if (over.length){
+        box.className = 'pv-fit bad';
+        box.textContent = sfdT('Не помещается') + ': ' + over.join(', ') + ' — ' +
+            sfdT('часть будет скрыта под «ещё». Заголовок — 1 строка, текст — до 4 строк.');
+    } else {
+        box.className = 'pv-fit ok';
+        box.textContent = sfdT('Текст помещается в карточку уведомления полностью.');
+    }
 }
 function sfdRenderPreview(){
     var st = SFD_STATE;
-    var side = document.getElementById('sfdSide');
-    if (!st || !side) return;
+    if (!st) return;
+    /* карточка мастера и карточка просмотра живут в разных контейнерах —
+       ищем панель предпросмотра внутри своего, а не по общему id */
+    var host = document.getElementById(st.mode === 'create' ? 'wizardOutput' : 'settingsOutput');
+    var side = host ? host.querySelector('.sfd-side') : null;
+    if (!side) return;
     var d = st.work;
     var ch = d.channel === 'mobile-push' ? 'push' : d.channel;
     if (ch === 'cc'){ side.innerHTML = ''; return; }
@@ -298,23 +511,20 @@ function sfdRenderPreview(){
         return;
     }
     if (ch === 'push'){
-        var os = st.pushOS;
-        side.innerHTML = '<div class="pv-card"><div class="pv-title">' + sfdT('Предпросмотр Push') + '</div>' +
-            '<div class="pv-os">' +
-                '<button type="button" class="' + (os === 'ios' ? 'active' : '') + '" onclick="sfdSetPushOS(\'ios\')">iOS · 17</button>' +
-                '<button type="button" class="' + (os === 'android' ? 'active' : '') + '" onclick="sfdSetPushOS(\'android\')">Android · 14</button>' +
-            '</div>' +
-            '<div class="pv-push ' + os + '">' +
+        side.innerHTML = '<div class="pv-card"><div class="pv-title">' + sfdT('Предпросмотр Mobile-push') + '</div>' +
+            '<div class="pv-push">' +
                 '<div class="pv-push-head"><span class="pv-push-appico"></span><span class="pv-push-app">Banki.ru</span><span class="pv-push-when">' + sfdT('сейчас') + '</span></div>' +
                 '<div class="pv-push-title">' + sfdEsc(d.title || d.comname || '—') + '</div>' +
                 '<div class="pv-push-body">' + sfdEsc(d.message || '—') + '</div>' +
             '</div>' +
+            '<div class="pv-fit"></div>' +
             (d.deeplink ? '<div class="pv-note">Deep link: ' + sfdEsc(d.deeplink) + '</div>' : '') +
             '<div class="pv-note">' + sfdT('Пример отображения. Точный вид зависит от устройства и версии ОС.') + '</div></div>';
+        sfdPushFit(side);
         return;
     }
     if (ch === 'email'){
-        side.innerHTML = '<div class="pv-card"><div class="pv-title">' + sfdT('Предпросмотр Email') + '</div>' +
+        side.innerHTML = '<div class="pv-card"><div class="pv-title">' + sfdT('Предпросмотр E-mail') + '</div>' +
             '<div class="pv-em"><div class="pv-em-head">Letteros-шаблон</div>' +
             '<div class="pv-em-meta"><div class="l">' + sfdT('Тема') + '</div><div class="v">' + sfdEsc(d.subject || '—') + '</div></div>' +
             (d.message

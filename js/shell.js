@@ -249,6 +249,36 @@ Object.assign(I18N_EN, {
   "4-я часть — уникальное имя кампании.":"Part 4 — unique campaign name.",
   "5-я часть — сегмент.":"Part 5 — segment.",
   "Последняя часть — Nday, напр. 3day.":"Last part — Nday, e.g. 3day.",
+  /* вкладки, форма новой записи и правила планирования */
+  "Актуальные":"Upcoming", "Архивные":"Archived",
+  "Запланировать промо-рассылку":"Schedule a promo send",
+  "Все рассылки":"All sends", "Только тотал":"Totals only", "Без тотала":"Excluding totals",
+  "Уникальное имя":"Unique name", "Латиница, цифры и дефис":"Latin letters, digits and hyphens",
+  "Только латиница, цифры и дефис":"Latin letters, digits and hyphens only",
+  "Несколько каналов — будет создано по записи на каждый":"Several channels — one record will be created per channel",
+  "Создать":"Create", "Будет создано записей":"Records to be created",
+  "нужно заполнить":"to fill in", "соберётся автоматически":"generated automatically",
+  "Название собирается автоматически":"The name is generated automatically",
+  "укажите дату":"set the date", "выберите хотя бы один канал":"select at least one channel",
+  "уникальное имя: латиница, цифры и дефис":"unique name: Latin letters, digits and hyphens",
+  "канал":"channel", "продукт":"product", "партнёр":"partner", "уникальное имя":"unique name", "дата":"date",
+  "К планированию":"To plan", "Нужен статус по рассылке":"Send status required",
+  "Требуют внимания":"Need attention", "нарушают правила планирования":"break the planning rules",
+  "акций с признаком «Тотал»":"campaigns flagged as Total",
+  "Лимит тоталов на неделю":"Weekly total limit", "есть рассылка по ставке ЦБ":"a key-rate send is present",
+  "эта рассылка сверх лимита":"this send is over the limit",
+  "По одному продукту допускается не больше 3 промо в день":"At most 3 promos per product per day",
+  "Промо одного продукта должны идти в разных каналах":"Promos for the same product must use different channels",
+  "База по одному продукту в день должна использоваться только в одном канале":"An audience for one product must be used in a single channel per day",
+  "В день допускается не больше 4 промо":"At most 4 promos per day",
+  "В этот день в этом канале уже запланирован тотал":"A total is already scheduled for this day and channel",
+  "Правила планирования:":"Planning rules:",
+  "В неделю допускается один тотал (каналов у него может быть несколько). Если в уникальном имени есть -cb (рассылка по ставке ЦБ) — в неделе допускаются два тотала. Всё, что сверх лимита, помечается жёлтым треугольником.":"One total per week is allowed (it may use several channels). If the unique name contains -cb (a key-rate send), two totals are allowed that week. Anything over the limit is marked with a yellow triangle.",
+  "По одному продукту — максимум 3 промо в день, с разными названиями и в разных каналах (e-mail, mobile-push, sms).":"At most 3 promos per product per day, with different names and in different channels (e-mail, mobile-push, sms).",
+  "База по одному продукту в один день используется только в одном канале.":"An audience for one product is used in a single channel per day.",
+  "Не больше 4 промо в день; одна акция в нескольких каналах считается за одно промо.":"At most 4 promos per day; one campaign across several channels counts as a single promo.",
+  "Если на день запланирован тотал, остальные промо в том же канале подсвечиваются.":"If a total is scheduled for the day, other promos in the same channel are highlighted.",
+  "Одна запись — один канал: при сохранении нескольких каналов создаётся отдельная запись на каждый. «Название коммуникации» собирается автоматически по формату Конструктора source из канала, продукта, партнёра, уникального имени и даты. Записи с прошедшей датой уходят на вкладку «Архивные». Правки сохраняются в браузере.":"One record per channel: saving several channels creates a separate record for each. The communication name is generated automatically in the source builder format from channel, product, partner, unique name and date. Records with a past date move to the Archived tab. Edits are stored in the browser.",
   "Все месяцы":"All months", "Все продукты":"All products", "Все каналы":"All channels",
   "Все ответственные":"All owners", "+ Строка":"+ Row", "Экспорт CSV":"Export CSV",
   "Сбросить данные":"Reset data", "Сбросить таблицу к исходным данным?":"Reset the table to the original data?",
@@ -267,6 +297,25 @@ Object.assign(I18N_EN, {
   "Отображаемые поля":"Displayed fields", "Показывать фильтры":"Visible filters",
   "По умолчанию":"Reset to default", "Закрыть":"Close", "Применить":"Apply",
   "Настройка полей и фильтров":"Fields and filters settings",
+  /* мастер коммуникаций (карточка создания) и предпросмотр */
+  "Новый шаблон":"New template", "Создать шаблон":"Create template", "Очистить":"Clear",
+  "Заполните":"Fill in", "Расширенная форма (цепочки)":"Advanced form (chains)",
+  "Шаблон создан":"Template created", "Ошибка сохранения":"Save error",
+  "Сегмент (code)":"Segment (code)", "Поле в БД":"Database field",
+  "таблица":"table", "отдельного поля нет":"no dedicated column",
+  "Предпросмотр Mobile-push":"Mobile-push preview", "Предпросмотр E-mail":"E-mail preview",
+  "Не помещается":"Does not fit", "заголовок":"title", "текст":"body",
+  "часть будет скрыта под «ещё». Заголовок — 1 строка, текст — до 4 строк.":"part will be hidden behind “more”. Title — 1 line, body — up to 4 lines.",
+  "Текст помещается в карточку уведомления полностью.":"The text fits the notification card in full.",
+  /* шапки описания разделов */
+  "Заведение нового шаблона: канал выбирается настроечным блоком, поля зависят от канала. communication_name и source_type собираются автоматически по правилам нейминга, справа — предпросмотр сообщения перед сохранением.":"Creating a new template: the channel is chosen in the settings block and the fields depend on it. communication_name and source_type are generated automatically by the naming rules; the message preview is on the right.",
+  "Витрина всех шаблонов коммуникаций: поиск, сортировка, настройка отображаемых полей и фильтров через шестерёнку. Значения правятся прямо в таблице — карандаш у поля, подтверждение галочкой.":"A showcase of all communication templates: search, sorting and field/filter settings via the gear. Values are edited in place — a pencil next to the field, confirmed with a check mark.",
+  "Карточка шаблона со всеми параметрами: канал и шаблон выбираются настроечными блоками, каждое поле правится по карандашу, справа — предпросмотр сообщения в канале.":"The template card with every parameter: channel and template are chosen in the settings blocks, each field is edited via its pencil, and the channel preview is on the right.",
+  "Сводные показатели по отправкам, доставкам и реакциям в разрезе каналов, продуктов и шаблонов.":"Summary metrics for sends, deliveries and reactions by channel, product and template.",
+  "Контроль основных этапов: отбор базы, поступление событий, отправки, доставки и дубли. Блок открывается кликом — внутри метрики и пороги.":"Control of the main stages: audience selection, incoming events, sends, deliveries and duplicates. Click a block to see its metrics and thresholds.",
+  "Свои HTML-страницы внутри панели: оформление файла не меняется, страница масштабируется под размер окна.":"Your own HTML pages inside the panel: the file styling is preserved and the page scales to the window.",
+  "Конструктор цепочек коммуникаций: шаги, условия и связи между шаблонами.":"Communication journey builder: steps, conditions and links between templates.",
+  "Пользователи панели: роль задаёт уровень возможностей, набор разделов — что видит пользователь.":"Panel users: the role sets the capability level, the section set defines what the user sees.",
   "Не удалось сохранить изменение на сервере. Значение возвращено.":"Could not save the change on the server. The value was reverted.",
 });
 
@@ -331,6 +380,7 @@ function applyLang(rerender){
     if (typeof sbUpdate === "function") sbUpdate();
     if (typeof translateAdminChrome === "function") translateAdminChrome();
     if (typeof promoRender === "function") promoRender();
+    renderSectionHero(CUR_VIEW, cur.sid, cur.cid);
     /* заголовок раздела в шапке — на выбранном языке */
     const s0 = NAV.find(n => n.id === cur.sid);
     if (s0) renderPageCrumb(s0, cur.cid, $("#pageTitle") ? $("#pageTitle").textContent : "");
@@ -613,10 +663,54 @@ function openSection(sid, cid){
   }, 30);
 
   if (sid !== "home" && cid !== "up-new") trackRecent({ sid, cid, label: target.label });
+  CUR_VIEW = target.view;
+  renderSectionHero(target.view, sid, cid);
   renderPageCrumb(s, cid, target.label);
   document.title = "CRM Team · " + t(target.label || s.label);
   const ha = $("#homeActions"); if (ha) ha.style.display = sid === "home" ? "flex" : "none";
   store.set("lastSection", { sid, cid });
+}
+
+/* ---------- Шапка описания раздела (как на странице OneLink Builder) ----------
+   Разделы со своим героем (OneLink, Конструктор source, Отклонения, Промо)
+   пропускаются — у них заголовок уже есть в разметке. */
+let CUR_VIEW = "";
+const SEC_HERO = {
+  "comms:admin": { eyebrow:"CRM · Templates · Wizard", title:"Мастер коммуникаций",
+    sub:"Заведение нового шаблона: канал выбирается настроечным блоком, поля зависят от канала. communication_name и source_type собираются автоматически по правилам нейминга, справа — предпросмотр сообщения перед сохранением." },
+  "comms:templates": { eyebrow:"CRM · Templates · List view", title:"Список шаблонов",
+    sub:"Витрина всех шаблонов коммуникаций: поиск, сортировка, настройка отображаемых полей и фильтров через шестерёнку. Значения правятся прямо в таблице — карандаш у поля, подтверждение галочкой." },
+  "comms:viewer": { eyebrow:"CRM · Templates · Details", title:"Просмотр настроек",
+    sub:"Карточка шаблона со всеми параметрами: канал и шаблон выбираются настроечными блоками, каждое поле правится по карандашу, справа — предпросмотр сообщения в канале." },
+  "dash:dashboard": { eyebrow:"CRM · Analytics · Overview", title:"Общая статистика",
+    sub:"Сводные показатели по отправкам, доставкам и реакциям в разрезе каналов, продуктов и шаблонов." },
+  "monitoring:mon-campaigns": { eyebrow:"CRM · Monitoring · Campaigns", title:"Базовая работа кампаний",
+    sub:"Контроль основных этапов: отбор базы, поступление событий, отправки, доставки и дубли. Блок открывается кликом — внутри метрики и пороги." },
+  "uploads:": { eyebrow:"CRM · Tools · Uploads", title:"Загруженные инструменты",
+    sub:"Свои HTML-страницы внутри панели: оформление файла не меняется, страница масштабируется под размер окна." },
+  "journeys:": { eyebrow:"CRM · Journeys · Builder", title:"Цепочки",
+    sub:"Конструктор цепочек коммуникаций: шаги, условия и связи между шаблонами." }
+  /* «Управление доступом» рисует свой заголовок и описание (admin-users.js) */
+};
+function renderSectionHero(viewId, sid, cid){
+  const view = document.getElementById(viewId);
+  if (!view) return;
+  const meta = SEC_HERO[sid + ":" + (cid || "")];
+  const old = view.querySelector(":scope > .sec-hero");
+  if (!meta){ if (old) old.remove(); return; }
+  /* если у раздела уже есть собственный заголовок — второй не добавляем */
+  if (view.querySelector("h1:not(.sec-hero h1)")){
+    if (old) old.remove();
+    return;
+  }
+  const html = `<div class="eyebrow">${escapeShellHtml(meta.eyebrow)}</div>
+    <h1>${escapeShellHtml(t(meta.title))}</h1>
+    <p class="sub">${escapeShellHtml(t(meta.sub))}</p>`;
+  if (old){ old.innerHTML = html; return; }
+  const box = document.createElement("header");
+  box.className = "sec-hero";
+  box.innerHTML = html;
+  view.insertBefore(box, view.firstChild);
 }
 
 /* Название текущего раздела в шапке: «родитель › раздел».
@@ -658,11 +752,14 @@ function wizardSetChannel(ch){
     b.classList.toggle("active", b.dataset.ch === ch);
   });
   document.querySelectorAll("#sec-admin .form").forEach(function(f){ f.classList.remove("active"); });
-  const f = document.getElementById(ch);
-  if (f) f.classList.add("active");
+  /* мастер показывает карточку нового шаблона (то же оформление, что «Просмотр настроек»);
+     развёрнутая форма канала остаётся запасным путём — wizardLegacyForm() */
+  const card = document.getElementById("wizard");
+  if (card) card.classList.add("active");
   /* как при переходе на канальную вкладку (openTab): новый шаблон → сбрасываем контекст
      редактирования, чтобы сохранение пошло как INSERT, а не UPDATE открытого шаблона */
   window.CRM_CURRENT = null;
+  if (typeof wizardCardOpen === "function") wizardCardOpen(ch);
 }
 
 /* ---------- мониторинг: заглушки статистики блоков ---------- */
