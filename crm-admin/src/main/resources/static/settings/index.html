@@ -296,6 +296,7 @@
             <button class="btn" id="prodHealthBtn" data-i18n="Проверить соединение">Проверить соединение</button>
             <button class="btn" id="prodProcessBtn" data-i18n="Доставить очередь сейчас">Доставить очередь сейчас</button>
             <button class="btn" id="prodReconcileBtn" data-i18n="Сверка с продом">Сверка с продом</button>
+            <button class="btn" id="prodImportAllBtn" data-i18n="Импортировать всё из прода">Импортировать всё из прода</button>
           </div>
           <div id="prodDbBox" class="empty" data-i18n="Нажми «Проверить соединение».">Нажми «Проверить соединение».</div>
           <div id="reconcileBox" style="margin-top:14px"></div>
@@ -824,6 +825,41 @@ async function reconcileImportSelected(){
   } catch(e){ alert(t2('Ошибка запроса: ') + e.message); }
 }
 $("#prodReconcileBtn").addEventListener('click', reconcileRun);
+
+/* ---------- Импортировать всё из прода (фоновая задача + прогресс) ---------- */
+var bulkTimer = null;
+async function importAllRun(){
+  if (!confirm('Импортировать ВСЮ прод-базу шаблонов в d_template? Прод перезапишет расхождения. Может занять время.')) return;
+  var box = $("#reconcileBox");
+  try {
+    var r = await fetch('/api/admin/prod-db/reconcile/import-all', { method: 'POST', credentials: 'same-origin' });
+    if (r.status === 403) { alert(t2('Доступно только администраторам.')); return; }
+    var res = await r.json();
+    if (!res.started) { box.innerHTML = '<div class="empty">' + esc(res.message || res.hint || 'Не удалось запустить.') + '</div>'; return; }
+    box.innerHTML = '<div class="empty">Импорт запущен…</div>';
+    if (bulkTimer) clearInterval(bulkTimer);
+    bulkTimer = setInterval(importAllPoll, 2000);
+    importAllPoll();
+  } catch(e){ box.textContent = t2('Ошибка запроса: ') + e.message; }
+}
+async function importAllPoll(){
+  var box = $("#reconcileBox");
+  try {
+    var r = await fetch('/api/admin/prod-db/reconcile/import-all/status', { credentials: 'same-origin' });
+    var s = await r.json();
+    if (s.error) {
+      box.innerHTML = '<div class="sub" style="color:var(--coral)">Ошибка импорта: ' + esc(s.error) + '</div>';
+      clearInterval(bulkTimer); bulkTimer = null; return;
+    }
+    if (s.running) {
+      box.innerHTML = '<div class="sub">Импорт идёт… канал: <b>' + esc(s.phase || '') + '</b> · импортировано: <b>' + (s.imported || 0) + '</b></div>';
+    } else if (s.done) {
+      box.innerHTML = '<div class="sub" style="color:var(--green)">Готово. Импортировано: <b>' + (s.imported || 0) + '</b>. Нажмите «Сверка с продом» для проверки.</div>';
+      clearInterval(bulkTimer); bulkTimer = null;
+    }
+  } catch(e){ /* сеть моргнула — продолжаем поллинг */ }
+}
+$("#prodImportAllBtn").addEventListener('click', importAllRun);
 
 renderApps();   /* мгновенный каркас (умолчания), затем данные с сервера */
 loadApps();

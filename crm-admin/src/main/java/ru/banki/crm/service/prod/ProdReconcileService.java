@@ -18,6 +18,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Сверка нашего template.d_template с внешней прод-БД (источник истины) и обратный импорт.
@@ -46,6 +50,84 @@ public class ProdReconcileService {
         this.adminLog = adminLog;
         this.om = om;
         this.tx = tx;
+    }
+
+    // ---- фоновый импорт «всё из прода» (одна задача за раз, прогресс — поллингом) ----
+    private static final int BATCH = 500;
+    private final ExecutorService bulkExec = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "prod-import-all");
+        t.setDaemon(true);
+        return t;
+    });
+    private final AtomicBoolean bulkRunning = new AtomicBoolean(false);
+    private final AtomicInteger bulkImported = new AtomicInteger(0);
+    private volatile boolean bulkDone = false;
+    private volatile String bulkError = null;
+    private volatile String bulkPhase = null;
+
+    /** Запустить фоновый импорт всей прод-базы в d_template. Возвращает started=true/false. */
+    public Map<String, Object> startBulkImport() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (!prod.configured()) { out.put("started", false); out.put("hint", "Прод-БД не настроена."); return out; }
+        if (!bulkRunning.compareAndSet(false, true)) { out.put("started", false); out.put("message", "Импорт уже идёт."); return out; }
+        bulkImported.set(0); bulkDone = false; bulkError = null; bulkPhase = null;
+        bulkExec.submit(this::runBulkImport);
+        out.put("started", true);
+        return out;
+    }
+
+    /** Статус фонового импорта — для поллинга из UI. */
+    public Map<String, Object> bulkStatus() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("running", bulkRunning.get());
+        m.put("done", bulkDone);
+        m.put("imported", bulkImported.get());
+        m.put("phase", bulkPhase);
+        if (bulkError != null) m.put("error", bulkError);
+        return m;
+    }
+
+    private void runBulkImport() {
+        try {
+            for (String ch : CHANNELS) {
+                bulkPhase = ch;
+                final List<JsonNode> buf = new ArrayList<>();
+                try {
+                    prod.readEach(ch, row -> {
+                        buf.add(row);
+                        if (buf.size() >= BATCH) flushBatch(ch, buf);
+                    });
+                } catch (Exception e) {
+                    // нет прод-таблицы канала — пропускаем
+                    log.warn("bulk import: канал {} пропущен: {}", ch, e.getMessage());
+                    buf.clear();
+                    continue;
+                }
+                flushBatch(ch, buf);
+            }
+            try {
+                tx.executeWithoutResult(s -> adminLog.logTable(
+                        "template.d_template", "IMPORT_ALL", "{\"imported\":" + bulkImported.get() + "}"));
+            } catch (Exception e) {
+                log.warn("bulk import audit failed: {}", e.getMessage());
+            }
+        } catch (Exception e) {
+            bulkError = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            log.warn("bulk import failed: {}", bulkError);
+        } finally {
+            bulkPhase = null;
+            bulkDone = true;
+            bulkRunning.set(false);
+        }
+    }
+
+    /** Батч upsert в d_template (одна транзакция), затем очистка буфера и инкремент счётчика. */
+    private void flushBatch(String ch, List<JsonNode> buf) {
+        if (buf.isEmpty()) return;
+        final List<JsonNode> batch = new ArrayList<>(buf);
+        buf.clear();
+        tx.executeWithoutResult(s -> { for (JsonNode row : batch) store.upsertFromProdRow(ch, row); });
+        bulkImported.addAndGet(batch.size());
     }
 
     /** Отчёт-сверка по всем каналам: корзины «только в проде / разошлись / только у нас» + счётчик совпадений. */

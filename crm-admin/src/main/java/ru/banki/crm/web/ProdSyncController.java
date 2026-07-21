@@ -51,6 +51,18 @@ public class ProdSyncController {
         return out;
     }
 
+    /** Запустить фоновый импорт ВСЕЙ прод-базы в d_template (одна задача за раз). */
+    @PostMapping("/reconcile/import-all")
+    public Map<String, Object> reconcileImportAll() {
+        return reconcile.startBulkImport();
+    }
+
+    /** Статус фонового импорта (для поллинга в UI). */
+    @GetMapping("/reconcile/import-all/status")
+    public Map<String, Object> reconcileImportAllStatus() {
+        return reconcile.bulkStatus();
+    }
+
     /** Соединение + наличие таблиц + счётчики очереди. */
     @GetMapping("/health")
     public Map<String, Object> health() {
