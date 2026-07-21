@@ -128,12 +128,13 @@ public class ProdDbService {
      * Применить одну операцию очереди к прод-БД. Возвращает код строки в проде
      * (для INSERT — присвоенный продом; для UPDATE/DELETE — переданный localCode).
      */
-    public long apply(String channel, String operation, long localCode, String payloadJson) throws Exception {
+    public long apply(String channel, String operation, long localCode, String payloadJson, String actor) throws Exception {
         ChannelTable ct = UnifiedTemplateService.channelTable(channel);
         if (ct == null) throw new IllegalArgumentException("Неизвестный канал: " + channel);
         try (Connection c = ds().getConnection()) {
             c.setAutoCommit(false);
             try {
+                markActor(c, actor);   // прод-триггеры аудита читают app.current_user
                 long result = switch (operation) {
                     case "INSERT" -> insert(c, ct, localCode, payloadJson);
                     case "UPDATE" -> {
@@ -157,6 +158,22 @@ public class ProdDbService {
                 c.rollback();
                 throw e;
             }
+        }
+    }
+
+    /**
+     * Прокидывает актёра в сессионную переменную app.current_user на прод-соединении,
+     * чтобы BEFORE-триггеры аудита записали в log.t_admin_log реального пользователя
+     * (аналог set_config('app.current_user', ...) из старой Appsmith-админки).
+     * is_local=true — значение живёт только до конца ЭТОЙ транзакции: пул переиспользует
+     * соединение, но в следующую операцию чужой актёр не утечёт.
+     * В лог кладём логин без домена: split_part(email, '@', 1).
+     */
+    private static void markActor(Connection c, String actor) throws Exception {
+        try (PreparedStatement ps = c.prepareStatement(
+                "SELECT set_config('app.current_user', split_part(COALESCE(?, ''), '@', 1), true)")) {
+            ps.setString(1, actor);
+            ps.executeQuery();
         }
     }
 

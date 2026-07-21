@@ -51,7 +51,7 @@ public class ProdSyncService {
     public int process(int limit) {
         if (!prod.configured()) return 0;
         List<Map<String, Object>> entries = jdbc.queryForList(
-                "SELECT id, channel, operation, local_code, payload::text AS payload" +
+                "SELECT id, channel, operation, local_code, payload::text AS payload, created_by" +
                 " FROM app.prod_sync WHERE status = 'PENDING' AND attempts < ? ORDER BY id LIMIT ?",
                 MAX_ATTEMPTS, limit);
         int ok = 0;
@@ -61,8 +61,9 @@ public class ProdSyncService {
             String operation = String.valueOf(e.get("operation"));
             long localCode = ((Number) e.get("local_code")).longValue();
             String payload = String.valueOf(e.get("payload"));
+            String createdBy = e.get("created_by") == null ? null : String.valueOf(e.get("created_by"));
             try {
-                long prodCode = prod.apply(channel, operation, localCode, payload);
+                long prodCode = prod.apply(channel, operation, localCode, payload, createdBy);
                 tx.executeWithoutResult(s -> {
                     jdbc.update("UPDATE app.prod_sync SET status = 'OK', prod_code = ?, attempts = attempts + 1," +
                                     " last_error = NULL, timestamp_upd = now() WHERE id = ?",
