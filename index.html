@@ -26,6 +26,7 @@
 <link rel="stylesheet" href="css/section-onelink.css">
 <link rel="stylesheet" href="css/section-srcbuilder.css">
 <link rel="stylesheet" href="css/section-promo.css">
+<link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-admin.css">
 </head>
 <body>
@@ -188,6 +189,66 @@
       <div class="ov-sub" data-i18n="Управление коммуникациями · доступно в приложении «Маркетинг»">Управление коммуникациями · доступно в приложении «Маркетинг»</div>
       <div class="mon-stub"><b data-i18n="Раздел в разработке">Раздел в разработке</b>
         <span data-i18n="Здесь появится тепловая карта коммуникационной нагрузки: пересечения сегментов, каналов и частоты касаний.">Здесь появится тепловая карта коммуникационной нагрузки: пересечения сегментов, каналов и частоты касаний.</span></div>
+    </section>
+
+    <!-- ===== Отчёты (Tableau) — макет окна встраивания ===== -->
+    <section class="view" id="view-reports">
+      <header class="rp-hero">
+        <div class="eyebrow">CRM · Analytics · Tableau</div>
+        <h1 data-i18n-html="h1_reports">Отчёты <span class="grad">Tableau</span></h1>
+        <p class="sub" data-i18n-html="reports_sub">Здесь встраиваются интерактивные отчёты из вашего Tableau&nbsp;Server. Ниже — <b>макет</b> того, как отчёт будет выглядеть в этом окне; реальное подключение через Tableau Embedding API v3 включается после настройки адреса сервера и доступа. Все числа на макете — демонстрационные.</p>
+      </header>
+
+      <div class="rp-toolbar">
+        <div class="f"><label data-i18n="Отчёт">Отчёт</label>
+          <select id="rpReport" onchange="rpSelect(this.value)">
+            <option value="funnel" data-i18n="Воронка коммуникаций">Воронка коммуникаций</option>
+            <option value="delivery" data-i18n="Доставляемость по каналам">Доставляемость по каналам</option>
+            <option value="promo" data-i18n="Эффективность промо">Эффективность промо</option>
+          </select></div>
+        <div class="f"><label data-i18n="Период">Период</label>
+          <select id="rpRange">
+            <option data-i18n="Последние 7 дней">Последние 7 дней</option>
+            <option selected data-i18n="Последние 30 дней">Последние 30 дней</option>
+            <option data-i18n="Квартал">Квартал</option>
+          </select></div>
+        <span class="spacer"></span>
+        <button class="btn" onclick="rpRefresh()" data-i18n="↻ Обновить">↻ Обновить</button>
+        <button class="btn" id="rpFsBtn" onclick="rpFullscreen()" data-i18n="⤢ Во весь экран">⤢ Во весь экран</button>
+        <button class="btn accent" onclick="rpToggleCode()" data-i18n="&lt;/&gt; Код встраивания">&lt;/&gt; Код встраивания</button>
+      </div>
+
+      <!-- имитация окна Tableau -->
+      <div class="tv-frame" id="rpFrame">
+        <div class="tv-bar">
+          <span class="tv-brand"><span class="tv-logo"></span><span id="rpWorkbook">Воронка коммуникаций</span></span>
+          <div class="tv-tabs" id="rpTabs"></div>
+          <span class="tv-demo" data-i18n="МАКЕТ">МАКЕТ</span>
+        </div>
+        <div class="tv-body" id="rpBody"></div>
+        <div class="tv-foot">
+          <span class="tv-tools"><i title="Отменить">↶</i><i title="Вернуть">↷</i><i title="Сбросить">⟳</i></span>
+          <span class="tv-tools right"><i title="Поделиться">↗</i><i title="Скачать">⭳</i><i title="Во весь экран" onclick="rpFullscreen()">⤢</i></span>
+        </div>
+      </div>
+
+      <!-- код реального встраивания (сворачиваемый) -->
+      <div class="rp-code" id="rpCode" hidden>
+        <div class="rp-code-head" data-i18n="Как подключить реальный отчёт (Tableau Embedding API v3)">Как подключить реальный отчёт (Tableau Embedding API v3)</div>
+<pre><span class="tag">&lt;script</span> <span class="at">type</span>=<span class="st">"module"</span>
+        <span class="at">src</span>=<span class="st">"https://&lt;ваш-tableau-server&gt;/javascripts/api/tableau.embedding.3.latest.min.js"</span><span class="tag">&gt;&lt;/script&gt;</span>
+
+<span class="tag">&lt;tableau-viz</span>
+   <span class="at">src</span>=<span class="st">"https://&lt;ваш-tableau-server&gt;/views/&lt;Книга&gt;/&lt;Лист&gt;"</span>
+   <span class="at">toolbar</span>=<span class="st">"bottom"</span> <span class="at">hide-tabs</span>
+   <span class="at">token</span>=<span class="st">"&lt;JWT из Connected App или PAT&gt;"</span><span class="tag">&gt;&lt;/tableau-viz&gt;</span></pre>
+        <ul class="rp-req">
+          <li data-i18n="Нужен адрес вашего Tableau Server (или Tableau Cloud) и опубликованная книга.">Нужен адрес вашего Tableau Server (или Tableau Cloud) и опубликованная книга.</li>
+          <li data-i18n="Авторизация — Connected Apps (JWT) или Personal Access Token; токен выдаёт бэкенд, чтобы не логиниться вручную.">Авторизация — Connected Apps (JWT) или Personal Access Token; токен выдаёт бэкенд, чтобы не логиниться вручную.</li>
+          <li data-i18n="Сервер Tableau должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели.">Сервер Tableau должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели.</li>
+          <li data-i18n="На GitHub Pages бэкенда нет — реальные данные появятся только с запущенным crm-admin.">На GitHub Pages бэкенда нет — реальные данные появятся только с запущенным crm-admin.</li>
+        </ul>
+      </div>
     </section>
 
     <!-- ===== Обзор раздела «Дашборд» ===== -->
@@ -1847,6 +1908,7 @@
 
 <script src="js/srcbuilder.js"></script>
 <script src="js/promo.js"></script>
+<script src="js/reports.js"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->
 <script src="js/heatmap-data.js"></script>

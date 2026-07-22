@@ -22,6 +22,8 @@ const NAV = [
       { id:"promo",     label:"Планирование промо",  icon:"calendar", view:"sec-promo", noAcl:true },
       { id:"heatmap",   label:"Тепловая карта",      icon:"grid2", view:"view-heatmap", noAcl:true, appOnly:["Маркетинг"] },
   ]},
+  /* «Отчёты» — встраивание отчётов Tableau (пока показан макет окна) */
+  { id:"reports", label:"Отчёты", icon:"reports", view:"view-reports", noAcl:true },
   { id:"dash", label:"Дашборд", icon:"gauge", overviewView:"view-dash-overview", children:[
       { id:"dashboard",  label:"Общая статистика",  icon:"chart", view:"sec-admin", adminMode:"dashboard" },
       { id:"deviations", label:"Панель отклонений", icon:"pulse", view:"sec-deviations" },
@@ -58,6 +60,7 @@ const ICONS = {
   upload:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
   plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
+  reports:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-4M12 17V8M16 17v-6"/></svg>',
 };
 
 /* =========================================================
@@ -318,6 +321,38 @@ Object.assign(I18N_EN, {
   "Не удалось сохранить изменение на сервере. Значение возвращено.":"Could not save the change on the server. The value was reverted.",
 });
 
+/* ---- раздел «Отчёты» (Tableau) ---- */
+Object.assign(I18N_EN, {
+  "Отчёты":"Reports",
+  "Отчёт":"Report", "Период":"Period",
+  "Воронка коммуникаций":"Communication funnel",
+  "Доставляемость по каналам":"Deliverability by channel",
+  "Эффективность промо":"Promo performance",
+  "Последние 7 дней":"Last 7 days", "Последние 30 дней":"Last 30 days", "Квартал":"Quarter",
+  "↻ Обновить":"↻ Refresh", "⤢ Во весь экран":"⤢ Fullscreen", "Во весь экран":"Fullscreen",
+  "Свернуть":"Collapse", "</> Код встраивания":"</> Embed code", "МАКЕТ":"DEMO",
+  "Как подключить реальный отчёт (Tableau Embedding API v3)":"How to connect a real report (Tableau Embedding API v3)",
+  "Нужен адрес вашего Tableau Server (или Tableau Cloud) и опубликованная книга.":"You need your Tableau Server (or Tableau Cloud) address and a published workbook.",
+  "Авторизация — Connected Apps (JWT) или Personal Access Token; токен выдаёт бэкенд, чтобы не логиниться вручную.":"Auth is Connected Apps (JWT) or a Personal Access Token; the backend issues the token so no manual login is needed.",
+  "Сервер Tableau должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели.":"The Tableau server must be reachable from the browser (VPN/intranet) and allow embedding for the panel's domain.",
+  "На GitHub Pages бэкенда нет — реальные данные появятся только с запущенным crm-admin.":"There is no backend on GitHub Pages — real data appears only with crm-admin running.",
+  /* KPI и подписи виджетов макета */
+  "Отправлено":"Sent", "Доставлено":"Delivered", "Открыто":"Opened", "Клик":"Click", "Конверсия":"Conversion",
+  "Отписки":"Unsubscribes", "Промо-рассылок":"Promo sends", "Средний CTR":"Average CTR", "Выручка":"Revenue",
+  "за 30 дней":"over 30 days", "за месяц":"this month", "доставлено":"delivered",
+  "атрибуция 7 дней":"7-day attribution", "по конверсии":"by conversion",
+  "Обзор":"Overview", "Этапы":"Stages", "Каналы":"Channels", "Детализация":"Breakdown",
+  "Динамика":"Trend", "Топ-кампании":"Top campaigns",
+  "Воронка этапов":"Stage funnel", "Доставляемость по дням":"Deliverability by day",
+  "Показатели по этапам":"Metrics by stage", "Доставлено и открыто по каналам":"Delivered and opened by channel",
+  "Доставляемость e-mail":"E-mail deliverability", "Сводка по каналам":"Channel summary",
+  "Конверсия промо по дням":"Promo conversion by day", "CTR по каналам":"CTR by channel", "Лучшие промо":"Top promos",
+  "доля от отправленных, %":"share of sent, %", "%, последние 14 дней":"%, last 14 days",
+  "абсолют и доля":"absolute and share", "%, 14 дней":"%, 14 days",
+  "Этап":"Stage", "Объём":"Volume", "Доля":"Share", "Канал":"Channel",
+  "Кампания":"Campaign", "Конв.":"Conv.",
+});
+
 /* HTML-заголовки (с выделением) — токены */
 const I18N_HTML = {
   ru: {
@@ -331,6 +366,8 @@ const I18N_HTML = {
     h1_upform:'Загрузка <span class="grad">HTML-инструмента</span>',
     h1_srcbuilder:'Конструктор <span class="grad">source</span>',
     h1_promo:'Планирование <span class="grad">промо</span>',
+    h1_reports:'Отчёты <span class="grad">Tableau</span>',
+    reports_sub:'Здесь встраиваются интерактивные отчёты из вашего Tableau&nbsp;Server. Ниже — <b>макет</b> того, как отчёт будет выглядеть в этом окне; реальное подключение через Tableau Embedding API v3 включается после настройки адреса сервера и доступа. Все числа на макете — демонстрационные.',
   },
   en: {
     h1_home:'Welcome to the <span class="grad">control panel</span>',
@@ -343,6 +380,8 @@ const I18N_HTML = {
     h1_upform:'Upload an <span class="grad">HTML tool</span>',
     h1_srcbuilder:'Source <span class="grad">builder</span>',
     h1_promo:'Promo <span class="grad">planning</span>',
+    h1_reports:'Tableau <span class="grad">reports</span>',
+    reports_sub:'Interactive reports from your Tableau&nbsp;Server are embedded here. Below is a <b>mock-up</b> of how a report will look in this window; the real connection via the Tableau Embedding API v3 is enabled once the server address and access are configured. All numbers in the mock-up are illustrative.',
   }
 };
 function t(s){ return (UI_LANG === "en" && I18N_EN[s]) ? I18N_EN[s] : s; }
@@ -379,6 +418,7 @@ function applyLang(rerender){
     if (typeof sbUpdate === "function") sbUpdate();
     if (typeof translateAdminChrome === "function") translateAdminChrome();
     if (typeof promoRender === "function") promoRender();
+    if (typeof rpRender === "function") rpRender();
     renderSectionHero(CUR_VIEW, cur.sid, cur.cid);
     /* заголовок раздела в шапке — на выбранном языке */
     const s0 = NAV.find(n => n.id === cur.sid);
