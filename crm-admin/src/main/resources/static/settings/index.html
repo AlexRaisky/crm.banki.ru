@@ -331,6 +331,11 @@
                   <input type="checkbox" id="dbcActive" checked style="accent-color:#3CFAB4;width:16px;height:16px">
                   <span data-i18n="Активно">Активно</span>
                 </label>
+                <label class="opt-row" style="border:none;padding:2px 0;cursor:pointer">
+                  <input type="checkbox" id="dbcProdSync" style="accent-color:#3CFAB4;width:16px;height:16px">
+                  <span data-i18n="Приёмник синка шаблонов (прод)">Приёмник синка шаблонов (прод)</span>
+                  <span class="opt-note mono" data-i18n="сюда доставляется очередь; может быть только один">сюда доставляется очередь; может быть только один</span>
+                </label>
               </div>
             </div>
             <div class="actions">
@@ -957,6 +962,7 @@ function dbcRenderList(list){
         ? '<div class="mono" style="color:var(--coral);font-size:11px;margin-top:3px" title="' + esc(c.error) + '">' + esc(String(c.error).slice(0,120)) + '</div>' : '';
       var purpose = c.purpose ? '<div class="mono" style="margin-top:3px">' + esc(c.purpose) + '</div>' : '';
       var tag = c.builtin ? ' <span class="badge off">' + t2('встроенное') + '</span>' : '';
+      if (c.prodSync) tag += ' <span class="badge ok">' + t2('прод-синк') + '</span>';
       var idAttr = esc(String(c.id));
       var actions =
         '<button class="btn" onclick="dbcTest(\'' + idAttr + '\')">' + t2('Проверить') + '</button>' +
@@ -1027,6 +1033,7 @@ function dbcFormOpen(row){
   $("#dbcUser").value    = row ? (row.username || '') : '';
   $("#dbcPass").value    = '';
   $("#dbcActive").checked = row ? (row.active !== false) : true;
+  $("#dbcProdSync").checked = row ? !!row.prodSync : false;
   $("#dbcPassHint").style.display = row ? 'inline' : 'none';
   $("#dbcNote").className = 'save-note';
   $("#dbcForm").style.display = 'block';
@@ -1044,7 +1051,8 @@ async function dbcSave(){
     jdbcUrl: $("#dbcUrl").value.trim(),
     username: $("#dbcUser").value.trim(),
     purpose: $("#dbcPurpose").value.trim(),
-    active: $("#dbcActive").checked
+    active: $("#dbcActive").checked,
+    prodSync: $("#dbcProdSync").checked
   };
   var pw = $("#dbcPass").value;
   if (pw) body.password = pw;

@@ -37,10 +37,6 @@ public class DbConnectionService {
     private String ourUrl;
     @Value("${spring.datasource.username:}")
     private String ourUser;
-    @Value("${app.proddb.url:}")
-    private String prodUrl;
-    @Value("${app.proddb.user:}")
-    private String prodUser;
 
     public DbConnectionService(JdbcTemplate jdbc, ProdDbService prod) {
         this.jdbc = jdbc;
@@ -59,21 +55,11 @@ public class DbConnectionService {
         ours.putAll(ourTest);
         out.add(ours);
 
-        // встроенное: внешняя прод-БД (тяжёлый коннект — на списке не блокируем, статус по кнопке)
-        Map<String, Object> pr = builtin("prod-db", "Прод-БД (внешняя)", prodUrl, prodUser,
-                "Внешняя прод-база: источник истины, приёмник очереди синка.");
-        pr.put("configured", prod.configured());
-        if (!prod.configured()) {
-            pr.put("status", "OFF");
-            pr.put("error", "Не настроено (PROD_DB_URL пуст).");
-        }
-        out.add(pr);
-
-        // пользовательские
+        // пользовательские (прод-приёмник — тоже строка здесь, с флагом is_prod_sync)
         out.addAll(jdbc.query(
                 "SELECT id, name, jdbc_url, username, (password IS NOT NULL AND password <> '') AS has_pw, " +
-                "       purpose, is_active, last_status, last_error, last_latency_ms, last_checked_at " +
-                "FROM app.db_connection ORDER BY name",
+                "       purpose, is_active, is_prod_sync, last_status, last_error, last_latency_ms, last_checked_at " +
+                "FROM app.db_connection ORDER BY is_prod_sync DESC, name",
                 (rs, i) -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("id", rs.getLong("id"));
@@ -85,6 +71,7 @@ public class DbConnectionService {
                     m.put("hasPassword", rs.getBoolean("has_pw"));
                     m.put("purpose", rs.getString("purpose"));
                     m.put("active", rs.getBoolean("is_active"));
+                    m.put("prodSync", rs.getBoolean("is_prod_sync"));
                     m.put("status", rs.getString("last_status"));
                     m.put("error", rs.getString("last_error"));
                     Object lat = rs.getObject("last_latency_ms");
@@ -125,13 +112,15 @@ public class DbConnectionService {
         if (exists != null && exists > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Подключение с таким именем уже есть: " + name);
         }
+        boolean prodSync = truthy(body.get("prodSync"));
+        if (prodSync) jdbc.update("UPDATE app.db_connection SET is_prod_sync = false WHERE is_prod_sync");
         jdbc.update(
-                "INSERT INTO app.db_connection (name, jdbc_url, username, password, purpose, is_active, created_by) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO app.db_connection (name, jdbc_url, username, password, purpose, is_active, is_prod_sync, created_by) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 name, url, nullIfEmpty(str(body.get("username"))),
                 nullIfEmpty(str(body.get("password"))), nullIfEmpty(str(body.get("purpose"))),
                 body.get("active") == null || Boolean.parseBoolean(String.valueOf(body.get("active"))),
-                CurrentUser.email());
+                prodSync, CurrentUser.email());
         Long id = jdbc.queryForObject("SELECT id FROM app.db_connection WHERE name = ?", Long.class, name);
         return Map.of("id", id);
     }
@@ -139,19 +128,22 @@ public class DbConnectionService {
     public void update(long id, Map<String, Object> body) {
         // пароль обновляем только если явно прислан (иначе оставляем старый)
         boolean setPw = body.containsKey("password") && !str(body.get("password")).isEmpty();
-        jdbc.update(
-                "UPDATE app.db_connection SET name = COALESCE(?, name), jdbc_url = COALESCE(?, jdbc_url), " +
-                "  username = ?, purpose = ?, is_active = ?" + (setPw ? ", password = ?" : "") +
-                " WHERE id = ?",
-                setPw
-                    ? new Object[]{ nullIfEmpty(str(body.get("name"))), nullIfEmpty(str(body.get("jdbcUrl"))),
-                        nullIfEmpty(str(body.get("username"))), nullIfEmpty(str(body.get("purpose"))),
-                        body.get("active") == null || Boolean.parseBoolean(String.valueOf(body.get("active"))),
-                        str(body.get("password")), id }
-                    : new Object[]{ nullIfEmpty(str(body.get("name"))), nullIfEmpty(str(body.get("jdbcUrl"))),
-                        nullIfEmpty(str(body.get("username"))), nullIfEmpty(str(body.get("purpose"))),
-                        body.get("active") == null || Boolean.parseBoolean(String.valueOf(body.get("active"))),
-                        id });
+        boolean prodSync = truthy(body.get("prodSync"));
+        // приёмник только один — снимаем флаг с остальных перед установкой на эту строку
+        if (prodSync) jdbc.update("UPDATE app.db_connection SET is_prod_sync = false WHERE is_prod_sync AND id <> ?", id);
+        boolean active = body.get("active") == null || Boolean.parseBoolean(String.valueOf(body.get("active")));
+        List<Object> args = new ArrayList<>();   // ArrayList допускает null (List.of — нет)
+        args.add(nullIfEmpty(str(body.get("name"))));      // COALESCE(?, name): null → оставить старое
+        args.add(nullIfEmpty(str(body.get("jdbcUrl"))));   // COALESCE(?, jdbc_url)
+        args.add(nullIfEmpty(str(body.get("username"))));
+        args.add(nullIfEmpty(str(body.get("purpose"))));
+        args.add(active);
+        args.add(prodSync);
+        String sql = "UPDATE app.db_connection SET name = COALESCE(?, name), jdbc_url = COALESCE(?, jdbc_url), " +
+                "  username = ?, purpose = ?, is_active = ?, is_prod_sync = ?" + (setPw ? ", password = ?" : "") + " WHERE id = ?";
+        if (setPw) args.add(str(body.get("password")));
+        args.add(id);
+        jdbc.update(sql, args.toArray());
     }
 
     public void delete(long id) {
@@ -159,10 +151,9 @@ public class DbConnectionService {
     }
 
     // --------------------------------------------------------------------- TEST
-    /** Проверка одного подключения по его id (число — пользовательское, строка — встроенное). */
+    /** Проверка одного подключения по его id (число — из реестра, "our-db" — встроенное). */
     public Map<String, Object> test(String id) {
         if ("our-db".equals(id)) return testOurDb();
-        if ("prod-db".equals(id)) return testProdDb();
         long lid;
         try { lid = Long.parseLong(id); }
         catch (NumberFormatException e) { throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Нет подключения: " + id); }
@@ -170,14 +161,19 @@ public class DbConnectionService {
         Map<String, Object> row;
         try {
             row = jdbc.queryForMap(
-                    "SELECT jdbc_url, username, password FROM app.db_connection WHERE id = ?", lid);
+                    "SELECT jdbc_url, username, password, is_prod_sync FROM app.db_connection WHERE id = ?", lid);
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Нет подключения: " + id);
         }
-        Map<String, Object> res = testJdbc(str(row.get("jdbc_url")), str(row.get("username")), str(row.get("password")));
+        // прод-приёмник проверяем через его собственный пул (бастион-таймауты), остальное — разовым коннектом
+        Map<String, Object> res = Boolean.TRUE.equals(row.get("is_prod_sync"))
+                ? testProdDb()
+                : testJdbc(str(row.get("jdbc_url")), str(row.get("username")), str(row.get("password")));
+        Object lat = res.get("latencyMs");
+        Integer latInt = (lat instanceof Number) ? ((Number) lat).intValue() : null;
         jdbc.update(
                 "UPDATE app.db_connection SET last_status = ?, last_error = ?, last_latency_ms = ?, last_checked_at = now() WHERE id = ?",
-                res.get("status"), res.get("error"), res.get("latencyMs"), lid);
+                res.get("status"), res.get("error"), latInt, lid);
         return res;
     }
 
@@ -187,12 +183,7 @@ public class DbConnectionService {
         ids.parallelStream().forEach(id -> {
             try { test(String.valueOf(id)); } catch (Exception ignore) {}
         });
-        List<Map<String, Object>> l = list();
-        // встроенный прод тоже прогоняем (в list() он не блокирует)
-        for (Map<String, Object> m : l) {
-            if ("prod-db".equals(m.get("id")) && prod.configured()) m.putAll(testProdDb());
-        }
-        return l;
+        return list();
     }
 
     // ---- встроенные проверки
@@ -214,7 +205,7 @@ public class DbConnectionService {
         Map<String, Object> r = new LinkedHashMap<>();
         if (!prod.configured()) {
             r.put("status", "OFF");
-            r.put("error", "Не настроено (PROD_DB_URL пуст).");
+            r.put("error", "Приёмник синка не активен.");
             return r;
         }
         Map<String, Object> h = prod.health();
@@ -262,4 +253,5 @@ public class DbConnectionService {
     // ---- helpers
     private static String str(Object o) { return o == null ? "" : String.valueOf(o).trim(); }
     private static String nullIfEmpty(String s) { return (s == null || s.isEmpty()) ? null : s; }
+    private static boolean truthy(Object o) { return o != null && Boolean.parseBoolean(String.valueOf(o)); }
 }
