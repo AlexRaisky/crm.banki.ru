@@ -301,7 +301,17 @@ Object.assign(I18N_EN, {
   "Настройка полей и фильтров":"Fields and filters settings",
   /* мастер коммуникаций (карточка создания) и предпросмотр */
   "Новый шаблон":"New template", "Создать шаблон":"Create template", "Очистить":"Clear",
-  "Заполните":"Fill in", "Расширенная форма (цепочки)":"Advanced form (chains)",
+  "Заполните":"Fill in",
+  /* цепочка в карточке мастера */
+  "Цепочка":"Chain", "шаблон на каждый день цепочки":"a template for each chain day",
+  "Дни цепочки (числа через запятую)":"Chain days (numbers, comma-separated)",
+  "Сгенерировать строки":"Generate rows", "День":"Day",
+  "Создать цепочку":"Create chain", "Цепочка создана":"Chain created", "шаблон(ов)":"template(s)",
+  "На каждый день при создании заводится отдельный шаблон со своим source_type (по дню).":"On create, a separate template is made for each day with its own source_type (per day).",
+  "Введите хотя бы один день (число), напр. 0, 3, 7":"Enter at least one day (a number), e.g. 0, 3, 7",
+  "Дни не должны повторяться":"Days must not repeat",
+  "Сгенерируйте строки: введите дни и нажмите «Сгенерировать строки».":"Generate the rows: enter the days and press “Generate rows”.",
+  "для дня":"for day",
   "Шаблон создан":"Template created", "Ошибка сохранения":"Save error",
   "Сегмент (code)":"Segment (code)", "Поле в БД":"Database field",
   "таблица":"table", "отдельного поля нет":"no dedicated column",
@@ -792,7 +802,7 @@ function wizardSetChannel(ch){
   });
   document.querySelectorAll("#sec-admin .form").forEach(function(f){ f.classList.remove("active"); });
   /* мастер показывает карточку нового шаблона (то же оформление, что «Просмотр настроек»);
-     развёрнутая форма канала остаётся запасным путём — wizardLegacyForm() */
+     цепочки заводятся в самой карточке — секция «Цепочка» */
   const card = document.getElementById("wizard");
   if (card) card.classList.add("active");
   /* как при переходе на канальную вкладку (openTab): новый шаблон → сбрасываем контекст

@@ -305,13 +305,16 @@ function sfdDbField(k, channel){
     if (col === '—') return sfdT('отдельного поля нет');
     return (SFD_TABLES[channel] || '') + '.' + col;
 }
-/* значок (i) с тултипом — как на странице OneLink Builder */
+/* значок (i): подсказка показывается фиксированным попапом (#fieldHelpPopup),
+   а не CSS-тултипом — тот обрезался краями карточки и секций */
 function sfdHintHtml(f){
     var help = f.help || SFD_HELP[f.k];
     var db = sfdDbField(f.k, SFD_STATE.work.channel);
     if (!help && !db) return '';
     var text = (help ? sfdT(help) : '') + (db ? '\n' + sfdT('Поле в БД') + ': ' + db : '');
-    return '<span class="info" tabindex="0">i<span class="tip">' + sfdEsc(text) + '</span></span>';
+    return '<span class="info" tabindex="0" data-help="' + sfdEsc(text) + '"' +
+        ' onmouseenter="showFieldHelp(this)" onmouseleave="hideFieldHelp()"' +
+        ' onfocus="showFieldHelp(this)" onblur="hideFieldHelp()">i</span>';
 }
 
 function sfdRowHtml(f){
@@ -363,19 +366,95 @@ function sfdBlank(channel){
              national_rating:false, news:false, mobile_app:false, night_send:false };
 }
 function wizardCardOpen(channel){
-    SFD_STATE = { id:null, orig:null, work: sfdBlank(channel), editing:{}, mode:'create' };
+    SFD_STATE = { id:null, orig:null, work: sfdBlank(channel), editing:{}, mode:'create',
+                  chain: { on:false, days:'', rows:[] } };
     sfdRecalcNames();
     sfdRender();
 }
-/* обязательные поля нового шаблона */
+
+/* ---------- цепочка: шаблон на каждый день (перенесено из старой формы) ---------- */
+/* контент шага по каналам — как в CHAIN_COLUMNS старой формы */
+var SFD_CHAIN_COLS = {
+    sms:   [{ key:'message',     label:'Message Text', type:'textarea' }],
+    push:  [{ key:'title',       label:'Title Text' },
+            { key:'message',     label:'Message Text', type:'textarea' },
+            { key:'deeplink',    label:'Deep Link' },
+            { key:'webview',     label:'Webview link' }],
+    email: [{ key:'letteros_id', label:'Letteros Id' }]
+};
+var SFD_CHAIN_REQ = { sms:['message'], push:['title','message'], email:['letteros_id'] };
+function sfdChainAble(ch){ return !!SFD_CHAIN_COLS[ch]; }
+
+function sfdChainToggle(on){
+    var st = SFD_STATE;
+    if (!st || !st.chain) return;
+    st.chain.on = !!on;
+    if (!on){ st.chain.days = ''; st.chain.rows = []; }
+    sfdRender();
+}
+function sfdChainDays(v){ if (SFD_STATE && SFD_STATE.chain) SFD_STATE.chain.days = v; }
+function sfdChainBuild(){
+    var st = SFD_STATE;
+    if (!st || !st.chain) return;
+    var days = String(st.chain.days || '').split(/[\s,;]+/)
+        .map(function(s){ return s.trim(); }).filter(Boolean)
+        .map(Number).filter(function(n){ return !isNaN(n); });
+    if (!days.length){ alert(sfdT('Введите хотя бы один день (число), напр. 0, 3, 7')); return; }
+    if (new Set(days).size !== days.length){ alert(sfdT('Дни не должны повторяться')); return; }
+    /* при перегенерации значения уже заполненных дней сохраняем */
+    var old = {};
+    st.chain.rows.forEach(function(r){ old[r.day] = r.overrides; });
+    st.chain.rows = days.map(function(day){
+        return { day: day, overrides: old[day] || {} };
+    });
+    sfdRender();
+}
+function sfdChainSet(i, key, v){
+    var st = SFD_STATE;
+    if (st && st.chain && st.chain.rows[i]) st.chain.rows[i].overrides[key] = v;
+}
+/* HTML секции «Цепочка» в карточке мастера */
+function sfdChainHtml(d){
+    var st = SFD_STATE, ch = st.chain;
+    var cols = SFD_CHAIN_COLS[d.channel] || [];
+    var body = '<label class="sfd-chain-on"><input type="checkbox"' + (ch.on ? ' checked' : '') +
+        ' onchange="sfdChainToggle(this.checked)"> <b>Is chain</b> — ' +
+        sfdT('шаблон на каждый день цепочки') + '</label>';
+    if (ch.on){
+        body += '<div class="sfd-chain-days"><span>' + sfdT('Дни цепочки (числа через запятую)') + '</span>' +
+            '<input class="sfd-edit" value="' + sfdEsc(ch.days) + '" placeholder="0, 3, 7"' +
+            ' oninput="sfdChainDays(this.value)"' +
+            ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();sfdChainBuild();}">' +
+            '<button type="button" class="sf-btn" onclick="sfdChainBuild()">' + sfdT('Сгенерировать строки') + '</button></div>';
+        if (ch.rows.length){
+            body += '<div class="sfd-chain-tbl-wrap"><table class="sfd-chain-tbl"><thead><tr>' +
+                '<th style="width:64px">' + sfdT('День') + '</th>' +
+                cols.map(function(c){ return '<th>' + sfdEsc(c.label) + '</th>'; }).join('') +
+                '</tr></thead><tbody>' +
+                ch.rows.map(function(r, i){
+                    return '<tr><td class="d">' + r.day + '</td>' + cols.map(function(c){
+                        var v = sfdEsc(r.overrides[c.key] == null ? '' : r.overrides[c.key]);
+                        return '<td>' + (c.type === 'textarea'
+                            ? '<textarea class="sfd-edit" rows="2" oninput="sfdChainSet(' + i + ',\'' + c.key + '\',this.value)">' + v + '</textarea>'
+                            : '<input class="sfd-edit" value="' + v + '" oninput="sfdChainSet(' + i + ',\'' + c.key + '\',this.value)">') + '</td>';
+                    }).join('') + '</tr>';
+                }).join('') + '</tbody></table></div>';
+        }
+        body += '<div class="sfd-chain-note">' + sfdT('На каждый день при создании заводится отдельный шаблон со своим source_type (по дню).') + '</div>';
+    }
+    return '<div class="sfd-sec"><div class="sfd-sec-title" onclick="this.parentElement.classList.toggle(\'closed\')">' +
+        sfdT('Цепочка') + '</div><div class="sfd-chain">' + body + '</div></div>';
+}
+/* обязательные поля нового шаблона; при цепочке code и контент задаются по дням */
 function sfdCreateMissing(d){
     var miss = [];
-    if (!String(d.code == null ? '' : d.code).trim()) miss.push(sfdCodeLabel(d.channel));
+    var chainOn = SFD_STATE && SFD_STATE.mode === 'create' && SFD_STATE.chain && SFD_STATE.chain.on;
+    if (!chainOn && !String(d.code == null ? '' : d.code).trim()) miss.push(sfdCodeLabel(d.channel));
     if (!String(d.product || '').trim()) miss.push('Product type');
     if (!String(d.touch || '').trim()) miss.push('Touch point');
     if (!d.comname || d.comname === 'NoComName') miss.push('communication_name');
     if (d.channel === 'email'){ if (!String(d.subject || '').trim()) miss.push('Subject'); }
-    else if (d.channel !== 'cc'){ if (!String(d.message || '').trim()) miss.push('Message text'); }
+    else if (d.channel !== 'cc' && !chainOn){ if (!String(d.message || '').trim()) miss.push('Message text'); }
     return miss;
 }
 function sfdCreate(){
@@ -384,16 +463,55 @@ function sfdCreate(){
     sfdRecalcNames();
     var d = Object.assign({}, st.work);
     if (sfdCreateMissing(d).length) return;
-    if (d.channel === 'email' && !d.letteros_id) d.letteros_id = d.code;
-    window.CRM_CURRENT = null;   /* новый шаблон — POST, а не PUT */
-    CRM.saveFromV1(d).then(function(res){
-        var code = (res && res.code != null) ? res.code : d.code;
-        alert(sfdT('Шаблон создан') + '.\ncommunication_name: ' + (d.comname || '') + '\nCode: ' + code);
+    function refreshList(){
         if (typeof loadMockData === 'function'){
             loadMockData().then(function(){
                 if (typeof applyFilters === 'function' && document.getElementById('templateListBody')) applyFilters();
             });
         }
+    }
+
+    /* ---- цепочка: отдельный шаблон на каждый день, source считается по дню ---- */
+    if (st.chain && st.chain.on && sfdChainAble(d.channel)){
+        var rows = st.chain.rows;
+        if (!rows.length){ alert(sfdT('Сгенерируйте строки: введите дни и нажмите «Сгенерировать строки».')); return; }
+        var req = SFD_CHAIN_REQ[d.channel] || [];
+        var cols = SFD_CHAIN_COLS[d.channel] || [];
+        for (var i = 0; i < rows.length; i++){
+            for (var j = 0; j < req.length; j++){
+                if (!String(rows[i].overrides[req[j]] || '').trim()){
+                    var lbl = (cols.filter(function(c){ return c.key === req[j]; })[0] || {}).label || req[j];
+                    alert(sfdT('Заполните') + ' «' + lbl + '» ' + sfdT('для дня') + ' ' + rows[i].day);
+                    return;
+                }
+            }
+        }
+        window.CRM_CURRENT = null;   /* цепочка — всегда создание */
+        var seq = rows.reduce(function(p, row){
+            return p.then(function(acc){
+                var dd = Object.assign({}, d, row.overrides, { day: String(row.day) });
+                if (dd.channel === 'email' && dd.letteros_id) dd.code = dd.letteros_id;
+                var src = sfdComputeCampaignName(dd);
+                if (src) dd.source = src;
+                return CRM.saveFromV1(dd).then(function(r){ acc.push(r && r.code); return acc; });
+            });
+        }, Promise.resolve([]));
+        seq.then(function(codes){
+            alert(sfdT('Цепочка создана') + ': ' + rows.length + ' ' + sfdT('шаблон(ов)') +
+                '.\nCode: ' + codes.filter(Boolean).join(', '));
+            refreshList();
+            wizardCardOpen(d.channel);
+        }).catch(function(e){ alert(sfdT('Ошибка сохранения') + ': ' + (e && e.message ? e.message : e)); });
+        return;
+    }
+
+    /* ---- одиночный шаблон ---- */
+    if (d.channel === 'email' && !d.letteros_id) d.letteros_id = d.code;
+    window.CRM_CURRENT = null;   /* новый шаблон — POST, а не PUT */
+    CRM.saveFromV1(d).then(function(res){
+        var code = (res && res.code != null) ? res.code : d.code;
+        alert(sfdT('Шаблон создан') + '.\ncommunication_name: ' + (d.comname || '') + '\nCode: ' + code);
+        refreshList();
         wizardCardOpen(d.channel);
     }).catch(function(e){ alert(sfdT('Ошибка сохранения') + ': ' + (e && e.message ? e.message : e)); });
 }
@@ -416,14 +534,10 @@ function sfdSyncCreate(){
         }
     }
 }
-/* запасной путь: старая развёрнутая форма канала (цепочки и редкие поля) */
-function wizardLegacyForm(){
-    var st = SFD_STATE;
-    var ch = st && st.work ? st.work.channel : 'sms';
-    document.querySelectorAll('#sec-admin .form').forEach(function(f){ f.classList.remove('active'); });
-    var f = document.getElementById(ch);
-    if (f) f.classList.add('active');
-}
+/* Старые развёрнутые формы каналов остаются в DOM скрытыми: их функции
+   (collectFormData, computeCampaignName, saveFromChannelForm) используются
+   как библиотека, но отдельной кнопки для форм больше нет — цепочка
+   перенесена в карточку (секция «Цепочка»). */
 
 function sfdRender(){
     var st = SFD_STATE;
@@ -442,12 +556,9 @@ function sfdRender(){
     var miss = isCreate ? sfdCreateMissing(d) : [];
 
     output.innerHTML =
+        /* в мастере верхней кнопки нет: цепочка — секцией в самой карточке */
         (isCreate
-            /* «Расширенная форма» — только у каналов, для которых сохранилась старая форма с цепочками */
-            ? (['sms','push','email','cc'].indexOf(d.channel) > -1
-                ? '<div class="sfd-top"><button type="button" class="sf-btn" onclick="wizardLegacyForm()">' +
-                    sfdT('Расширенная форма (цепочки)') + '</button></div>'
-                : '')
+            ? ''
             : '<div class="sfd-top"><button type="button" class="sf-btn" onclick="openSection(\'comms\',\'templates\')">' +
                 sfdT('← К списку шаблонов') + '</button></div>') +
         '<div class="sfd-layout"><div class="sfd">' +
@@ -462,11 +573,14 @@ function sfdRender(){
             return '<div class="sfd-sec"><div class="sfd-sec-title" onclick="this.parentElement.classList.toggle(\'closed\')">' + sfdEsc(sfdT(s.sec)) + '</div>' +
                 '<div class="sfd-grid">' + s.rows.map(sfdRowHtml).join('') + '</div></div>';
         }).join('') +
+        (isCreate && sfdChainAble(d.channel) ? sfdChainHtml(d) : '') +
         (isCreate
             ? '<div class="sfd-footer">' +
                 (miss.length ? '<span class="sfd-miss">' + sfdT('Заполните') + ': ' + sfdEsc(miss.join(', ')) + '</span>' : '') +
                 '<button type="button" class="sf-btn accent" id="sfdCreateBtn"' + (miss.length ? ' disabled' : '') + '>' +
-                    sfdT('Создать шаблон') + '</button>' +
+                    ((st.chain && st.chain.on)
+                        ? sfdT('Создать цепочку') + (st.chain.rows.length ? ' (' + st.chain.rows.length + ')' : '')
+                        : sfdT('Создать шаблон')) + '</button>' +
                 '<button type="button" class="sf-btn" id="sfdResetBtn">' + sfdT('Очистить') + '</button>' +
               '</div>'
             : (dirty ? '<div class="sfd-footer">' +

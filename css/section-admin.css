@@ -812,6 +812,24 @@ button:hover{filter:brightness(1.08)}
 .sfd-row select.sfd-edit option{background:#0D1826;color:#F2F7FD}
 .sfd-row .sfd-edit-check{width:17px;height:17px;accent-color:#3CFAB4;cursor:pointer}
 
+/* секция «Цепочка» в карточке мастера */
+.sfd-chain{padding:12px 18px 16px;display:flex;flex-direction:column;gap:12px}
+.sfd-chain-on{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--ink);cursor:pointer}
+.sfd-chain-on input{width:17px;height:17px;accent-color:#3CFAB4;cursor:pointer}
+.sfd-chain-days{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sfd-chain-days span{font-size:12px;color:var(--faint)}
+.sfd-chain-days .sfd-edit{width:200px}
+.sfd-chain-tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+.sfd-chain-tbl{width:100%;border-collapse:collapse}
+.sfd-chain-tbl th{background:var(--card2);color:var(--dim);font-size:11.5px;text-align:left;
+    padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.sfd-chain-tbl td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top;
+    border-right:1px solid var(--line)}
+.sfd-chain-tbl td:last-child{border-right:none}
+.sfd-chain-tbl td.d{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--blue)}
+.sfd-chain-tbl .sfd-edit{min-width:140px}
+.sfd-chain-note{font-size:11.5px;color:var(--faint);line-height:1.5}
+
 .sfd-footer{position:sticky;bottom:0;display:flex;gap:10px;justify-content:center;align-items:center;
     padding:12px;border-top:1px solid var(--line);background:rgba(13,24,38,.92);backdrop-filter:blur(6px);
     border-radius:0 0 14px 14px}

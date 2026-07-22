@@ -442,6 +442,18 @@
   .up-note b{color:var(--dim)}
 
   /* ============================================================
+     Попап подсказок полей (#fieldHelpPopup, showFieldHelp):
+     position:fixed — виден целиком, не обрезается краями
+     карточек и секций, в отличие от CSS-тултипа .info .tip.
+     ============================================================ */
+  #fieldHelpPopup{position:fixed;z-index:400;max-width:310px;background:#0D1826;
+    border:1px solid var(--line);border-radius:9px;padding:10px 12px;
+    font-family:var(--sans);font-size:12.5px;line-height:1.5;color:#A7BAD4;
+    white-space:pre-line;box-shadow:0 10px 30px rgba(0,0,0,.5);pointer-events:none}
+  html.theme-light #fieldHelpPopup{background:#FFFFFF;color:#44597A;
+    box-shadow:0 10px 30px rgba(30,60,100,.25)}
+
+  /* ============================================================
      Шапка описания раздела (как на странице OneLink Builder):
      надзаголовок, название и пояснение. Добавляется shell.js
      тем разделам, у которых нет собственного заголовка.
