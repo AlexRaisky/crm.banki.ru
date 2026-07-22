@@ -2,9 +2,12 @@
 
 /* Сколько строк тянем с сервера за раз (пагинация: не грузим весь справочник в браузер). */
 var LIST_PAGE = 50;
-var _listReqSeq = 0;      // защита от гонки: применяем только последний ответ
-var _listDebounce = null; // чтобы не бить в бэк на каждый символ поиска
-var _listCount = null;    // {total, active} под текущими фильтрами (для строки статистики)
+var _listReqSeq = 0;        // защита от гонки: применяем только последний набор
+var _listDebounce = null;   // чтобы не бить в бэк на каждый символ поиска
+var _listCount = null;      // {total, active} под текущими фильтрами (для строки статистики)
+var _listOffset = 0;        // сколько строк уже загружено (курсор для дозагрузки)
+var _listLoading = false;   // идёт запрос страницы
+var _listExhausted = false; // сервер отдал меньше LIST_PAGE — грузить больше нечего
 
 /* Текущие значения фильтров и поиска из DOM. */
 function collectListFilters() {
@@ -21,37 +24,85 @@ function collectListFilters() {
     return f;
 }
 
-/* Запрос страницы списка с сервера: фильтры + поиск + limit. Фильтрация/поиск идут по всей
-   базе на бэке, в браузер приезжают только первые LIST_PAGE строк. */
-function fetchListPage() {
+/* Запрос страницы списка с сервера: фильтры + поиск + limit + offset. Фильтрация/поиск идут
+   по всей базе на бэке, в браузер приезжают порциями по LIST_PAGE.
+   reset=true — новый набор (сброс курсора, заменяем список); иначе — дозагрузка (append). */
+function fetchListPage(reset) {
+    if (_listLoading) return Promise.resolve();
+    if (!reset && _listExhausted) return Promise.resolve();
+
     var f = collectListFilters();
-    var my = ++_listReqSeq;
+    if (reset) { _listOffset = 0; _listExhausted = false; _listReqSeq++; }
+    var my = _listReqSeq;
+    _listLoading = true;
 
     var params = {};
     Object.keys(f).forEach(function (k) { if (f[k]) params[k] = f[k]; });
     params.limit = LIST_PAGE;
+    if (_listOffset > 0) params.offset = _listOffset;
 
     var stats = document.getElementById('listStats');
-    if (stats && (!ALL_TEMPLATES || !ALL_TEMPLATES.length)) stats.textContent = sfdT('Загрузка…');
+    if (reset && stats) stats.textContent = sfdT('Загрузка…');
+    if (!reset) setLoadMoreNote(sfdT('Загрузка…'));
 
     var p = CRM.listTemplates(params).then(function (items) {
-        if (my !== _listReqSeq) return;             // пришёл устаревший ответ — игнорируем
-        ALL_TEMPLATES = (items || []).map(CRM.apiItemToList);
+        if (my !== _listReqSeq) return;             // фильтры сменились на лету — ответ устарел
+        var mapped = (items || []).map(CRM.apiItemToList);
+        ALL_TEMPLATES = reset ? mapped : ALL_TEMPLATES.concat(mapped);
+        _listOffset = ALL_TEMPLATES.length;
+        if (mapped.length < LIST_PAGE) _listExhausted = true;   // хвост — больше страниц нет
         renderTemplateList(ALL_TEMPLATES);
+    }).catch(function () {}).then(function () {
+        _listLoading = false;
+        updateLoadMoreNote();
+        maybeLoadMore();     // добить, если первый экран ещё не заполнен
     });
-    CRM.countTemplates(f).then(function (c) {
-        if (my !== _listReqSeq) return;
-        _listCount = c;
-        writeListStats((ALL_TEMPLATES || []).length);
-    }).catch(function () {});
+
+    if (reset) {
+        CRM.countTemplates(f).then(function (c) {
+            if (my !== _listReqSeq) return;
+            _listCount = c;
+            writeListStats((ALL_TEMPLATES || []).length);
+        }).catch(function () {});
+    }
     return p;
 }
 
-/* Применение фильтров — дебаунсим, серверный запрос ниже. */
+/* Применение фильтров — новый набор с дебаунсом. */
 function applyFilters() {
     if (_listDebounce) clearTimeout(_listDebounce);
-    _listDebounce = setTimeout(fetchListPage, 180);
+    _listDebounce = setTimeout(function () { fetchListPage(true); }, 180);
 }
+
+/* Подпись у сентинела бесконечной прокрутки. */
+function setLoadMoreNote(txt) {
+    var el = document.getElementById('listLoadMore');
+    if (el) el.textContent = txt || '';
+}
+function updateLoadMoreNote() {
+    if (!ALL_TEMPLATES || !ALL_TEMPLATES.length) { setLoadMoreNote(''); return; }
+    setLoadMoreNote(_listExhausted ? '— ' + sfdT('всё загружено') + ' —' : '');
+}
+
+/* Догрузка следующей страницы при прокрутке к концу списка. */
+function maybeLoadMore() {
+    if (_listLoading || _listExhausted) return;
+    var el = document.getElementById('listLoadMore');
+    var list = document.getElementById('list');
+    if (!el || !list || list.offsetParent === null) return;   // список не активен/не виден
+    var rect = el.getBoundingClientRect();
+    var vh = window.innerHeight || document.documentElement.clientHeight;
+    if (rect.top <= vh + 400) fetchListPage(false);
+}
+
+var _listScrollRaf = null;
+function onListScroll() {
+    if (_listScrollRaf) return;
+    _listScrollRaf = requestAnimationFrame(function () { _listScrollRaf = null; maybeLoadMore(); });
+}
+/* scroll не всплывает — слушаем в фазе перехвата, чтобы поймать любой скролл-контейнер. */
+window.addEventListener('scroll', onListScroll, true);
+window.addEventListener('resize', onListScroll);
 
 /* Сброс фильтров */
 function resetFilters() {
@@ -73,7 +124,7 @@ function writeListStats(shown) {
     var active = _listCount ? _listCount.active : null;
     var more = total > shown;
     stats.innerHTML = shown + ' ' + sfdT('элементов') +
-        (more ? ' <span style="color:var(--coral,#e06)">(' + sfdT('первые') + ' ' + shown + ' ' + sfdT('из') + ' ' + total + ' — ' + sfdT('уточните фильтр/поиск') + ')</span>' : '') +
+        (more ? ' <span style="color:var(--dim,#9ab)">(' + sfdT('показано') + ' ' + shown + ' ' + sfdT('из') + ' ' + total + ' — ' + sfdT('листайте, чтобы загрузить ещё') + ')</span>' : '') +
         ' · ' + sfdT('Отсортировано по') + ' «' + sfdT(LIST_SORT_LABELS[LIST_SORT.col] || LIST_SORT.col) + '»' +
         (active != null ? ' · ' + sfdT('всего') + ' ' + total + ' (' + sfdT('активных') + ': ' + active + ', ' + sfdT('неактивных') + ': ' + (total - active) + ')' : '');
 }
@@ -84,11 +135,11 @@ var LIST_SORT_LABELS = { channel: 'Канал', code: 'Code / ID', name: 'Наз
 function listSortBy(col) {
     if (LIST_SORT.col === col) LIST_SORT.dir = -LIST_SORT.dir;
     else LIST_SORT = { col: col, dir: 1 };
-    applyFilters();
+    renderTemplateList(ALL_TEMPLATES);   // сортируем уже загруженные строки на клиенте, без перезапроса
 }
 
-/* Отрисовка списка (формат Salesforce list view). templates — это уже страница (≤ LIST_PAGE),
-   пришедшая с сервера отфильтрованной; сортируем и рисуем её целиком. */
+/* Отрисовка списка (формат Salesforce list view). templates — накопленный набор загруженных
+   строк (растёт по мере прокрутки); сортируем и рисуем целиком. */
 function renderTemplateList(templates) {
     const tbody = document.getElementById('templateListBody');
 
@@ -271,7 +322,7 @@ function templateToListItem(t, id) {
 function loadMockData() {
     if (typeof MOCK_TEMPLATES === 'undefined' || !MOCK_TEMPLATES) MOCK_TEMPLATES = {};
     if (typeof FALLBACK_DASHBOARD !== 'undefined') DASHBOARD_DATA = FALLBACK_DASHBOARD;
-    return fetchListPage().then(function () {
+    return fetchListPage(true).then(function () {
         if (typeof refreshViewTemplateSelect === 'function') refreshViewTemplateSelect();
     });
 }

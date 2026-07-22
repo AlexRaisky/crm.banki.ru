@@ -36,8 +36,10 @@ public class TemplateService {
     // ------------------------------------------------------------------- LIST
     @Transactional(readOnly = true)
     public List<TemplateListItemDto> list(String channel, String product, String touch,
-                                          String trigger, String active, String q, Integer limit) {
+                                          String trigger, String active, String q,
+                                          Integer limit, Integer offset) {
         var s = filtered(channel, product, touch, trigger, active, q);
+        if (offset != null && offset > 0) s = s.skip(offset);   // пагинация: пропускаем уже загруженные
         if (limit != null && limit > 0) s = s.limit(limit);
         return s.toList();
     }

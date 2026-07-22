@@ -34,9 +34,10 @@ public class TemplateController {
                                           @RequestParam(required = false) String trigger,
                                           @RequestParam(required = false) String active,
                                           @RequestParam(required = false) String q,
-                                          @RequestParam(required = false) Integer limit) {
+                                          @RequestParam(required = false) Integer limit,
+                                          @RequestParam(required = false) Integer offset) {
         access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN);
-        return service.list(channel, product, touch, trigger, active, q, limit);
+        return service.list(channel, product, touch, trigger, active, q, limit, offset);
     }
 
     /** Итоги под теми же фильтрами: {total, active} — для строки статистики без выгрузки всех строк. */
