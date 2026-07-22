@@ -1004,9 +1004,18 @@ async function dbcTestAll(){
 }
 
 async function dbcTest(id){
-  try { await dbcCall('/api/admin/db-connections/' + encodeURIComponent(id) + '/test', 'POST'); }
-  catch(e){ alert(e.message); }
-  renderDbConnections();
+  var res;
+  try { res = await dbcCall('/api/admin/db-connections/' + encodeURIComponent(id) + '/test', 'POST'); }
+  catch(e){ alert(e.message); return; }
+  // Применяем результат прямо к строке. Для встроенной прод-БД её статус не хранится
+  // в таблице, поэтому повторный GET-список показал бы «не проверялось» — обновляем локально.
+  var row = DBC.find(function(c){ return String(c.id) === String(id); });
+  if (row && res){
+    row.status    = res.status;
+    row.latencyMs = (res.latencyMs != null) ? res.latencyMs : null;
+    row.error     = res.error || null;
+  }
+  dbcRenderList(DBC);
 }
 
 /* ---- форма добавления/редактирования ---- */
