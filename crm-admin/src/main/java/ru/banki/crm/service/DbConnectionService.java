@@ -37,6 +37,10 @@ public class DbConnectionService {
     private String ourUrl;
     @Value("${spring.datasource.username:}")
     private String ourUser;
+    /** Таймаут разовой проверки соединения, сек (DB_CONN_TEST_TIMEOUT_S). Дефолт как у прод-пула:
+     *  канал через бастион/VPN может жать руку дольше 5с. */
+    @Value("${app.dbconn.test-timeout-s:20}")
+    private int testTimeoutS;
 
     public DbConnectionService(JdbcTemplate jdbc, ProdDbService prod) {
         this.jdbc = jdbc;
@@ -224,12 +228,13 @@ public class DbConnectionService {
         if (!str(user).isEmpty()) props.setProperty("user", user);
         if (!str(pass).isEmpty()) props.setProperty("password", pass);
         // PostgreSQL-драйвер понимает эти свойства (секунды); прочие драйверы их игнорируют.
-        props.setProperty("connectTimeout", "5");
-        props.setProperty("socketTimeout", "8");
-        props.setProperty("loginTimeout", "5");
+        int t = testTimeoutS > 0 ? testTimeoutS : 20;
+        props.setProperty("connectTimeout", String.valueOf(t));
+        props.setProperty("socketTimeout", String.valueOf(t + 5));
+        props.setProperty("loginTimeout", String.valueOf(t));
         int prev = DriverManager.getLoginTimeout();
         try {
-            DriverManager.setLoginTimeout(6);
+            DriverManager.setLoginTimeout(t + 1);
             try (Connection c = DriverManager.getConnection(url, props);
                  PreparedStatement ps = c.prepareStatement("SELECT 1");
                  ResultSet rs = ps.executeQuery()) {
