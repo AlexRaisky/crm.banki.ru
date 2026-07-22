@@ -366,12 +366,11 @@
         <div class="sub" data-i18n="Соединение с внешней прод-базой и очередь доставки операций мастера.">Соединение с внешней прод-базой и очередь доставки операций мастера.</div>
         <div class="card">
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-            <button class="btn" id="prodHealthBtn" data-i18n="Проверить соединение">Проверить соединение</button>
             <button class="btn" id="prodProcessBtn" data-i18n="Доставить очередь сейчас">Доставить очередь сейчас</button>
             <button class="btn" id="prodReconcileBtn" data-i18n="Сверка с продом">Сверка с продом</button>
             <button class="btn" id="prodImportAllBtn" data-i18n="Импортировать всё из прода">Импортировать всё из прода</button>
           </div>
-          <div id="prodDbBox" class="empty" data-i18n="Нажми «Проверить соединение».">Нажми «Проверить соединение».</div>
+          <div id="prodDbBox" class="empty" data-i18n="Проверить соединение можно в «Подключения к БД» выше.">Проверить соединение можно в «Подключения к БД» выше.</div>
           <div id="reconcileBox" style="margin-top:14px"></div>
         </div>
       </section>
@@ -839,7 +838,6 @@ async function prodDbCall(url, method){
     prodDbRender(await r.json());
   } catch(e){ box.textContent = t2('Ошибка запроса: ') + e.message; }
 }
-$("#prodHealthBtn").addEventListener('click', () => prodDbCall('/api/admin/prod-db/health'));
 $("#prodProcessBtn").addEventListener('click', () => prodDbCall('/api/admin/prod-db/process', 'POST'));
 
 /* ---------- Сверка с продом (обратный импорт: прод — источник истины) ---------- */
