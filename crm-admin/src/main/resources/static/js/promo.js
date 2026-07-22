@@ -917,8 +917,15 @@ function promoDelRow(i){
 
 /* клик мимо ячейки = сохранить; клик по другой ячейке сразу открывает её */
 document.addEventListener('mousedown', function(e){
-  if (!PROMO_EDIT) return;
   var t0 = e.target;
+  /* режим заведения промо: клик по пустой части страницы (не по форме и
+     не по кнопке, которая её открывает) — выходим без сохранения */
+  if (PROMO_NEW && t0.closest){
+    var inForm = t0.closest('.new-row') || t0.closest('.new-foot');
+    var reopen = t0.closest('[onclick^="promoNewOpen"]');   /* «+» и кнопка сами переоткроют */
+    if (!inForm && !reopen) promoNewClose();
+  }
+  if (!PROMO_EDIT) return;
   if (t0.closest && (t0.closest('.cell-edit') || t0.closest('.new-row') || t0.closest('.new-foot'))) return;
   var next = t0.closest ? t0.closest('#promoBody td.editable') : null;
   promoCommit();

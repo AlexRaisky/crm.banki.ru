@@ -90,8 +90,9 @@
     box-sizing:border-box}
   .row-add:hover{color:var(--blue);border-color:var(--blue);filter:none}
 
-  .chan{display:inline-block;font-family:var(--mono);font-size:10.5px;padding:2px 7px;border-radius:10px;
-    background:var(--blue-bg);color:var(--blue);margin:0 4px 3px 0}
+  /* канал — фирменный шрифт Coil (как в «Отклонениях»/heatmap), крупнее остального */
+  .chan{display:inline-block;font-family:"Coil","Golos Text","Manrope",var(--sans);font-weight:600;
+    font-size:12.5px;padding:2px 8px;border-radius:10px;background:var(--blue-bg);color:var(--blue);margin:0 4px 3px 0}
   .chan.push{background:var(--amber-bg);color:var(--amber)}
   .chan.cc{background:var(--green-bg);color:var(--green)}
   .chan.vk{background:rgba(140,140,255,.16);color:#9aa6ff}
