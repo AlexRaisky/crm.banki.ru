@@ -191,12 +191,73 @@
         <span data-i18n="Здесь появится тепловая карта коммуникационной нагрузки: пересечения сегментов, каналов и частоты касаний.">Здесь появится тепловая карта коммуникационной нагрузки: пересечения сегментов, каналов и частоты касаний.</span></div>
     </section>
 
+    <!-- ===== Обзор раздела «Отчёты» ===== -->
+    <section class="view ov-view" id="view-reports-overview">
+      <div class="ov-head"><h1 data-i18n-html="h1_reports_ov">Отчёты <span class="grad">Tableau</span></h1></div>
+      <div class="ov-sub" data-i18n="Отчёты компании, встраиваемые из Tableau. Выберите отчёт или воспользуйтесь меню слева.">Отчёты компании, встраиваемые из Tableau. Выберите отчёт или воспользуйтесь меню слева.</div>
+      <div class="ov-grid">
+        <div class="ov-card" data-nav-ref="rep-planfact" onclick="openSection('reports','rep-planfact')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-6M21 20H3"/></svg></div>
+          <h3>Plan-Fact</h3>
+          <p data-i18n="Общий финансовый отчёт компании: план и факт по ключевым показателям.">Общий финансовый отчёт компании: план и факт по ключевым показателям.</p>
+          <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
+        </div>
+        <div class="ov-card" data-nav-ref="rep-matrix" onclick="openSection('reports','rep-matrix')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+          <h3>CRM Matrix</h3>
+          <p data-i18n="Основной отчёт команды CRM: каналы, кампании и показатели в одном разрезе.">Основной отчёт команды CRM: каналы, кампании и показатели в одном разрезе.</p>
+          <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
+        </div>
+        <div class="ov-card" data-nav-ref="rep-leadgen" onclick="openSection('reports','rep-leadgen')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+          <h3>CRM Leadgen</h3>
+          <p data-i18n="Детализация лидогенерации: что именно покупают с каждой кампании.">Детализация лидогенерации: что именно покупают с каждой кампании.</p>
+          <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
+        </div>
+        <div class="ov-card" data-nav-ref="rep-demo" onclick="openSection('reports','rep-demo')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-4M12 17V8M16 17v-6"/></svg></div>
+          <h3 data-i18n="Пример визуализации отчёта">Пример визуализации отчёта</h3>
+          <p data-i18n="Демо-макет окна Tableau на плейсхолдер-данных: как отчёт выглядит внутри панели.">Демо-макет окна Tableau на плейсхолдер-данных: как отчёт выглядит внутри панели.</p>
+          <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Отчёт Tableau: заголовок и подключение задаёт reports.js (rpEmbedOpen) ===== -->
+    <section class="view" id="view-report-embed">
+      <header class="rp-hero">
+        <div class="eyebrow">CRM · Analytics · Tableau</div>
+        <h1 id="rpEmbedTitle">—</h1>
+        <p class="sub" id="rpEmbedDesc"></p>
+      </header>
+
+      <!-- подключение: адрес Tableau Server / Cloud и опубликованная книга -->
+      <div class="rp-setup">
+        <div class="rp-setup-head" data-i18n="Подключение к Tableau">Подключение к Tableau</div>
+        <div class="rp-setup-grid">
+          <label><span data-i18n="Адрес Tableau Server / Cloud">Адрес Tableau Server / Cloud</span>
+            <input id="rpSrv" placeholder="https://tableau.banki.ru" autocomplete="off"></label>
+          <label><span data-i18n="Опубликованная книга/лист">Опубликованная книга/лист</span>
+            <input id="rpView" placeholder="CRMMatrix/Overview" autocomplete="off"></label>
+          <label><span data-i18n="Токен (JWT / PAT, опционально)">Токен (JWT / PAT, опционально)</span>
+            <input id="rpToken" placeholder="—" autocomplete="off"></label>
+        </div>
+        <div class="rp-setup-actions">
+          <button class="btn accent" onclick="rpEmbedSave()" data-i18n="Сохранить и подключить">Сохранить и подключить</button>
+          <button class="btn" onclick="rpEmbedClear()" data-i18n="Очистить">Очистить</button>
+          <span class="rp-setup-note" id="rpEmbedStatus"></span>
+        </div>
+      </div>
+
+      <div class="rp-embed" id="rpEmbedArea"></div>
+    </section>
+
     <!-- ===== Отчёты (Tableau) — макет окна встраивания ===== -->
     <section class="view" id="view-reports">
       <header class="rp-hero">
         <div class="eyebrow">CRM · Analytics · Tableau</div>
-        <h1 data-i18n-html="h1_reports">Отчёты <span class="grad">Tableau</span></h1>
-        <p class="sub" data-i18n-html="reports_sub">Здесь встраиваются интерактивные отчёты из вашего Tableau&nbsp;Server. Ниже — <b>макет</b> того, как отчёт будет выглядеть в этом окне; реальное подключение через Tableau Embedding API v3 включается после настройки адреса сервера и доступа. Все числа на макете — демонстрационные.</p>
+        <h1 data-i18n-html="h1_reports">Пример <span class="grad">визуализации отчёта</span></h1>
+        <p class="sub" data-i18n-html="reports_sub">Демо-макет того, как отчёт Tableau будет выглядеть в этом окне. Реальные отчёты подключаются на страницах Plan-Fact, CRM&nbsp;Matrix и CRM&nbsp;Leadgen — там задаются адрес сервера и книга. Все числа на макете — демонстрационные.</p>
       </header>
 
       <div class="rp-toolbar">

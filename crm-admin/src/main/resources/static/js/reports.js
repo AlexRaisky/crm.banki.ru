@@ -197,6 +197,8 @@ function rpRender(){
   var wb = document.getElementById('rpWorkbook');
   if (wb && RP_DATA[RP_STATE.report]) wb.textContent = rpT(RP_DATA[RP_STATE.report].name);
   rpRenderTabs(); rpRenderBody();
+  /* при смене языка обновляем и страницу отчёта Tableau */
+  if (typeof rpEmbedRender === 'function' && document.getElementById('rpEmbedTitle')) rpEmbedRender();
 }
 
 /* переключение отчёта из тулбара */
@@ -235,5 +237,103 @@ document.addEventListener('keydown', function(e){
     if (f && f.classList.contains('tv-fullscreen')) rpFullscreen();
   }
 });
+
+/* =========================================================
+   ОТЧЁТЫ TABLEAU — карточки Plan-Fact / CRM Matrix / CRM Leadgen.
+   Один view (#view-report-embed) на все отчёты: rpEmbedOpen(key)
+   ставит заголовок и настройки. Адрес сервера, книга и токен
+   хранятся в localStorage (crmpanel:tableauReports) отдельно
+   по каждому отчёту. «Сохранить и подключить» подгружает
+   Tableau Embedding API v3 с указанного сервера и вставляет
+   <tableau-viz>; если сервер недоступен из браузера
+   (нет VPN/интранета) — показывается понятная ошибка.
+   ========================================================= */
+var RP_EMBED = {
+  planfact: { title:'Plan-Fact',   desc:'Общий финансовый отчёт компании: план и факт по ключевым показателям.' },
+  matrix:   { title:'CRM Matrix',  desc:'Основной отчёт команды CRM: каналы, кампании и показатели в одном разрезе.' },
+  leadgen:  { title:'CRM Leadgen', desc:'Детализация лидогенерации: что именно покупают с каждой кампании.' }
+};
+var RP_EMBED_CUR = 'planfact';
+
+function rpEmbedCfgAll(){
+  try { return JSON.parse(localStorage.getItem('crmpanel:tableauReports')) || {}; } catch(e){ return {}; }
+}
+function rpEmbedCfg(){ return rpEmbedCfgAll()[RP_EMBED_CUR] || { server:'', view:'', token:'' }; }
+function rpEmbedCfgSave(cfg){
+  var all = rpEmbedCfgAll();
+  all[RP_EMBED_CUR] = cfg;
+  try { localStorage.setItem('crmpanel:tableauReports', JSON.stringify(all)); } catch(e){}
+}
+
+function rpEmbedOpen(key){
+  if (RP_EMBED[key]) RP_EMBED_CUR = key;
+  rpEmbedRender();
+}
+function rpEmbedRender(){
+  var title = document.getElementById('rpEmbedTitle');
+  if (!title) return;
+  var meta = RP_EMBED[RP_EMBED_CUR];
+  var cfg = rpEmbedCfg();
+  title.textContent = meta.title;
+  document.getElementById('rpEmbedDesc').textContent = rpT(meta.desc);
+  document.getElementById('rpSrv').value = cfg.server || '';
+  document.getElementById('rpView').value = cfg.view || '';
+  document.getElementById('rpToken').value = cfg.token || '';
+  document.getElementById('rpEmbedStatus').textContent = '';
+  rpEmbedShow(cfg);
+}
+function rpEmbedSave(){
+  var cfg = {
+    server: (document.getElementById('rpSrv').value || '').trim().replace(/\/+$/, ''),
+    view:   (document.getElementById('rpView').value || '').trim(),
+    token:  (document.getElementById('rpToken').value || '').trim()
+  };
+  rpEmbedCfgSave(cfg);
+  var st = document.getElementById('rpEmbedStatus');
+  if (st) st.textContent = rpT('Сохранено.');
+  rpEmbedShow(cfg, true);
+}
+function rpEmbedClear(){
+  if (!confirm(rpT('Очистить настройки подключения этого отчёта?'))) return;
+  rpEmbedCfgSave({ server:'', view:'', token:'' });
+  rpEmbedRender();
+}
+/* область отчёта: заглушка-инструкция или живая <tableau-viz> */
+function rpEmbedShow(cfg, connectNow){
+  var area = document.getElementById('rpEmbedArea');
+  if (!area) return;
+  if (!cfg.server || !cfg.view){
+    area.innerHTML = '<div class="rp-embed-stub">' +
+      '<b>' + rpT('Отчёт появится здесь') + '</b>' +
+      rpT('Укажите адрес вашего Tableau Server (или Tableau Cloud) и путь к опубликованной книге — например CRMMatrix/Overview — и нажмите «Сохранить и подключить».') +
+      '<span class="rp-embed-hint">' + rpT('Сервер должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели. Настройки хранятся в этом браузере.') + '</span></div>';
+    return;
+  }
+  var src = /^https?:/i.test(cfg.view) ? cfg.view : cfg.server + '/views/' + cfg.view.replace(/^\/+/, '');
+  area.innerHTML = '<div class="rp-embed-frame">' +
+      '<tableau-viz src="' + rpEsc(src) + '" toolbar="bottom"' +
+      (cfg.token ? ' token="' + rpEsc(cfg.token) + '"' : '') + '></tableau-viz></div>' +
+    '<div class="rp-embed-wait" id="rpEmbedWait">' + rpT('Подключаемся к') + ' ' + rpEsc(cfg.server) + '…</div>';
+  rpEmbedApi(cfg.server);
+}
+/* подгрузка Embedding API v3 с сервера пользователя (один раз на адрес) */
+function rpEmbedApi(server){
+  var apiSrc = server + '/javascripts/api/tableau.embedding.3.latest.min.js';
+  var done = function(ok){
+    var w = document.getElementById('rpEmbedWait');
+    if (!w) return;
+    if (ok){ w.textContent = ''; w.style.display = 'none'; return; }
+    w.className = 'rp-embed-wait bad';
+    w.textContent = rpT('Не удалось загрузить Tableau Embedding API с') + ' ' + apiSrc + '. ' +
+      rpT('Проверьте адрес сервера, VPN/доступ из браузера и что встраивание разрешено.');
+  };
+  var old = document.querySelector('script[data-tableau-api="' + apiSrc + '"]');
+  if (old){ done(old.dataset.ok === '1'); return; }
+  var s = document.createElement('script');
+  s.type = 'module'; s.src = apiSrc; s.dataset.tableauApi = apiSrc;
+  s.onload = function(){ s.dataset.ok = '1'; done(true); };
+  s.onerror = function(){ s.dataset.ok = '0'; done(false); };
+  document.head.appendChild(s);
+}
 
 rpRender();

@@ -22,8 +22,14 @@ const NAV = [
       { id:"promo",     label:"Планирование промо",  icon:"calendar", view:"sec-promo", noAcl:true },
       { id:"heatmap",   label:"Тепловая карта",      icon:"grid2", view:"view-heatmap", noAcl:true, appOnly:["Маркетинг"] },
   ]},
-  /* «Отчёты» — встраивание отчётов Tableau (пока показан макет окна) */
-  { id:"reports", label:"Отчёты", icon:"reports", view:"view-reports", noAcl:true },
+  /* «Отчёты» — встраивание отчётов Tableau: обзор с карточками, у каждого отчёта
+     свой блок подключения (адрес сервера + книга); «Пример» — демо-макет окна */
+  { id:"reports", label:"Отчёты", icon:"reports", overviewView:"view-reports-overview", children:[
+      { id:"rep-planfact", label:"Plan-Fact",   icon:"chart", view:"view-report-embed", report:"planfact", noAcl:true },
+      { id:"rep-matrix",   label:"CRM Matrix",  icon:"grid2", view:"view-report-embed", report:"matrix",   noAcl:true },
+      { id:"rep-leadgen",  label:"CRM Leadgen", icon:"pulse", view:"view-report-embed", report:"leadgen",  noAcl:true },
+      { id:"rep-demo",     label:"Пример визуализации отчёта", icon:"reports", view:"view-reports", noAcl:true },
+  ]},
   { id:"dash", label:"Дашборд", icon:"gauge", overviewView:"view-dash-overview", children:[
       { id:"dashboard",  label:"Общая статистика",  icon:"chart", view:"sec-admin", adminMode:"dashboard" },
       { id:"deviations", label:"Панель отклонений", icon:"pulse", view:"sec-deviations" },
@@ -342,6 +348,25 @@ Object.assign(I18N_EN, {
   "↻ Обновить":"↻ Refresh", "⤢ Во весь экран":"⤢ Fullscreen", "Во весь экран":"Fullscreen",
   "Свернуть":"Collapse", "</> Код встраивания":"</> Embed code", "МАКЕТ":"DEMO",
   "Как подключить реальный отчёт (Tableau Embedding API v3)":"How to connect a real report (Tableau Embedding API v3)",
+  /* карточки отчётов и подключение */
+  "Пример визуализации отчёта":"Report visualisation example",
+  "Отчёты компании, встраиваемые из Tableau. Выберите отчёт или воспользуйтесь меню слева.":"Company reports embedded from Tableau. Pick a report or use the menu on the left.",
+  "Общий финансовый отчёт компании: план и факт по ключевым показателям.":"The company-wide financial report: plan and actuals for the key metrics.",
+  "Основной отчёт команды CRM: каналы, кампании и показатели в одном разрезе.":"The CRM team's main report: channels, campaigns and metrics in one view.",
+  "Детализация лидогенерации: что именно покупают с каждой кампании.":"Lead-gen breakdown: what exactly is bought from each campaign.",
+  "Демо-макет окна Tableau на плейсхолдер-данных: как отчёт выглядит внутри панели.":"A demo mock-up of the Tableau window on placeholder data: how a report looks inside the panel.",
+  "Подключение к Tableau":"Tableau connection",
+  "Адрес Tableau Server / Cloud":"Tableau Server / Cloud address",
+  "Опубликованная книга/лист":"Published workbook/sheet",
+  "Токен (JWT / PAT, опционально)":"Token (JWT / PAT, optional)",
+  "Сохранить и подключить":"Save and connect", "Сохранено.":"Saved.",
+  "Очистить настройки подключения этого отчёта?":"Clear this report's connection settings?",
+  "Отчёт появится здесь":"The report will appear here",
+  "Укажите адрес вашего Tableau Server (или Tableau Cloud) и путь к опубликованной книге — например CRMMatrix/Overview — и нажмите «Сохранить и подключить».":"Enter your Tableau Server (or Tableau Cloud) address and the path to the published workbook — e.g. CRMMatrix/Overview — then press “Save and connect”.",
+  "Сервер должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели. Настройки хранятся в этом браузере.":"The server must be reachable from the browser (VPN/intranet) and allow embedding for the panel's domain. Settings are stored in this browser.",
+  "Подключаемся к":"Connecting to",
+  "Не удалось загрузить Tableau Embedding API с":"Failed to load the Tableau Embedding API from",
+  "Проверьте адрес сервера, VPN/доступ из браузера и что встраивание разрешено.":"Check the server address, VPN/browser access, and that embedding is allowed.",
   "Нужен адрес вашего Tableau Server (или Tableau Cloud) и опубликованная книга.":"You need your Tableau Server (or Tableau Cloud) address and a published workbook.",
   "Авторизация — Connected Apps (JWT) или Personal Access Token; токен выдаёт бэкенд, чтобы не логиниться вручную.":"Auth is Connected Apps (JWT) or a Personal Access Token; the backend issues the token so no manual login is needed.",
   "Сервер Tableau должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели.":"The Tableau server must be reachable from the browser (VPN/intranet) and allow embedding for the panel's domain.",
@@ -376,8 +401,9 @@ const I18N_HTML = {
     h1_upform:'Загрузка <span class="grad">HTML-инструмента</span>',
     h1_srcbuilder:'Конструктор <span class="grad">source</span>',
     h1_promo:'Планирование <span class="grad">промо</span>',
-    h1_reports:'Отчёты <span class="grad">Tableau</span>',
-    reports_sub:'Здесь встраиваются интерактивные отчёты из вашего Tableau&nbsp;Server. Ниже — <b>макет</b> того, как отчёт будет выглядеть в этом окне; реальное подключение через Tableau Embedding API v3 включается после настройки адреса сервера и доступа. Все числа на макете — демонстрационные.',
+    h1_reports:'Пример <span class="grad">визуализации отчёта</span>',
+    h1_reports_ov:'Отчёты <span class="grad">Tableau</span>',
+    reports_sub:'Демо-макет того, как отчёт Tableau будет выглядеть в этом окне. Реальные отчёты подключаются на страницах Plan-Fact, CRM&nbsp;Matrix и CRM&nbsp;Leadgen — там задаются адрес сервера и книга. Все числа на макете — демонстрационные.',
   },
   en: {
     h1_home:'Welcome to the <span class="grad">control panel</span>',
@@ -390,8 +416,9 @@ const I18N_HTML = {
     h1_upform:'Upload an <span class="grad">HTML tool</span>',
     h1_srcbuilder:'Source <span class="grad">builder</span>',
     h1_promo:'Promo <span class="grad">planning</span>',
-    h1_reports:'Tableau <span class="grad">reports</span>',
-    reports_sub:'Interactive reports from your Tableau&nbsp;Server are embedded here. Below is a <b>mock-up</b> of how a report will look in this window; the real connection via the Tableau Embedding API v3 is enabled once the server address and access are configured. All numbers in the mock-up are illustrative.',
+    h1_reports:'Report visualisation <span class="grad">example</span>',
+    h1_reports_ov:'Tableau <span class="grad">reports</span>',
+    reports_sub:'A demo mock-up of how a Tableau report will look in this window. Real reports are connected on the Plan-Fact, CRM&nbsp;Matrix and CRM&nbsp;Leadgen pages, where the server address and workbook are set. All numbers in the mock-up are illustrative.',
   }
 };
 function t(s){ return (UI_LANG === "en" && I18N_EN[s]) ? I18N_EN[s] : s; }
@@ -697,6 +724,8 @@ function openSection(sid, cid){
 
   if (target.view === "view-mon-campaigns") monBack();   /* мониторинг всегда начинаем с блоков */
   if (target.adminMode && typeof setAdminMode === "function") setAdminMode(target.adminMode);
+  /* отчёты Tableau: один view на все отчёты, содержимое задаёт reports.js */
+  if (target.report && typeof rpEmbedOpen === "function") rpEmbedOpen(target.report);
   if (sid === "access" && typeof renderAccessSection === "function") renderAccessSection();
   if (sid === "journeys" && typeof initJourneysSection === "function") initJourneysSection();
   if (target.view === "sec-deviations") setTimeout(() => {
