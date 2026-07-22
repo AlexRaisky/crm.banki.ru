@@ -44,6 +44,25 @@ public class TemplateService {
         return s.toList();
     }
 
+    /** Наборы значений для выпадающих фильтров списка — из реальных данных d_template,
+     *  а не хардкод (иначе фильтр по несуществующему значению всегда даёт пусто). */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, java.util.List<String>> facets() {
+        java.util.TreeSet<String> products = new java.util.TreeSet<>();
+        java.util.TreeSet<String> touches = new java.util.TreeSet<>();
+        java.util.TreeSet<String> triggers = new java.util.TreeSet<>();
+        for (var i : store.list()) {
+            if (i.productType() != null)
+                for (var p : i.productType()) if (p != null && !p.isBlank()) products.add(p);
+            if (i.touchPoint() != null && !i.touchPoint().isBlank()) touches.add(i.touchPoint());
+            if (i.triggerType() != null && !i.triggerType().isBlank()) triggers.add(i.triggerType());
+        }
+        return java.util.Map.of(
+                "products", new java.util.ArrayList<>(products),
+                "touches", new java.util.ArrayList<>(touches),
+                "triggers", new java.util.ArrayList<>(triggers));
+    }
+
     /** Счётчик под теми же фильтрами (для строки «всего N, активных M») — без выгрузки строк на клиент. */
     @Transactional(readOnly = true)
     public java.util.Map<String, Long> count(String channel, String product, String touch,

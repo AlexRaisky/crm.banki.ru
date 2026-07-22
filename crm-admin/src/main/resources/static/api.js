@@ -213,6 +213,7 @@
       }
       return req("GET", "/api/templates/count" + (qs.length ? "?" + qs.join("&") : ""));
     },
+    facetsTemplates: function () { return req("GET", "/api/templates/facets"); },
     getTemplate: function (channel, code) { return req("GET", "/api/templates/" + channel + "/" + code); },
     createTemplate: function (dto) { return req("POST", "/api/templates/" + dto.channel, dto); },
     updateTemplate: function (channel, code, dto) { return req("PUT", "/api/templates/" + channel + "/" + code, dto); },

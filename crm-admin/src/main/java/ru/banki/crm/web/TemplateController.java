@@ -40,6 +40,13 @@ public class TemplateController {
         return service.list(channel, product, touch, trigger, active, q, limit, offset);
     }
 
+    /** Значения для выпадающих фильтров (продукт/точка/триггер) из реальных данных. */
+    @GetMapping("/facets")
+    public Map<String, List<String>> facets() {
+        access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN);
+        return service.facets();
+    }
+
     /** Итоги под теми же фильтрами: {total, active} — для строки статистики без выгрузки всех строк. */
     @GetMapping("/count")
     public Map<String, Long> count(@RequestParam(required = false) String channel,

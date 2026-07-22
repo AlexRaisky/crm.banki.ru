@@ -68,6 +68,28 @@ function fetchListPage(reset) {
     return p;
 }
 
+/* Наполнение выпадающих фильтров (продукт/точка/триггер) реальными значениями из базы.
+   Канал не трогаем — там фиксированный справочник каналов. */
+function populateFilterFacets() {
+    if (!CRM || typeof CRM.facetsTemplates !== 'function') return;
+    CRM.facetsTemplates().then(function (f) {
+        fillFilterSelect('filterProduct', f && f.products, 'Все продукты');
+        fillFilterSelect('filterTouch', f && f.touches, 'Все точки');
+        fillFilterSelect('filterTrigger', f && f.triggers, 'Все типы');
+    }).catch(function () {});
+}
+function fillFilterSelect(id, values, allLabel) {
+    var sel = document.getElementById(id);
+    if (!sel) return;
+    var cur = sel.value;                                    // сохраняем текущий выбор
+    var html = '<option value="">' + sfdT(allLabel) + '</option>';
+    (values || []).forEach(function (v) {
+        html += '<option value="' + sfdEsc(v) + '">' + sfdEsc(v) + '</option>';
+    });
+    sel.innerHTML = html;
+    if (cur && (values || []).indexOf(cur) !== -1) sel.value = cur;
+}
+
 /* Применение фильтров — новый набор с дебаунсом. */
 function applyFilters() {
     if (_listDebounce) clearTimeout(_listDebounce);
@@ -342,6 +364,7 @@ function templateToListItem(t, id) {
 function loadMockData() {
     if (typeof MOCK_TEMPLATES === 'undefined' || !MOCK_TEMPLATES) MOCK_TEMPLATES = {};
     if (typeof FALLBACK_DASHBOARD !== 'undefined') DASHBOARD_DATA = FALLBACK_DASHBOARD;
+    populateFilterFacets();   // наполняем выпадашки продукт/точка/триггер реальными значениями
     return fetchListPage(true).then(function () {
         if (typeof refreshViewTemplateSelect === 'function') refreshViewTemplateSelect();
     });
