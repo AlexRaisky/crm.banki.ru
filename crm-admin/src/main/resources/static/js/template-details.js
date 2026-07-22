@@ -63,8 +63,10 @@ function sfdComputeCampaignName(d){
         if (senderType === 'trigger') return 'contact_' + senderType + '_' + product + '_' + comname + '_' + segment + '_' + day + 'day';
         return 'contact_' + senderType + '_' + product + '_' + partner + '_' + comname + '_' + date + 'day';
     }
-    /* канал в campaign_name — как в формах мастера (hidden .channel): push пишется как mobile-push */
-    var chTab = ({ sms:'sms', push:'mobile-push', 'mobile-push':'mobile-push', email:'email' })[d.channel] || d.channel;
+    /* канал в campaign_name — как в формах мастера (hidden .channel): push пишется как mobile-push,
+       FA — как fin-assistent (единый нейминг с «Планированием промо») */
+    var chTab = ({ sms:'sms', push:'mobile-push', 'mobile-push':'mobile-push', email:'email',
+                   fa:'fin-assistent', vk:'vk' })[d.channel] || d.channel;
     /* контекст «выгрузка в КЦ» (cb-sms-cc / cb-email-cc) отдельным полем не хранится —
        восстанавливаем из сохранённого campaign_name (префикс contact_) */
     var tab = /^contact_/.test(d.source || '') ? 'contact' : chTab;
@@ -87,9 +89,17 @@ function sfdRecalcNames(){
 }
 
 /* ---------- поля карточки по каналам (реальные поля наших форм + dtoToV1; preheader у нас нет) ---------- */
+/* подпись ключевого поля (code) по каналу */
+function sfdCodeLabel(ch){
+    if (ch === 'cc') return sfdT('Сегмент (code)');
+    if (ch === 'fa') return 'FA ID';
+    if (ch === 'vk') return 'VK Template Name';
+    return 'Code';
+}
 function sfdFieldDefs(d){
     var ch = d.channel;
-    var isEmail = ch === 'email', isCC = ch === 'cc', isPush = (ch === 'push' || ch === 'mobile-push'), isSms = ch === 'sms';
+    var isEmail = ch === 'email', isCC = ch === 'cc', isPush = (ch === 'push' || ch === 'mobile-push'),
+        isSms = ch === 'sms', isFa = ch === 'fa', isVk = ch === 'vk';
     var content = [];
     if (isEmail){
         content.push({ k:'subject', label:'Subject', wide:true });
@@ -104,6 +114,17 @@ function sfdFieldDefs(d){
         content.push({ k:'deeplink', label:'Deep link', wide:true });
         content.push({ k:'webview', label:'Webview link', wide:true });
     }
+    if (isFa){
+        content.push({ k:'link_title', label:'Link Title' });
+        content.push({ k:'deeplink', label:'Deep Link' });
+        content.push({ k:'webview', label:'Webview link' });
+        content.push({ k:'web_url', label:'Web URL' });
+        content.push({ k:'action_buttons', label:'Action Buttons (JSON)', wide:true, type:'textarea' });
+    }
+    if (isVk){
+        content.push({ k:'ttl', label:'TTL' });
+        content.push({ k:'buttons', label:'Buttons (JSON)', wide:true, type:'textarea' });
+    }
     var segRows = [
         { k:'source', label:'Source_type (campaign_name)', wide:true, ro:true, fmt:function(){ return SFD_STATE.work.source; } },
         { k:'trigger', label:'Trigger type', type:'select', opts:['','promo','trigger'] },
@@ -112,6 +133,7 @@ function sfdFieldDefs(d){
         { k:'touch', label:'Touch point' },
         { k:'day', label:sfdT('День отправки') }
     ];
+    if (isVk) segRows.push({ k:'ab_group', label:'AB Group' });
     if (isCC){
         segRows.push({ k:'segment', label:sfdT('Сегмент'), ro:true });
         segRows.push({ k:'segment_desc', label:sfdT('Описание сегмента') });
@@ -121,28 +143,44 @@ function sfdFieldDefs(d){
     }
     var secs = [
         { sec:'Основное', rows:[
-            { k:'channel', label:sfdT('Канал'), ro:true, fmt:function(v){ return ({sms:'SMS',push:'Mobile-push','mobile-push':'Mobile-push',email:'E-mail',cc:'КЦ'})[v] || v; } },
+            { k:'channel', label:sfdT('Канал'), ro:true, fmt:function(v){ return ({sms:'SMS',push:'Mobile-push','mobile-push':'Mobile-push',email:'E-mail',cc:'КЦ',fa:'FA','vk':'VK'})[v] || v; } },
             /* code задаётся только при создании шаблона, потом это ключ записи */
-            { k:'code', label: isCC ? sfdT('Сегмент (code)') : 'Code', ro: !(SFD_STATE && SFD_STATE.mode === 'create') },
+            { k:'code', label: sfdCodeLabel(ch), ro: !(SFD_STATE && SFD_STATE.mode === 'create') },
             { k:'active', label:sfdT('Статус'), type:'bool' },
             { k:'comname', label:'communication_name', wide:true, fmt:function(){ return SFD_STATE.work.comname; } }
         ]},
         { sec:'Источник и сегментация', rows:segRows }
     ];
+    /* Финансовый ассистент: параметры интеграции C2D отдельной секцией */
+    if (isFa) secs.push({ sec:'Интеграция FA', rows:[
+        { k:'channel_id', label:'Channel ID' },
+        { k:'need_push', label:'Need Push', type:'bool' },
+        { k:'c2d_transport', label:'C2D Transport' },
+        { k:'c2d_account', label:'C2D Account' },
+        { k:'c2d_operator', label:'C2D Operator ID' }
+    ]});
     if (content.length) secs.push({ sec:'Контент и ссылки', rows:content });
-    secs.push({ sec:'Служебные параметры и флаги', rows:[
+    var svc = [
         { k:'communication_type', label:'communication_type' },
         { k:'biz_type', label:'Business communication type', type:'select', opts:['','adv','info','service'] },
-        { k:'aff_sub3', label:'aff_sub3' },
+        { k:'aff_sub3', label:'aff_sub3' }
+    ];
+    if (isFa || isVk){
+        svc.push({ k:'tunnel', label:'Communication Tunnel' });
+        svc.push({ k:'landing', label:'Landing Page' });
+    }
+    svc = svc.concat([
         { k:'marketplace', label:'marketplace', type:'bool' },
         { k:'cross', label:'cross', type:'bool' },
         { k:'dialog', label:'dialog', type:'bool' },
         { k:'loyalty', label:'loyalty', type:'bool' },
         { k:'national_rating', label:'national_rating', type:'bool' },
         { k:'news', label:'news', type:'bool' },
-        { k:'mobile_app', label:'mobile_app', type:'bool' },
-        { k:'night_send', label:'night_send', type:'bool' }
-    ]});
+        { k:'mobile_app', label:'mobile_app', type:'bool' }
+    ]);
+    /* night_send есть только в таблицах push и sms */
+    if (!isFa && !isVk) svc.push({ k:'night_send', label:'night_send', type:'bool' });
+    secs.push({ sec:'Служебные параметры и флаги', rows: svc });
     return secs;
 }
 
@@ -151,7 +189,10 @@ function sfdFieldDefs(d){
    email → notice.email_template, КЦ → callcenter.d_segment_properties. */
 var SFD_TABLES = { push:'notice.push_template', 'mobile-push':'notice.push_template',
                    sms:'notice.d_com_sms_template', email:'notice.email_template',
-                   cc:'callcenter.d_segment_properties' };
+                   cc:'callcenter.d_segment_properties',
+                   /* каналы FA и VK: таблиц в БД пока нет — имена планируемые,
+                      миграция появится при подключении бэкенда */
+                   fa:'notice.fa_template (план)', vk:'notice.vk_template (план)' };
 var SFD_DB = {
     channel:            { all:'—' },
     code:               { push:'code', sms:'code', email:'trigger_code', cc:'segment' },
@@ -174,8 +215,8 @@ var SFD_DB = {
     message:            { all:'msg_text' },
     title:              { push:'title' },
     sender_name:        { sms:'sender_name' },
-    deeplink:           { push:'deep_link' },
-    webview:            { push:'webview_url' },
+    deeplink:           { push:'deep_link', fa:'deep_link' },
+    webview:            { push:'webview_url', fa:'webview_url' },
     communication_type: { all:'communication_type' },
     biz_type:           { all:'business_communication_type' },
     aff_sub3:           { all:'aff_sub3' },
@@ -186,11 +227,26 @@ var SFD_DB = {
     national_rating:    { all:'national_rating' },
     news:               { all:'news' },
     mobile_app:         { all:'mobile_app' },
-    night_send:         { push:'night_send', sms:'night_send' }
+    night_send:         { push:'night_send', sms:'night_send' },
+    /* Финансовый ассистент */
+    channel_id:         { fa:'channel_id' },
+    need_push:          { fa:'need_push' },
+    c2d_transport:      { fa:'c2d_transport' },
+    c2d_account:        { fa:'c2d_account' },
+    c2d_operator:       { fa:'c2d_operator_id' },
+    web_url:            { fa:'web_url' },
+    link_title:         { fa:'link_title' },
+    action_buttons:     { fa:'action_buttons' },
+    /* VK */
+    ttl:                { vk:'time_to_live' },
+    ab_group:           { vk:'ab_group' },
+    buttons:            { vk:'buttons' },
+    tunnel:             { fa:'communication_tunnel', vk:'communication_tunnel' },
+    landing:            { fa:'landing_page', vk:'landing_page' }
 };
 var SFD_HELP = {
-    channel:            'Канал шаблона: SMS, Mobile-push, E-mail или КЦ. Определяет таблицу, в которой хранится шаблон.',
-    code:               'Уникальный код шаблона. Для E-mail это Letteros ID, для КЦ — номер сегмента.',
+    channel:            'Канал шаблона: SMS, Mobile-push, E-mail, КЦ, FA (Финансовый ассистент) или VK. Определяет таблицу, в которой хранится шаблон.',
+    code:               'Уникальный код шаблона. Для E-mail это Letteros ID, для КЦ — номер сегмента, для FA — FA ID, для VK — имя шаблона.',
     active:             'Шаблон активен и участвует в рассылках.',
     comname:            'Имя коммуникации: база + флаги (marketplace- впереди; -cross, -dialog, -loyalty, -nr, -news, -mobile-app в конце).',
     source:             'Собирается автоматически: promo — канал_promo_продукт_партнёр_comname_ддммгг, trigger — канал_trigger_продукт_comname_Nday. Для КЦ канал заменяется на contact.',
@@ -222,7 +278,22 @@ var SFD_HELP = {
     national_rating:    'Народный рейтинг: суффикс -nr.',
     news:               'Новостная рассылка: суффикс -news.',
     mobile_app:         'Ведёт на скачивание мобильного приложения: суффикс -mobile-app.',
-    night_send:         'Разрешена отправка коммуникации ночью.'
+    night_send:         'Разрешена отправка коммуникации ночью.',
+    /* Финансовый ассистент */
+    channel_id:         'Идентификатор канала в Финансовом ассистенте.',
+    need_push:          'Дублировать сообщение пуш-уведомлением в приложении.',
+    c2d_transport:      'Транспорт C2D, через который уходит сообщение Финансового ассистента.',
+    c2d_account:        'Учётная запись C2D для отправки.',
+    c2d_operator:       'Идентификатор оператора C2D.',
+    web_url:            'Веб-ссылка для перехода из сообщения (открывается в браузере).',
+    link_title:         'Подпись ссылки, отображаемая в сообщении.',
+    action_buttons:     'Кнопки действий в сообщении, JSON: [{"title":"...","action":"..."}].',
+    /* VK */
+    ttl:                'Время жизни сообщения (TTL): не доставлено за это время — не отправляется.',
+    ab_group:           'Группа A/B-теста шаблона.',
+    buttons:            'Кнопки VK-сообщения, JSON: [{"label":"...","link":"..."}].',
+    tunnel:             'Туннель коммуникации: к какой цепочке/потоку относится шаблон.',
+    landing:            'Посадочная страница, на которую ведёт сообщение.'
 };
 function sfdDbField(k, channel){
     /* канал сам по себе не колонка — он определяет таблицу хранения */
@@ -285,6 +356,9 @@ function sfdBlank(channel){
              deeplink:'', webview:'', subject:'', email_from:'', letteros_id:'',
              segment:'', segment_desc:'', source_system:'', host_id:'', kvint:'',
              communication_type:'', biz_type:'', aff_sub3:'',
+             /* FA */ channel_id:'', need_push:false, c2d_transport:'', c2d_account:'',
+             c2d_operator:'', web_url:'', link_title:'', action_buttons:'',
+             /* VK */ ttl:'', ab_group:'', buttons:'', tunnel:'', landing:'',
              marketplace:false, cross:false, dialog:false, loyalty:false,
              national_rating:false, news:false, mobile_app:false, night_send:false };
 }
@@ -296,7 +370,7 @@ function wizardCardOpen(channel){
 /* обязательные поля нового шаблона */
 function sfdCreateMissing(d){
     var miss = [];
-    if (!String(d.code == null ? '' : d.code).trim()) miss.push(d.channel === 'cc' ? sfdT('Сегмент') : 'Code');
+    if (!String(d.code == null ? '' : d.code).trim()) miss.push(sfdCodeLabel(d.channel));
     if (!String(d.product || '').trim()) miss.push('Product type');
     if (!String(d.touch || '').trim()) miss.push('Touch point');
     if (!d.comname || d.comname === 'NoComName') miss.push('communication_name');
@@ -358,7 +432,7 @@ function sfdRender(){
     var output = document.getElementById(isCreate ? 'wizardOutput' : 'settingsOutput');
     if (!output) return;
     var d = st.work;
-    var chLabels = { sms:'SMS', push:'Mobile-push', 'mobile-push':'Mobile-push', email:'E-mail', cc:'КЦ' };
+    var chLabels = { sms:'SMS', push:'Mobile-push', 'mobile-push':'Mobile-push', email:'E-mail', cc:'КЦ', fa:'FA', vk:'VK' };
     var isEmail = d.channel === 'email';
     var mainId = isEmail
         ? (d.letteros_id != null && d.letteros_id !== '' ? d.letteros_id : d.code)
@@ -369,8 +443,11 @@ function sfdRender(){
 
     output.innerHTML =
         (isCreate
-            ? '<div class="sfd-top"><button type="button" class="sf-btn" onclick="wizardLegacyForm()">' +
-                sfdT('Расширенная форма (цепочки)') + '</button></div>'
+            /* «Расширенная форма» — только у каналов, для которых сохранилась старая форма с цепочками */
+            ? (['sms','push','email','cc'].indexOf(d.channel) > -1
+                ? '<div class="sfd-top"><button type="button" class="sf-btn" onclick="wizardLegacyForm()">' +
+                    sfdT('Расширенная форма (цепочки)') + '</button></div>'
+                : '')
             : '<div class="sfd-top"><button type="button" class="sf-btn" onclick="openSection(\'comms\',\'templates\')">' +
                 sfdT('← К списку шаблонов') + '</button></div>') +
         '<div class="sfd-layout"><div class="sfd">' +
@@ -521,6 +598,28 @@ function sfdRenderPreview(){
             (d.deeplink ? '<div class="pv-note">Deep link: ' + sfdEsc(d.deeplink) + '</div>' : '') +
             '<div class="pv-note">' + sfdT('Пример отображения. Точный вид зависит от устройства и версии ОС.') + '</div></div>';
         sfdPushFit(side);
+        return;
+    }
+    if (ch === 'fa' || ch === 'vk'){
+        /* сообщение мессенджера: бабл + кнопки из JSON (Action Buttons / Buttons) */
+        var btns = [];
+        try {
+            var arr = JSON.parse((ch === 'fa' ? d.action_buttons : d.buttons) || '[]');
+            if (Array.isArray(arr)) btns = arr.map(function(b){
+                return b && (b.title || b.label) ? String(b.title || b.label) : null;
+            }).filter(Boolean);
+        } catch(e){}
+        side.innerHTML = '<div class="pv-card"><div class="pv-title">' +
+            sfdT(ch === 'fa' ? 'Предпросмотр FA' : 'Предпросмотр VK') + '</div>' +
+            '<div class="pv-im ' + ch + '">' +
+                '<div class="pv-im-head"><span class="pv-im-ava ' + ch + '"></span>' +
+                    '<b>' + (ch === 'fa' ? sfdT('Финансовый ассистент') : 'Banki.ru') + '</b>' +
+                    '<span class="pv-push-when">' + sfdT('сейчас') + '</span></div>' +
+                '<div class="pv-im-bubble">' + sfdEsc(d.message || '—') + '</div>' +
+                (btns.length ? '<div class="pv-im-btns">' + btns.map(function(b){ return '<span>' + sfdEsc(b) + '</span>'; }).join('') + '</div>' : '') +
+            '</div>' +
+            (ch === 'fa' && d.need_push ? '<div class="pv-note">Need Push: ' + sfdT('сообщение дублируется пуш-уведомлением.') + '</div>' : '') +
+            '<div class="pv-note">' + sfdT('Пример отображения. Точный вид зависит от устройства и версии ОС.') + '</div></div>';
         return;
     }
     if (ch === 'email'){

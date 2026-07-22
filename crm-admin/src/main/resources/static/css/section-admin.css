@@ -767,6 +767,14 @@ button:hover{filter:brightness(1.08)}
 .sf-table tbody td:last-child{border-right:none}
 .sf-table tbody tr:hover{background:rgba(80,195,255,.05)}
 .sf-table tbody td:hover{background:rgba(80,195,255,.07)}
+/* бейджи каналов — та же раскраска и шрифт Coil, что в «Планировании промо» */
+.sf-table .channel-badge{display:inline-block;font-family:"Coil","Golos Text","Manrope",var(--sans);
+    font-weight:600;font-size:12px;padding:2px 8px;border-radius:10px;text-transform:none;
+    background:var(--blue-bg);color:var(--blue)}
+.sf-table .channel-push,.sf-table .channel-mobile-push{background:var(--amber-bg);color:var(--amber)}
+.sf-table .channel-cc{background:var(--green-bg);color:var(--green)}
+.sf-table .channel-vk{background:rgba(140,140,255,.16);color:#9aa6ff}
+.sf-table .channel-fa{background:rgba(255,107,138,.14);color:var(--coral)}
 .sf-check-col{width:34px}
 .sf-table input[type=checkbox]{accent-color:#3CFAB4;width:15px;height:15px;cursor:pointer}
 .sf-link{color:var(--blue);cursor:pointer;font-weight:600;background:none;border:none;padding:0;
@@ -780,9 +788,11 @@ button:hover{filter:brightness(1.08)}
 
 /* ---- Карточка шаблона: раскладка с предпросмотром ---- */
 .sfd-top{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-.sfd-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;align-items:start}
-@media(max-width:1100px){.sfd-layout{grid-template-columns:1fr}}
-.sfd-side{position:sticky;top:8px}
+/* Предпросмотр — отдельным окном ПОСЛЕ карточки настроек, а не сбоку:
+   вёрстке письма (e-mail) нужна полная ширина. */
+.sfd-layout{display:block}
+.sfd-side{position:static;margin-top:18px}
+.sfd-side:empty{display:none}
 
 /* карандаш и inline-редактирование (как в Salesforce) */
 .sfd-row{position:relative;padding-right:30px}
@@ -837,6 +847,21 @@ button:hover{filter:brightness(1.08)}
     display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
 .pv-push-body{font-size:12.5px;line-height:1.4;opacity:.9;word-break:break-word;white-space:pre-wrap;
     display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+/* предпросмотр FA / VK: сообщение мессенджера с кнопками */
+.pv-im{border-radius:14px;padding:12px 14px;max-width:360px;margin:0 auto;background:var(--card2);
+    border:1px solid var(--line)}
+.pv-im-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:var(--ink)}
+.pv-im-ava{width:22px;height:22px;border-radius:50%;flex:0 0 auto}
+.pv-im-ava.fa{background:linear-gradient(120deg,#3CFAB4,#50C3FF)}
+.pv-im-ava.vk{background:#4C75A3}
+.pv-im-bubble{background:var(--bg2);border:1px solid var(--line);border-radius:4px 14px 14px 14px;
+    padding:10px 12px;font-size:12.5px;line-height:1.45;color:var(--ink);
+    word-break:break-word;white-space:pre-wrap}
+.pv-im-btns{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.pv-im-btns span{display:block;text-align:center;font-size:12px;font-weight:600;padding:7px 10px;
+    border-radius:9px;background:var(--blue-bg);color:var(--blue);border:1px solid rgba(80,195,255,.35)}
+.pv-im.vk .pv-im-btns span{background:rgba(76,117,163,.18);color:#7FA9D8;border-color:rgba(76,117,163,.5)}
+
 .pv-fit{margin-top:10px;font-size:11.5px;line-height:1.5;padding:8px 10px;border-radius:9px}
 .pv-fit.ok{background:var(--green-bg);color:var(--green)}
 .pv-fit.bad{background:rgba(255,107,138,.14);color:var(--coral)}
@@ -850,7 +875,8 @@ button:hover{filter:brightness(1.08)}
 .pv-em-meta{padding:10px 12px;border-bottom:1px solid var(--line);font-size:12.5px}
 .pv-em-meta .l{color:var(--faint);font-size:11px}
 .pv-em-meta .v{color:var(--ink);word-break:break-word}
-.pv-em-frame{width:100%;height:280px;border:0;background:#fff;display:block}
+/* письмо теперь в отдельном окне на всю ширину — фрейму даём высоту под целую вёрстку */
+.pv-em-frame{width:100%;height:min(72vh,760px);border:0;background:#fff;display:block}
 .pv-em-stub{padding:26px 16px;text-align:center;color:var(--faint);font-size:12.5px;
     border:1px dashed rgba(80,195,255,.3);margin:12px;border-radius:10px}
 }

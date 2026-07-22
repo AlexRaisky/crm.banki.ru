@@ -472,6 +472,9 @@
   html.theme-light .jrn-start .jrn-head{color:#6D3FC8;background:rgba(109,63,200,.12)}
   /* Загруженные инструменты: тулбар */
   html.theme-light .up-toolbar{background:rgba(255,255,255,.7)}
+  /* Бейдж канала VK: в светлой теме исходный #9aa6ff слишком бледный */
+  html.theme-light #sec-admin .channel-vk,
+  html.theme-light #sec-promo .chan.vk{color:#5B67D8;background:rgba(91,103,216,.14)}
   /* Тёмные «консольные» подложки OneLink / Конструктора source */
   html.theme-light #sec-onelink .output,
   html.theme-light #sec-onelink .camp-preview,

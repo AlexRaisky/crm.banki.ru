@@ -233,7 +233,7 @@ function renderTemplateList(templates) {
         return;
     }
 
-    const channelLabels = { sms: 'SMS', push: 'Mobile-push', 'mobile-push': 'Mobile-push', email: 'E-mail', cc: 'КЦ' };
+    const channelLabels = { sms: 'SMS', push: 'Mobile-push', 'mobile-push': 'Mobile-push', email: 'E-mail', cc: 'КЦ', fa: 'FA', vk: 'VK' };
 
     /* ячейка: просмотр (значение + карандаш) либо правка (поле + ✓ / ✕) */
     function cellHtml(tpl, c) {
@@ -345,7 +345,9 @@ var FALLBACK_LIST_TEMPLATES = [
     { id: "email_2", channel: "email", code: 67890, name: "Подтверждение email", product: "account", touch: "sign", trigger: "trigger", partner: "registration", active: true },
     { id: "email_6", channel: "email", code: 44444, name: "Старое письмо", product: "loan", touch: "abandoned-form", trigger: "trigger", partner: "old", active: false },
     { id: "cc_1", channel: "cc", code: 4001, name: "Сегмент удержания", product: "subscription", touch: "renewal", trigger: "trigger", partner: "retention", active: true },
-    { id: "cc_2", channel: "cc", code: 4002, name: "Продление подписки", product: "subscription", touch: "renewal", trigger: "trigger", partner: "billing", active: false }
+    { id: "cc_2", channel: "cc", code: 4002, name: "Продление подписки", product: "subscription", touch: "renewal", trigger: "trigger", partner: "billing", active: false },
+    { id: "fa_1", channel: "fa", code: 5001, name: "Промо в Фин. ассистенте", product: "card", touch: "issue", trigger: "promo", partner: "fin", active: true },
+    { id: "vk_1", channel: "vk", code: 6001, name: "VK промо кредит", product: "loan", touch: "issue", trigger: "promo", partner: "vk", active: true }
 ];
 var FALLBACK_DASHBOARD = {
     today: { total: 12847, success: 12104, error: 743, byChannel: { sms: { total: 4521, success: 4298, error: 223 }, push: { total: 5892, success: 5614, error: 278 }, email: { total: 1987, success: 1812, error: 175 }, cc: { total: 447, success: 380, error: 67 } } },
