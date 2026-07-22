@@ -84,15 +84,31 @@ function updateLoadMoreNote() {
     setLoadMoreNote(_listExhausted ? '— ' + sfdT('всё загружено') + ' —' : '');
 }
 
-/* Догрузка следующей страницы при прокрутке к концу списка. */
+/* Ближайший прокручиваемый предок (таблица списка живёт в .sf-table-wrap с max-height+overflow). */
+function listScrollParent() {
+    var el = document.getElementById('templateListBody');
+    while (el && el !== document.body) {
+        var oy = getComputedStyle(el).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 1) return el;
+        el = el.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+}
+
+/* Догрузка следующей страницы, когда прокрутили близко к концу СВОЕГО скролл-контейнера. */
 function maybeLoadMore() {
     if (_listLoading || _listExhausted) return;
-    var el = document.getElementById('listLoadMore');
     var list = document.getElementById('list');
-    if (!el || !list || list.offsetParent === null) return;   // список не активен/не виден
-    var rect = el.getBoundingClientRect();
-    var vh = window.innerHeight || document.documentElement.clientHeight;
-    if (rect.top <= vh + 400) fetchListPage(false);
+    if (!list || list.offsetParent === null) return;   // список не активен/не виден
+    var sc = listScrollParent();
+    var remaining;
+    if (sc === document.scrollingElement || sc === document.documentElement || sc === document.body) {
+        var vh = window.innerHeight || document.documentElement.clientHeight;
+        remaining = document.documentElement.scrollHeight - (window.scrollY + vh);
+    } else {
+        remaining = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
+    }
+    if (remaining < 300) fetchListPage(false);          // близко к низу — тянем следующие 50
 }
 
 var _listScrollRaf = null;
@@ -147,6 +163,10 @@ function renderTemplateList(templates) {
         let va = a[LIST_SORT.col], vb = b[LIST_SORT.col];
         if (typeof va === 'boolean') { va = va ? 1 : 0; vb = vb ? 1 : 0; }
         if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * LIST_SORT.dir;
+        // code и прочие числовые строки сортируем как числа, а не лексикографически ("9" < "10")
+        var na = Number(va), nb = Number(vb);
+        var bothNum = va !== '' && va != null && vb !== '' && vb != null && !isNaN(na) && !isNaN(nb);
+        if (bothNum) return (na - nb) * LIST_SORT.dir;
         return String(va || '').localeCompare(String(vb || ''), 'ru') * LIST_SORT.dir;
     });
 
