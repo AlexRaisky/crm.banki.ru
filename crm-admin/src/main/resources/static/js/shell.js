@@ -39,7 +39,7 @@ const NAV = [
   ]},
   { id:"uploads",  label:"Загруженные инструменты", icon:"upload", view:"view-uploads", noAcl:true },
   { id:"journeys", label:"Цепочки",             icon:"flow", view:"sec-journeys", adminOnly:true },
-  { id:"access",   label:"Управление доступом", icon:"gear", view:"sec-access", adminOnly:true },
+  /* «Управление доступом» переехало в настроечную админку (settings/ → pane access) */
 ];
 
 /* Среды (prod / preprod / test) — это отдельные инстансы приложения со своими БД.
@@ -469,6 +469,11 @@ window.addEventListener("storage", e => {
   if (e.key === "crmpanel:theme") applyTheme();
   if (e.key === "crmpanel:lang") applyLang(true);
   if (e.key === "crmpanel:appSections") renderNav();
+  /* очерёдность подразделов поменяли в настроечной админке */
+  if (e.key === "crmpanel:subOrder"){
+    if (typeof applySubOrder === "function") applySubOrder();
+    if (typeof hideFlyout === "function") hideFlyout();
+  }
 });
 
 const $ = s => document.querySelector(s);
@@ -521,6 +526,38 @@ function renderLauncher(){
 }
 /* элементы, доступные только в отдельных приложениях (appOnly) */
 function childVisible(k){ return !k.appOnly || k.appOnly.includes(currentApp); }
+
+/* ---------- очерёдность подразделов ----------
+   Настраивается в настроечной админке («Приложения и разделы») и хранится
+   в crmpanel:subOrder = { comms:[ids…], reports:[…], dash:[…] }.
+   Применяется к меню 2-го уровня (flyout) и карточкам обзорных страниц. */
+function subOrder(sid){
+  const cfg = store.get("subOrder", null);
+  return cfg && Array.isArray(cfg[sid]) ? cfg[sid] : null;
+}
+function orderedChildren(s){
+  if (!s.children) return [];
+  const ord = subOrder(s.id);
+  if (!ord) return s.children;
+  return s.children.slice().sort((a, b) => {
+    let ia = ord.indexOf(a.id), ib = ord.indexOf(b.id);
+    if (ia < 0) ia = 900 + s.children.indexOf(a);   /* не настроенные — в конец, в исходном порядке */
+    if (ib < 0) ib = 900 + s.children.indexOf(b);
+    return ia - ib;
+  });
+}
+/* карточки обзорных страниц переставляются по data-nav-ref */
+function applySubOrder(){
+  NAV.forEach(s => {
+    if (!s.children || !s.overviewView) return;
+    const grid = document.querySelector("#" + s.overviewView + " .ov-grid");
+    if (!grid) return;
+    orderedChildren(s).forEach(c => {
+      const card = grid.querySelector('[data-nav-ref="' + c.id + '"]');
+      if (card) grid.appendChild(card);
+    });
+  });
+}
 /* элементы, видимые только в отдельных приложениях (карточка тепловой карты — «Маркетинг») */
 function updateAppSpecific(){
   const hm = document.getElementById("ovHeatmapCard");
@@ -608,7 +645,7 @@ flyout.onmouseenter = () => clearTimeout(flyTimer);
 flyout.onmouseleave = () => { flyTimer = setTimeout(hideFlyout, 200); };
 
 function showFlyout(itemEl, s){
-  const kids = (s.id === "uploads" ? uploadChildren() : s.children || []).filter(childVisible).filter(aclAllows);
+  const kids = (s.id === "uploads" ? uploadChildren() : orderedChildren(s)).filter(childVisible).filter(aclAllows);
   if (!kids.length){ hideFlyout(); return; }
   $("#flyoutTitle").textContent = t(s.label);
   const list = $("#flyoutList"); list.innerHTML = "";
@@ -693,7 +730,8 @@ function openSection(sid, cid){
     /* совместимость со старой плоской навигацией: openSection('admin') и т.п.
        (например, из journeys.js) — ищем id среди детей групп */
     const parent = NAV.find(n => n.children && n.children.some(c => c.id === sid));
-    if (!parent) return;
+    /* раздел исчез из NAV (например, access переехал в настройки) — уходим на главную */
+    if (!parent) { if (sid !== "home") openSection("home"); return; }
     cid = sid; sid = parent.id; s = parent;
   }
   if (!appAllows(sid)) { if (sid !== "home") openSection("home"); return; }
@@ -726,7 +764,6 @@ function openSection(sid, cid){
   if (target.adminMode && typeof setAdminMode === "function") setAdminMode(target.adminMode);
   /* отчёты Tableau: один view на все отчёты, содержимое задаёт reports.js */
   if (target.report && typeof rpEmbedOpen === "function") rpEmbedOpen(target.report);
-  if (sid === "access" && typeof renderAccessSection === "function") renderAccessSection();
   if (sid === "journeys" && typeof initJourneysSection === "function") initJourneysSection();
   if (target.view === "sec-deviations") setTimeout(() => {
     /* графики Chart.js, созданные в скрытой секции, имеют нулевой размер —
@@ -1196,3 +1233,4 @@ function timeAgo(ts){
 renderLauncher();
 renderNav();
 updateAppSpecific();
+applySubOrder();

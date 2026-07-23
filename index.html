@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <!-- Бэкенд-интеграция: авторизация, REST-обёртка, управление доступом -->
 <script src="api.js"></script>
-<script src="admin-users.js"></script>
+<!-- admin-users.js теперь подключается настроечной админкой (settings/) -->
 <script src="combobox.js"></script>
 <script src="wizard.js"></script>
 <!-- Drawflow: интерактивная блок-схема цепочек (вендорен локально — без зависимости от CDN) -->
@@ -1858,8 +1858,7 @@
 
     </section>
 
-    <!-- Управление доступом (только ADMIN) — наполняется admin-users.js -->
-    <section class="view" id="sec-access" style="padding:24px 28px"></section>
+    <!-- «Управление доступом» переехало в настроечную админку (settings/) -->
 
     <!-- Цепочки: конструктор блок-схем по образцу Salesforce Flow Builder (journeys.js) -->
     <section class="view" id="sec-journeys">
