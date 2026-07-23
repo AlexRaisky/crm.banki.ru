@@ -13,7 +13,12 @@ public class AccessGuard {
     public void requireAnySection(String... sectionIds) {
         AppUserPrincipal p = CurrentUser.principal()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Не авторизован"));
-        if (p.user().getRole() == Role.ADMIN) {
+        // isAdminLevel(), а не == ADMIN: супер-админ полномочнее админа, и отсекать его здесь
+        // неверно. Раньше это не всплывало — набор разделов супер-админу проставляется при
+        // заведении копией Sections.ALL, и он проходил проверку по разделам. Но всякий раздел,
+        // добавленный ПОСЛЕ создания пользователя, в этот набор уже не попадает: на promo
+        // супер-админ получал 403 там, где обычный админ проходил.
+        if (p.user().getRole().isAdminLevel()) {
             return;
         }
         for (String s : sectionIds) {
