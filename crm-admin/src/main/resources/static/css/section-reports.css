@@ -188,6 +188,11 @@
   /* область встроенного отчёта */
   /* .rp-embed — вторая ступень той же колонки: тянется сама и передаёт высоту
      фрейму, min-height:0 обязателен, иначе флекс-элемент не сожмётся ниже контента */
+  /* Высоту задаём не остатком экрана, а с запасом примерно вдвое: под отчётом
+     Tableau со своими фильтрами и тулбаром экранной высоты не хватало, приходилось
+     скроллить внутри маленького окна. Раздел прокручивается по вертикали
+     (.view{overflow-y:auto}), поэтому «выше экрана» здесь допустимо.
+     flex:1 оставлен: если места больше запаса — отчёт заберёт и его. */
   .rp-embed{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
   /* фиксированная height:min(74vh,820px) и была причиной пустоты внизу: она не
      зависела ни от наличия .rp-setup, ни от реальной высоты окна. Теперь высоту
@@ -195,7 +200,7 @@
      мобильных) не даёт отчёту схлопнуться на низких экранах.
      Белый фон здесь не тема панели, а подложка самого Tableau — он белый в обеих. */
   .rp-embed-frame{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff;
-    flex:1 1 auto;min-height:min(46vh,320px);min-height:min(46dvh,320px)}
+    flex:1 1 auto;min-height:100vh;min-height:100dvh}
   .rp-embed-frame tableau-viz{display:block;width:100%;height:100%}
   .rp-embed-wait{margin-top:10px;font-size:12.5px;color:var(--faint);flex:0 0 auto}
   .rp-embed-wait.bad{color:var(--coral);background:var(--coral-bg);border:1px solid rgba(255,107,138,.3);
@@ -204,6 +209,7 @@
      остаётся ровно та пустота, от которой избавлялись */
   .rp-embed-stub{border:1px dashed var(--line);border-radius:14px;padding:34px 26px;text-align:center;
     color:var(--dim);font-size:13px;line-height:1.6;background:var(--card);
+    /* заглушке высота отчёта не нужна: пустая рамка во весь экран выглядит нелепо */
     flex:1 1 auto;min-height:min(46vh,320px);min-height:min(46dvh,320px);
     display:flex;flex-direction:column;justify-content:center;align-items:center}
   .rp-embed-stub b{display:block;font-size:15px;color:var(--ink);margin-bottom:8px}
@@ -236,6 +242,7 @@
        высота выталкивала окно за экран; здесь порог ниже, чтобы у не-админа
        страница укладывалась в один экран без прокрутки */
     .tv-frame{min-height:min(58vh,300px);min-height:min(58dvh,300px)}
-    .rp-embed-frame,.rp-embed-stub{min-height:min(46vh,260px);min-height:min(46dvh,260px)}
+    .rp-embed-stub{min-height:min(46vh,260px);min-height:min(46dvh,260px)}
+    .rp-embed-frame{min-height:100vh;min-height:100dvh}
   }
 }
