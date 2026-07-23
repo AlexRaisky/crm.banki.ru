@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <!-- Бэкенд-интеграция: авторизация, REST-обёртка, управление доступом -->
 <script src="api.js"></script>
-<script src="admin-users.js"></script>
+<!-- admin-users.js теперь подключается настроечной админкой (settings/) -->
 <script src="combobox.js"></script>
 <script src="wizard.js"></script>
 <!-- Drawflow: интерактивная блок-схема цепочек (вендорен локально — без зависимости от CDN) -->
@@ -25,6 +25,8 @@
 <link rel="stylesheet" href="css/section-deviations.css">
 <link rel="stylesheet" href="css/section-onelink.css">
 <link rel="stylesheet" href="css/section-srcbuilder.css">
+<link rel="stylesheet" href="css/section-promo.css">
+<link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-admin.css">
 </head>
 <body>
@@ -49,14 +51,21 @@
       <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg>
     </button>
     <div class="app-name" id="appName">Администрирование</div>
+    <!-- Название текущего раздела (выводится во всех разделах) -->
+    <div class="page-crumb no-parent" id="pageCrumb">
+      <span class="pc-sep">/</span>
+      <span class="pc-parent" id="pageParent"></span>
+      <span class="pc-arrow" id="pageArrow">›</span>
+      <span class="pc-title" id="pageTitle">Главная</span>
+    </div>
     <!-- сюда CRM.envReady добавляет бейдж среды (env-pill) -->
 
     <div class="gheader-actions">
       <div id="homeActions">
         <button class="btn" id="editToggle">Настроить главную</button>
       </div>
-      <!-- Шестерёнка настроечной админки: раздела ещё нет — пока скрыта -->
-      <a class="iconbtn" href="settings/" id="settingsLink" title="Настройки (настроечная админка)" style="display:none">
+      <!-- Шестерёнка настроечной админки (settings/) -->
+      <a class="iconbtn" href="settings/" id="settingsLink" title="Настройки (настроечная админка)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
       </a>
       <div class="user-box" id="userBox">
@@ -159,6 +168,12 @@
           <p data-i18n="Сборка source по правилам названия кампании: канал, тип, продукт и параметры — в реальном времени.">Сборка source по правилам названия кампании: канал, тип, продукт и параметры — в реальном времени.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
+        <div class="ov-card" data-nav-ref="promo" data-no-acl="1" onclick="openSection('comms','promo')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
+          <h3 data-i18n="Планирование промо">Планирование промо</h3>
+          <p data-i18n="Планирование промо-кампаний: календарь по дням, продуктам, партнёрам, каналам, задачам и ответственным.">Планирование промо-кампаний: календарь по дням, продуктам, партнёрам, каналам, задачам и ответственным.</p>
+          <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
+        </div>
         <div class="ov-card" id="ovHeatmapCard" data-nav-ref="heatmap" data-no-acl="1" onclick="openSection('comms','heatmap')" style="display:none">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></div>
           <h3 data-i18n="Тепловая карта">Тепловая карта</h3>
@@ -174,6 +189,127 @@
       <div class="ov-sub" data-i18n="Управление коммуникациями · доступно в приложении «Маркетинг»">Управление коммуникациями · доступно в приложении «Маркетинг»</div>
       <div class="mon-stub"><b data-i18n="Раздел в разработке">Раздел в разработке</b>
         <span data-i18n="Здесь появится тепловая карта коммуникационной нагрузки: пересечения сегментов, каналов и частоты касаний.">Здесь появится тепловая карта коммуникационной нагрузки: пересечения сегментов, каналов и частоты касаний.</span></div>
+    </section>
+
+    <!-- ===== Обзор раздела «Отчёты» ===== -->
+    <section class="view ov-view" id="view-reports-overview">
+      <div class="ov-head"><h1 data-i18n-html="h1_reports_ov">Отчёты <span class="grad">Tableau</span></h1></div>
+      <div class="ov-sub" data-i18n="Отчёты компании, встраиваемые из Tableau. Выберите отчёт или воспользуйтесь меню слева.">Отчёты компании, встраиваемые из Tableau. Выберите отчёт или воспользуйтесь меню слева.</div>
+      <div class="ov-grid">
+        <div class="ov-card" data-nav-ref="rep-planfact" onclick="openSection('reports','rep-planfact')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-6M21 20H3"/></svg></div>
+          <h3>Plan-Fact</h3>
+          <p data-i18n="Общий финансовый отчёт компании: план и факт по ключевым показателям.">Общий финансовый отчёт компании: план и факт по ключевым показателям.</p>
+          <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
+        </div>
+        <div class="ov-card" data-nav-ref="rep-matrix" onclick="openSection('reports','rep-matrix')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+          <h3>CRM Matrix</h3>
+          <p data-i18n="Основной отчёт команды CRM: каналы, кампании и показатели в одном разрезе.">Основной отчёт команды CRM: каналы, кампании и показатели в одном разрезе.</p>
+          <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
+        </div>
+        <div class="ov-card" data-nav-ref="rep-leadgen" onclick="openSection('reports','rep-leadgen')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+          <h3>CRM Leadgen</h3>
+          <p data-i18n="Детализация лидогенерации: что именно покупают с каждой кампании.">Детализация лидогенерации: что именно покупают с каждой кампании.</p>
+          <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
+        </div>
+        <div class="ov-card" data-nav-ref="rep-demo" onclick="openSection('reports','rep-demo')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-4M12 17V8M16 17v-6"/></svg></div>
+          <h3 data-i18n="Пример визуализации отчёта">Пример визуализации отчёта</h3>
+          <p data-i18n="Демо-макет окна Tableau на плейсхолдер-данных: как отчёт выглядит внутри панели.">Демо-макет окна Tableau на плейсхолдер-данных: как отчёт выглядит внутри панели.</p>
+          <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Отчёт Tableau: заголовок и подключение задаёт reports.js (rpEmbedOpen) ===== -->
+    <section class="view" id="view-report-embed">
+      <header class="rp-hero">
+        <div class="eyebrow">CRM · Analytics · Tableau</div>
+        <h1 id="rpEmbedTitle">—</h1>
+        <p class="sub" id="rpEmbedDesc"></p>
+      </header>
+
+      <!-- подключение: адрес Tableau Server / Cloud и опубликованная книга -->
+      <div class="rp-setup">
+        <div class="rp-setup-head" data-i18n="Подключение к Tableau">Подключение к Tableau</div>
+        <div class="rp-setup-grid">
+          <label><span data-i18n="Адрес Tableau Server / Cloud">Адрес Tableau Server / Cloud</span>
+            <input id="rpSrv" placeholder="https://tableau.banki.ru" autocomplete="off"></label>
+          <label><span data-i18n="Опубликованная книга/лист">Опубликованная книга/лист</span>
+            <input id="rpView" placeholder="CRMMatrix/Overview" autocomplete="off"></label>
+          <label><span data-i18n="Токен (JWT / PAT, опционально)">Токен (JWT / PAT, опционально)</span>
+            <input id="rpToken" placeholder="—" autocomplete="off"></label>
+        </div>
+        <div class="rp-setup-actions">
+          <button class="btn accent" onclick="rpEmbedSave()" data-i18n="Сохранить и подключить">Сохранить и подключить</button>
+          <button class="btn" onclick="rpEmbedClear()" data-i18n="Очистить">Очистить</button>
+          <span class="rp-setup-note" id="rpEmbedStatus"></span>
+        </div>
+      </div>
+
+      <div class="rp-embed" id="rpEmbedArea"></div>
+    </section>
+
+    <!-- ===== Отчёты (Tableau) — макет окна встраивания ===== -->
+    <section class="view" id="view-reports">
+      <header class="rp-hero">
+        <div class="eyebrow">CRM · Analytics · Tableau</div>
+        <h1 data-i18n-html="h1_reports">Пример <span class="grad">визуализации отчёта</span></h1>
+        <p class="sub" data-i18n-html="reports_sub">Демо-макет того, как отчёт Tableau будет выглядеть в этом окне. Реальные отчёты подключаются на страницах Plan-Fact, CRM&nbsp;Matrix и CRM&nbsp;Leadgen — там задаются адрес сервера и книга. Все числа на макете — демонстрационные.</p>
+      </header>
+
+      <div class="rp-toolbar">
+        <div class="f"><label data-i18n="Отчёт">Отчёт</label>
+          <select id="rpReport" onchange="rpSelect(this.value)">
+            <option value="funnel" data-i18n="Воронка коммуникаций">Воронка коммуникаций</option>
+            <option value="delivery" data-i18n="Доставляемость по каналам">Доставляемость по каналам</option>
+            <option value="promo" data-i18n="Эффективность промо">Эффективность промо</option>
+          </select></div>
+        <div class="f"><label data-i18n="Период">Период</label>
+          <select id="rpRange">
+            <option data-i18n="Последние 7 дней">Последние 7 дней</option>
+            <option selected data-i18n="Последние 30 дней">Последние 30 дней</option>
+            <option data-i18n="Квартал">Квартал</option>
+          </select></div>
+        <span class="spacer"></span>
+        <button class="btn" onclick="rpRefresh()" data-i18n="↻ Обновить">↻ Обновить</button>
+        <button class="btn" id="rpFsBtn" onclick="rpFullscreen()" data-i18n="⤢ Во весь экран">⤢ Во весь экран</button>
+        <button class="btn accent" onclick="rpToggleCode()" data-i18n="&lt;/&gt; Код встраивания">&lt;/&gt; Код встраивания</button>
+      </div>
+
+      <!-- имитация окна Tableau -->
+      <div class="tv-frame" id="rpFrame">
+        <div class="tv-bar">
+          <span class="tv-brand"><span class="tv-logo"></span><span id="rpWorkbook">Воронка коммуникаций</span></span>
+          <div class="tv-tabs" id="rpTabs"></div>
+          <span class="tv-demo" data-i18n="МАКЕТ">МАКЕТ</span>
+        </div>
+        <div class="tv-body" id="rpBody"></div>
+        <div class="tv-foot">
+          <span class="tv-tools"><i title="Отменить">↶</i><i title="Вернуть">↷</i><i title="Сбросить">⟳</i></span>
+          <span class="tv-tools right"><i title="Поделиться">↗</i><i title="Скачать">⭳</i><i title="Во весь экран" onclick="rpFullscreen()">⤢</i></span>
+        </div>
+      </div>
+
+      <!-- код реального встраивания (сворачиваемый) -->
+      <div class="rp-code" id="rpCode" hidden>
+        <div class="rp-code-head" data-i18n="Как подключить реальный отчёт (Tableau Embedding API v3)">Как подключить реальный отчёт (Tableau Embedding API v3)</div>
+<pre><span class="tag">&lt;script</span> <span class="at">type</span>=<span class="st">"module"</span>
+        <span class="at">src</span>=<span class="st">"https://&lt;ваш-tableau-server&gt;/javascripts/api/tableau.embedding.3.latest.min.js"</span><span class="tag">&gt;&lt;/script&gt;</span>
+
+<span class="tag">&lt;tableau-viz</span>
+   <span class="at">src</span>=<span class="st">"https://&lt;ваш-tableau-server&gt;/views/&lt;Книга&gt;/&lt;Лист&gt;"</span>
+   <span class="at">toolbar</span>=<span class="st">"bottom"</span> <span class="at">hide-tabs</span>
+   <span class="at">token</span>=<span class="st">"&lt;JWT из Connected App или PAT&gt;"</span><span class="tag">&gt;&lt;/tableau-viz&gt;</span></pre>
+        <ul class="rp-req">
+          <li data-i18n="Нужен адрес вашего Tableau Server (или Tableau Cloud) и опубликованная книга.">Нужен адрес вашего Tableau Server (или Tableau Cloud) и опубликованная книга.</li>
+          <li data-i18n="Авторизация — Connected Apps (JWT) или Personal Access Token; токен выдаёт бэкенд, чтобы не логиниться вручную.">Авторизация — Connected Apps (JWT) или Personal Access Token; токен выдаёт бэкенд, чтобы не логиниться вручную.</li>
+          <li data-i18n="Сервер Tableau должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели.">Сервер Tableau должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели.</li>
+          <li data-i18n="На GitHub Pages бэкенда нет — реальные данные появятся только с запущенным crm-admin.">На GitHub Pages бэкенда нет — реальные данные появятся только с запущенным crm-admin.</li>
+        </ul>
+      </div>
     </section>
 
     <!-- ===== Обзор раздела «Дашборд» ===== -->
@@ -682,6 +818,77 @@
 </div>
     </section>
 
+    <!-- ===== Планирование промо ===== -->
+    <section class="view" id="sec-promo">
+  <h1 data-i18n-html="h1_promo">Планирование <span class="grad">промо</span></h1>
+  <div class="sub" data-i18n="Календарь промо-коммуникаций: даты вынесены в строки-разделители, «+» в конце такой строки добавляет запись на эту дату. Ячейки редактируются по клику, правка подтверждается ✓ (или кликом мимо ячейки).">Календарь промо-коммуникаций: даты вынесены в строки-разделители, «+» в конце такой строки добавляет запись на эту дату. Ячейки редактируются по клику, правка подтверждается ✓ (или кликом мимо ячейки).</div>
+
+  <div class="kpis" id="promoKpis"></div>
+
+  <div class="toolbar">
+    <div class="f"><label data-i18n="Месяц">Месяц</label>
+      <select id="promoMonth" onchange="promoRender()"></select></div>
+    <div class="f"><label data-i18n="Продукт">Продукт</label>
+      <select id="promoProduct" onchange="promoRender()"></select></div>
+    <div class="f"><label data-i18n="Партнёр">Партнёр</label>
+      <select id="promoPartner" onchange="promoRender()"></select></div>
+    <div class="f"><label data-i18n="Канал">Канал</label>
+      <select id="promoChannel" onchange="promoRender()"></select></div>
+    <div class="f"><label data-i18n="Ответственный">Ответственный</label>
+      <select id="promoOwner" onchange="promoRender()"></select></div>
+    <div class="f"><label data-i18n="Тотал">Тотал</label>
+      <select id="promoTotal" onchange="promoRender()">
+        <option value="" data-i18n="Все рассылки">Все рассылки</option>
+        <option value="yes" data-i18n="Только тотал">Только тотал</option>
+        <option value="no" data-i18n="Без тотала">Без тотала</option>
+      </select></div>
+    <div class="f"><label data-i18n="Поиск">Поиск</label>
+      <input id="promoSearch" placeholder="Название, база, задача…" data-i18n-ph="Название, база, задача…" oninput="promoRender()"></div>
+    <span class="spacer"></span>
+    <button class="btn accent" onclick="promoNewOpen()" data-i18n="Запланировать промо-рассылку">Запланировать промо-рассылку</button>
+    <button class="btn" onclick="promoExportCsv()" data-i18n="Экспорт CSV">Экспорт CSV</button>
+    <button class="btn" onclick="promoReset()" data-i18n="Сбросить данные">Сбросить данные</button>
+  </div>
+
+  <datalist id="promoPartnerList"></datalist>
+
+  <div class="tabs" id="promoTabs"></div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th data-i18n="Дата">Дата</th>
+          <th data-i18n="Продукт">Продукт</th>
+          <th data-i18n="Партнёр">Партнёр</th>
+          <th data-i18n="База">База</th>
+          <th data-i18n="Канал">Канал</th>
+          <th data-i18n="Тотал">Тотал</th>
+          <th data-i18n="Уникальное имя">Уникальное имя</th>
+          <th data-i18n="Название коммуникации">Название коммуникации</th>
+          <th data-i18n="Задача">Задача</th>
+          <th data-i18n="Ответственный">Ответственный</th>
+          <th data-i18n="Статус">Статус</th>
+          <th data-i18n="Комментарий">Комментарий</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="promoBody"></tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <b data-i18n="Правила планирования:">Правила планирования:</b>
+    <ul class="rules">
+      <li><span class="flag warn">⚠</span> <span data-i18n="В неделю допускается один тотал (каналов у него может быть несколько). Если в уникальном имени есть -cb (рассылка по ставке ЦБ) — в неделе допускаются два тотала. Всё, что сверх лимита, помечается жёлтым треугольником.">В неделю допускается один тотал (каналов у него может быть несколько). Если в уникальном имени есть -cb (рассылка по ставке ЦБ) — в неделе допускаются два тотала. Всё, что сверх лимита, помечается жёлтым треугольником.</span></li>
+      <li><span class="flag bad">▲</span> <span data-i18n="По одному продукту — максимум 3 промо в день, с разными названиями и в разных каналах (e-mail, mobile-push, sms).">По одному продукту — максимум 3 промо в день, с разными названиями и в разных каналах (e-mail, mobile-push, sms).</span></li>
+      <li><span class="flag bad">▲</span> <span data-i18n="Не больше 4 промо в день; одна акция в нескольких каналах считается за одно промо.">Не больше 4 промо в день; одна акция в нескольких каналах считается за одно промо.</span></li>
+      <li><span class="flag bad">▲</span> <span data-i18n="Если на день запланирован тотал, остальные промо в том же канале подсвечиваются.">Если на день запланирован тотал, остальные промо в том же канале подсвечиваются.</span></li>
+    </ul>
+    <span data-i18n="Одна запись — один канал: при сохранении нескольких каналов создаётся отдельная запись на каждый. Дату можно переназначить иконкой календаря — запись сама перейдёт в нужный блок дат. «Название коммуникации» собирается автоматически по формату Конструктора source из канала, продукта, партнёра, уникального имени и даты. Записи с прошедшей датой уходят на вкладку «Архивные». Правки сохраняются в браузере.">Одна запись — один канал: при сохранении нескольких каналов создаётся отдельная запись на каждый. Дату можно переназначить иконкой календаря — запись сама перейдёт в нужный блок дат. «Название коммуникации» собирается автоматически по формату Конструктора source из канала, продукта, партнёра, уникального имени и даты. Записи с прошедшей датой уходят на вкладку «Архивные». Правки сохраняются в браузере.</span>
+  </div>
+    </section>
+
     <!-- ===== Конструктор source ===== -->
     <section class="view" id="sec-srcbuilder">
 <div class="wrap">
@@ -792,8 +999,8 @@
      openTab и разметка сохранены для совместимости. -->
 <div class="tabs" id="tabsBar" style="display:none">
     <div class="tab active" onclick="openTab('sms', this)">SMS</div>
-    <div class="tab" onclick="openTab('push', this)">Push</div>
-    <div class="tab" onclick="openTab('email', this)">Email</div>
+    <div class="tab" onclick="openTab('push', this)">Mobile-push</div>
+    <div class="tab" onclick="openTab('email', this)">E-mail</div>
     <div class="tab" onclick="openTab('cc', this)">КЦ</div>
     <div class="tab" onclick="openTab('view', this)">Просмотр настроек</div>
     <div class="tab tab-list" onclick="openTab('list', this)">Список шаблонов</div>
@@ -805,12 +1012,17 @@
     <div class="viewer-block-title" data-i18n="Канал коммуникации">Канал коммуникации</div>
     <div class="viewer-seg" id="wizardChannelSeg">
         <button type="button" data-ch="sms" class="active" onclick="wizardSetChannel('sms')">SMS</button>
-        <button type="button" data-ch="push" onclick="wizardSetChannel('push')">Push</button>
-        <button type="button" data-ch="email" onclick="wizardSetChannel('email')">Email</button>
+        <button type="button" data-ch="push" onclick="wizardSetChannel('push')">Mobile-push</button>
+        <button type="button" data-ch="email" onclick="wizardSetChannel('email')">E-mail</button>
         <button type="button" data-ch="cc" onclick="wizardSetChannel('cc')">КЦ</button>
         <button type="button" data-ch="fa" onclick="wizardSetChannel('fa')">FA</button>
         <button type="button" data-ch="vk" onclick="wizardSetChannel('vk')">VK</button>
     </div>
+</div>
+
+<!-- Мастер: карточка нового шаблона в оформлении «Просмотра настроек» + предпросмотр -->
+<div id="wizard" class="form">
+    <div id="wizardOutput"></div>
 </div>
 
 <!-- ================= SMS ================= -->
@@ -1287,8 +1499,8 @@
       <div class="viewer-block-title" data-i18n="1. Канал">1. Канал</div>
       <div class="viewer-seg" id="viewChannelSeg">
         <button type="button" data-ch="sms" onclick="viewerSetChannel('sms')">SMS</button>
-        <button type="button" data-ch="push" onclick="viewerSetChannel('push')">Push</button>
-        <button type="button" data-ch="email" onclick="viewerSetChannel('email')">Email</button>
+        <button type="button" data-ch="push" onclick="viewerSetChannel('push')">Mobile-push</button>
+        <button type="button" data-ch="email" onclick="viewerSetChannel('email')">E-mail</button>
         <button type="button" data-ch="cc" onclick="viewerSetChannel('cc')">КЦ</button>
         <button type="button" data-ch="fa" onclick="viewerSetChannel('fa')">FA</button>
         <button type="button" data-ch="vk" onclick="viewerSetChannel('vk')">VK</button>
@@ -1335,47 +1547,62 @@
     <div class="sf-actions">
       <input id="listSearch" class="sf-search" placeholder="Поиск в списке…" data-i18n-ph="Поиск в списке…" oninput="applyFilters()">
       <button type="button" class="sf-btn" onclick="resetFilters()" data-i18n="Сбросить фильтры">Сбросить фильтры</button>
+      <div class="sf-settings">
+        <button type="button" class="sf-gear" id="listGear" title="Настройка полей и фильтров" onclick="toggleListPanel(event)">
+          <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+        </button>
+        <div class="sf-panel" id="listPanel">
+          <h4 data-i18n="Отображаемые поля">Отображаемые поля</h4>
+          <div id="listColsBox"></div>
+          <h4 data-i18n="Показывать фильтры">Показывать фильтры</h4>
+          <div id="listFiltersBox"></div>
+          <div class="sf-panel-foot">
+            <button type="button" class="sf-btn" onclick="resetListSettings()" data-i18n="По умолчанию">По умолчанию</button>
+            <button type="button" class="sf-btn" onclick="toggleListPanel()" data-i18n="Закрыть">Закрыть</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
   <div class="filters-row">
     <!-- Мультиселекты: можно выбрать несколько значений (внутри фильтра ИЛИ, между фильтрами И).
          Список опций наполняется реальными значениями из базы (populateFilterFacets). -->
-    <div class="field">
+    <div class="field" data-filter="channel">
       <label>Канал</label>
       <div class="ms" data-filter="channel">
         <button type="button" class="ms-btn">Все каналы</button>
         <div class="ms-panel"></div>
       </div>
     </div>
-    <div class="field">
+    <div class="field" data-filter="product">
       <label>Продукт</label>
       <div class="ms" data-filter="product">
         <button type="button" class="ms-btn">Все продукты</button>
         <div class="ms-panel"></div>
       </div>
     </div>
-    <div class="field">
+    <div class="field" data-filter="touch">
       <label>Touch point</label>
       <div class="ms" data-filter="touch">
         <button type="button" class="ms-btn">Все точки</button>
         <div class="ms-panel"></div>
       </div>
     </div>
-    <div class="field">
+    <div class="field" data-filter="trigger">
       <label>Trigger type</label>
       <div class="ms" data-filter="trigger">
         <button type="button" class="ms-btn">Все типы</button>
         <div class="ms-panel"></div>
       </div>
     </div>
-    <div class="field">
+    <div class="field" data-filter="partner">
       <label>Партнёр</label>
       <div class="ms" data-filter="partner">
         <button type="button" class="ms-btn">Все партнёры</button>
         <div class="ms-panel"></div>
       </div>
     </div>
-    <div class="field">
+    <div class="field" data-filter="active">
       <label>Статус</label>
       <select id="filterActive" onchange="applyFilters()">
         <option value="">Все</option>
@@ -1389,22 +1616,8 @@
 
   <div class="sf-table-wrap">
     <table class="template-table sf-table">
-      <thead>
-        <tr>
-          <th class="sf-check-col"><input type="checkbox" onclick="this.closest('table').querySelectorAll('tbody input[type=checkbox]').forEach(c=>c.checked=this.checked)"></th>
-          <th class="sf-sortable" data-col="channel" onclick="listSortBy('channel')"><span data-i18n="Канал">Канал</span> <span class="sf-sort"></span></th>
-          <th class="sf-sortable" data-col="code" onclick="listSortBy('code')">Code / ID <span class="sf-sort"></span></th>
-          <th class="sf-sortable" data-col="name" onclick="listSortBy('name')"><span data-i18n="Название">Название</span> <span class="sf-sort"></span></th>
-          <th class="sf-sortable" data-col="product" onclick="listSortBy('product')"><span data-i18n="Продукт">Продукт</span> <span class="sf-sort"></span></th>
-          <th class="sf-sortable" data-col="touch" onclick="listSortBy('touch')">Touch point <span class="sf-sort"></span></th>
-          <th class="sf-sortable" data-col="trigger" onclick="listSortBy('trigger')">Trigger <span class="sf-sort"></span></th>
-          <th class="sf-sortable" data-col="partner" onclick="listSortBy('partner')"><span data-i18n="Партнёр">Партнёр</span> <span class="sf-sort"></span></th>
-          <th class="sf-sortable" data-col="active" onclick="listSortBy('active')"><span data-i18n="Статус">Статус</span> <span class="sf-sort"></span></th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="templateListBody">
-      </tbody>
+      <thead id="templateListHead"></thead>
+      <tbody id="templateListBody"></tbody>
     </table>
   </div>
   <!-- Сентинел бесконечной прокрутки: как долистываем до него — грузим следующие 50 -->
@@ -1430,12 +1643,12 @@
           <option value="sms_2">SMS_PROMO_CARD - Промо карта</option>
           <option value="sms_3">SMS_RENEWAL - Продление подписки</option>
         </optgroup>
-        <optgroup label="Push">
+        <optgroup label="Mobile-push">
           <option value="push_1">PUSH_PROMO - Промо пуш</option>
           <option value="push_2">PUSH_WELCOME - Приветственный</option>
           <option value="push_3">PUSH_LOAN_ABANDON - Брошенный кредит</option>
         </optgroup>
-        <optgroup label="Email">
+        <optgroup label="E-mail">
           <option value="email_1">12345 - Сброс пароля</option>
           <option value="email_2">67890 - Подтверждение email</option>
           <option value="email_3">11111 - Промо кредит</option>
@@ -1516,7 +1729,7 @@
         </div>
       </div>
       <div class="channel-stat-card push">
-        <div class="channel-name">Push</div>
+        <div class="channel-name">Mobile-push</div>
         <div class="channel-total" id="pushSends">5,892</div>
         <div class="channel-details">
           <span style="color: var(--green);">✓ 5,614</span> · <span style="color: var(--coral);">✗ 278</span>
@@ -1526,7 +1739,7 @@
         </div>
       </div>
       <div class="channel-stat-card email">
-        <div class="channel-name">Email</div>
+        <div class="channel-name">E-mail</div>
         <div class="channel-total" id="emailSends">1,987</div>
         <div class="channel-details">
           <span style="color: var(--green);">✓ 1,812</span> · <span style="color: var(--coral);">✗ 175</span>
@@ -1558,12 +1771,12 @@
         <div class="per-user-minmax"><span class="min">мин: —</span> · <span class="max">макс: —</span></div>
       </div>
       <div class="channel-stat-card push per-user-card">
-        <div class="channel-name">Push</div>
+        <div class="channel-name">Mobile-push</div>
         <div class="per-user-avg" data-channel="push">—</div>
         <div class="per-user-minmax"><span class="min">мин: —</span> · <span class="max">макс: —</span></div>
       </div>
       <div class="channel-stat-card email per-user-card">
-        <div class="channel-name">Email</div>
+        <div class="channel-name">E-mail</div>
         <div class="per-user-avg" data-channel="email">—</div>
         <div class="per-user-minmax"><span class="min">мин: —</span> · <span class="max">макс: —</span></div>
       </div>
@@ -1585,12 +1798,12 @@
         <div class="overheat-detail" id="overheat-detail-sms"></div>
       </div>
       <div class="channel-stat-card push overheat-card" data-channel="push">
-        <div class="channel-name">Push</div>
+        <div class="channel-name">Mobile-push</div>
         <div class="overheat-status" id="overheat-push">—</div>
         <div class="overheat-detail" id="overheat-detail-push"></div>
       </div>
       <div class="channel-stat-card email overheat-card" data-channel="email">
-        <div class="channel-name">Email</div>
+        <div class="channel-name">E-mail</div>
         <div class="overheat-status" id="overheat-email">—</div>
         <div class="overheat-detail" id="overheat-detail-email"></div>
       </div>
@@ -1607,8 +1820,8 @@
     <p style="font-size: 12px; color: var(--dim); margin-bottom: 12px;">Уникальные пользователи, доступные для контакта в каждом канале (сегодня)</p>
     <div class="channel-stats-grid" id="activeAudienceGrid">
       <div class="channel-stat-card sms"><div class="channel-name">SMS</div><div class="channel-total" id="audienceSms">—</div></div>
-      <div class="channel-stat-card push"><div class="channel-name">Push</div><div class="channel-total" id="audiencePush">—</div></div>
-      <div class="channel-stat-card email"><div class="channel-name">Email</div><div class="channel-total" id="audienceEmail">—</div></div>
+      <div class="channel-stat-card push"><div class="channel-name">Mobile-push</div><div class="channel-total" id="audiencePush">—</div></div>
+      <div class="channel-stat-card email"><div class="channel-name">E-mail</div><div class="channel-total" id="audienceEmail">—</div></div>
       <div class="channel-stat-card cc"><div class="channel-name">КЦ</div><div class="channel-total" id="audienceCc">—</div></div>
     </div>
   </div>
@@ -1750,8 +1963,7 @@
 
     </section>
 
-    <!-- Управление доступом (только ADMIN) — наполняется admin-users.js -->
-    <section class="view" id="sec-access" style="padding:24px 28px"></section>
+    <!-- «Управление доступом» переехало в настроечную админку (settings/) -->
 
     <!-- Цепочки: конструктор блок-схем по образцу Salesforce Flow Builder (journeys.js) -->
     <section class="view" id="sec-journeys">
@@ -1864,8 +2076,13 @@
 <script src="js/shell.js"></script>
 
 <script src="js/srcbuilder.js"></script>
+<script src="js/promo.js"></script>
+<script src="js/reports.js"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->
+<!-- фиксированный попап подсказок полей (showFieldHelp): не обрезается краями карточек -->
+<div id="fieldHelpPopup" style="display:none"></div>
+
 <script src="js/heatmap-data.js"></script>
 <script src="js/heatmap-core.js"></script>
 <script src="js/heatmap-io.js"></script>

@@ -64,7 +64,7 @@
   .back:hover{background:var(--card2);color:var(--ink)}
 
   .shell{display:flex;flex:1;min-height:0}
-  .sidebar{width:242px;flex:0 0 auto;background:var(--bg2);border-right:1px solid var(--line);padding:12px 9px;overflow-y:auto}
+  .sidebar{width:262px;flex:0 0 auto;background:var(--bg2);border-right:1px solid var(--line);padding:12px 9px;overflow-y:auto}
   .nav-item{display:flex;align-items:center;gap:12px;padding:10px 11px;border-radius:10px;cursor:pointer;
     color:var(--dim);white-space:nowrap;border:1px solid transparent;margin-bottom:2px;user-select:none;font-size:14px;font-weight:500}
   .nav-item:hover{background:var(--card);color:var(--ink)}
@@ -160,6 +160,17 @@
   .badge.err{background:var(--coral-bg);color:var(--coral)}
   .badge.off{background:var(--card2);color:var(--faint)}
   .badge.unk{background:var(--amber-bg);color:var(--amber)}
+  /* ---- очерёдность подразделов ---- */
+  .block-title{margin:28px 0 6px;font-size:17px;font-weight:700}
+  .ord-row{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line)}
+  .ord-row:last-of-type{border-bottom:none}
+  .ord-n{font-family:var(--mono);font-size:11px;color:var(--faint);width:18px;text-align:right;flex:0 0 auto}
+  .ord-l{flex:1;font-size:13.5px;min-width:0}
+  .ord-btn{width:26px;height:26px;flex:0 0 auto;border-radius:7px;border:1px solid var(--line);
+    background:var(--bg2);color:var(--dim);cursor:pointer;font-size:13px;line-height:1;padding:0}
+  .ord-btn:hover:not(:disabled){color:var(--blue);border-color:var(--blue)}
+  .ord-btn:disabled{opacity:.35;cursor:default}
+  .ord-reset{margin-top:10px}
 </style>
 </head>
 <body>
@@ -181,7 +192,9 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
       <span data-i18n="Настройки">Настройки</span>
     </div>
-    <a class="back" href="/" data-i18n="← В панель управления">← В панель управления</a>
+    <!-- относительный путь: работает и локально (/settings/ → /), и на GitHub Pages
+         (/crm.banki.ru/settings/ → /crm.banki.ru/); абсолютный "/" уводил на корень домена -->
+    <a class="back" href="../" data-i18n="← В панель управления">← В панель управления</a>
   </header>
 
   <div class="shell">
@@ -208,6 +221,12 @@
           <span class="save-note" id="appsSaved" data-i18n="✓ Сохранено — панель применит при загрузке">✓ Сохранено — панель применит при загрузке</span>
           <span class="save-note err" id="appsError"></span>
         </div>
+
+        <!-- очерёдность подразделов внутри разделов -->
+        <h2 class="block-title" data-i18n="Очерёдность подразделов">Очерёдность подразделов</h2>
+        <div class="sub" data-i18n="Порядок карточек на обзорной странице раздела и пунктов во всплывающем меню сайдбара. Сохраняется сразу; открытая панель подхватит изменение автоматически.">Порядок карточек на обзорной странице раздела и пунктов во всплывающем меню сайдбара.
+          Сохраняется сразу; открытая панель подхватит изменение автоматически.</div>
+        <div id="subOrderBox"></div>
       </section>
 
       <!-- ===== Мониторинг ===== -->
@@ -253,6 +272,15 @@
         <div class="sub" data-i18n="HTML-инструменты, загруженные в раздел «Загруженные инструменты» пользовательской панели. Хранятся в localStorage браузера и открываются в исходном оформлении.">HTML-инструменты, загруженные в раздел «Загруженные инструменты» пользовательской панели.
           Хранятся в localStorage браузера и открываются в исходном оформлении.</div>
         <div class="card" id="toolsCard"></div>
+      </section>
+
+      <!-- ===== Управление доступом (перенесено из пользовательской панели) ===== -->
+      <section class="pane" id="pane-access">
+        <h1 data-i18n-html="h_access">Управление <span class="grad">доступом</span></h1>
+        <div class="sub" data-i18n="Пользователи панели: роль задаёт уровень возможностей, набор разделов — что видит пользователь. Требуется запущенный crm-admin и роль ADMIN.">Пользователи панели: роль задаёт уровень возможностей, набор разделов — что видит
+          пользователь. Требуется запущенный crm-admin и роль ADMIN.</div>
+        <!-- admin-users.js рендерит сюда (контейнер по историческому id) -->
+        <div id="sec-access"></div>
       </section>
 
       <!-- ===== Общие параметры ===== -->
@@ -406,6 +434,19 @@ const S_EN = {
   "Настройки":"Settings", "← В панель управления":"← Back to the panel",
   "Обзор":"Overview", "Приложения и разделы":"Apps & sections", "Мониторинг":"Monitoring",
   "Загруженные инструменты":"Uploaded tools", "Общие параметры":"General settings", "Диагностика":"Diagnostics",
+  "Отчёты":"Reports", "Управление доступом":"Access management",
+  "Пользователи панели: роли и доступные разделы. Требуется запущенный crm-admin.":"Panel users: roles and available sections. Requires a running crm-admin.",
+  "Пользователи панели: роль задаёт уровень возможностей, набор разделов — что видит пользователь. Требуется запущенный crm-admin и роль ADMIN.":"Panel users: the role sets the capability level, the section set defines what the user sees. Requires a running crm-admin and the ADMIN role.",
+  "Очерёдность подразделов":"Subsection order",
+  "Порядок карточек на обзорной странице раздела и пунктов во всплывающем меню сайдбара. Сохраняется сразу; открытая панель подхватит изменение автоматически.":"The order of cards on the section overview page and of items in the sidebar flyout menu. Saved immediately; an open panel picks the change up automatically.",
+  "Настроенный порядок":"Custom order", "Исходный порядок":"Default order",
+  "Выше":"Move up", "Ниже":"Move down", "Сбросить порядок":"Reset order",
+  "Пример визуализации отчёта":"Report visualisation example",
+  "OneLink Builder":"OneLink Builder", "Мастер коммуникаций":"Communication wizard",
+  "Список шаблонов":"Template list", "Просмотр настроек":"Settings viewer",
+  "Конструктор source":"Source builder", "Планирование промо":"Promo planning",
+  "Тепловая карта":"Heat map", "Общая статистика":"Overall statistics",
+  "Панель отклонений":"Deviations panel",
   "Все настройки на одной странице.":"All settings on one page.",
   "Какие разделы панели видит каждое приложение из App Launcher.":"Which panel sections each App Launcher app can see.",
   "Работа с партнёрами: статусы, зависшие отправки, Context API.":"Partner operations: statuses, stuck sends, Context API.",
@@ -466,10 +507,12 @@ function t2(s){ return (LANG === "en" && S_EN[s]) ? S_EN[s] : s; }
 const S_HTML = {
   ru: { h_over:'Настроечная <span class="grad">админка</span>', h_apps:'Приложения <span class="grad">и разделы</span>',
         h_mon:'Мониторинг <span class="grad">интеграций</span>', h_up:'Загруженные <span class="grad">инструменты</span>',
-        h_gen:'Общие <span class="grad">параметры</span>', h_diag:'Диагностика <span class="grad">хранилища</span>' },
+        h_gen:'Общие <span class="grad">параметры</span>', h_diag:'Диагностика <span class="grad">хранилища</span>',
+        h_access:'Управление <span class="grad">доступом</span>' },
   en: { h_over:'Admin <span class="grad">settings</span>', h_apps:'Apps <span class="grad">& sections</span>',
         h_mon:'Integration <span class="grad">monitoring</span>', h_up:'Uploaded <span class="grad">tools</span>',
-        h_gen:'General <span class="grad">settings</span>', h_diag:'Storage <span class="grad">diagnostics</span>' }
+        h_gen:'General <span class="grad">settings</span>', h_diag:'Storage <span class="grad">diagnostics</span>',
+        h_access:'Access <span class="grad">management</span>' }
 };
 function translateStatic(){
   document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t2(el.dataset.i18n); });
@@ -481,6 +524,7 @@ const APPS = ["Администрирование","Аналитика","Мар�
 const SECTIONS = [
   { id:"home",       label:"Главная", locked:true },
   { id:"comms",      label:"Управление коммуникациями" },
+  { id:"reports",    label:"Отчёты" },
   { id:"dash",       label:"Дашборд" },
   { id:"monitoring", label:"Мониторинг" },
   { id:"uploads",    label:"Загруженные инструменты" },
@@ -496,6 +540,8 @@ const PANES = [
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>' },
   { id:"uploads",    label:"Загруженные инструменты", desc:"Переименование и удаление загруженных HTML-инструментов.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' },
+  { id:"access",     label:"Управление доступом", desc:"Пользователи панели: роли и доступные разделы. Требуется запущенный crm-admin.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
   { id:"general",    label:"Общие параметры", desc:"Тема оформления (светлая, тёмная, системная) и язык интерфейса.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>' },
   { id:"diag",       label:"Диагностика", desc:"Занятость localStorage браузера данными панели.",
@@ -510,6 +556,7 @@ function openPane(id){
   if (id === "uploads") renderTools();
   if (id === "diag") renderDiag();
   if (id === "monitoring") monBack();
+  if (id === "access" && typeof renderAccessSection === "function") renderAccessSection();
 }
 PANES.forEach(p => {
   const el = document.createElement("div");
@@ -539,7 +586,7 @@ let appsCfg = {};   /* текущий конфиг: { "Приложение": ["
 
 async function apiFetch(url, opts){
   const r = await fetch(url, Object.assign({ credentials: "same-origin" }, opts || {}));
-  if (r.status === 401){ location.href = "/login.html"; throw new Error("unauthorized"); }
+  if (r.status === 401){ location.href = "../login.html"; throw new Error("unauthorized"); }
   return r;
 }
 function appsError(msg){
@@ -840,7 +887,7 @@ async function prodDbCall(url, method){
   box.textContent = '…';
   try {
     const r = await fetch(url, { method: method || 'GET', credentials: 'same-origin' });
-    if (r.status === 401) { location.href = '/login.html'; return; }
+    if (r.status === 401) { location.href = '../login.html'; return; }
     if (r.status === 403) { box.textContent = t2('Доступно только администраторам.'); return; }
     var ct = r.headers.get('content-type') || '';
     if (ct.indexOf('application/json') < 0) {
@@ -1157,12 +1204,114 @@ $("#etlFullBtn").addEventListener('click', function(){
   if (!confirm(t2('Полный прогон читает все шаблоны прода. Выполнить сейчас?'))) return;
   etlCall('/api/admin/etl/run-full', 'POST');
 });
+/* ---------- очерёдность подразделов (crmpanel:subOrder) ----------
+   Панель применяет порядок к карточкам обзорных страниц и меню 2-го уровня
+   (orderedChildren/applySubOrder в js/shell.js); открытая вкладка панели
+   подхватывает изменение через событие storage. */
+const SUBSECTIONS = [
+  { sid:"comms", label:"Управление коммуникациями", items:[
+      ["onelink","OneLink Builder"], ["admin","Мастер коммуникаций"], ["templates","Список шаблонов"],
+      ["viewer","Просмотр настроек"], ["srcbuilder","Конструктор source"], ["promo","Планирование промо"],
+      ["heatmap","Тепловая карта"] ]},
+  { sid:"reports", label:"Отчёты", items:[
+      ["rep-planfact","Plan-Fact"], ["rep-matrix","CRM Matrix"], ["rep-leadgen","CRM Leadgen"],
+      ["rep-demo","Пример визуализации отчёта"] ]},
+  { sid:"dash", label:"Дашборд", items:[
+      ["dashboard","Общая статистика"], ["deviations","Панель отклонений"] ]},
+];
+const ORDER_KEY = "crmpanel:subOrder";
+function orderCfg(){ try { return JSON.parse(localStorage.getItem(ORDER_KEY)) || {}; } catch(e){ return {}; } }
+function orderedItems(g){
+  const cfg = orderCfg()[g.sid];
+  if (!Array.isArray(cfg)) return g.items.slice();
+  return g.items.slice().sort((a, b) => {
+    let ia = cfg.indexOf(a[0]), ib = cfg.indexOf(b[0]);
+    if (ia < 0) ia = 900 + g.items.indexOf(a);
+    if (ib < 0) ib = 900 + g.items.indexOf(b);
+    return ia - ib;
+  });
+}
+function orderMove(sid, id, dir){
+  const g = SUBSECTIONS.find(x => x.sid === sid);
+  if (!g) return;
+  const list = orderedItems(g).map(x => x[0]);
+  const i = list.indexOf(id), j = i + dir;
+  if (i < 0 || j < 0 || j >= list.length) return;
+  list.splice(i, 1); list.splice(j, 0, id);
+  const cfg = orderCfg(); cfg[sid] = list;
+  localStorage.setItem(ORDER_KEY, JSON.stringify(cfg));
+  renderSubOrder();
+}
+function orderReset(sid){
+  const cfg = orderCfg(); delete cfg[sid];
+  localStorage.setItem(ORDER_KEY, JSON.stringify(cfg));
+  renderSubOrder();
+}
+function renderSubOrder(){
+  const box = $("#subOrderBox");
+  if (!box) return;
+  box.innerHTML = "";
+  SUBSECTIONS.forEach(g => {
+    const custom = Array.isArray(orderCfg()[g.sid]);
+    const items = orderedItems(g);
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `<h3>${t2(g.label)}</h3>
+      <div class="note">${custom ? t2("Настроенный порядок") : t2("Исходный порядок")}</div>` +
+      items.map((it, i) => `
+        <div class="ord-row">
+          <span class="ord-n">${i + 1}</span><span class="ord-l">${t2(it[1])}</span>
+          <button class="ord-btn" ${i === 0 ? "disabled" : ""} title="${t2('Выше')}"
+            onclick="orderMove('${g.sid}','${it[0]}',-1)">↑</button>
+          <button class="ord-btn" ${i === items.length - 1 ? "disabled" : ""} title="${t2('Ниже')}"
+            onclick="orderMove('${g.sid}','${it[0]}',1)">↓</button>
+        </div>`).join("") +
+      (custom ? `<button class="btn ord-reset" onclick="orderReset('${g.sid}')">${t2("Сбросить порядок")}</button>` : "");
+    box.appendChild(card);
+  });
+}
 
 renderApps();   /* мгновенный каркас (умолчания), затем данные с сервера */
 loadApps();
 loadGeneral();
+renderSubOrder();
 translateStatic();
 document.title = LANG === "en" ? "CRM Team · Settings" : "CRM Team · Настройки";
 </script>
+
+<!-- ===== Управление доступом: мини-CRM (нужные admin-методы) + рендер admin-users.js ===== -->
+<script>
+/* admin-users.js ждёт window.CRM с admin-методами; полноценный api.js панели сюда не
+   тянем — у него свои сайд-эффекты. Пути относительные: работают и на бэке, и в
+   подпапке GitHub Pages (там API нет — раздел покажет ошибку подключения). */
+window.CRM = window.CRM || (function(){
+  function req(method, url, body){
+    const opts = { method, headers: { "Accept": "application/json" }, credentials: "same-origin" };
+    if (body !== undefined){ opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+    return fetch("../api" + url, opts).then(r => {
+      if (r.status === 401){ location.href = "../login.html"; throw new Error("Не авторизован"); }
+      if (!r.ok) return r.text().then(t => {
+        let m = t; try { m = JSON.parse(t).message || t; } catch(e){}
+        throw new Error(m || (r.status + " " + r.statusText));
+      });
+      if (r.status === 204) return null;
+      const ct = r.headers.get("content-type") || "";
+      return ct.indexOf("application/json") >= 0 ? r.json() : r.text();
+    });
+  }
+  const C = {
+    me: null,
+    adminSections:     () => req("GET", "/admin/sections"),
+    adminListUsers:    () => req("GET", "/admin/users"),
+    adminCreateUser:   u => req("POST", "/admin/users", u),
+    adminUpdateUser:   (id, u) => req("PUT", "/admin/users/" + id, u),
+    adminDeleteUser:   id => req("DELETE", "/admin/users/" + id),
+    adminResetPassword:(id, p) => req("PUT", "/admin/users/" + id + "/password", { newPassword: p })
+  };
+  req("GET", "/me").then(me => { C.me = me; }).catch(() => {});
+  return C;
+})();
+</script>
+<script src="../admin-users.js"></script>
 </body>
 </html>

@@ -198,7 +198,7 @@ function renderTopTemplates() {
     const tbody = document.getElementById('topTemplatesBody');
     const data = DASHBOARD_DATA.topTemplates;
     if (!tbody || !data || !data.length) return;
-    const channelLabels = { sms: 'SMS', push: 'Push', email: 'Email', cc: 'КЦ' };
+    const channelLabels = { sms: 'SMS', push: 'Mobile-push', email: 'E-mail', cc: 'КЦ' };
     tbody.innerHTML = data.map(t => {
         const successRate = ((t.success / t.sent) * 100).toFixed(1);
         return `
@@ -624,7 +624,7 @@ function loadTemplateStats() {
     const data = TEMPLATE_STATS[templateId];
     if (!data) return;
     
-    const channelLabels = { sms: 'SMS', push: 'Push', email: 'Email', cc: 'КЦ' };
+    const channelLabels = { sms: 'SMS', push: 'Mobile-push', email: 'E-mail', cc: 'КЦ' };
     
     // Показываем информацию о шаблоне
     document.getElementById('templateInfoField').style.display = 'block';

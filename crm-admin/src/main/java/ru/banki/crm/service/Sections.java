@@ -16,9 +16,14 @@ public final class Sections {
     public static final String DASHBOARD = "dashboard";
     public static final String JOURNEYS = "journeys";   // Цепочки (схема-конструктор)
     public static final String ACCESS = "access";       // Управление доступом (ADMIN only)
+    public static final String PROMO = "promo";         // Планирование промо (общая таблица)
 
+    /* Здесь только разделы с серверными данными. Клиентские инструменты
+       (конструктор source, тепловая карта, отчёты, мониторинг, загруженные
+       инструменты) в RBAC не заводим: защищать на сервере нечего — в NAV они
+       помечены noAcl. */
     public static final List<String> ALL = List.of(
-            HOME, DEVIATIONS, ONELINK, ADMIN, TEMPLATES, DASHBOARD, JOURNEYS, ACCESS);
+            HOME, DEVIATIONS, ONELINK, ADMIN, TEMPLATES, DASHBOARD, JOURNEYS, ACCESS, PROMO);
 
     public static final Set<String> VALID = Set.copyOf(ALL);
 

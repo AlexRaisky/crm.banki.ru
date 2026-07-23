@@ -19,7 +19,19 @@ const NAV = [
       { id:"viewer",    label:"Просмотр настроек",   icon:"search", view:"sec-admin", adminMode:"view", aclSection:"admin" },
       /* клиентские инструменты без серверной секции — не фильтруются по me.sections (data-no-acl) */
       { id:"srcbuilder",label:"Конструктор source",  icon:"pulse", view:"sec-srcbuilder", noAcl:true },
+      /* promo: пока данные лежат в localStorage — фильтровать по me.sections нечего.
+         Как таблица переедет на сервер (app.promo_plan), noAcl снимаем — секция promo
+         в RBAC уже заведена. */
+      { id:"promo",     label:"Планирование промо",  icon:"calendar", view:"sec-promo", noAcl:true },
       { id:"heatmap",   label:"Тепловая карта",      icon:"grid2", view:"view-heatmap", noAcl:true, appOnly:["Маркетинг"] },
+  ]},
+  /* «Отчёты» — встраивание отчётов Tableau: обзор с карточками, у каждого отчёта
+     свой блок подключения (адрес сервера + книга); «Пример» — демо-макет окна */
+  { id:"reports", label:"Отчёты", icon:"reports", overviewView:"view-reports-overview", children:[
+      { id:"rep-planfact", label:"Plan-Fact",   icon:"chart", view:"view-report-embed", report:"planfact", noAcl:true },
+      { id:"rep-matrix",   label:"CRM Matrix",  icon:"grid2", view:"view-report-embed", report:"matrix",   noAcl:true },
+      { id:"rep-leadgen",  label:"CRM Leadgen", icon:"pulse", view:"view-report-embed", report:"leadgen",  noAcl:true },
+      { id:"rep-demo",     label:"Пример визуализации отчёта", icon:"reports", view:"view-reports", noAcl:true },
   ]},
   { id:"dash", label:"Дашборд", icon:"gauge", overviewView:"view-dash-overview", children:[
       { id:"dashboard",  label:"Общая статистика",  icon:"chart", view:"sec-admin", adminMode:"dashboard" },
@@ -30,7 +42,7 @@ const NAV = [
   ]},
   { id:"uploads",  label:"Загруженные инструменты", icon:"upload", view:"view-uploads", noAcl:true },
   { id:"journeys", label:"Цепочки",             icon:"flow", view:"sec-journeys", adminOnly:true },
-  { id:"access",   label:"Управление доступом", icon:"gear", view:"sec-access", adminOnly:true },
+  /* «Управление доступом» переехало в настроечную админку (settings/ → pane access) */
 ];
 
 /* Среды (prod / preprod / test) — это отдельные инстансы приложения со своими БД.
@@ -51,11 +63,13 @@ const ICONS = {
   gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>',
   doc:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
   search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
+  calendar:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
   grid2:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
   monitor:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
   upload:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
   plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
+  reports:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-4M12 17V8M16 17v-6"/></svg>',
 };
 
 /* =========================================================
@@ -220,6 +234,163 @@ const I18N_EN = {
   "Новый пользователь":"New user", "Пароль (мин. 8)":"Password (min 8)", "Создать":"Create",
   "Роль задаёт уровень возможностей, набор разделов — что видит пользователь.":"The role sets the capability level; the section set defines what the user sees.",
 };
+/* ---- планирование промо, настройка списка, заголовки разделов ---- */
+Object.assign(I18N_EN, {
+  "Планирование промо":"Promo planning",
+  "Планирование промо-кампаний: календарь по дням, продуктам, партнёрам, каналам, задачам и ответственным.":"Promo campaign planning: calendar by day, product, partner, channel, issue and owner.",
+  "Календарь промо-коммуникаций: даты вынесены в строки-разделители, «+» в конце такой строки добавляет запись на эту дату. Ячейки редактируются по клику, правка подтверждается ✓ (или кликом мимо ячейки).":"Promo communications calendar: dates are separator rows; the “+” at the end of such a row adds an entry for that date. Cells are editable on click and confirmed with ✓ (or by clicking outside the cell).",
+  "Дата":"Date", "День недели":"Weekday", "База":"Audience", "Тотал":"Total",
+  "Название коммуникации":"Communication name", "Ответственный":"Owner", "Комментарий":"Comment",
+  "Партнёр":"Partner", "Задача":"Issue", "Все партнёры":"All partners",
+  "Месяц":"Month", "Поиск":"Search", "Название, база, задача…":"Name, audience, issue…",
+  "Добавить запись на эту дату":"Add an entry for this date",
+  "Словесное описание базы":"Free-text audience description",
+  "Сохранить":"Save", "Отмена":"Cancel", "Собрать из строки":"Build from row",
+  "по формату source":"source format required",
+  "Формат соответствует Конструктору source.":"Matches the source builder format.",
+  "1-я часть — канал: sms, mobile-push, email или contact (для callcenter).":"Part 1 — channel: sms, mobile-push, email or contact (for callcenter).",
+  "2-я часть — тип кампании: promo или trigger.":"Part 2 — campaign type: promo or trigger.",
+  "3-я часть — код продукта из справочника, напр. creditcards.":"Part 3 — a product code from the catalogue, e.g. creditcards.",
+  "Формат promo: канал_promo_продукт_партнёр_имя_ддммгг":"Promo format: channel_promo_product_partner_name_ddmmyy",
+  "4-я часть — партнёр (или General / Digest).":"Part 4 — partner (or General / Digest).",
+  "5-я часть — уникальное имя кампании.":"Part 5 — unique campaign name.",
+  "Последняя часть — дата ддммгг (для callcenter — ддммггday).":"Last part — date ddmmyy (ddmmyyday for callcenter).",
+  "Для contact дата заканчивается на day, напр. 180326day.":"For contact the date ends with day, e.g. 180326day.",
+  "Формат trigger для contact: contact_trigger_продукт_имя_сегмент_Nday":"Trigger format for contact: contact_trigger_product_name_segment_Nday",
+  "Формат trigger: канал_trigger_продукт_имя_Nday":"Trigger format: channel_trigger_product_name_Nday",
+  "4-я часть — уникальное имя кампании.":"Part 4 — unique campaign name.",
+  "5-я часть — сегмент.":"Part 5 — segment.",
+  "Последняя часть — Nday, напр. 3day.":"Last part — Nday, e.g. 3day.",
+  /* вкладки, форма новой записи и правила планирования */
+  "Актуальные":"Upcoming", "Архивные":"Archived",
+  "Запланировать промо-рассылку":"Schedule a promo send",
+  "Все рассылки":"All sends", "Только тотал":"Totals only", "Без тотала":"Excluding totals",
+  "Уникальное имя":"Unique name", "Латиница, цифры и дефис":"Latin letters, digits and hyphens",
+  "Только латиница, цифры и дефис":"Latin letters, digits and hyphens only",
+  "Несколько каналов — будет создано по записи на каждый":"Several channels — one record will be created per channel",
+  "Создать":"Create", "Будет создано записей":"Records to be created",
+  "нужно заполнить":"to fill in", "соберётся автоматически":"generated automatically",
+  "Название собирается автоматически":"The name is generated automatically",
+  "укажите дату":"set the date", "выберите хотя бы один канал":"select at least one channel",
+  "уникальное имя: латиница, цифры и дефис":"unique name: Latin letters, digits and hyphens",
+  "канал":"channel", "продукт":"product", "партнёр":"partner", "уникальное имя":"unique name", "дата":"date",
+  "К планированию":"To plan", "Нужен статус по рассылке":"Send status required",
+  "Требуют внимания":"Need attention", "нарушают правила планирования":"break the planning rules",
+  "акций с признаком «Тотал»":"campaigns flagged as Total",
+  "Лимит тоталов на неделю":"Weekly total limit", "есть рассылка по ставке ЦБ":"a key-rate send is present",
+  "эта рассылка сверх лимита":"this send is over the limit",
+  "По одному продукту допускается не больше 3 промо в день":"At most 3 promos per product per day",
+  "Промо одного продукта должны идти в разных каналах":"Promos for the same product must use different channels",
+  "В день допускается не больше 4 промо":"At most 4 promos per day",
+  "В этот день в этом канале уже запланирован тотал":"A total is already scheduled for this day and channel",
+  "Правила планирования:":"Planning rules:",
+  "В неделю допускается один тотал (каналов у него может быть несколько). Если в уникальном имени есть -cb (рассылка по ставке ЦБ) — в неделе допускаются два тотала. Всё, что сверх лимита, помечается жёлтым треугольником.":"One total per week is allowed (it may use several channels). If the unique name contains -cb (a key-rate send), two totals are allowed that week. Anything over the limit is marked with a yellow triangle.",
+  "По одному продукту — максимум 3 промо в день, с разными названиями и в разных каналах (e-mail, mobile-push, sms).":"At most 3 promos per product per day, with different names and in different channels (e-mail, mobile-push, sms).",
+  "Не больше 4 промо в день; одна акция в нескольких каналах считается за одно промо.":"At most 4 promos per day; one campaign across several channels counts as a single promo.",
+  "Если на день запланирован тотал, остальные промо в том же канале подсвечиваются.":"If a total is scheduled for the day, other promos in the same channel are highlighted.",
+  "Одна запись — один канал: при сохранении нескольких каналов создаётся отдельная запись на каждый. Дату можно переназначить иконкой календаря — запись сама перейдёт в нужный блок дат. «Название коммуникации» собирается автоматически по формату Конструктора source из канала, продукта, партнёра, уникального имени и даты. Записи с прошедшей датой уходят на вкладку «Архивные». Правки сохраняются в браузере.":"One record per channel: saving several channels creates a separate record for each. The date can be reassigned with the calendar icon — the record moves to the right date block by itself. The communication name is generated automatically in the source builder format from channel, product, partner, unique name and date. Records with a past date move to the Archived tab. Edits are stored in the browser.",
+  "Перенести на другую дату":"Move to another date",
+  "Все месяцы":"All months", "Все продукты":"All products", "Все каналы":"All channels",
+  "Все ответственные":"All owners", "+ Строка":"+ Row", "Экспорт CSV":"Export CSV",
+  "Сбросить данные":"Reset data", "Сбросить таблицу к исходным данным?":"Reset the table to the original data?",
+  "Удалить строку":"Delete row", "Удалить строку?":"Delete this row?",
+  "Нет строк по заданным фильтрам":"No rows match the current filters",
+  "Коммуникаций":"Communications", "по текущему фильтру":"for the current filter",
+  "Тотал-рассылок":"Total sends", "признак «Тотал»":"the Total flag",
+  "Запланировано":"Planned", "от строк":"of rows", "Каналы":"Channels",
+  "Формулы:":"Formulas:",
+  "Строки сгруппированы по датам, день недели вычисляется из даты, выходные подсвечиваются; строки с признаком «Тотал» выделяются; сводка сверху считает коммуникации, тоталы, каналы и заполненность статусов по текущему фильтру. «Название коммуникации» проверяется по правилам Конструктора source, «Задача» принимает ссылку или номер и показывается ссылкой на Jira. Правки сохраняются в браузере.":"Rows are grouped by date, the weekday is derived from the date and weekends are highlighted; rows flagged as Total are emphasised; the summary above counts communications, totals, channels and status coverage for the current filter. The communication name is validated against the source builder rules; the issue field accepts a link or a key and is shown as a Jira link. Edits are stored in the browser.",
+  "Понедельник":"Monday", "Вторник":"Tuesday", "Среда":"Wednesday", "Четверг":"Thursday",
+  "Пятница":"Friday", "Суббота":"Saturday", "Воскресенье":"Sunday",
+  "Январь":"January", "Февраль":"February", "Март":"March", "Апрель":"April", "Май":"May", "Июнь":"June",
+  "Июль":"July", "Август":"August", "Сентябрь":"September", "Октябрь":"October", "Ноябрь":"November", "Декабрь":"December",
+  /* настройка списка и правка ячеек */
+  "Отображаемые поля":"Displayed fields", "Показывать фильтры":"Visible filters",
+  "По умолчанию":"Reset to default", "Закрыть":"Close", "Применить":"Apply",
+  "Настройка полей и фильтров":"Fields and filters settings",
+  /* мастер коммуникаций (карточка создания) и предпросмотр */
+  "Новый шаблон":"New template", "Создать шаблон":"Create template", "Очистить":"Clear",
+  "Заполните":"Fill in",
+  /* цепочка в карточке мастера */
+  "Цепочка":"Chain", "шаблон на каждый день цепочки":"a template for each chain day",
+  "Дни цепочки (числа через запятую)":"Chain days (numbers, comma-separated)",
+  "Сгенерировать строки":"Generate rows", "День":"Day",
+  "Создать цепочку":"Create chain", "Цепочка создана":"Chain created", "шаблон(ов)":"template(s)",
+  "На каждый день при создании заводится отдельный шаблон со своим source_type (по дню).":"On create, a separate template is made for each day with its own source_type (per day).",
+  "Введите хотя бы один день (число), напр. 0, 3, 7":"Enter at least one day (a number), e.g. 0, 3, 7",
+  "Дни не должны повторяться":"Days must not repeat",
+  "Сгенерируйте строки: введите дни и нажмите «Сгенерировать строки».":"Generate the rows: enter the days and press “Generate rows”.",
+  "для дня":"for day",
+  "Шаблон создан":"Template created", "Ошибка сохранения":"Save error",
+  "Сегмент (code)":"Segment (code)", "Поле в БД":"Database field",
+  "таблица":"table", "отдельного поля нет":"no dedicated column",
+  "Предпросмотр Mobile-push":"Mobile-push preview", "Предпросмотр E-mail":"E-mail preview",
+  "Не помещается":"Does not fit", "заголовок":"title", "текст":"body",
+  "часть будет скрыта под «ещё». Заголовок — 1 строка, текст — до 4 строк.":"part will be hidden behind “more”. Title — 1 line, body — up to 4 lines.",
+  "Текст помещается в карточку уведомления полностью.":"The text fits the notification card in full.",
+  /* шапки описания разделов */
+  "Заведение нового шаблона: канал выбирается настроечным блоком, поля зависят от канала. communication_name и source_type собираются автоматически по правилам нейминга, справа — предпросмотр сообщения перед сохранением.":"Creating a new template: the channel is chosen in the settings block and the fields depend on it. communication_name and source_type are generated automatically by the naming rules; the message preview is on the right.",
+  "Витрина всех шаблонов коммуникаций: поиск, сортировка, настройка отображаемых полей и фильтров через шестерёнку. Значения правятся прямо в таблице — карандаш у поля, подтверждение галочкой.":"A showcase of all communication templates: search, sorting and field/filter settings via the gear. Values are edited in place — a pencil next to the field, confirmed with a check mark.",
+  "Карточка шаблона со всеми параметрами: канал и шаблон выбираются настроечными блоками, каждое поле правится по карандашу, справа — предпросмотр сообщения в канале.":"The template card with every parameter: channel and template are chosen in the settings blocks, each field is edited via its pencil, and the channel preview is on the right.",
+  "Сводные показатели по отправкам, доставкам и реакциям в разрезе каналов, продуктов и шаблонов.":"Summary metrics for sends, deliveries and reactions by channel, product and template.",
+  "Контроль основных этапов: отбор базы, поступление событий, отправки, доставки и дубли. Блок открывается кликом — внутри метрики и пороги.":"Control of the main stages: audience selection, incoming events, sends, deliveries and duplicates. Click a block to see its metrics and thresholds.",
+  "Свои HTML-страницы внутри панели: оформление файла не меняется, страница масштабируется под размер окна.":"Your own HTML pages inside the panel: the file styling is preserved and the page scales to the window.",
+  "Конструктор цепочек коммуникаций: шаги, условия и связи между шаблонами.":"Communication journey builder: steps, conditions and links between templates.",
+  "Пользователи панели: роль задаёт уровень возможностей, набор разделов — что видит пользователь.":"Panel users: the role sets the capability level, the section set defines what the user sees.",
+  "Не удалось сохранить изменение на сервере. Значение возвращено.":"Could not save the change on the server. The value was reverted.",
+});
+
+/* ---- раздел «Отчёты» (Tableau) ---- */
+Object.assign(I18N_EN, {
+  "Отчёты":"Reports",
+  "Отчёт":"Report", "Период":"Period",
+  "Воронка коммуникаций":"Communication funnel",
+  "Доставляемость по каналам":"Deliverability by channel",
+  "Эффективность промо":"Promo performance",
+  "Последние 7 дней":"Last 7 days", "Последние 30 дней":"Last 30 days", "Квартал":"Quarter",
+  "↻ Обновить":"↻ Refresh", "⤢ Во весь экран":"⤢ Fullscreen", "Во весь экран":"Fullscreen",
+  "Свернуть":"Collapse", "</> Код встраивания":"</> Embed code", "МАКЕТ":"DEMO",
+  "Как подключить реальный отчёт (Tableau Embedding API v3)":"How to connect a real report (Tableau Embedding API v3)",
+  /* карточки отчётов и подключение */
+  "Пример визуализации отчёта":"Report visualisation example",
+  "Отчёты компании, встраиваемые из Tableau. Выберите отчёт или воспользуйтесь меню слева.":"Company reports embedded from Tableau. Pick a report or use the menu on the left.",
+  "Общий финансовый отчёт компании: план и факт по ключевым показателям.":"The company-wide financial report: plan and actuals for the key metrics.",
+  "Основной отчёт команды CRM: каналы, кампании и показатели в одном разрезе.":"The CRM team's main report: channels, campaigns and metrics in one view.",
+  "Детализация лидогенерации: что именно покупают с каждой кампании.":"Lead-gen breakdown: what exactly is bought from each campaign.",
+  "Демо-макет окна Tableau на плейсхолдер-данных: как отчёт выглядит внутри панели.":"A demo mock-up of the Tableau window on placeholder data: how a report looks inside the panel.",
+  "Подключение к Tableau":"Tableau connection",
+  "Адрес Tableau Server / Cloud":"Tableau Server / Cloud address",
+  "Опубликованная книга/лист":"Published workbook/sheet",
+  "Токен (JWT / PAT, опционально)":"Token (JWT / PAT, optional)",
+  "Сохранить и подключить":"Save and connect", "Сохранено.":"Saved.",
+  "Очистить настройки подключения этого отчёта?":"Clear this report's connection settings?",
+  "Отчёт появится здесь":"The report will appear here",
+  "Укажите адрес вашего Tableau Server (или Tableau Cloud) и путь к опубликованной книге — например CRMMatrix/Overview — и нажмите «Сохранить и подключить».":"Enter your Tableau Server (or Tableau Cloud) address and the path to the published workbook — e.g. CRMMatrix/Overview — then press “Save and connect”.",
+  "Сервер должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели. Настройки хранятся в этом браузере.":"The server must be reachable from the browser (VPN/intranet) and allow embedding for the panel's domain. Settings are stored in this browser.",
+  "Подключаемся к":"Connecting to",
+  "Не удалось загрузить Tableau Embedding API с":"Failed to load the Tableau Embedding API from",
+  "Проверьте адрес сервера, VPN/доступ из браузера и что встраивание разрешено.":"Check the server address, VPN/browser access, and that embedding is allowed.",
+  "Нужен адрес вашего Tableau Server (или Tableau Cloud) и опубликованная книга.":"You need your Tableau Server (or Tableau Cloud) address and a published workbook.",
+  "Авторизация — Connected Apps (JWT) или Personal Access Token; токен выдаёт бэкенд, чтобы не логиниться вручную.":"Auth is Connected Apps (JWT) or a Personal Access Token; the backend issues the token so no manual login is needed.",
+  "Сервер Tableau должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели.":"The Tableau server must be reachable from the browser (VPN/intranet) and allow embedding for the panel's domain.",
+  "На GitHub Pages бэкенда нет — реальные данные появятся только с запущенным crm-admin.":"There is no backend on GitHub Pages — real data appears only with crm-admin running.",
+  /* KPI и подписи виджетов макета */
+  "Отправлено":"Sent", "Доставлено":"Delivered", "Открыто":"Opened", "Клик":"Click", "Конверсия":"Conversion",
+  "Отписки":"Unsubscribes", "Промо-рассылок":"Promo sends", "Средний CTR":"Average CTR", "Выручка":"Revenue",
+  "за 30 дней":"over 30 days", "за месяц":"this month", "доставлено":"delivered",
+  "атрибуция 7 дней":"7-day attribution", "по конверсии":"by conversion",
+  "Обзор":"Overview", "Этапы":"Stages", "Каналы":"Channels", "Детализация":"Breakdown",
+  "Динамика":"Trend", "Топ-кампании":"Top campaigns",
+  "Воронка этапов":"Stage funnel", "Доставляемость по дням":"Deliverability by day",
+  "Показатели по этапам":"Metrics by stage", "Доставлено и открыто по каналам":"Delivered and opened by channel",
+  "Доставляемость e-mail":"E-mail deliverability", "Сводка по каналам":"Channel summary",
+  "Конверсия промо по дням":"Promo conversion by day", "CTR по каналам":"CTR by channel", "Лучшие промо":"Top promos",
+  "доля от отправленных, %":"share of sent, %", "%, последние 14 дней":"%, last 14 days",
+  "абсолют и доля":"absolute and share", "%, 14 дней":"%, 14 days",
+  "Этап":"Stage", "Объём":"Volume", "Доля":"Share", "Канал":"Channel",
+  "Кампания":"Campaign", "Конв.":"Conv.",
+});
+
 /* HTML-заголовки (с выделением) — токены */
 const I18N_HTML = {
   ru: {
@@ -232,6 +403,10 @@ const I18N_HTML = {
     h1_uploads:'Загруженные <span class="grad">инструменты</span>',
     h1_upform:'Загрузка <span class="grad">HTML-инструмента</span>',
     h1_srcbuilder:'Конструктор <span class="grad">source</span>',
+    h1_promo:'Планирование <span class="grad">промо</span>',
+    h1_reports:'Пример <span class="grad">визуализации отчёта</span>',
+    h1_reports_ov:'Отчёты <span class="grad">Tableau</span>',
+    reports_sub:'Демо-макет того, как отчёт Tableau будет выглядеть в этом окне. Реальные отчёты подключаются на страницах Plan-Fact, CRM&nbsp;Matrix и CRM&nbsp;Leadgen — там задаются адрес сервера и книга. Все числа на макете — демонстрационные.',
   },
   en: {
     h1_home:'Welcome to the <span class="grad">control panel</span>',
@@ -243,6 +418,10 @@ const I18N_HTML = {
     h1_uploads:'Uploaded <span class="grad">tools</span>',
     h1_upform:'Upload an <span class="grad">HTML tool</span>',
     h1_srcbuilder:'Source <span class="grad">builder</span>',
+    h1_promo:'Promo <span class="grad">planning</span>',
+    h1_reports:'Report visualisation <span class="grad">example</span>',
+    h1_reports_ov:'Tableau <span class="grad">reports</span>',
+    reports_sub:'A demo mock-up of how a Tableau report will look in this window. Real reports are connected on the Plan-Fact, CRM&nbsp;Matrix and CRM&nbsp;Leadgen pages, where the server address and workbook are set. All numbers in the mock-up are illustrative.',
   }
 };
 function t(s){ return (UI_LANG === "en" && I18N_EN[s]) ? I18N_EN[s] : s; }
@@ -278,6 +457,12 @@ function applyLang(rerender){
     if (cur.sid === "uploads") renderUploads(cur.cid);
     if (typeof sbUpdate === "function") sbUpdate();
     if (typeof translateAdminChrome === "function") translateAdminChrome();
+    if (typeof promoRender === "function") promoRender();
+    if (typeof rpRender === "function") rpRender();
+    renderSectionHero(CUR_VIEW, cur.sid, cur.cid);
+    /* заголовок раздела в шапке — на выбранном языке */
+    const s0 = NAV.find(n => n.id === cur.sid);
+    if (s0) renderPageCrumb(s0, cur.cid, $("#pageTitle") ? $("#pageTitle").textContent : "");
   }
 }
 applyTheme();
@@ -287,6 +472,11 @@ window.addEventListener("storage", e => {
   if (e.key === "crmpanel:theme") applyTheme();
   if (e.key === "crmpanel:lang") applyLang(true);
   if (e.key === "crmpanel:appSections") renderNav();
+  /* очерёдность подразделов поменяли в настроечной админке */
+  if (e.key === "crmpanel:subOrder"){
+    if (typeof applySubOrder === "function") applySubOrder();
+    if (typeof hideFlyout === "function") hideFlyout();
+  }
 });
 
 const $ = s => document.querySelector(s);
@@ -339,6 +529,38 @@ function renderLauncher(){
 }
 /* элементы, доступные только в отдельных приложениях (appOnly) */
 function childVisible(k){ return !k.appOnly || k.appOnly.includes(currentApp); }
+
+/* ---------- очерёдность подразделов ----------
+   Настраивается в настроечной админке («Приложения и разделы») и хранится
+   в crmpanel:subOrder = { comms:[ids…], reports:[…], dash:[…] }.
+   Применяется к меню 2-го уровня (flyout) и карточкам обзорных страниц. */
+function subOrder(sid){
+  const cfg = store.get("subOrder", null);
+  return cfg && Array.isArray(cfg[sid]) ? cfg[sid] : null;
+}
+function orderedChildren(s){
+  if (!s.children) return [];
+  const ord = subOrder(s.id);
+  if (!ord) return s.children;
+  return s.children.slice().sort((a, b) => {
+    let ia = ord.indexOf(a.id), ib = ord.indexOf(b.id);
+    if (ia < 0) ia = 900 + s.children.indexOf(a);   /* не настроенные — в конец, в исходном порядке */
+    if (ib < 0) ib = 900 + s.children.indexOf(b);
+    return ia - ib;
+  });
+}
+/* карточки обзорных страниц переставляются по data-nav-ref */
+function applySubOrder(){
+  NAV.forEach(s => {
+    if (!s.children || !s.overviewView) return;
+    const grid = document.querySelector("#" + s.overviewView + " .ov-grid");
+    if (!grid) return;
+    orderedChildren(s).forEach(c => {
+      const card = grid.querySelector('[data-nav-ref="' + c.id + '"]');
+      if (card) grid.appendChild(card);
+    });
+  });
+}
 /* элементы, видимые только в отдельных приложениях (карточка тепловой карты — «Маркетинг») */
 function updateAppSpecific(){
   const hm = document.getElementById("ovHeatmapCard");
@@ -426,7 +648,7 @@ flyout.onmouseenter = () => clearTimeout(flyTimer);
 flyout.onmouseleave = () => { flyTimer = setTimeout(hideFlyout, 200); };
 
 function showFlyout(itemEl, s){
-  const kids = (s.id === "uploads" ? uploadChildren() : s.children || []).filter(childVisible).filter(aclAllows);
+  const kids = (s.id === "uploads" ? uploadChildren() : orderedChildren(s)).filter(childVisible).filter(aclAllows);
   if (!kids.length){ hideFlyout(); return; }
   $("#flyoutTitle").textContent = t(s.label);
   const list = $("#flyoutList"); list.innerHTML = "";
@@ -511,7 +733,8 @@ function openSection(sid, cid){
     /* совместимость со старой плоской навигацией: openSection('admin') и т.п.
        (например, из journeys.js) — ищем id среди детей групп */
     const parent = NAV.find(n => n.children && n.children.some(c => c.id === sid));
-    if (!parent) return;
+    /* раздел исчез из NAV (например, access переехал в настройки) — уходим на главную */
+    if (!parent) { if (sid !== "home") openSection("home"); return; }
     cid = sid; sid = parent.id; s = parent;
   }
   if (!appAllows(sid)) { if (sid !== "home") openSection("home"); return; }
@@ -542,7 +765,8 @@ function openSection(sid, cid){
 
   if (target.view === "view-mon-campaigns") monBack();   /* мониторинг всегда начинаем с блоков */
   if (target.adminMode && typeof setAdminMode === "function") setAdminMode(target.adminMode);
-  if (sid === "access" && typeof renderAccessSection === "function") renderAccessSection();
+  /* отчёты Tableau: один view на все отчёты, содержимое задаёт reports.js */
+  if (target.report && typeof rpEmbedOpen === "function") rpEmbedOpen(target.report);
   if (sid === "journeys" && typeof initJourneysSection === "function") initJourneysSection();
   if (target.view === "sec-deviations") setTimeout(() => {
     /* графики Chart.js, созданные в скрытой секции, имеют нулевой размер —
@@ -557,9 +781,66 @@ function openSection(sid, cid){
   }, 30);
 
   if (sid !== "home" && cid !== "up-new") trackRecent({ sid, cid, label: target.label });
+  CUR_VIEW = target.view;
+  renderSectionHero(target.view, sid, cid);
+  renderPageCrumb(s, cid, target.label);
   document.title = "CRM Team · " + t(target.label || s.label);
   const ha = $("#homeActions"); if (ha) ha.style.display = sid === "home" ? "flex" : "none";
   store.set("lastSection", { sid, cid });
+}
+
+/* ---------- Шапка описания раздела (как на странице OneLink Builder) ----------
+   Разделы со своим героем (OneLink, Конструктор source, Отклонения, Промо)
+   пропускаются — у них заголовок уже есть в разметке. */
+let CUR_VIEW = "";
+const SEC_HERO = {
+  "comms:admin": { eyebrow:"CRM · Templates · Wizard", title:"Мастер коммуникаций",
+    sub:"Заведение нового шаблона: канал выбирается настроечным блоком, поля зависят от канала. communication_name и source_type собираются автоматически по правилам нейминга, справа — предпросмотр сообщения перед сохранением." },
+  "comms:templates": { eyebrow:"CRM · Templates · List view", title:"Список шаблонов",
+    sub:"Витрина всех шаблонов коммуникаций: поиск, сортировка, настройка отображаемых полей и фильтров через шестерёнку. Значения правятся прямо в таблице — карандаш у поля, подтверждение галочкой." },
+  "comms:viewer": { eyebrow:"CRM · Templates · Details", title:"Просмотр настроек",
+    sub:"Карточка шаблона со всеми параметрами: канал и шаблон выбираются настроечными блоками, каждое поле правится по карандашу, справа — предпросмотр сообщения в канале." },
+  "dash:dashboard": { eyebrow:"CRM · Analytics · Overview", title:"Общая статистика",
+    sub:"Сводные показатели по отправкам, доставкам и реакциям в разрезе каналов, продуктов и шаблонов." },
+  "monitoring:mon-campaigns": { eyebrow:"CRM · Monitoring · Campaigns", title:"Базовая работа кампаний",
+    sub:"Контроль основных этапов: отбор базы, поступление событий, отправки, доставки и дубли. Блок открывается кликом — внутри метрики и пороги." },
+  "uploads:": { eyebrow:"CRM · Tools · Uploads", title:"Загруженные инструменты",
+    sub:"Свои HTML-страницы внутри панели: оформление файла не меняется, страница масштабируется под размер окна." },
+  "journeys:": { eyebrow:"CRM · Journeys · Builder", title:"Цепочки",
+    sub:"Конструктор цепочек коммуникаций: шаги, условия и связи между шаблонами." }
+  /* «Управление доступом» рисует свой заголовок и описание (admin-users.js) */
+};
+function renderSectionHero(viewId, sid, cid){
+  const view = document.getElementById(viewId);
+  if (!view) return;
+  const meta = SEC_HERO[sid + ":" + (cid || "")];
+  const old = view.querySelector(":scope > .sec-hero");
+  if (!meta){ if (old) old.remove(); return; }
+  /* если у раздела уже есть собственный заголовок — второй не добавляем */
+  if (view.querySelector("h1:not(.sec-hero h1)")){
+    if (old) old.remove();
+    return;
+  }
+  const html = `<div class="eyebrow">${escapeShellHtml(meta.eyebrow)}</div>
+    <h1>${escapeShellHtml(t(meta.title))}</h1>
+    <p class="sub">${escapeShellHtml(t(meta.sub))}</p>`;
+  if (old){ old.innerHTML = html; return; }
+  const box = document.createElement("header");
+  box.className = "sec-hero";
+  box.innerHTML = html;
+  view.insertBefore(box, view.firstChild);
+}
+
+/* Название текущего раздела в шапке: «родитель › раздел».
+   Для загруженных инструментов заголовок — имя файла, не переводится. */
+function renderPageCrumb(s, cid, label){
+  const crumb = $("#pageCrumb");
+  if (!crumb || !s) return;
+  const child = (cid && s.children) ? s.children.find(c => c.id === cid) : null;
+  const isTool = s.id === "uploads" && cid && cid !== "up-new";
+  crumb.classList.toggle("no-parent", !child && !isTool);
+  $("#pageParent").textContent = (child || isTool) ? t(s.label) : "";
+  $("#pageTitle").textContent = isTool ? (label || t(s.label)) : t(child ? child.label : s.label);
 }
 
 /* Режим раздела админки: wizard (мастер) / list (шаблоны) / dashboard / view (просмотр настроек).
@@ -589,11 +870,14 @@ function wizardSetChannel(ch){
     b.classList.toggle("active", b.dataset.ch === ch);
   });
   document.querySelectorAll("#sec-admin .form").forEach(function(f){ f.classList.remove("active"); });
-  const f = document.getElementById(ch);
-  if (f) f.classList.add("active");
+  /* мастер показывает карточку нового шаблона (то же оформление, что «Просмотр настроек»);
+     цепочки заводятся в самой карточке — секция «Цепочка» */
+  const card = document.getElementById("wizard");
+  if (card) card.classList.add("active");
   /* как при переходе на канальную вкладку (openTab): новый шаблон → сбрасываем контекст
      редактирования, чтобы сохранение пошло как INSERT, а не UPDATE открытого шаблона */
   window.CRM_CURRENT = null;
+  if (typeof wizardCardOpen === "function") wizardCardOpen(ch);
 }
 
 /* ---------- мониторинг: заглушки статистики блоков ---------- */
@@ -952,3 +1236,4 @@ function timeAgo(ts){
 renderLauncher();
 renderNav();
 updateAppSpecific();
+applySubOrder();

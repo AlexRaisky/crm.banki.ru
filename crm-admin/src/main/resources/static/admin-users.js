@@ -192,9 +192,7 @@
     if (!root) return;
     if (rendered) return;
     root.innerHTML = "";
-    root.appendChild(h("h2", { style: "margin:0 0 4px" }, [tr("Управление доступом")]));
-    root.appendChild(h("p", { style: "color:var(--dim);margin:0 0 20px;font-size:13px" },
-      [tr("Роль задаёт уровень возможностей, набор разделов — что видит пользователь.")]));
+    /* заголовок и описание рисует pane настроечной админки (pane-access) */
     var usersContainer = h("div", null, []);
     CRM.adminSections().then(function (secs) {
       allSections = secs;

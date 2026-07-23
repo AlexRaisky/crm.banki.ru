@@ -60,6 +60,16 @@
   .waffle svg{width:19px;height:19px}
   .app-name{font-weight:700;font-size:16px;letter-spacing:-.01em;white-space:nowrap}
 
+  /* Название текущего раздела в шапке */
+  .page-crumb{display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden}
+  .page-crumb .pc-sep,.page-crumb .pc-arrow{color:var(--faint);font-size:14px}
+  .page-crumb .pc-parent{color:var(--dim);font-size:13.5px;white-space:nowrap}
+  .page-crumb .pc-title{color:var(--ink);font-size:14.5px;font-weight:600;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .page-crumb.no-parent .pc-parent,.page-crumb.no-parent .pc-arrow{display:none}
+  @media (max-width:1000px){.page-crumb .pc-parent,.page-crumb .pc-arrow{display:none}}
+  @media (max-width:760px){.page-crumb{display:none}}
+
   .gheader-actions{display:flex;align-items:center;gap:8px;margin-left:auto;padding-left:12px;min-width:0}
   #homeActions{display:flex;align-items:center;gap:8px}
   .iconbtn{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;
@@ -432,6 +442,32 @@
   .up-note b{color:var(--dim)}
 
   /* ============================================================
+     Попап подсказок полей (#fieldHelpPopup, showFieldHelp):
+     position:fixed — виден целиком, не обрезается краями
+     карточек и секций, в отличие от CSS-тултипа .info .tip.
+     ============================================================ */
+  #fieldHelpPopup{position:fixed;z-index:400;max-width:310px;background:#0D1826;
+    border:1px solid var(--line);border-radius:9px;padding:10px 12px;
+    font-family:var(--sans);font-size:12.5px;line-height:1.5;color:#A7BAD4;
+    white-space:pre-line;box-shadow:0 10px 30px rgba(0,0,0,.5);pointer-events:none}
+  html.theme-light #fieldHelpPopup{background:#FFFFFF;color:#44597A;
+    box-shadow:0 10px 30px rgba(30,60,100,.25)}
+
+  /* ============================================================
+     Шапка описания раздела (как на странице OneLink Builder):
+     надзаголовок, название и пояснение. Добавляется shell.js
+     тем разделам, у которых нет собственного заголовка.
+     ============================================================ */
+  .sec-hero{display:block;padding:22px 26px 4px;max-width:1180px}
+  .sec-hero .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:8px}
+  .sec-hero h1{font-family:var(--sans);font-size:26px;font-weight:700;letter-spacing:-.015em;
+    color:var(--ink);margin:0 0 8px}
+  .sec-hero .sub{font-family:var(--sans);font-size:13.5px;line-height:1.6;color:var(--dim);
+    margin:0;max-width:880px;text-transform:none;letter-spacing:normal}
+  @media(max-width:820px){.sec-hero{padding:16px 14px 2px}.sec-hero h1{font-size:22px}}
+
+  /* ============================================================
      СВЕТЛАЯ ТЕМА — добивка хардкодов внутри секций.
      Базовую работу делает переопределение var(--...) выше
      (для body и @scope-корней sec-admin/onelink/deviations);
@@ -448,6 +484,9 @@
   html.theme-light .jrn-start .jrn-head{color:#6D3FC8;background:rgba(109,63,200,.12)}
   /* Загруженные инструменты: тулбар */
   html.theme-light .up-toolbar{background:rgba(255,255,255,.7)}
+  /* Бейдж канала VK: в светлой теме исходный #9aa6ff слишком бледный */
+  html.theme-light #sec-admin .channel-vk,
+  html.theme-light #sec-promo .chan.vk{color:#5B67D8;background:rgba(91,103,216,.14)}
   /* Тёмные «консольные» подложки OneLink / Конструктора source */
   html.theme-light #sec-onelink .output,
   html.theme-light #sec-onelink .camp-preview,
@@ -456,7 +495,9 @@
   html.theme-light #sec-onelink .subgroup{background:rgba(20,60,100,.04)}
   html.theme-light #sec-onelink select option,html.theme-light #sec-onelink select optgroup,
   html.theme-light #sec-srcbuilder select option,
-  html.theme-light #sec-admin .sfd-row select.sfd-edit option{background:#FFFFFF;color:#16283E}
+  html.theme-light #sec-admin .sfd-row select.sfd-edit option,
+  /* правка ячейки списка: выпадашка захардкожена тёмной (.sf-cell-edit select option) */
+  html.theme-light #sec-admin .sf-cell-edit select option{background:#FFFFFF;color:#16283E}
   html.theme-light #sec-onelink input[type=date],html.theme-light #sec-srcbuilder input[type=date]{color-scheme:light}
   /* Подсказки (i) мастера и OneLink: тёмный тултип → светлая карточка */
   html.theme-light #sec-onelink .info .tip,html.theme-light #sec-admin .info .tip{

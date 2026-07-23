@@ -752,15 +752,31 @@ button:hover{filter:brightness(1.08)}
     color:var(--ink);font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer}
 .sf-btn:hover{border-color:var(--blue);color:var(--blue)}
 .sf-count{font-size:12px;color:var(--faint);margin:2px 0 10px}
-.sf-table-wrap{max-height:540px;overflow:auto;border:1px solid var(--line);border-radius:12px}
+/* окно списка подстраивается под высоту экрана (шапка раздела ≈ 320px) */
+.sf-table-wrap{max-height:calc(100vh - 320px);min-height:320px;overflow:auto;
+    border:1px solid var(--line);border-radius:12px}
 .sf-table{width:100%;border-collapse:collapse}
 .sf-table thead th{position:sticky;top:0;background:var(--card2);z-index:2;font-size:12px;color:var(--dim);
-    text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+    text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap;
+    border-right:1px solid var(--line)}
+.sf-table thead th:last-child{border-right:none}
 .sf-table th.sf-sortable{cursor:pointer;user-select:none}
 .sf-table th.sf-sortable:hover{color:var(--ink)}
 .sf-table .sf-sort{font-size:10px;color:var(--blue)}
-.sf-table tbody td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle}
+/* лёгкая сетка: видно, к какому полю относится карандаш */
+.sf-table tbody td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle;
+    border-right:1px solid var(--line)}
+.sf-table tbody td:last-child{border-right:none}
 .sf-table tbody tr:hover{background:rgba(80,195,255,.05)}
+.sf-table tbody td:hover{background:rgba(80,195,255,.07)}
+/* бейджи каналов — та же раскраска и шрифт Coil, что в «Планировании промо» */
+.sf-table .channel-badge{display:inline-block;font-family:"Coil","Golos Text","Manrope",var(--sans);
+    font-weight:600;font-size:12px;padding:2px 8px;border-radius:10px;text-transform:none;
+    background:var(--blue-bg);color:var(--blue)}
+.sf-table .channel-push,.sf-table .channel-mobile-push{background:var(--amber-bg);color:var(--amber)}
+.sf-table .channel-cc{background:var(--green-bg);color:var(--green)}
+.sf-table .channel-vk{background:rgba(140,140,255,.16);color:#9aa6ff}
+.sf-table .channel-fa{background:rgba(255,107,138,.14);color:var(--coral)}
 .sf-check-col{width:34px}
 .sf-table input[type=checkbox]{accent-color:#3CFAB4;width:15px;height:15px;cursor:pointer}
 .sf-link{color:var(--blue);cursor:pointer;font-weight:600;background:none;border:none;padding:0;
@@ -774,9 +790,11 @@ button:hover{filter:brightness(1.08)}
 
 /* ---- Карточка шаблона: раскладка с предпросмотром ---- */
 .sfd-top{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-.sfd-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;align-items:start}
-@media(max-width:1100px){.sfd-layout{grid-template-columns:1fr}}
-.sfd-side{position:sticky;top:8px}
+/* Предпросмотр — отдельным окном ПОСЛЕ карточки настроек, а не сбоку:
+   вёрстке письма (e-mail) нужна полная ширина. */
+.sfd-layout{display:block}
+.sfd-side{position:static;margin-top:18px}
+.sfd-side:empty{display:none}
 
 /* карандаш и inline-редактирование (как в Salesforce) */
 .sfd-row{position:relative;padding-right:30px}
@@ -795,6 +813,24 @@ button:hover{filter:brightness(1.08)}
 .sfd-row select.sfd-edit{cursor:pointer}
 .sfd-row select.sfd-edit option{background:#0D1826;color:#F2F7FD}
 .sfd-row .sfd-edit-check{width:17px;height:17px;accent-color:#3CFAB4;cursor:pointer}
+
+/* секция «Цепочка» в карточке мастера */
+.sfd-chain{padding:12px 18px 16px;display:flex;flex-direction:column;gap:12px}
+.sfd-chain-on{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--ink);cursor:pointer}
+.sfd-chain-on input{width:17px;height:17px;accent-color:#3CFAB4;cursor:pointer}
+.sfd-chain-days{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sfd-chain-days span{font-size:12px;color:var(--faint)}
+.sfd-chain-days .sfd-edit{width:200px}
+.sfd-chain-tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+.sfd-chain-tbl{width:100%;border-collapse:collapse}
+.sfd-chain-tbl th{background:var(--card2);color:var(--dim);font-size:11.5px;text-align:left;
+    padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.sfd-chain-tbl td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top;
+    border-right:1px solid var(--line)}
+.sfd-chain-tbl td:last-child{border-right:none}
+.sfd-chain-tbl td.d{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--blue)}
+.sfd-chain-tbl .sfd-edit{min-width:140px}
+.sfd-chain-note{font-size:11.5px;color:var(--faint);line-height:1.5}
 
 .sfd-footer{position:sticky;bottom:0;display:flex;gap:10px;justify-content:center;align-items:center;
     padding:12px;border-top:1px solid var(--line);background:rgba(13,24,38,.92);backdrop-filter:blur(6px);
@@ -819,15 +855,38 @@ button:hover{filter:brightness(1.08)}
 .pv-os button{flex:1;padding:7px 10px;border-radius:9px;border:1px solid var(--line);background:var(--card2);
     color:var(--dim);font-family:var(--sans);font-size:12.5px;font-weight:600;cursor:pointer}
 .pv-os button.active{background:var(--blue-bg);border-color:rgba(80,195,255,.45);color:var(--ink)}
-.pv-push{border-radius:14px;padding:12px 14px;max-width:320px;margin:0 auto}
-.pv-push.ios{background:rgba(245,247,250,.96);color:#111}
-.pv-push.android{background:#1F2937;color:#F3F4F6;border:1px solid #374151}
+.pv-push{border-radius:14px;padding:12px 14px;max-width:320px;margin:0 auto;
+    background:rgba(245,247,250,.96);color:#111}
 .pv-push-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .pv-push-appico{width:20px;height:20px;border-radius:5px;background:linear-gradient(120deg,#3CFAB4,#50C3FF);flex:0 0 auto}
 .pv-push-app{font-size:10.5px;font-weight:600;opacity:.75;text-transform:uppercase;letter-spacing:.03em}
 .pv-push-when{margin-left:auto;font-size:10px;opacity:.55}
-.pv-push-title{font-size:13px;font-weight:700;margin-bottom:3px;word-break:break-word}
-.pv-push-body{font-size:12.5px;line-height:1.4;opacity:.9;word-break:break-word;white-space:pre-wrap}
+/* заголовок — одна строка, текст — до четырёх: так пуш выглядит на экране блокировки.
+   Переполнение ловит sfdPushFit() и показывает предупреждение под карточкой. */
+.pv-push-title{font-size:13px;font-weight:700;margin-bottom:3px;word-break:break-word;
+    display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.pv-push-body{font-size:12.5px;line-height:1.4;opacity:.9;word-break:break-word;white-space:pre-wrap;
+    display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+/* предпросмотр FA / VK: сообщение мессенджера с кнопками */
+.pv-im{border-radius:14px;padding:12px 14px;max-width:360px;margin:0 auto;background:var(--card2);
+    border:1px solid var(--line)}
+.pv-im-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:var(--ink)}
+.pv-im-ava{width:22px;height:22px;border-radius:50%;flex:0 0 auto}
+.pv-im-ava.fa{background:linear-gradient(120deg,#3CFAB4,#50C3FF)}
+.pv-im-ava.vk{background:#4C75A3}
+.pv-im-bubble{background:var(--bg2);border:1px solid var(--line);border-radius:4px 14px 14px 14px;
+    padding:10px 12px;font-size:12.5px;line-height:1.45;color:var(--ink);
+    word-break:break-word;white-space:pre-wrap}
+.pv-im-btns{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.pv-im-btns span{display:block;text-align:center;font-size:12px;font-weight:600;padding:7px 10px;
+    border-radius:9px;background:var(--blue-bg);color:var(--blue);border:1px solid rgba(80,195,255,.35)}
+.pv-im.vk .pv-im-btns span{background:rgba(76,117,163,.18);color:#7FA9D8;border-color:rgba(76,117,163,.5)}
+
+.pv-fit{margin-top:10px;font-size:11.5px;line-height:1.5;padding:8px 10px;border-radius:9px}
+.pv-fit.ok{background:var(--green-bg);color:var(--green)}
+.pv-fit.bad{background:rgba(255,107,138,.14);color:var(--coral)}
+.sfd-miss{font-size:12px;color:var(--coral);margin-right:auto}
+.sf-btn:disabled{opacity:.5;cursor:not-allowed}
 
 /* Email: вкладыш Letteros */
 .pv-em{border:1px solid var(--line);border-radius:12px;overflow:hidden}
@@ -836,7 +895,8 @@ button:hover{filter:brightness(1.08)}
 .pv-em-meta{padding:10px 12px;border-bottom:1px solid var(--line);font-size:12.5px}
 .pv-em-meta .l{color:var(--faint);font-size:11px}
 .pv-em-meta .v{color:var(--ink);word-break:break-word}
-.pv-em-frame{width:100%;height:280px;border:0;background:#fff;display:block}
+/* письмо теперь в отдельном окне на всю ширину — фрейму даём высоту под целую вёрстку */
+.pv-em-frame{width:100%;height:min(72vh,760px);border:0;background:#fff;display:block}
 .pv-em-stub{padding:26px 16px;text-align:center;color:var(--faint);font-size:12.5px;
     border:1px dashed rgba(80,195,255,.3);margin:12px;border-radius:10px}
 
@@ -859,3 +919,46 @@ button:hover{filter:brightness(1.08)}
 .ms-opt input{accent-color:#3CFAB4;width:15px;height:15px;cursor:pointer;flex:0 0 auto;margin:0}
 .ms-opt.ms-all{color:var(--dim);border-bottom:1px solid var(--line);margin-bottom:4px;border-radius:8px 8px 0 0}
 }
+
+/* ---- Настройка списка: отображаемые колонки и фильтры ---- */
+.sf-settings{position:relative}
+.sf-gear{width:38px;height:38px;min-width:38px;padding:0;box-sizing:border-box;border-radius:10px;
+    border:1px solid var(--line);background:var(--card2);background-image:none;color:var(--dim);cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center}
+.sf-gear:hover{color:var(--blue);border-color:var(--blue);filter:none}
+.sf-gear svg{width:17px;height:17px;display:block;stroke:currentColor;fill:none}
+.sf-panel{position:absolute;right:0;top:46px;z-index:60;width:330px;max-height:70vh;overflow:auto;
+    background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:14px;
+    box-shadow:0 18px 50px rgba(0,0,0,.45);display:none}
+.sf-panel.open{display:block}
+.sf-panel h4{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);margin:4px 0 8px;font-weight:600}
+.sf-panel h4:not(:first-child){margin-top:16px}
+.sf-panel label{display:flex;align-items:center;gap:9px;padding:6px 7px;border-radius:8px;
+    font-size:13.5px;color:var(--dim);cursor:pointer;margin:0}
+.sf-panel label:hover{background:var(--card);color:var(--ink)}
+.sf-panel input[type=checkbox]{width:15px;height:15px;accent-color:#3CFAB4;cursor:pointer}
+.sf-panel .sf-panel-foot{display:flex;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.sf-panel .sf-panel-foot button{flex:1;padding:8px;border-radius:9px;font-size:12.5px}
+
+/* ---- Inline-редактирование ячеек списка ---- */
+.sf-table td.sf-cell{position:relative;padding-right:30px}
+.sf-cell-pen{position:absolute;right:4px;top:50%;transform:translateY(-50%);
+    width:22px;height:22px;min-width:22px;padding:0;box-sizing:border-box;border-radius:6px;
+    border:1px solid transparent;background:transparent;background-image:none;color:var(--dim);cursor:pointer;
+    opacity:0;transition:.12s;display:inline-flex;align-items:center;justify-content:center}
+.sf-cell-pen svg{width:12px;height:12px;display:block;stroke:currentColor;fill:none}
+.sf-table tbody tr:hover .sf-cell-pen{opacity:.8}
+.sf-cell-pen:hover{opacity:1;color:var(--blue);border-color:var(--blue);background:var(--card2);filter:none}
+.sf-cell-edit{display:flex;align-items:center;gap:5px}
+.sf-cell-edit input[type=text],.sf-cell-edit select{flex:1;min-width:60px;background:var(--bg2);
+    border:1px solid rgba(80,195,255,.5);border-radius:7px;color:var(--ink);
+    font-family:var(--sans);font-size:12.5px;padding:5px 7px;outline:none}
+.sf-cell-edit select option{background:#0D1826;color:#F2F7FD}
+.sf-cell-ok,.sf-cell-no{width:24px;height:24px;min-width:24px;flex:0 0 auto;border-radius:6px;cursor:pointer;
+    padding:0;box-sizing:border-box;border:1px solid var(--line);background-image:none;font-size:12px;line-height:1;
+    display:inline-flex;align-items:center;justify-content:center;filter:none}
+.sf-cell-ok{background:var(--green-bg);color:var(--green);border-color:rgba(60,250,180,.4)}
+.sf-cell-ok:hover{background:var(--green);color:#06202B;filter:none}
+.sf-cell-no{background:var(--card2);color:var(--dim)}
+.sf-cell-no:hover{color:var(--coral);border-color:rgba(255,107,138,.45);filter:none}
