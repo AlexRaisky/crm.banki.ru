@@ -4,6 +4,8 @@
    Данные — v1-объект (CRM.dtoToV1), сохранение — CRM.updateTemplate.
    ==================================================================================== */
 var SFD_STATE = null; /* { id, orig, work, editing:{}, pushOS } */
+/* Подписи каналов — используются в карточке и в пикере «Просмотра настроек». */
+var CH_LABELS = { sms:'SMS', push:'Push', 'mobile-push':'Push', email:'Email', cc:'КЦ', fa:'FA', vk:'VK', la:'Live Activity' };
 function sfdT(s){ return (typeof t === 'function') ? t(s) : s; }
 function sfdEsc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
 
@@ -216,7 +218,7 @@ function sfdRender(){
     var output = document.getElementById('settingsOutput');
     if (!output) return;
     var d = st.work;
-    var chLabels = { sms:'SMS', push:'Push', 'mobile-push':'Push', email:'Email', cc:'КЦ', fa:'FA', vk:'VK', la:'Live Activity' };
+    var chLabels = CH_LABELS;
     var isEmail = d.channel === 'email';
     var mainId = isEmail
         ? (d.letteros_id != null && d.letteros_id !== '' ? d.letteros_id : d.code)
@@ -753,7 +755,10 @@ function refreshViewTemplateSelect() {
         items.forEach(function(t) {
             var opt = document.createElement('option');
             opt.value = t.id;
-            opt.textContent = t.code + ' - ' + (t.name || String(t.code)) + (t.active ? '' : ' ' + sfdTT('(неактивный)'));
+            // канал в начале: при «всех каналах» коды повторяются между каналами и без него не различить
+            var ch = CH_LABELS[t.channel] || t.channel || '';
+            opt.textContent = (ch ? ch + ' · ' : '') + t.code + ' - ' + (t.name || String(t.code)) +
+                              (t.active ? '' : ' ' + sfdTT('(неактивный)'));
             sel.appendChild(opt);
         });
         if (current && items.some(function(t) { return t.id === current; })) sel.value = current;
