@@ -18,6 +18,8 @@ import org.springframework.web.server.ResponseStatusException;
 import ru.banki.crm.service.AdminLogService;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -25,6 +27,10 @@ import java.util.regex.Pattern;
  * Первый потребитель — настроечная админка /settings: конфиг «приложение → разделы»
  * под ключом 'appSections'. Чтение — любой аутентифицированный (оболочка панели
  * применяет конфиг при загрузке), запись — только ADMIN.
+ * <p>
+ * Раз чтение открыто всем ролям, здесь нельзя хранить настройки с секретами внутри
+ * значения: такие ключи перечислены в {@link #RESTRICTED_KEYS} и обслуживаются
+ * собственными контроллерами, умеющими резать секрет по роли.
  */
 @RestController
 @RequestMapping("/api/panel-settings")
@@ -32,6 +38,21 @@ public class PanelSettingsController {
 
     /** Допустимые ключи: буква, дальше буквы/цифры/_/-, всего ≤ 64 (по ширине колонки). */
     private static final Pattern KEY_PATTERN = Pattern.compile("[a-zA-Z][a-zA-Z0-9_-]{0,63}");
+
+    /**
+     * Ключи, которые этот эндпоинт не обслуживает ни на чтение, ни на запись.
+     * <p>
+     * Причина: GET здесь открыт любому аутентифицированному (оболочка панели читает
+     * конфиг при загрузке), а значение таких ключей содержит секрет. Пускать их через
+     * общий эндпоинт — значит отдать секрет READER'у в обход санитайзинга специального API.
+     * <ul>
+     *   <li>{@code tableauReports} — подключения раздела «Отчёты»: внутри токен Tableau
+     *       (JWT/PAT). Обслуживается {@link ReportConnectionController} (/api/reports/connections),
+     *       который вырезает токен всем, кроме ADMIN.</li>
+     * </ul>
+     * Любой новый ключ со секретом внутри значения обязан попасть сюда же.
+     */
+    private static final Set<String> RESTRICTED_KEYS = Set.of("tableaureports");
 
     public record SettingDto(String key, JsonNode value) {}
 
@@ -88,6 +109,13 @@ public class PanelSettingsController {
         if (key == null || !KEY_PATTERN.matcher(key).matches()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Некорректный ключ настройки (ожидается [a-zA-Z][a-zA-Z0-9_-]{0,63})");
+        }
+        // Ровно 404, а не 403: по коду ответа не должно быть видно, существует ли такая
+        // настройка вообще — иначе эндпоинт превращается в детектор «секрет заведён».
+        // Регистр игнорируем: ключ мог бы отличаться регистром и всё равно указывать на секрет.
+        if (RESTRICTED_KEYS.contains(key.toLowerCase(Locale.ROOT))) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Настройка обслуживается отдельным API: " + key);
         }
     }
 

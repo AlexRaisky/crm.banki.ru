@@ -43,7 +43,9 @@
       radial-gradient(900px 480px at 5% -5%,rgba(60,250,180,.08),transparent 55%);}
   a{color:var(--blue);text-decoration:none}
 
-  .app{display:flex;flex-direction:column;height:100vh}
+  /* dvh, а не vh: на мобильных vh считается по экрану с раскрытой адресной строкой,
+     из-за чего низ панели уезжает за видимую область. vh оставлен запасным вариантом. */
+  .app{display:flex;flex-direction:column;height:100vh;height:100dvh}
 
   /* ================= ГЛОБАЛЬНАЯ ШАПКА ================= */
   .gheader{display:flex;align-items:center;gap:10px;padding:0 14px;height:56px;flex:0 0 auto;
@@ -61,7 +63,11 @@
   .app-name{font-weight:700;font-size:16px;letter-spacing:-.01em;white-space:nowrap}
 
   /* Название текущего раздела в шапке */
-  .page-crumb{display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden}
+  /* Крошка — единственный блок шапки, которому можно ужиматься: у заголовка есть
+     многоточие. Всё остальное (логотип, вафля, кнопки пользователя) сжиматься не
+     умеет, и раньше при нехватке места ужимался блок действий, а «Выйти» вылезала
+     за правый край и растягивала страницу. */
+  .page-crumb{display:flex;align-items:center;gap:8px;flex:0 1 auto;min-width:0;overflow:hidden}
   .page-crumb .pc-sep,.page-crumb .pc-arrow{color:var(--faint);font-size:14px}
   .page-crumb .pc-parent{color:var(--dim);font-size:13.5px;white-space:nowrap}
   .page-crumb .pc-title{color:var(--ink);font-size:14.5px;font-weight:600;white-space:nowrap;
@@ -70,7 +76,7 @@
   @media (max-width:1000px){.page-crumb .pc-parent,.page-crumb .pc-arrow{display:none}}
   @media (max-width:760px){.page-crumb{display:none}}
 
-  .gheader-actions{display:flex;align-items:center;gap:8px;margin-left:auto;padding-left:12px;min-width:0}
+  .gheader-actions{display:flex;align-items:center;gap:8px;margin-left:auto;padding-left:12px;flex:0 0 auto}
   #homeActions{display:flex;align-items:center;gap:8px}
   .iconbtn{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;
     color:var(--dim);border:1px solid transparent;background:none;cursor:pointer;flex:0 0 auto}
@@ -388,7 +394,9 @@
   .ov-head h1{font-size:26px;font-weight:700;letter-spacing:-.015em}
   .ov-head h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
   .ov-sub{color:var(--dim);font-size:14px;margin:6px 0 24px;max-width:720px}
-  .ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  /* min(300px,100%) вместо 300px: иначе на экране уже 300px трек не сжимается
+     и обзорная страница (в том числе «Отчёты») даёт горизонтальный скролл. */
+  .ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:16px}
   .ov-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;cursor:pointer;
     transition:.16s;box-shadow:0 10px 30px rgba(4,12,22,.4)}
   .ov-card:hover{border-color:rgba(60,250,180,.45);transform:translateY(-2px)}
@@ -515,7 +523,17 @@
     #homeActions{display:none !important}   /* «Настроить главную» прячем, экономим место */
   }
   @media (max-width:760px){
-    .grid,.ov-grid{grid-template-columns:1fr}
+    .grid{grid-template-columns:1fr}
     .sidebar{position:fixed;z-index:120;height:100%}
     .brandname{display:none}
+  }
+  /* Узкий экран: «Пароль» и «Выйти» не сжимаются, и при 375px вылезали за правый
+     край, растягивая страницу до 522px — горизонтальный скролл был на ЛЮБОМ разделе.
+     Освобождаем место, убирая название приложения (его же показывает вафля),
+     и запрещаем бейджу пользователя ужиматься под кнопками. */
+  @media (max-width:700px){
+    .app-name{display:none}
+    .user-box{flex:0 0 auto;padding-left:8px}
+    .gheader{gap:6px;padding:0 8px}
+    .gheader-actions{padding-left:6px;gap:6px}
   }

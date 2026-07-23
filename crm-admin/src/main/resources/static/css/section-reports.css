@@ -1,6 +1,23 @@
 /* ===== Отчёты (Tableau): макет окна и страницы отчётов, изолированы ===== */
 @scope (#view-reports, #view-report-embed){
-  :scope{color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;padding:24px 22px 80px}
+  /* Секция лежит внутри .view (position:absolute;inset:0;overflow-y:auto), то есть её
+     высота УЖЕ равна высоте области контента. Поэтому вместо ручного вычитания
+     «шапка + hero + настройки» делаем колонку-флекс: сколько бы ни занимали блоки
+     сверху, область отчёта заберёт остаток и пустоты внизу не будет. Вычитание тут
+     не годится принципиально — блок .rp-setup виден только админу, а высота hero
+     зависит от длины названия отчёта и от переноса строк на узком экране.
+     Правило вешаем ТОЛЬКО на .active: shell.css прячет неактивные секции через
+     .view{display:none}, и безусловный display:flex показал бы их все. Компаунд
+     :scope.view.active заведомо перебивает .view.active из shell.css. */
+  :scope.view.active{display:flex;flex-direction:column}
+  /* нижний отступ был 80px «на воздух» под скроллом; при раскладке во всю высоту
+     он превращался бы в ту самую пустоту под отчётом, поэтому уравнен с боковым */
+  :scope{color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;
+    padding:24px 22px 22px}
+
+  /* Всё, что не отчёт, — фиксированной высоты: сжиматься и растягиваться должна
+     только область отчёта (.tv-frame / .rp-embed) */
+  .rp-hero,.rp-toolbar,.rp-setup,.rp-code{flex:0 0 auto}
 
   /* шапка описания раздела (как на OneLink Builder) */
   .rp-hero{max-width:1180px;margin-bottom:18px}
@@ -13,11 +30,14 @@
 
   /* панель выбора отчёта */
   .rp-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
-  .rp-toolbar .f{display:flex;flex-direction:column;gap:5px}
+  /* min-width:0 обязателен: иначе флекс-элемент не сжимается уже своего содержимого
+     и длинный <option> распирает строку за край экрана */
+  .rp-toolbar .f{display:flex;flex-direction:column;gap:5px;min-width:0}
   .rp-toolbar label{font-size:11.5px;color:var(--faint)}
   .rp-toolbar select{background:var(--bg2);border:1px solid var(--line);border-radius:9px;color:var(--ink);
-    font-family:var(--sans);font-size:13px;padding:8px 10px;outline:none;min-width:190px}
-  .rp-toolbar select option{background:#0D1826;color:#F2F7FD}
+    font-family:var(--sans);font-size:13px;padding:8px 10px;outline:none;min-width:190px;max-width:100%}
+  /* было #0D1826/#F2F7FD — выпадашка оставалась тёмной в светлой теме */
+  .rp-toolbar select option{background:var(--bg2);color:var(--ink)}
   .rp-toolbar .spacer{margin-left:auto}
   .rp-toolbar .btn{font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 13px;border-radius:9px;
     cursor:pointer;border:1px solid var(--line);background:var(--card2);color:var(--ink);background-image:none}
@@ -26,17 +46,24 @@
   .rp-toolbar .btn.accent:hover{color:#06101B;filter:brightness(1.08)}
 
   /* ---- «окно» Tableau ---- */
+  /* было height:min(64vh,620px) — на высоком экране под окном оставалась пустота,
+     на низком окно вылезало за экран. Теперь окно забирает весь остаток колонки,
+     а min-height лишь страхует от схлопывания, когда сверху много контента.
+     dvh вместо vh: на мобильных при спрятанной адресной строке vh считается от
+     развёрнутого экрана и окно оказывается выше доступной области. */
   .tv-frame{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg2);
     box-shadow:0 12px 34px rgba(4,12,22,.28);display:flex;flex-direction:column;
-    height:min(64vh,620px);min-height:380px}
-  .tv-frame.tv-fullscreen{position:fixed;inset:14px;z-index:200;height:auto;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+    flex:1 1 auto;min-height:min(60vh,380px);min-height:min(60dvh,380px)}
+  .tv-frame.tv-fullscreen{position:fixed;inset:14px;z-index:200;height:auto;min-height:0;
+    box-shadow:0 30px 80px rgba(0,0,0,.5)}
 
   .tv-bar{display:flex;align-items:center;gap:14px;padding:9px 12px;background:var(--card2);
-    border-bottom:1px solid var(--line);flex:0 0 auto}
-  .tv-brand{display:flex;align-items:center;gap:7px;font-weight:700;font-size:13px;color:var(--ink)}
+    border-bottom:1px solid var(--line);flex:0 0 auto;flex-wrap:wrap}
+  .tv-brand{display:flex;align-items:center;gap:7px;font-weight:700;font-size:13px;color:var(--ink);min-width:0}
+  .tv-brand span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tv-logo{width:16px;height:16px;border-radius:4px;flex:0 0 auto;
     background:conic-gradient(from 210deg,#1f77b4,#5aa9e6,#f2a900,#c86b1a,#1f77b4)}
-  .tv-tabs{display:flex;gap:2px}
+  .tv-tabs{display:flex;gap:2px;flex-wrap:wrap}
   .tv-tabs button{font-family:var(--sans);font-size:12.5px;padding:6px 12px;border-radius:8px 8px 0 0;cursor:pointer;
     border:1px solid transparent;border-bottom:2px solid transparent;background:transparent;background-image:none;
     color:var(--dim)}
@@ -44,9 +71,11 @@
   .tv-tabs button.on{color:var(--blue);border-bottom-color:var(--blue);background:var(--card)}
   .tv-demo{margin-left:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;font-weight:700;
     color:var(--amber);background:var(--amber-bg);border:1px solid rgba(255,184,77,.4);
-    padding:3px 8px;border-radius:20px}
+    padding:3px 8px;border-radius:20px;flex:0 0 auto}
 
-  .tv-body{flex:1;overflow:auto;padding:16px;background:var(--bg2)}
+  /* min-width:0 — чтобы широкий дашборд скроллился внутри тела окна, а не распирал
+     само окно (и вместе с ним страницу) */
+  .tv-body{flex:1;overflow:auto;padding:16px;background:var(--bg2);min-width:0;min-height:0}
   .tv-foot{display:flex;align-items:center;padding:7px 12px;background:var(--card2);
     border-top:1px solid var(--line);flex:0 0 auto}
   .tv-tools{display:flex;gap:4px}
@@ -57,13 +86,18 @@
   .tv-tools i:hover{color:var(--blue);border-color:var(--blue)}
 
   /* ---- макет дашборда внутри окна ---- */
+  /* auto-fit+minmax вместо медиазапросов: колонок столько, сколько влезает по факту,
+     а не по ширине окна браузера (слева ещё сайдбар, реальная ширина заметно меньше).
+     min(...,100%) в minmax — страховка от главного бага auto-fit: когда контейнер
+     уже минимума трека, колонка не сжимается и вылезает за край, давая горизонтальный
+     скролл. Порог 210px для KPI даёт 4 плитки на десктопе и 2 на планшете. */
   .dash-grid{display:grid;gap:12px}
-  .dash-grid.kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:12px}
-  .dash-grid.tiles{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .dash-grid.kpis{grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));margin-bottom:12px}
+  .dash-grid.tiles{grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr))}
   .tv-title{font-size:13px;font-weight:600;margin-bottom:2px}
   .tv-sub{font-size:11.5px;color:var(--faint)}
 
-  .kpi-t{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .kpi-t{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0}
   .kpi-t .l{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
   .kpi-t .v{font-size:22px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums}
   .kpi-t .v.green{color:var(--green)} .kpi-t .v.blue{color:var(--blue)}
@@ -71,8 +105,13 @@
   .kpi-t .d{font-size:11px;margin-top:3px;color:var(--faint)}
   .kpi-t .d.up{color:var(--green)} .kpi-t .d.down{color:var(--coral)}
 
-  .tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 15px}
-  .tile-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 15px;min-width:0}
+  /* Таблица не умеет сжиматься ниже min-content, поэтому у плитки С ТАБЛИЦЕЙ
+     (и только у неё) включаем собственный горизонтальный скролл. Плиткам с SVG
+     скролл не нужен и вреден: у графиков overflow:visible, подписи вылезают за
+     viewBox и породили бы ложную полосу прокрутки. */
+  .tile:has(> .tv-tbl){overflow-x:auto}
+  .tile-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;gap:10px}
   .tile svg{width:100%;height:auto;display:block;overflow:visible}
   .tv-axis{stroke:var(--line)}
   .tv-grid{stroke:var(--line);stroke-dasharray:3 4}
@@ -86,12 +125,12 @@
   /* легенда, мини-таблица */
   .tv-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--dim)}
   .tv-legend span{display:inline-flex;align-items:center;gap:6px}
-  .tv-legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+  .tv-legend i{width:10px;height:10px;border-radius:3px;display:inline-block;flex:0 0 auto}
   .tv-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
   .tv-tbl th{text-align:left;color:var(--faint);font-weight:600;font-size:11px;padding:6px 8px;
-    border-bottom:1px solid var(--line)}
+    border-bottom:1px solid var(--line);white-space:nowrap}
   .tv-tbl td{padding:7px 8px;border-bottom:1px solid var(--line)}
-  .tv-tbl td.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .tv-tbl td.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
   .tv-bar-mini{height:7px;border-radius:4px;background:var(--blue);min-width:3px}
 
   /* скелетон при обновлении */
@@ -105,7 +144,8 @@
   .rp-code{margin-top:16px;border:1px solid var(--line);border-radius:14px;overflow:hidden;max-width:1180px}
   .rp-code-head{padding:11px 15px;background:var(--card2);border-bottom:1px solid var(--line);
     font-weight:600;font-size:13px}
-  .rp-code pre{margin:0;padding:15px;overflow:auto;background:var(--bg2);
+  /* pre с длинными URL — скроллим внутри блока, иначе уезжает вся страница */
+  .rp-code pre{margin:0;padding:15px;overflow-x:auto;background:var(--bg2);
     font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--dim)}
   .rp-code pre .tag{color:var(--blue)} .rp-code pre .at{color:var(--green)} .rp-code pre .st{color:var(--amber)}
   .rp-req{margin:0;padding:12px 15px 15px 34px;font-size:12.5px;color:var(--dim);line-height:1.7}
@@ -116,34 +156,82 @@
     margin-bottom:16px;background:var(--card)}
   .rp-setup-head{padding:11px 15px;background:var(--card2);border-bottom:1px solid var(--line);
     font-weight:600;font-size:13px}
-  .rp-setup-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;
+  /* три поля в ряд на десктопе → 2 → 1 по мере сужения, без медиазапросов.
+     220px, а не 240: на планшете 768px внутри блока остаётся 471px (сайдбар
+     съедает 242px), и при пороге 240 две колонки уже не помещались.
+     min(...,100%) не даёт колонке остаться 220px в контейнере уже 220px. */
+  .rp-setup-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:12px;
     padding:14px 15px 4px}
-  .rp-setup-grid label{display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:var(--faint)}
+  .rp-setup-grid label{display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:var(--faint);min-width:0}
+  /* width:100%+min-width:0 — у input есть собственная ширина по атрибуту size,
+     и без этого он расширяет грид-колонку за пределы контейнера */
   .rp-setup-grid input{background:var(--bg2);border:1px solid var(--line);border-radius:9px;
-    color:var(--ink);font-family:var(--mono);font-size:12.5px;padding:8px 10px;outline:none}
-  .rp-setup-grid input:focus{border-color:rgba(80,195,255,.5)}
+    color:var(--ink);font-family:var(--mono);font-size:12.5px;padding:8px 10px;outline:none;
+    width:100%;min-width:0}
+  /* было rgba(80,195,255,.5) — фиксированный «тёмный» голубой мимо светлой темы */
+  .rp-setup-grid input:focus{border-color:var(--blue)}
   .rp-setup-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 15px 14px}
   .rp-setup-actions .btn{font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 13px;
     border-radius:9px;cursor:pointer;border:1px solid var(--line);background:var(--card2);
-    color:var(--ink);background-image:none}
+    color:var(--ink);background-image:none;flex:0 0 auto}
   .rp-setup-actions .btn:hover{border-color:var(--blue);color:var(--blue);filter:none}
   .rp-setup-actions .btn.accent{background:var(--grad);color:#06101B;border:none}
   .rp-setup-actions .btn.accent:hover{color:#06101B;filter:brightness(1.08)}
-  .rp-setup-note{font-size:12px;color:var(--green)}
+  /* статус сохранения: на широком остаётся в строке кнопок, на узком переносится
+     целой строкой и рвёт длинную фразу, а не выталкивает кнопки за край */
+  .rp-setup-note{font-size:12px;color:var(--green);flex:1 1 200px;min-width:0;overflow-wrap:anywhere}
 
   /* область встроенного отчёта */
-  .rp-embed{max-width:1180px}
+  /* .rp-embed — вторая ступень той же колонки: тянется сама и передаёт высоту
+     фрейму, min-height:0 обязателен, иначе флекс-элемент не сожмётся ниже контента */
+  .rp-embed{max-width:1180px;flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+  /* фиксированная height:min(74vh,820px) и была причиной пустоты внизу: она не
+     зависела ни от наличия .rp-setup, ни от реальной высоты окна. Теперь высоту
+     задаёт флекс, а min-height (в dvh — из-за скрывающейся адресной строки на
+     мобильных) не даёт отчёту схлопнуться на низких экранах.
+     Белый фон здесь не тема панели, а подложка самого Tableau — он белый в обеих. */
   .rp-embed-frame{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff;
-    min-height:420px;height:min(74vh,820px)}
+    flex:1 1 auto;min-height:min(46vh,320px);min-height:min(46dvh,320px)}
   .rp-embed-frame tableau-viz{display:block;width:100%;height:100%}
-  .rp-embed-wait{margin-top:10px;font-size:12.5px;color:var(--faint)}
-  .rp-embed-wait.bad{color:var(--coral);background:rgba(255,107,138,.1);border:1px solid rgba(255,107,138,.3);
+  .rp-embed-wait{margin-top:10px;font-size:12.5px;color:var(--faint);flex:0 0 auto}
+  .rp-embed-wait.bad{color:var(--coral);background:var(--coral-bg);border:1px solid rgba(255,107,138,.3);
     border-radius:10px;padding:10px 12px;line-height:1.55;word-break:break-all}
+  /* заглушка занимает ту же высоту, что и будущий отчёт, — иначе на её месте
+     остаётся ровно та пустота, от которой избавлялись */
   .rp-embed-stub{border:1px dashed var(--line);border-radius:14px;padding:34px 26px;text-align:center;
-    color:var(--dim);font-size:13px;line-height:1.6;background:var(--card)}
+    color:var(--dim);font-size:13px;line-height:1.6;background:var(--card);
+    flex:1 1 auto;min-height:min(46vh,320px);min-height:min(46dvh,320px);
+    display:flex;flex-direction:column;justify-content:center;align-items:center}
   .rp-embed-stub b{display:block;font-size:15px;color:var(--ink);margin-bottom:8px}
   .rp-embed-hint{display:block;margin-top:12px;font-size:11.5px;color:var(--faint);max-width:640px;
     margin-left:auto;margin-right:auto}
 
-  @media(max-width:820px){:scope{padding:18px 12px 60px}.tv-frame{height:70vh}}
+  /* ---- Брейкпоинты. 820px — планшет: секция и окно теснее по отступам.
+          560px — телефон: панель инструментов и шапка окна перестают быть
+          «строкой», иначе элементы упираются в край. Сетки внутри окна
+          перестраиваются сами (auto-fit выше), поэтому здесь их нет. ---- */
+  @media(max-width:820px){
+    :scope{padding:18px 12px 14px}
+    .rp-hero{margin-bottom:14px}
+    .rp-hero h1{font-size:22px}
+    .tv-body{padding:12px}
+    .tv-frame.tv-fullscreen{inset:8px}
+  }
+  @media(max-width:560px){
+    /* spacer прижимал кнопки вправо и после переноса оставлял дыру слева */
+    .rp-toolbar .spacer{display:none}
+    .rp-toolbar .f{flex:1 1 100%}
+    .rp-toolbar select{min-width:0;width:100%}
+    .rp-toolbar .btn{flex:1 1 auto}
+    .tv-bar{gap:8px 10px}
+    .tv-tabs{order:3;flex:1 1 100%}
+    .rp-setup-actions .btn{flex:1 1 auto}
+    .rp-embed-stub{padding:24px 16px}
+    .rp-req{padding-left:28px}
+    /* на телефоне над отчётом стоит длинный hero, и прежняя «страховочная»
+       высота выталкивала окно за экран; здесь порог ниже, чтобы у не-админа
+       страница укладывалась в один экран без прокрутки */
+    .tv-frame{min-height:min(58vh,300px);min-height:min(58dvh,300px)}
+    .rp-embed-frame,.rp-embed-stub{min-height:min(46vh,260px);min-height:min(46dvh,260px)}
+  }
 }

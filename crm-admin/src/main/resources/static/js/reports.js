@@ -241,12 +241,21 @@ document.addEventListener('keydown', function(e){
 /* =========================================================
    ОТЧЁТЫ TABLEAU — карточки Plan-Fact / CRM Matrix / CRM Leadgen.
    Один view (#view-report-embed) на все отчёты: rpEmbedOpen(key)
-   ставит заголовок и настройки. Адрес сервера, книга и токен
-   хранятся в localStorage (crmpanel:tableauReports) отдельно
-   по каждому отчёту. «Сохранить и подключить» подгружает
-   Tableau Embedding API v3 с указанного сервера и вставляет
-   <tableau-viz>; если сервер недоступен из браузера
-   (нет VPN/интранета) — показывается понятная ошибка.
+   ставит заголовок и настройки.
+
+   Подключение (адрес сервера, книга, токен) — ОДНО НА ПАНЕЛЬ и
+   лежит на сервере (app.panel_settings / ключ tableauReports,
+   REST /api/reports/connections). Раньше конфиг был в localStorage,
+   то есть у каждого пользователя свой: отчёт «не работал» у всех,
+   кроме того, кто его настроил. Менять подключение может только
+   ADMIN, остальные видят готовый отчёт и формы не видят вовсе.
+   Токен не-админам сервер не отдаёт — в ответе остаётся лишь
+   признак hasToken.
+
+   «Сохранить и подключить» подгружает Tableau Embedding API v3
+   с указанного сервера и вставляет <tableau-viz>; если сервер
+   недоступен из браузера (нет VPN/интранета) — показывается
+   понятная ошибка.
    ========================================================= */
 var RP_EMBED = {
   planfact: { title:'Plan-Fact',   desc:'Общий финансовый отчёт компании: план и факт по ключевым показателям.' },
@@ -255,58 +264,157 @@ var RP_EMBED = {
 };
 var RP_EMBED_CUR = 'planfact';
 
-function rpEmbedCfgAll(){
-  try { return JSON.parse(localStorage.getItem('crmpanel:tableauReports')) || {}; } catch(e){ return {}; }
+var RP_EMBED_CFG = null;       /* кэш конфига в памяти: тянем с сервера один раз на загрузку страницы */
+var RP_EMBED_CAN_EDIT = false; /* право правки берём из ответа сервера, а не из клиентских флагов */
+var RP_EMBED_REQ = null;       /* промис текущего запроса: три отчёта не должны звать API трижды */
+
+/* Загрузка конфига: один запрос на страницу, дальше отдаём кэш.
+   После сохранения/сброса кэш правится ответом соответствующего вызова. */
+function rpEmbedLoad(){
+  if (RP_EMBED_CFG) return Promise.resolve(RP_EMBED_CFG);
+  if (RP_EMBED_REQ) return RP_EMBED_REQ;
+  RP_EMBED_REQ = fetch('/api/reports/connections', { credentials:'same-origin' })
+    .then(function(r){
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(res){
+      RP_EMBED_CFG = (res && res.items) || {};
+      RP_EMBED_CAN_EDIT = !!(res && res.canEdit);
+      RP_EMBED_REQ = null;
+      return RP_EMBED_CFG;
+    })
+    .catch(function(e){ RP_EMBED_REQ = null; throw e; });
+  return RP_EMBED_REQ;
 }
+
+function rpEmbedCfgAll(){ return RP_EMBED_CFG || {}; }
 function rpEmbedCfg(){ return rpEmbedCfgAll()[RP_EMBED_CUR] || { server:'', view:'', token:'' }; }
+/* Сохранение уходит на сервер; кэш обновляем ответом, чтобы не перечитывать весь конфиг. */
 function rpEmbedCfgSave(cfg){
-  var all = rpEmbedCfgAll();
-  all[RP_EMBED_CUR] = cfg;
-  try { localStorage.setItem('crmpanel:tableauReports', JSON.stringify(all)); } catch(e){}
+  return fetch('/api/reports/connections/' + encodeURIComponent(RP_EMBED_CUR), {
+    method:'PUT', credentials:'same-origin',
+    headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify(cfg)
+  }).then(function(r){
+    if (!r.ok) { var e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
+    return r.json();
+  }).then(function(saved){
+    if (!RP_EMBED_CFG) RP_EMBED_CFG = {};
+    RP_EMBED_CFG[RP_EMBED_CUR] = saved;
+    return saved;
+  });
+}
+/* Полный сброс подключения — отдельный метод: только он стирает сохранённый токен. */
+function rpEmbedCfgDelete(){
+  return fetch('/api/reports/connections/' + encodeURIComponent(RP_EMBED_CUR), {
+    method:'DELETE', credentials:'same-origin'
+  }).then(function(r){
+    if (!r.ok) { var e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
+    if (RP_EMBED_CFG) delete RP_EMBED_CFG[RP_EMBED_CUR];
+  });
+}
+
+/* Форма подключения существует только для админа: не «серая», а физически убрана. */
+function rpEmbedSetupVisible(on){
+  var box = document.getElementById('rpSetup');
+  if (box) box.style.display = on ? '' : 'none';
+}
+/* Шапка (заголовок и описание) не зависит от конфига — ставим её сразу. */
+function rpEmbedHead(){
+  var meta = RP_EMBED[RP_EMBED_CUR];
+  var title = document.getElementById('rpEmbedTitle');
+  var desc = document.getElementById('rpEmbedDesc');
+  if (title) title.textContent = meta.title;
+  if (desc) desc.textContent = rpT(meta.desc);
 }
 
 function rpEmbedOpen(key){
   if (RP_EMBED[key]) RP_EMBED_CUR = key;
-  rpEmbedRender();
+  if (!document.getElementById('rpEmbedTitle')) return;
+  if (RP_EMBED_CFG){ rpEmbedRender(); return; }
+  /* Первый заход: пока конфиг не приехал, не мигаем ни формой, ни «не настроено» */
+  rpEmbedHead();
+  rpEmbedSetupVisible(false);
+  var area = document.getElementById('rpEmbedArea');
+  if (area) area.innerHTML = '<div class="rp-embed-stub">' + rpT('Загружаем настройки подключения…') + '</div>';
+  rpEmbedLoad().then(rpEmbedRender).catch(function(){
+    var a = document.getElementById('rpEmbedArea');
+    if (a) a.innerHTML = '<div class="rp-embed-stub">' +
+      '<b>' + rpT('Не удалось получить настройки подключения') + '</b>' +
+      rpT('Обновите страницу; если не помогает — обратитесь к администратору панели.') + '</div>';
+  });
 }
 function rpEmbedRender(){
   var title = document.getElementById('rpEmbedTitle');
   if (!title) return;
-  var meta = RP_EMBED[RP_EMBED_CUR];
+  /* Могут позвать до загрузки конфига (например rpRender при смене языка) —
+     тогда сначала дотягиваем настройки, иначе мелькнёт «не настроено». */
+  if (!RP_EMBED_CFG){ rpEmbedOpen(RP_EMBED_CUR); return; }
   var cfg = rpEmbedCfg();
-  title.textContent = meta.title;
-  document.getElementById('rpEmbedDesc').textContent = rpT(meta.desc);
-  document.getElementById('rpSrv').value = cfg.server || '';
-  document.getElementById('rpView').value = cfg.view || '';
-  document.getElementById('rpToken').value = cfg.token || '';
-  document.getElementById('rpEmbedStatus').textContent = '';
+  rpEmbedHead();
+  rpEmbedSetupVisible(RP_EMBED_CAN_EDIT);
+  if (RP_EMBED_CAN_EDIT){
+    document.getElementById('rpSrv').value = cfg.server || '';
+    document.getElementById('rpView').value = cfg.view || '';
+    /* Токен показываем как есть; если он сохранён, но сервер его не прислал —
+       подсказываем плейсхолдером, что пустое поле ничего не сотрёт. */
+    var tk = document.getElementById('rpToken');
+    tk.value = cfg.token || '';
+    tk.placeholder = (!cfg.token && cfg.hasToken)
+      ? rpT('токен сохранён — оставьте пустым, чтобы не менять')
+      : '—';
+    document.getElementById('rpEmbedStatus').textContent = '';
+  }
   rpEmbedShow(cfg);
 }
 function rpEmbedSave(){
+  var st = document.getElementById('rpEmbedStatus');
   var cfg = {
     server: (document.getElementById('rpSrv').value || '').trim().replace(/\/+$/, ''),
     view:   (document.getElementById('rpView').value || '').trim(),
     token:  (document.getElementById('rpToken').value || '').trim()
   };
-  rpEmbedCfgSave(cfg);
-  var st = document.getElementById('rpEmbedStatus');
-  if (st) st.textContent = rpT('Сохранено.');
-  rpEmbedShow(cfg, true);
+  if (st) st.textContent = rpT('Сохраняем…');
+  rpEmbedCfgSave(cfg).then(function(){
+    if (st) st.textContent = rpT('Сохранено для всех пользователей.');
+    rpEmbedRender();
+  }).catch(function(e){
+    if (!st) return;
+    st.textContent = (e && e.status === 403)
+      ? rpT('Менять подключение к Tableau может только администратор.')
+      : rpT('Не удалось сохранить настройки подключения.');
+  });
 }
 function rpEmbedClear(){
-  if (!confirm(rpT('Очистить настройки подключения этого отчёта?'))) return;
-  rpEmbedCfgSave({ server:'', view:'', token:'' });
-  rpEmbedRender();
+  if (!confirm(rpT('Очистить настройки подключения этого отчёта? Отчёт перестанет открываться у всех пользователей.'))) return;
+  var st = document.getElementById('rpEmbedStatus');
+  rpEmbedCfgDelete().then(function(){
+    rpEmbedRender();
+    if (st) st.textContent = rpT('Подключение очищено.');
+  }).catch(function(e){
+    if (!st) return;
+    st.textContent = (e && e.status === 403)
+      ? rpT('Менять подключение к Tableau может только администратор.')
+      : rpT('Не удалось очистить настройки подключения.');
+  });
 }
 /* область отчёта: заглушка-инструкция или живая <tableau-viz> */
 function rpEmbedShow(cfg, connectNow){
   var area = document.getElementById('rpEmbedArea');
   if (!area) return;
   if (!cfg.server || !cfg.view){
+    /* Не-админ ничего настроить не может — вместо инструкции ему адрес, куда идти. */
+    if (!RP_EMBED_CAN_EDIT){
+      area.innerHTML = '<div class="rp-embed-stub">' +
+        '<b>' + rpT('Отчёт пока недоступен') + '</b>' +
+        rpT('Подключение к Tableau ещё не настроено, обратитесь к администратору.') + '</div>';
+      return;
+    }
     area.innerHTML = '<div class="rp-embed-stub">' +
       '<b>' + rpT('Отчёт появится здесь') + '</b>' +
       rpT('Укажите адрес вашего Tableau Server (или Tableau Cloud) и путь к опубликованной книге — например CRMMatrix/Overview — и нажмите «Сохранить и подключить».') +
-      '<span class="rp-embed-hint">' + rpT('Сервер должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели. Настройки хранятся в этом браузере.') + '</span></div>';
+      '<span class="rp-embed-hint">' + rpT('Сервер должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели. Настройки общие для всех пользователей панели.') + '</span></div>';
     return;
   }
   var src = /^https?:/i.test(cfg.view) ? cfg.view : cfg.server + '/views/' + cfg.view.replace(/^\/+/, '');
