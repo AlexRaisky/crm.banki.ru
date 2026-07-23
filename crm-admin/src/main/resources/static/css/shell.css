@@ -536,4 +536,6 @@
     .user-box{flex:0 0 auto;padding-left:8px}
     .gheader{gap:6px;padding:0 8px}
     .gheader-actions{padding-left:6px;gap:6px}
+    /* «Пароль» и «Выйти» — последнее, что не влезало: на 375px не хватало ~11px */
+    .user-box .btn{padding:7px 10px;font-size:12.5px}
   }

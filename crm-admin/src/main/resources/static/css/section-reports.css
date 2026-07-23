@@ -20,7 +20,9 @@
   .rp-hero,.rp-toolbar,.rp-setup,.rp-code{flex:0 0 auto}
 
   /* шапка описания раздела (как на OneLink Builder) */
-  .rp-hero{max-width:1180px;margin-bottom:18px}
+  /* Раньше содержимое раздела упиралось в max-width:1180px и на широком мониторе
+     справа оставалась пустая треть. Отчёт занимает всю доступную ширину. */
+  .rp-hero{margin-bottom:18px}
   .rp-hero .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
     color:var(--faint);margin-bottom:8px}
   .rp-hero h1{font-size:26px;font-weight:700;letter-spacing:-.015em;margin:0 0 8px}
@@ -141,7 +143,7 @@
   @keyframes tvsk{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
   /* код встраивания */
-  .rp-code{margin-top:16px;border:1px solid var(--line);border-radius:14px;overflow:hidden;max-width:1180px}
+  .rp-code{margin-top:16px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
   .rp-code-head{padding:11px 15px;background:var(--card2);border-bottom:1px solid var(--line);
     font-weight:600;font-size:13px}
   /* pre с длинными URL — скроллим внутри блока, иначе уезжает вся страница */
@@ -152,7 +154,7 @@
   .rp-req b{color:var(--ink)}
 
   /* ---- страница отчёта: блок подключения к Tableau ---- */
-  .rp-setup{border:1px solid var(--line);border-radius:14px;overflow:hidden;max-width:1180px;
+  .rp-setup{border:1px solid var(--line);border-radius:14px;overflow:hidden;
     margin-bottom:16px;background:var(--card)}
   .rp-setup-head{padding:11px 15px;background:var(--card2);border-bottom:1px solid var(--line);
     font-weight:600;font-size:13px}
@@ -160,7 +162,9 @@
      220px, а не 240: на планшете 768px внутри блока остаётся 471px (сайдбар
      съедает 242px), и при пороге 240 две колонки уже не помещались.
      min(...,100%) не даёт колонке остаться 220px в контейнере уже 220px. */
-  .rp-setup-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:12px;
+  /* Сам блок настроек тянется во всю ширину, а поля — нет: верхняя граница трека
+     380px, иначе на широком мониторе три поля растянулись бы на весь экран. */
+  .rp-setup-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),380px));gap:12px;
     padding:14px 15px 4px}
   .rp-setup-grid label{display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:var(--faint);min-width:0}
   /* width:100%+min-width:0 — у input есть собственная ширина по атрибуту size,
@@ -184,7 +188,7 @@
   /* область встроенного отчёта */
   /* .rp-embed — вторая ступень той же колонки: тянется сама и передаёт высоту
      фрейму, min-height:0 обязателен, иначе флекс-элемент не сожмётся ниже контента */
-  .rp-embed{max-width:1180px;flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+  .rp-embed{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
   /* фиксированная height:min(74vh,820px) и была причиной пустоты внизу: она не
      зависела ни от наличия .rp-setup, ни от реальной высоты окна. Теперь высоту
      задаёт флекс, а min-height (в dvh — из-за скрывающейся адресной строки на
