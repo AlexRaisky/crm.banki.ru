@@ -265,11 +265,16 @@
 
   window.CRM = CRM;
 
+  /* Роль для показа в интерфейсе: SUPER_ADMIN наружу не светим — выглядит как ADMIN.
+     Реальные права super-admin проверяются на сервере, а на клиенте — по флагу me.isSuperAdmin. */
+  function displayRole(role) { return role === "SUPER_ADMIN" ? "ADMIN" : role; }
+  CRM.displayRole = displayRole;
+
   // ---- bootstrap: кто я + среда инстанса + фильтрация NAV ----
   CRM.meReady = CRM.fetchMe().then(function (me) {
     CRM.me = me;
     window.CRM_ME = me;
-    document.body && document.body.setAttribute("data-role", me.role);
+    document.body && document.body.setAttribute("data-role", displayRole(me.role));
     return me;
   }).catch(function () { /* redirect уже произошёл в req() при 401 */ });
 
@@ -299,12 +304,12 @@
     // Шестерёнка настроечной админки (/settings) — только админам
     var gear = document.getElementById("settingsLink");
     if (gear) gear.style.display = me.isAdmin ? "" : "none";
-    document.body.setAttribute("data-role", me.role);
+    document.body.setAttribute("data-role", displayRole(me.role));
     if (!me.canEdit) document.body.setAttribute("data-readonly", "1");
     var ue = document.getElementById("userEmail");
     if (ue) {
       ue.textContent = me.email;
-      ue.title = (me.displayName ? me.displayName + " · " : "") + me.email + " (" + me.role + ")";
+      ue.title = (me.displayName ? me.displayName + " · " : "") + me.email + " (" + displayRole(me.role) + ")";
     }
     var envName = (CRM.envInfo && CRM.envInfo.name) || null;
     // Виден ли раздел по персональному ACL (nav id == section id).
