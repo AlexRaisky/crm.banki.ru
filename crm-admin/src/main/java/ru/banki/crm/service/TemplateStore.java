@@ -52,6 +52,13 @@ public class TemplateStore {
             Map.entry("kvintCampaignId", "kvint_campaign_id"));
 
     /** Ядровые колонки d_template -> имя колонки в прод-таблице (для payload синка). */
+    /**
+     * Служебные метки времени прод-таблиц. Мы их НЕ храним у себя и НЕ отправляем обратно:
+     * их проставляет прод при записи (см. ProdDbService.insert/update). Иначе при синке
+     * ушла бы устаревшая метка и сломала отслеживание изменений, на котором держится ETL.
+     */
+    public static final java.util.Set<String> PROD_TIMESTAMPS = java.util.Set.of("timestamp_cr", "timestamp_upd");
+
     private static final Map<String, String> CORE_TO_PROD = new LinkedHashMap<>(Map.ofEntries(
             Map.entry("communication_name", "communication_name"),
             Map.entry("campaign_name", "source_type"),
@@ -215,6 +222,9 @@ public class TemplateStore {
             // null не отправляем: в проде такие колонки NOT NULL с дефолтом — пусть остаются как есть
             if (v != null && !v.isNull()) out.set(prodCol, v);
         });
+        // Метки времени прода наружу не отправляем: их проставляет сам прод (см. ProdDbService).
+        // Иначе записали бы туда устаревшее значение и сломали отслеживание изменений.
+        PROD_TIMESTAMPS.forEach(out::remove);
         List<String> emptyKeys = new ArrayList<>();
         out.fieldNames().forEachRemaining(k -> { if (out.get(k).isNull()) emptyKeys.add(k); });
         emptyKeys.forEach(out::remove);
@@ -331,6 +341,7 @@ public class TemplateStore {
         ObjectNode props = om.createObjectNode();
         prod.fieldNames().forEachRemaining(k -> {
             if (k.equals("id") || k.equals(codeCol) || coreProd.contains(k)) return;
+            if (PROD_TIMESTAMPS.contains(k)) return;   // метки — бухгалтерия прода, у себя не храним
             props.set(k, prod.get(k));
         });
         List<String> products = new ArrayList<>();
