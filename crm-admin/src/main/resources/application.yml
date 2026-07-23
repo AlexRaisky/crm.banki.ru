@@ -60,6 +60,14 @@ app:
     enabled: true
   # Внешняя прод-БД (схемы notice/callcenter 1:1): очередь app.prod_sync доставляет
   # туда операции мастера. Пусто = синк выключен, очередь копится в PENDING.
+  # ETL «прод -> мы»: актуализация нашей копии шаблонов из прод-таблиц.
+  # Выключен по умолчанию; молчит, если прод-приёмник не настроен/недоступен.
+  etl:
+    enabled: ${ETL_ENABLED:false}
+    interval-ms: ${ETL_INTERVAL_MS:300000}        # инкремент раз в 5 минут
+    overlap-minutes: ${ETL_OVERLAP_MINUTES:0}     # 0: метки в проде выставлены разом, перекрытие тянуло бы всю таблицу
+    initial-delay-ms: ${ETL_INITIAL_DELAY_MS:60000}
+    full-cron: ${ETL_FULL_CRON:0 0 22 * * *}      # полный прогон в 22:00
   proddb:
     url: ${PROD_DB_URL:}
     user: ${PROD_DB_USER:}

@@ -373,6 +373,18 @@
           <div id="prodDbBox" class="empty" data-i18n="Проверить соединение можно в «Подключения к БД» выше.">Проверить соединение можно в «Подключения к БД» выше.</div>
           <div id="reconcileBox" style="margin-top:14px"></div>
         </div>
+
+        <!-- ETL: актуализация нашей копии шаблонов из прода -->
+        <h2 style="margin-top:26px" data-i18n="Синк из прода (ETL)">Синк из прода (ETL)</h2>
+        <div class="sub" data-i18n="Прод — источник истины. Инкремент каждые 5 минут подтягивает новые и изменённые шаблоны, полный прогон в 22:00 закрывает пропуски и показывает, чего в проде уже нет.">Прод — источник истины. Инкремент каждые 5 минут подтягивает новые и изменённые шаблоны, полный прогон в 22:00 закрывает пропуски и показывает, чего в проде уже нет.</div>
+        <div class="card">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <button class="btn" id="etlRunBtn" data-i18n="Синхронизировать сейчас">Синхронизировать сейчас</button>
+            <button class="btn" id="etlFullBtn" data-i18n="Полный прогон">Полный прогон</button>
+            <button class="btn" id="etlRefreshBtn" data-i18n="Обновить статус">Обновить статус</button>
+          </div>
+          <div id="etlBox" class="empty">…</div>
+        </div>
       </section>
 
     </main>
@@ -724,6 +736,7 @@ function renderDiag(){
     : `<div class="empty">${t2('Панель ещё ничего не сохранила.')}</div>`;
   renderDbConnections();
   renderQueueStats();
+  etlStatus();
 }
 
 /* Счётчики очереди синка — лёгкий запрос без коннекта к проду, авто-показ под диагностикой. */
@@ -1081,6 +1094,69 @@ $("#dbcTestAllBtn").addEventListener('click', dbcTestAll);
 $("#dbcRefreshBtn").addEventListener('click', renderDbConnections);
 $("#dbcSaveBtn").addEventListener('click', dbcSave);
 $("#dbcCancelBtn").addEventListener('click', dbcFormClose);
+
+/* ================= ETL «прод → мы»: статус и ручной запуск ================= */
+function etlRender(d){
+  var box = $("#etlBox");
+  if (!box) return;
+  if (!d) { box.textContent = t2('Нет ответа от сервера.'); return; }
+  var rows = [];
+  rows.push(t2('Включён:') + ' <b style="color:' + (d.enabled ? 'var(--green)' : 'var(--faint)') + '">' +
+            (d.enabled ? t2('да') : t2('нет (ETL_ENABLED=false)')) + '</b>' +
+            ' · ' + t2('прод настроен:') + ' <b>' + (d.configured ? t2('да') : t2('нет')) + '</b>' +
+            (d.running ? ' · <b style="color:var(--amber)">' + t2('идёт прогон') + '</b>' : ''));
+  if (d.skipped) rows.push('<span style="color:var(--amber)">' + esc(d.skipped) + '</span>');
+  if (d.mode) {
+    rows.push(t2('Последний прогон:') + ' <b>' + (d.mode === 'full' ? t2('полный') : t2('инкремент')) + '</b>' +
+              ' · ' + t2('применено') + ' <b>' + (d.applied || 0) + '</b>' +
+              (d.skippedQueued ? ' · ' + t2('пропущено (в очереди)') + ' <b>' + d.skippedQueued + '</b>' : '') +
+              (d.tookMs != null ? ' <span class="mono">(' + d.tookMs + ' ms)</span>' : ''));
+    if (d.finishedAt) rows.push('<span class="mono" style="font-size:11px">' + esc(d.finishedAt) + '</span>');
+    if (d.perChannel) {
+      rows.push(Object.keys(d.perChannel).map(function(k){
+        return '<span class="mono">' + esc(k) + '</span> ' + d.perChannel[k];
+      }).join(' · '));
+    }
+    if (d.failed && d.failed.length) {
+      rows.push('<span style="color:var(--coral)">' + t2('Пропущены каналы:') + ' ' + esc(d.failed.join('; ')) + '</span>');
+    }
+    if (d.onlyInOurs) {
+      rows.push(t2('Только у нас (не удаляем, показываем):') + ' <b>' + (d.onlyInOurs.count || 0) + '</b>');
+    }
+  }
+  if (d.watermarks && d.watermarks.length) {
+    rows.push('<table style="margin-top:10px"><thead><tr><th>' + t2('Канал') + '</th><th>' +
+      t2('Синхронизировано до (прод-время)') + '</th></tr></thead><tbody>' +
+      d.watermarks.map(function(w){
+        return '<tr><td><span class="mono">' + esc(w.channel) + '</span></td><td><span class="mono">' +
+               esc(w.lastProdTs === 'null' ? '—' : w.lastProdTs) + '</span></td></tr>';
+      }).join('') + '</tbody></table>');
+  }
+  box.innerHTML = rows.join('<br>');
+}
+
+async function etlCall(url, method){
+  var box = $("#etlBox");
+  box.textContent = '…';
+  try {
+    var r = await fetch(url, { method: method || 'GET', credentials: 'same-origin' });
+    if (r.status === 401) { location.href = '/login.html'; return; }
+    if (r.status === 403) { box.textContent = t2('Доступно только администраторам.'); return; }
+    var ct = r.headers.get('content-type') || '';
+    if (ct.indexOf('application/json') < 0) { box.textContent = t2('Сервис недоступен, код ') + r.status + '.'; return; }
+    var d = await r.json();
+    // после ручного запуска показываем свежий статус (в нём и итоги прогона)
+    if (method === 'POST') { etlRender(d); etlStatus(); } else { etlRender(d); }
+  } catch(e){ box.textContent = t2('Ошибка запроса: ') + e.message; }
+}
+function etlStatus(){ return etlCall('/api/admin/etl/status'); }
+
+$("#etlRefreshBtn").addEventListener('click', etlStatus);
+$("#etlRunBtn").addEventListener('click', function(){ etlCall('/api/admin/etl/run', 'POST'); });
+$("#etlFullBtn").addEventListener('click', function(){
+  if (!confirm(t2('Полный прогон читает все шаблоны прода. Выполнить сейчас?'))) return;
+  etlCall('/api/admin/etl/run-full', 'POST');
+});
 
 renderApps();   /* мгновенный каркас (умолчания), затем данные с сервера */
 loadApps();
