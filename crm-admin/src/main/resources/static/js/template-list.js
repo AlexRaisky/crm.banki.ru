@@ -126,8 +126,10 @@ function collectListFilters() {
    по всей базе на бэке, в браузер приезжают порциями по LIST_PAGE.
    reset=true — новый набор (сброс курсора, заменяем список); иначе — дозагрузка (append). */
 function fetchListPage(reset) {
-    if (_listLoading) return Promise.resolve();
-    if (!reset && _listExhausted) return Promise.resolve();
+    // Догрузку не дублируем, а вот смену фильтра/сортировки/поиска (reset) НИКОГДА не глотаем:
+    // иначе изменение, сделанное пока летит предыдущий запрос, терялось бы молча.
+    // Ответ устаревшего запроса отбрасывается по _listReqSeq ниже.
+    if (!reset && (_listLoading || _listExhausted)) return Promise.resolve();
 
     var f = collectListFilters();
     if (reset) { _listOffset = 0; _listExhausted = false; _listReqSeq++; }
@@ -158,6 +160,7 @@ function fetchListPage(reset) {
         if (mapped.length < LIST_PAGE) _listExhausted = true;   // хвост — больше страниц нет
         renderTemplateList(ALL_TEMPLATES);
     }).catch(function () {}).then(function () {
+        if (my !== _listReqSeq) return;   // устаревший запрос не снимает флаг с актуального
         _listLoading = false;
         updateLoadMoreNote();
         maybeLoadMore();     // добить, если первый экран ещё не заполнен
