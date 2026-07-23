@@ -264,14 +264,21 @@ var RP_EMBED = {
 };
 var RP_EMBED_CUR = 'planfact';
 
-var RP_EMBED_CFG = null;       /* кэш конфига в памяти: тянем с сервера один раз на загрузку страницы */
+var RP_EMBED_CFG = null;       /* последний известный конфиг: чтобы не мигать при открытии раздела */
 var RP_EMBED_CAN_EDIT = false; /* право правки берём из ответа сервера, а не из клиентских флагов */
 var RP_EMBED_REQ = null;       /* промис текущего запроса: три отчёта не должны звать API трижды */
 
-/* Загрузка конфига: один запрос на страницу, дальше отдаём кэш.
-   После сохранения/сброса кэш правится ответом соответствующего вызова. */
-function rpEmbedLoad(){
-  if (RP_EMBED_CFG) return Promise.resolve(RP_EMBED_CFG);
+/**
+ * Загрузка конфига. force=true — перечитать с сервера, даже если что-то уже знаем.
+ *
+ * Настройки общие: их мог поменять другой админ, пока вкладка открыта. Раньше конфиг
+ * тянулся один раз за загрузку страницы, и человек с открытой вкладкой продолжал
+ * видеть «не настроено» до F5. Теперь перечитываем при каждом открытии раздела.
+ * Параллельный запрос переиспользуем — переключение между тремя отчётами подряд
+ * не должно бить в API трижды.
+ */
+function rpEmbedLoad(force){
+  if (!force && RP_EMBED_CFG) return Promise.resolve(RP_EMBED_CFG);
   if (RP_EMBED_REQ) return RP_EMBED_REQ;
   RP_EMBED_REQ = fetch('/api/reports/connections', { credentials:'same-origin' })
     .then(function(r){
@@ -345,13 +352,23 @@ function rpEmbedHead(){
 function rpEmbedOpen(key){
   if (RP_EMBED[key]) RP_EMBED_CUR = key;
   if (!document.getElementById('rpEmbedTitle')) return;
-  if (RP_EMBED_CFG){ rpEmbedRender(); return; }
-  /* Первый заход: пока конфиг не приехал, не мигаем ни формой, ни «не настроено» */
-  rpEmbedHead();
-  rpEmbedSetupVisible(false);
-  var area = document.getElementById('rpEmbedArea');
-  if (area) area.innerHTML = '<div class="rp-embed-stub">' + rpT('Загружаем настройки подключения…') + '</div>';
-  rpEmbedLoad().then(rpEmbedRender).catch(function(){
+
+  var знаемКонфиг = !!RP_EMBED_CFG;
+  if (знаемКонфиг){
+    /* Показываем известное сразу, чтобы отчёт не мигал заглушкой на каждом заходе,
+       а свежие настройки подставим, когда придёт ответ. */
+    rpEmbedRender();
+  } else {
+    rpEmbedHead();
+    rpEmbedSetupVisible(false);
+    var area = document.getElementById('rpEmbedArea');
+    if (area) area.innerHTML = '<div class="rp-embed-stub">' + rpT('Загружаем настройки подключения…') + '</div>';
+  }
+
+  rpEmbedLoad(true).then(rpEmbedRender).catch(function(){
+    /* Если что-то уже показано — оставляем как есть: сеть моргнула, а рабочий отчёт
+       убирать из-за этого незачем. Сообщаем только когда показывать нечего. */
+    if (знаемКонфиг) return;
     var a = document.getElementById('rpEmbedArea');
     if (a) a.innerHTML = '<div class="rp-embed-stub">' +
       '<b>' + rpT('Не удалось получить настройки подключения') + '</b>' +
@@ -368,16 +385,23 @@ function rpEmbedRender(){
   rpEmbedHead();
   rpEmbedSetupVisible(RP_EMBED_CAN_EDIT);
   if (RP_EMBED_CAN_EDIT){
-    document.getElementById('rpSrv').value = cfg.server || '';
-    document.getElementById('rpView').value = cfg.view || '';
-    /* Токен показываем как есть; если он сохранён, но сервер его не прислал —
-       подсказываем плейсхолдером, что пустое поле ничего не сотрёт. */
-    var tk = document.getElementById('rpToken');
-    tk.value = cfg.token || '';
-    tk.placeholder = (!cfg.token && cfg.hasToken)
-      ? rpT('токен сохранён — оставьте пустым, чтобы не менять')
-      : '—';
-    document.getElementById('rpEmbedStatus').textContent = '';
+    /* Форму не переписываем, пока админ в ней работает: перечитывание конфига
+       происходит и при открытии раздела, и ответ мог прийти после того, как он
+       начал набирать — набранное затирать нельзя. */
+    var внутриФормы = document.activeElement && document.activeElement.closest
+      && document.activeElement.closest('#rpSetup');
+    if (!внутриФормы){
+      document.getElementById('rpSrv').value = cfg.server || '';
+      document.getElementById('rpView').value = cfg.view || '';
+      /* Токен показываем как есть; если он сохранён, но сервер его не прислал —
+         подсказываем плейсхолдером, что пустое поле ничего не сотрёт. */
+      var tk = document.getElementById('rpToken');
+      tk.value = cfg.token || '';
+      tk.placeholder = (!cfg.token && cfg.hasToken)
+        ? rpT('токен сохранён — оставьте пустым, чтобы не менять')
+        : '—';
+      document.getElementById('rpEmbedStatus').textContent = '';
+    }
   }
   rpEmbedShow(cfg);
 }
