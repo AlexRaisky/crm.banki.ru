@@ -37,11 +37,47 @@ public class TemplateService {
     @Transactional(readOnly = true)
     public List<TemplateListItemDto> list(List<String> channel, List<String> product, List<String> touch,
                                           List<String> trigger, List<String> partner, String active, String q,
-                                          Integer limit, Integer offset) {
-        var s = filtered(channel, product, touch, trigger, partner, active, q);
+                                          String sort, String dir, Integer limit, Integer offset) {
+        // сортируем ВСЮ отфильтрованную выборку и только потом режем страницу,
+        // иначе порядок был бы виден лишь внутри загруженных строк
+        var s = filtered(channel, product, touch, trigger, partner, active, q)
+                .sorted(comparator(sort, "desc".equalsIgnoreCase(dir)));
         if (offset != null && offset > 0) s = s.skip(offset);   // пагинация: пропускаем уже загруженные
         if (limit != null && limit > 0) s = s.limit(limit);
         return s.toList();
+    }
+
+    /** Сортировка списка по колонке таблицы. Числовые коды сравниваем как числа («9» < «10»). */
+    private static java.util.Comparator<TemplateListItemDto> comparator(String sort, boolean desc) {
+        java.text.Collator ru = java.text.Collator.getInstance(new java.util.Locale("ru"));
+        java.util.Comparator<TemplateListItemDto> c = switch (sort == null ? "" : sort) {
+            case "channel" -> java.util.Comparator.comparing(i -> nz(i.channel()), ru);
+            case "name"    -> java.util.Comparator.comparing(i -> nz(i.communicationName()), ru);
+            case "product" -> java.util.Comparator.comparing(TemplateService::firstProduct, ru);
+            case "touch"   -> java.util.Comparator.comparing(i -> nz(i.touchPoint()), ru);
+            case "trigger" -> java.util.Comparator.comparing(i -> nz(i.triggerType()), ru);
+            case "partner" -> java.util.Comparator.comparing(i -> nz(i.partnerName()), ru);
+            case "active"  -> java.util.Comparator.comparingInt(i -> Boolean.TRUE.equals(i.active()) ? 1 : 0);
+            // по умолчанию и для "code" — числовой порядок кода, нечисловые в конец
+            default -> java.util.Comparator.comparingDouble((TemplateListItemDto i) -> codeNum(i.code()))
+                    .thenComparing(i -> nz(i.code()), ru);
+        };
+        // стабильный доп. ключ, чтобы страницы не «плавали» при равных значениях
+        c = c.thenComparing(i -> nz(i.channel())).thenComparingDouble(i -> codeNum(i.code()));
+        return desc ? c.reversed() : c;
+    }
+
+    private static String nz(String s) { return s == null ? "" : s; }
+
+    private static String firstProduct(TemplateListItemDto i) {
+        return (i.productType() == null || i.productType().isEmpty()) ? "" : nz(i.productType().get(0));
+    }
+
+    /** Код как число; нечисловой — в конец сортировки. */
+    private static double codeNum(String code) {
+        if (code == null || code.isBlank()) return Double.MAX_VALUE;
+        try { return Double.parseDouble(code.trim()); }
+        catch (NumberFormatException e) { return Double.MAX_VALUE; }
     }
 
     /** Наборы значений для выпадающих фильтров списка — из реальных данных d_template,

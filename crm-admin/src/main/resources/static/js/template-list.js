@@ -141,6 +141,8 @@ function fetchListPage(reset) {
         if (Array.isArray(v)) { if (v.length) params[k] = v; }
         else if (v) params[k] = v;
     });
+    params.sort = LIST_SORT.col;                       // сортирует сервер по всей выборке
+    params.dir = LIST_SORT.dir === 1 ? 'asc' : 'desc';
     params.limit = LIST_PAGE;
     if (_listOffset > 0) params.offset = _listOffset;
 
@@ -266,7 +268,7 @@ var LIST_SORT_LABELS = { channel: 'Канал', code: 'Code / ID', name: 'Наз
 function listSortBy(col) {
     if (LIST_SORT.col === col) LIST_SORT.dir = -LIST_SORT.dir;
     else LIST_SORT = { col: col, dir: 1 };
-    renderTemplateList(ALL_TEMPLATES);   // сортируем уже загруженные строки на клиенте, без перезапроса
+    fetchListPage(true);   // сортирует сервер по всей выборке — тянем страницу заново
 }
 
 /* Отрисовка списка (формат Salesforce list view). templates — накопленный набор загруженных
@@ -274,16 +276,8 @@ function listSortBy(col) {
 function renderTemplateList(templates) {
     const tbody = document.getElementById('templateListBody');
 
-    const sorted = templates.slice().sort((a, b) => {
-        let va = a[LIST_SORT.col], vb = b[LIST_SORT.col];
-        if (typeof va === 'boolean') { va = va ? 1 : 0; vb = vb ? 1 : 0; }
-        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * LIST_SORT.dir;
-        // code и прочие числовые строки сортируем как числа, а не лексикографически ("9" < "10")
-        var na = Number(va), nb = Number(vb);
-        var bothNum = va !== '' && va != null && vb !== '' && vb != null && !isNaN(na) && !isNaN(nb);
-        if (bothNum) return (na - nb) * LIST_SORT.dir;
-        return String(va || '').localeCompare(String(vb || ''), 'ru') * LIST_SORT.dir;
-    });
+    // порядок задаёт сервер (сортировка идёт по всей выборке, а не по загруженным строкам)
+    const sorted = templates;
 
     // индикатор сортировки в заголовках
     document.querySelectorAll('#list th.sf-sortable').forEach(th => {

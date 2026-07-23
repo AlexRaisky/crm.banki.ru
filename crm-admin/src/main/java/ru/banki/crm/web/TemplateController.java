@@ -35,10 +35,12 @@ public class TemplateController {
                                           @RequestParam(required = false) List<String> partner,
                                           @RequestParam(required = false) String active,
                                           @RequestParam(required = false) String q,
+                                          @RequestParam(required = false) String sort,
+                                          @RequestParam(required = false) String dir,
                                           @RequestParam(required = false) Integer limit,
                                           @RequestParam(required = false) Integer offset) {
         access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN);
-        return service.list(channel, product, touch, trigger, partner, active, q, limit, offset);
+        return service.list(channel, product, touch, trigger, partner, active, q, sort, dir, limit, offset);
     }
 
     /** Значения для выпадающих фильтров (продукт/точка/триггер) из реальных данных. */
