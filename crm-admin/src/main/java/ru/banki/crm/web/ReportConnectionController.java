@@ -110,6 +110,19 @@ public class ReportConnectionController {
         if (body == null || !body.isObject()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ожидается объект {server, view, token}");
         }
+        // Адрес и книга обязательны: без них встраивание показывает ту же заглушку
+        // «не настроено», что и при отсутствии подключения. Раньше пустые значения
+        // сохранялись с кодом 200 — админ жал «Сохранить», не видел ошибки и считал,
+        // что отчёт настроен, а у людей он не открывался. Токен при этом НЕ обязателен:
+        // если Tableau пускает по SSO или гостевым доступом, он не нужен.
+        String server = text(body, "server").replaceAll("/+$", "");
+        String view = text(body, "view");
+        if (server.isEmpty() || view.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Укажите адрес Tableau и опубликованную книгу/лист — оба поля обязательны."
+                    + " Чтобы убрать подключение, нажмите «Очистить».");
+        }
+
         ObjectNode all = readAll();
         JsonNode prev = all.get(report);
         String prevToken = (prev != null && prev.isObject()) ? text(prev, "token") : "";
@@ -118,9 +131,8 @@ public class ReportConnectionController {
         if (token.isEmpty()) token = prevToken;
 
         ObjectNode entry = json.createObjectNode();
-        // хвостовой слэш в адресе ломает склейку server + "/views/..." — режем на входе
-        entry.put("server", text(body, "server").replaceAll("/+$", ""));
-        entry.put("view", text(body, "view"));
+        entry.put("server", server);
+        entry.put("view", view);
         entry.put("token", token);
         all.set(report, entry);
         write(all);

@@ -297,7 +297,7 @@ function rpEmbedCfgSave(cfg){
     headers:{ 'Content-Type':'application/json' },
     body: JSON.stringify(cfg)
   }).then(function(r){
-    if (!r.ok) { var e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
+    if (!r.ok) return rpEmbedErr(r);
     return r.json();
   }).then(function(saved){
     if (!RP_EMBED_CFG) RP_EMBED_CFG = {};
@@ -305,12 +305,25 @@ function rpEmbedCfgSave(cfg){
     return saved;
   });
 }
+
+/* Ошибку сервера пробрасываем вместе с текстом: на 400 бэкенд объясняет,
+   какого поля не хватает, и общее «не удалось сохранить» это объяснение съедало. */
+function rpEmbedErr(r){
+  return r.text().then(function(t){
+    var msg = '';
+    try { msg = (JSON.parse(t) || {}).message || ''; } catch(e){}
+    var err = new Error(msg || ('HTTP ' + r.status));
+    err.status = r.status;
+    err.serverMessage = msg;
+    throw err;
+  });
+}
 /* Полный сброс подключения — отдельный метод: только он стирает сохранённый токен. */
 function rpEmbedCfgDelete(){
   return fetch('/api/reports/connections/' + encodeURIComponent(RP_EMBED_CUR), {
     method:'DELETE', credentials:'same-origin'
   }).then(function(r){
-    if (!r.ok) { var e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
+    if (!r.ok) return rpEmbedErr(r);
     if (RP_EMBED_CFG) delete RP_EMBED_CFG[RP_EMBED_CUR];
   });
 }
@@ -381,9 +394,13 @@ function rpEmbedSave(){
     rpEmbedRender();
   }).catch(function(e){
     if (!st) return;
-    st.textContent = (e && e.status === 403)
-      ? rpT('Менять подключение к Tableau может только администратор.')
-      : rpT('Не удалось сохранить настройки подключения.');
+    if (e && e.status === 403){
+      st.textContent = rpT('Менять подключение к Tableau может только администратор.');
+    } else if (e && e.serverMessage){
+      st.textContent = e.serverMessage;   // например: какого поля не хватает
+    } else {
+      st.textContent = rpT('Не удалось сохранить настройки подключения.');
+    }
   });
 }
 function rpEmbedClear(){
