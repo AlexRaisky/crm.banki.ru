@@ -32,12 +32,13 @@ public class TemplateController {
                                           @RequestParam(required = false) List<String> product,
                                           @RequestParam(required = false) List<String> touch,
                                           @RequestParam(required = false) List<String> trigger,
+                                          @RequestParam(required = false) List<String> partner,
                                           @RequestParam(required = false) String active,
                                           @RequestParam(required = false) String q,
                                           @RequestParam(required = false) Integer limit,
                                           @RequestParam(required = false) Integer offset) {
         access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN);
-        return service.list(channel, product, touch, trigger, active, q, limit, offset);
+        return service.list(channel, product, touch, trigger, partner, active, q, limit, offset);
     }
 
     /** Значения для выпадающих фильтров (продукт/точка/триггер) из реальных данных. */
@@ -53,10 +54,11 @@ public class TemplateController {
                                    @RequestParam(required = false) List<String> product,
                                    @RequestParam(required = false) List<String> touch,
                                    @RequestParam(required = false) List<String> trigger,
+                                   @RequestParam(required = false) List<String> partner,
                                    @RequestParam(required = false) String active,
                                    @RequestParam(required = false) String q) {
         access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN);
-        return service.count(channel, product, touch, trigger, active, q);
+        return service.count(channel, product, touch, trigger, partner, active, q);
     }
 
     @GetMapping("/{channel}/{code}")

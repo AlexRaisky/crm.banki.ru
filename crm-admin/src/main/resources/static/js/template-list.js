@@ -12,7 +12,8 @@ var _listExhausted = false; // сервер отдал меньше LIST_PAGE �
 /* ===== Мультиселект фильтра: кнопка + выпадающая панель с чекбоксами =====
    Внутри одного фильтра выбранные значения комбинируются по ИЛИ (сервер получает
    несколько одноимённых параметров), между фильтрами — И. */
-var MS_ALL_LABEL = { channel: 'Все каналы', product: 'Все продукты', touch: 'Все точки', trigger: 'Все типы' };
+var MS_ALL_LABEL = { channel: 'Все каналы', product: 'Все продукты', touch: 'Все точки',
+                     trigger: 'Все типы', partner: 'Все партнёры' };
 var MS_STATE = {};   // ключ фильтра -> { options: [{v,l}], selected: [] }
 var MS_CHANNELS = [
     { v: 'sms', l: 'SMS' }, { v: 'push', l: 'Push' }, { v: 'email', l: 'Email' }, { v: 'cc', l: 'КЦ' },
@@ -113,6 +114,7 @@ function collectListFilters() {
         product: msSelected('product'),
         touch: msSelected('touch'),
         trigger: msSelected('trigger'),
+        partner: msSelected('partner'),
         active: val('filterActive')
     };
     var s = document.getElementById('listSearch');
@@ -179,6 +181,7 @@ function populateFilterFacets() {
         msSetOptions('product', (f && f.products) || []);
         msSetOptions('touch', (f && f.touches) || []);
         msSetOptions('trigger', (f && f.triggers) || []);
+        msSetOptions('partner', (f && f.partners) || []);
     }).catch(function () {});
 }
 
@@ -236,7 +239,7 @@ window.addEventListener('resize', onListScroll);
 
 /* Сброс фильтров */
 function resetFilters() {
-    ['channel', 'product', 'touch', 'trigger'].forEach(msClear);
+    ['channel', 'product', 'touch', 'trigger', 'partner'].forEach(msClear);
     var act = document.getElementById('filterActive');
     if (act) act.value = '';
     const searchEl = document.getElementById('listSearch');

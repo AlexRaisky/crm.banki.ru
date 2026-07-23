@@ -36,9 +36,9 @@ public class TemplateService {
     // ------------------------------------------------------------------- LIST
     @Transactional(readOnly = true)
     public List<TemplateListItemDto> list(List<String> channel, List<String> product, List<String> touch,
-                                          List<String> trigger, String active, String q,
+                                          List<String> trigger, List<String> partner, String active, String q,
                                           Integer limit, Integer offset) {
-        var s = filtered(channel, product, touch, trigger, active, q);
+        var s = filtered(channel, product, touch, trigger, partner, active, q);
         if (offset != null && offset > 0) s = s.skip(offset);   // пагинация: пропускаем уже загруженные
         if (limit != null && limit > 0) s = s.limit(limit);
         return s.toList();
@@ -51,23 +51,26 @@ public class TemplateService {
         java.util.TreeSet<String> products = new java.util.TreeSet<>();
         java.util.TreeSet<String> touches = new java.util.TreeSet<>();
         java.util.TreeSet<String> triggers = new java.util.TreeSet<>();
+        java.util.TreeSet<String> partners = new java.util.TreeSet<>();
         for (var i : store.list()) {
             if (i.productType() != null)
                 for (var p : i.productType()) if (p != null && !p.isBlank()) products.add(p);
             if (i.touchPoint() != null && !i.touchPoint().isBlank()) touches.add(i.touchPoint());
             if (i.triggerType() != null && !i.triggerType().isBlank()) triggers.add(i.triggerType());
+            if (i.partnerName() != null && !i.partnerName().isBlank()) partners.add(i.partnerName());
         }
         return java.util.Map.of(
                 "products", new java.util.ArrayList<>(products),
                 "touches", new java.util.ArrayList<>(touches),
-                "triggers", new java.util.ArrayList<>(triggers));
+                "triggers", new java.util.ArrayList<>(triggers),
+                "partners", new java.util.ArrayList<>(partners));
     }
 
     /** Счётчик под теми же фильтрами (для строки «всего N, активных M») — без выгрузки строк на клиент. */
     @Transactional(readOnly = true)
     public java.util.Map<String, Long> count(List<String> channel, List<String> product, List<String> touch,
-                                             List<String> trigger, String active, String q) {
-        var rows = filtered(channel, product, touch, trigger, active, q).toList();
+                                             List<String> trigger, List<String> partner, String active, String q) {
+        var rows = filtered(channel, product, touch, trigger, partner, active, q).toList();
         long total = rows.size();
         long act = rows.stream().filter(i -> Boolean.TRUE.equals(i.active())).count();
         return java.util.Map.of("total", total, "active", act);
@@ -85,16 +88,17 @@ public class TemplateService {
         return vals.isEmpty() || vals.contains(value);
     }
 
-    /** Общий пайплайн фильтрации (канал/продукт/точка/триггер/статус + свободный поиск q).
+    /** Общий пайплайн фильтрации (канал/продукт/точка/триггер/партнёр/статус + свободный поиск q).
      *  Внутри каждого фильтра — OR по выбранным значениям, между фильтрами — AND. */
     private java.util.stream.Stream<TemplateListItemDto> filtered(List<String> channel, List<String> product,
                                                                   List<String> touch, List<String> trigger,
-                                                                  String active, String q) {
+                                                                  List<String> partner, String active, String q) {
         String needle = q == null ? "" : q.trim().toLowerCase();
         return store.list().stream()
                 .filter(i -> anyOf(channel, i.channel()))
                 .filter(i -> anyOf(touch, i.touchPoint()))
                 .filter(i -> anyOf(trigger, i.triggerType()))
+                .filter(i -> anyOf(partner, i.partnerName()))
                 // продукт — у самой строки это список: проходит, если пересекается с выбранными
                 .filter(i -> {
                     var sel = clean(product);
