@@ -377,37 +377,45 @@ function loadTemplate(templateId) {
         return;
     }
     // Полные данные всегда тянем с бэкенда (id в списке = "channel:code").
-    if (ALL_TEMPLATES.some(function (t) { return t.id === templateId; })) {
-        viewFromList(templateId);
-        return;
-    }
-    document.getElementById('settingsOutput').innerHTML = '<p style="color: #e53935;">Шаблон не найден</p>';
+    // ALL_TEMPLATES с переходом на пагинацию содержит лишь загруженную страницу,
+    // поэтому по нему НЕ проверяем — viewFromList сам разберёт id и сходит на бэк.
+    viewFromList(templateId);
 }
 
-/* Поиск шаблона по коду (Code / Letteros ID / Segment) — по данным бэкенда */
+/* Поиск шаблона по коду (Code / Letteros ID / Segment) — ищем на бэкенде по всей базе,
+   а не по загруженной странице списка. */
 function searchTemplate() {
     const key = document.getElementById('searchKey').value.trim().toLowerCase();
     if (!key) return;
-    var found = ALL_TEMPLATES.filter(function (t) {
-        return String(t.code).toLowerCase() === key;
+    var out = document.getElementById('settingsOutput');
+    if (out) out.innerHTML = '<p style="color:#9aa2b1;">Поиск…</p>';
+
+    CRM.listTemplates({ q: key, limit: 200 }).then(function (raw) {
+        // q — подстрочный поиск по многим полям; оставляем только точное совпадение кода
+        var found = (raw || []).map(CRM.apiItemToList).filter(function (t) {
+            var letteros = (t.letteros == null ? '' : String(t.letteros)).toLowerCase();
+            return String(t.code).toLowerCase() === key || letteros === key;
+        });
+        if (!found.length) {
+            if (out) out.innerHTML = '<p style="color: #e53935;">Шаблон с кодом «' + sfdEsc(key) + '» не найден.</p>';
+            return;
+        }
+        // Код уникален внутри канала, но может совпадать между каналами — берём первый,
+        // остальные упоминаем подсказкой.
+        viewFromList(found[0].id);
+        if (found.length > 1) {
+            setTimeout(function () {
+                var o = document.getElementById('settingsOutput');
+                if (!o) return;
+                var note = document.createElement('p');
+                note.style.color = '#f59e0b';
+                note.textContent = 'Код найден в нескольких каналах: ' + found.map(function (t) { return t.channel; }).join(', ') + '. Показан ' + found[0].channel + '; остальные — через «Список шаблонов».';
+                o.prepend(note);
+            }, 300);
+        }
+    }).catch(function () {
+        if (out) out.innerHTML = '<p style="color: #e53935;">Не удалось выполнить поиск.</p>';
     });
-    if (!found.length) {
-        document.getElementById('settingsOutput').innerHTML = '<p style="color: #e53935;">Шаблон с кодом «' + key + '» не найден.</p>';
-        return;
-    }
-    // Код уникален внутри канала, но может совпадать между каналами — берём первый,
-    // остальные упоминаем подсказкой.
-    viewFromList(found[0].id);
-    if (found.length > 1) {
-        setTimeout(function () {
-            var out = document.getElementById('settingsOutput');
-            if (!out) return;
-            var note = document.createElement('p');
-            note.style.color = '#f59e0b';
-            note.textContent = 'Код найден в нескольких каналах: ' + found.map(function (t) { return t.channel; }).join(', ') + '. Показан ' + found[0].channel + '; остальные — через «Список шаблонов».';
-            out.prepend(note);
-        }, 300);
-    }
 }
 
 /* Восстановление базы communication_name из сохранённого значения (для просмотра/редактирования) */
