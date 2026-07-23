@@ -607,7 +607,9 @@ button:hover{filter:brightness(1.08)}
 .stat-card.success{border-left-color:var(--green)}
 .stat-card.error{border-left-color:var(--coral)}
 .stat-card.warning{border-left-color:var(--amber)}
-.stat-card.info{border-left-color:var(--blue)}
+/* .info ниже — глобальный значок-подсказка (17×17, круглый inline-flex). На блочной
+   карточке он схлопывал её в кружок, поэтому модификатор явно возвращает геометрию блока. */
+.stat-card.info{border-left-color:var(--blue);display:block;width:auto;height:auto;border-radius:16px;margin-left:0}
 .stat-card .stat-label{color:var(--faint)}
 .stat-card .stat-value{color:var(--ink)}
 .stat-card .stat-sub{color:var(--faint)}
