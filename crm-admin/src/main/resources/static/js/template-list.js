@@ -9,14 +9,110 @@ var _listOffset = 0;        // сколько строк уже загружен
 var _listLoading = false;   // идёт запрос страницы
 var _listExhausted = false; // сервер отдал меньше LIST_PAGE — грузить больше нечего
 
-/* Текущие значения фильтров и поиска из DOM. */
+/* ===== Мультиселект фильтра: кнопка + выпадающая панель с чекбоксами =====
+   Внутри одного фильтра выбранные значения комбинируются по ИЛИ (сервер получает
+   несколько одноимённых параметров), между фильтрами — И. */
+var MS_ALL_LABEL = { channel: 'Все каналы', product: 'Все продукты', touch: 'Все точки', trigger: 'Все типы' };
+var MS_STATE = {};   // ключ фильтра -> { options: [{v,l}], selected: [] }
+var MS_CHANNELS = [
+    { v: 'sms', l: 'SMS' }, { v: 'push', l: 'Push' }, { v: 'email', l: 'Email' }, { v: 'cc', l: 'КЦ' },
+    { v: 'fa', l: 'FA' }, { v: 'vk', l: 'VK' }, { v: 'la', l: 'Live Activity' }
+];
+
+function msRoot(key) { return document.querySelector('.ms[data-filter="' + key + '"]'); }
+function msSelected(key) { return ((MS_STATE[key] || {}).selected || []).slice(); }
+
+/* Разовая привязка обработчиков открытия/закрытия. */
+function msInit() {
+    Object.keys(MS_ALL_LABEL).forEach(function (key) {
+        MS_STATE[key] = MS_STATE[key] || { options: [], selected: [] };
+        var root = msRoot(key);
+        if (!root || root.dataset.wired) return;
+        root.dataset.wired = '1';
+        root.querySelector('.ms-btn').addEventListener('click', function (e) {
+            e.stopPropagation();
+            var wasOpen = root.classList.contains('open');
+            document.querySelectorAll('.ms.open').forEach(function (o) { o.classList.remove('open'); });
+            if (!wasOpen) root.classList.add('open');
+        });
+        root.querySelector('.ms-panel').addEventListener('click', function (e) { e.stopPropagation(); });
+        msSyncLabel(key);
+    });
+}
+document.addEventListener('click', function () {   // клик мимо — закрыть все панели
+    document.querySelectorAll('.ms.open').forEach(function (o) { o.classList.remove('open'); });
+});
+
+/* opts — массив строк либо {v,l}. Ранее выбранные значения, которых больше нет, отбрасываем. */
+function msSetOptions(key, opts) {
+    var st = MS_STATE[key] = MS_STATE[key] || { options: [], selected: [] };
+    st.options = (opts || []).map(function (o) { return (typeof o === 'string') ? { v: o, l: o } : o; });
+    var valid = st.options.map(function (o) { return o.v; });
+    st.selected = st.selected.filter(function (v) { return valid.indexOf(v) !== -1; });
+
+    var root = msRoot(key);
+    if (!root) return;
+    var panel = root.querySelector('.ms-panel');
+    panel.innerHTML =
+        '<label class="ms-opt ms-all"><input type="checkbox" data-all="1"' + (st.selected.length ? '' : ' checked') +
+        '><span>' + sfdEsc(sfdT(MS_ALL_LABEL[key])) + '</span></label>' +
+        st.options.map(function (o) {
+            return '<label class="ms-opt"><input type="checkbox" value="' + sfdEsc(o.v) + '"' +
+                   (st.selected.indexOf(o.v) !== -1 ? ' checked' : '') + '><span>' + sfdEsc(o.l) + '</span></label>';
+        }).join('');
+    panel.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+            if (cb.dataset.all) {                       // «Все» — снять весь выбор
+                st.selected = [];
+                panel.querySelectorAll('input[type=checkbox]').forEach(function (o) { o.checked = !!o.dataset.all; });
+            } else {
+                var i = st.selected.indexOf(cb.value);
+                if (cb.checked && i === -1) st.selected.push(cb.value);
+                if (!cb.checked && i !== -1) st.selected.splice(i, 1);
+                var all = panel.querySelector('input[data-all]');
+                if (all) all.checked = st.selected.length === 0;
+            }
+            msSyncLabel(key);
+            applyFilters();
+        });
+    });
+    msSyncLabel(key);
+}
+
+/* Подпись на кнопке: «Все …» / единственное значение / «N выбрано». */
+function msSyncLabel(key) {
+    var st = MS_STATE[key], root = msRoot(key);
+    if (!st || !root) return;
+    var btn = root.querySelector('.ms-btn');
+    if (st.selected.length === 0) {
+        btn.textContent = sfdT(MS_ALL_LABEL[key]);
+    } else if (st.selected.length === 1) {
+        var o = st.options.filter(function (x) { return x.v === st.selected[0]; })[0];
+        btn.textContent = o ? o.l : st.selected[0];
+    } else {
+        btn.textContent = st.selected.length + ' ' + sfdT('выбрано');
+    }
+    btn.title = btn.textContent;
+    root.classList.toggle('has-sel', st.selected.length > 0);
+}
+
+function msClear(key) {
+    var st = MS_STATE[key];
+    if (!st) return;
+    st.selected = [];
+    var root = msRoot(key);
+    if (root) root.querySelectorAll('input[type=checkbox]').forEach(function (cb) { cb.checked = !!cb.dataset.all; });
+    msSyncLabel(key);
+}
+
+/* Текущие значения фильтров и поиска из DOM (мультифильтры — массивами). */
 function collectListFilters() {
     var val = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
     var f = {
-        channel: val('filterChannel'),
-        product: val('filterProduct'),
-        touch: val('filterTouch'),
-        trigger: val('filterTrigger'),
+        channel: msSelected('channel'),
+        product: msSelected('product'),
+        touch: msSelected('touch'),
+        trigger: msSelected('trigger'),
         active: val('filterActive')
     };
     var s = document.getElementById('listSearch');
@@ -37,7 +133,12 @@ function fetchListPage(reset) {
     _listLoading = true;
 
     var params = {};
-    Object.keys(f).forEach(function (k) { if (f[k]) params[k] = f[k]; });
+    // массив = мультифильтр (пустой не отправляем); строка — как есть
+    Object.keys(f).forEach(function (k) {
+        var v = f[k];
+        if (Array.isArray(v)) { if (v.length) params[k] = v; }
+        else if (v) params[k] = v;
+    });
     params.limit = LIST_PAGE;
     if (_listOffset > 0) params.offset = _listOffset;
 
@@ -68,26 +169,17 @@ function fetchListPage(reset) {
     return p;
 }
 
-/* Наполнение выпадающих фильтров (продукт/точка/триггер) реальными значениями из базы.
-   Канал не трогаем — там фиксированный справочник каналов. */
+/* Наполнение мультифильтров: канал — фиксированный справочник каналов,
+   продукт/точка/триггер — реальные значения из базы (facets). */
 function populateFilterFacets() {
+    msInit();
+    msSetOptions('channel', MS_CHANNELS);
     if (!CRM || typeof CRM.facetsTemplates !== 'function') return;
     CRM.facetsTemplates().then(function (f) {
-        fillFilterSelect('filterProduct', f && f.products, 'Все продукты');
-        fillFilterSelect('filterTouch', f && f.touches, 'Все точки');
-        fillFilterSelect('filterTrigger', f && f.triggers, 'Все типы');
+        msSetOptions('product', (f && f.products) || []);
+        msSetOptions('touch', (f && f.touches) || []);
+        msSetOptions('trigger', (f && f.triggers) || []);
     }).catch(function () {});
-}
-function fillFilterSelect(id, values, allLabel) {
-    var sel = document.getElementById(id);
-    if (!sel) return;
-    var cur = sel.value;                                    // сохраняем текущий выбор
-    var html = '<option value="">' + sfdT(allLabel) + '</option>';
-    (values || []).forEach(function (v) {
-        html += '<option value="' + sfdEsc(v) + '">' + sfdEsc(v) + '</option>';
-    });
-    sel.innerHTML = html;
-    if (cur && (values || []).indexOf(cur) !== -1) sel.value = cur;
 }
 
 /* Применение фильтров — новый набор с дебаунсом. */
@@ -144,11 +236,9 @@ window.addEventListener('resize', onListScroll);
 
 /* Сброс фильтров */
 function resetFilters() {
-    document.getElementById('filterChannel').value = '';
-    document.getElementById('filterProduct').value = '';
-    document.getElementById('filterTouch').value = '';
-    document.getElementById('filterTrigger').value = '';
-    document.getElementById('filterActive').value = '';
+    ['channel', 'product', 'touch', 'trigger'].forEach(msClear);
+    var act = document.getElementById('filterActive');
+    if (act) act.value = '';
     const searchEl = document.getElementById('listSearch');
     if (searchEl) searchEl.value = '';
     applyFilters();

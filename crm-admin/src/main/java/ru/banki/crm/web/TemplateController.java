@@ -28,10 +28,10 @@ public class TemplateController {
     /** Unified list for "Список шаблонов" (v2 FetchAllTemplates).
      *  q — свободный поиск, limit — сколько строк вернуть (пагинация: грузим первые N, не весь справочник). */
     @GetMapping
-    public List<TemplateListItemDto> list(@RequestParam(required = false) String channel,
-                                          @RequestParam(required = false) String product,
-                                          @RequestParam(required = false) String touch,
-                                          @RequestParam(required = false) String trigger,
+    public List<TemplateListItemDto> list(@RequestParam(required = false) List<String> channel,
+                                          @RequestParam(required = false) List<String> product,
+                                          @RequestParam(required = false) List<String> touch,
+                                          @RequestParam(required = false) List<String> trigger,
                                           @RequestParam(required = false) String active,
                                           @RequestParam(required = false) String q,
                                           @RequestParam(required = false) Integer limit,
@@ -49,10 +49,10 @@ public class TemplateController {
 
     /** Итоги под теми же фильтрами: {total, active} — для строки статистики без выгрузки всех строк. */
     @GetMapping("/count")
-    public Map<String, Long> count(@RequestParam(required = false) String channel,
-                                   @RequestParam(required = false) String product,
-                                   @RequestParam(required = false) String touch,
-                                   @RequestParam(required = false) String trigger,
+    public Map<String, Long> count(@RequestParam(required = false) List<String> channel,
+                                   @RequestParam(required = false) List<String> product,
+                                   @RequestParam(required = false) List<String> touch,
+                                   @RequestParam(required = false) List<String> trigger,
                                    @RequestParam(required = false) String active,
                                    @RequestParam(required = false) String q) {
         access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN);

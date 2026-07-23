@@ -54,6 +54,27 @@
     };
   }
 
+  /* Query-строка из объекта фильтров. Массив = несколько значений одного параметра
+     (channel=sms&channel=email) — бэк трактует их как OR внутри фильтра. */
+  function buildQuery(filters) {
+    var qs = [];
+    if (filters) {
+      Object.keys(filters).forEach(function (k) {
+        var v = filters[k];
+        if (Array.isArray(v)) {
+          v.forEach(function (item) {
+            if (item !== null && item !== undefined && item !== "") {
+              qs.push(encodeURIComponent(k) + "=" + encodeURIComponent(item));
+            }
+          });
+        } else if (v) {
+          qs.push(encodeURIComponent(k) + "=" + encodeURIComponent(v));
+        }
+      });
+    }
+    return qs.length ? "?" + qs.join("&") : "";
+  }
+
   function bool(v) { return v == null ? null : !!v; }
 
   // ---- маппинг «рыхлого» объекта формы v1 -> TemplateDto бэкенда ----
@@ -196,22 +217,10 @@
     fetchEnv: function () { return req("GET", "/api/env"); },
 
     listTemplates: function (filters) {
-      var qs = [];
-      if (filters) {
-        Object.keys(filters).forEach(function (k) {
-          if (filters[k]) qs.push(encodeURIComponent(k) + "=" + encodeURIComponent(filters[k]));
-        });
-      }
-      return req("GET", "/api/templates" + (qs.length ? "?" + qs.join("&") : ""));
+      return req("GET", "/api/templates" + buildQuery(filters));
     },
     countTemplates: function (filters) {
-      var qs = [];
-      if (filters) {
-        Object.keys(filters).forEach(function (k) {
-          if (filters[k]) qs.push(encodeURIComponent(k) + "=" + encodeURIComponent(filters[k]));
-        });
-      }
-      return req("GET", "/api/templates/count" + (qs.length ? "?" + qs.join("&") : ""));
+      return req("GET", "/api/templates/count" + buildQuery(filters));
     },
     facetsTemplates: function () { return req("GET", "/api/templates/facets"); },
     getTemplate: function (channel, code) { return req("GET", "/api/templates/" + channel + "/" + code); },

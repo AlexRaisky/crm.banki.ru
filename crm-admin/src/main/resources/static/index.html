@@ -1338,52 +1338,35 @@
     </div>
   </div>
   <div class="filters-row">
+    <!-- Мультиселекты: можно выбрать несколько значений (внутри фильтра ИЛИ, между фильтрами И).
+         Список опций наполняется реальными значениями из базы (populateFilterFacets). -->
     <div class="field">
       <label>Канал</label>
-      <select id="filterChannel" onchange="applyFilters()">
-        <option value="">Все каналы</option>
-        <option value="sms">SMS</option>
-        <option value="push">Push</option>
-        <option value="email">Email</option>
-        <option value="cc">КЦ</option>
-        <option value="fa">FA</option>
-        <option value="vk">VK</option>
-        <option value="la">Live Activity</option>
-      </select>
+      <div class="ms" data-filter="channel">
+        <button type="button" class="ms-btn">Все каналы</button>
+        <div class="ms-panel"></div>
+      </div>
     </div>
     <div class="field">
       <label>Продукт</label>
-      <select id="filterProduct" onchange="applyFilters()">
-        <option value="">Все продукты</option>
-        <option value="loan">loan</option>
-        <option value="card">card</option>
-        <option value="account">account</option>
-        <option value="subscription">subscription</option>
-        <option value="insurance">insurance</option>
-        <option value="deposit">deposit</option>
-      </select>
+      <div class="ms" data-filter="product">
+        <button type="button" class="ms-btn">Все продукты</button>
+        <div class="ms-panel"></div>
+      </div>
     </div>
     <div class="field">
       <label>Touch point</label>
-      <select id="filterTouch" onchange="applyFilters()">
-        <option value="">Все точки</option>
-        <option value="abandoned-view">abandoned-view</option>
-        <option value="abandoned-form">abandoned-form</option>
-        <option value="abandoned-showcase">abandoned-showcase</option>
-        <option value="abandoned-application">abandoned-application</option>
-        <option value="abandoned-approval">abandoned-approval</option>
-        <option value="sign">sign</option>
-        <option value="issue">issue</option>
-        <option value="renewal">renewal</option>
-      </select>
+      <div class="ms" data-filter="touch">
+        <button type="button" class="ms-btn">Все точки</button>
+        <div class="ms-panel"></div>
+      </div>
     </div>
     <div class="field">
       <label>Trigger type</label>
-      <select id="filterTrigger" onchange="applyFilters()">
-        <option value="">Все типы</option>
-        <option value="trigger">trigger</option>
-        <option value="promo">promo</option>
-      </select>
+      <div class="ms" data-filter="trigger">
+        <button type="button" class="ms-btn">Все типы</button>
+        <div class="ms-panel"></div>
+      </div>
     </div>
     <div class="field">
       <label>Статус</label>

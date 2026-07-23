@@ -35,8 +35,8 @@ public class TemplateService {
 
     // ------------------------------------------------------------------- LIST
     @Transactional(readOnly = true)
-    public List<TemplateListItemDto> list(String channel, String product, String touch,
-                                          String trigger, String active, String q,
+    public List<TemplateListItemDto> list(List<String> channel, List<String> product, List<String> touch,
+                                          List<String> trigger, String active, String q,
                                           Integer limit, Integer offset) {
         var s = filtered(channel, product, touch, trigger, active, q);
         if (offset != null && offset > 0) s = s.skip(offset);   // пагинация: пропускаем уже загруженные
@@ -65,24 +65,42 @@ public class TemplateService {
 
     /** Счётчик под теми же фильтрами (для строки «всего N, активных M») — без выгрузки строк на клиент. */
     @Transactional(readOnly = true)
-    public java.util.Map<String, Long> count(String channel, String product, String touch,
-                                             String trigger, String active, String q) {
+    public java.util.Map<String, Long> count(List<String> channel, List<String> product, List<String> touch,
+                                             List<String> trigger, String active, String q) {
         var rows = filtered(channel, product, touch, trigger, active, q).toList();
         long total = rows.size();
         long act = rows.stream().filter(i -> Boolean.TRUE.equals(i.active())).count();
         return java.util.Map.of("total", total, "active", act);
     }
 
-    /** Общий пайплайн фильтрации (канал/продукт/точка/триггер/статус + свободный поиск q). */
-    private java.util.stream.Stream<TemplateListItemDto> filtered(String channel, String product, String touch,
-                                                                  String trigger, String active, String q) {
+    /** Выбранные значения фильтра без пустых (пустой список = фильтр не задан). */
+    private static List<String> clean(List<String> selected) {
+        if (selected == null) return List.of();
+        return selected.stream().filter(s -> s != null && !s.isBlank()).toList();
+    }
+
+    /** Пусто = фильтр не задан. Иначе строка проходит, если её значение есть в списке (OR внутри фильтра). */
+    private static boolean anyOf(List<String> selected, String value) {
+        var vals = clean(selected);
+        return vals.isEmpty() || vals.contains(value);
+    }
+
+    /** Общий пайплайн фильтрации (канал/продукт/точка/триггер/статус + свободный поиск q).
+     *  Внутри каждого фильтра — OR по выбранным значениям, между фильтрами — AND. */
+    private java.util.stream.Stream<TemplateListItemDto> filtered(List<String> channel, List<String> product,
+                                                                  List<String> touch, List<String> trigger,
+                                                                  String active, String q) {
         String needle = q == null ? "" : q.trim().toLowerCase();
         return store.list().stream()
-                .filter(i -> channel == null || channel.isBlank() || channel.equals(i.channel()))
-                .filter(i -> touch == null || touch.isBlank() || touch.equals(i.touchPoint()))
-                .filter(i -> trigger == null || trigger.isBlank() || trigger.equals(i.triggerType()))
-                .filter(i -> product == null || product.isBlank()
-                        || (i.productType() != null && i.productType().contains(product)))
+                .filter(i -> anyOf(channel, i.channel()))
+                .filter(i -> anyOf(touch, i.touchPoint()))
+                .filter(i -> anyOf(trigger, i.triggerType()))
+                // продукт — у самой строки это список: проходит, если пересекается с выбранными
+                .filter(i -> {
+                    var sel = clean(product);
+                    return sel.isEmpty()
+                            || (i.productType() != null && i.productType().stream().anyMatch(sel::contains));
+                })
                 .filter(i -> active == null || active.isBlank()
                         || ("active".equals(active) == Boolean.TRUE.equals(i.active())))
                 .filter(i -> needle.isEmpty() || matches(i, needle));
