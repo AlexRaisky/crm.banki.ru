@@ -59,12 +59,18 @@ public class UnifiedTemplateService {
     @PersistenceContext
     private EntityManager em;
 
-    /** Адрес внешней прод-БД (пусто = синк не настроен, очередь не ведём). */
-    @org.springframework.beans.factory.annotation.Value("${app.proddb.url:}")
-    private String prodDbUrl;
+    /**
+     * Настроен ли прод-приёмник. Спрашиваем ProdDbService — источник истины ОДИН:
+     * активная строка app.db_connection с флагом is_prod_sync. Раньше здесь читалась
+     * переменная окружения app.proddb.url, и после переезда конфигурации в реестр
+     * (env остался только для одноразового сида) очередь переставала вестись:
+     * правка тихо меняла лишь локальную базу и в прод не уезжала.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    private ru.banki.crm.service.prod.ProdDbService prodDb;
 
     private boolean prodConfigured() {
-        return prodDbUrl != null && !prodDbUrl.isBlank();
+        return prodDb != null && prodDb.configured();
     }
 
     /** Удаление из единого справочника (при удалении шаблона в мастере). */
