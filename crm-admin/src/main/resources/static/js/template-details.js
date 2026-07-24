@@ -264,7 +264,11 @@ function sfdFieldDefs(d){
     /* Параметры самой активности — ниже контента: сначала что показываем, потом как */
     if (laRows.length) secs.push({ sec:'Live Activity — параметры активности', rows:laRows });
     var svc = [
-        { k:'communication_type', label:'communication_type' },
+        /* Значений всего два и они не меняются — список зашит здесь, справочник в БД
+           заводить не за чем (в отличие от product_type/touch_point). Через sfdDictOpts,
+           чтобы значение вне списка у старых шаблонов не подменилось молча первым. */
+        { k:'communication_type', label:'communication_type', type:'select',
+          opts: sfdDictOpts(['adv','service'], d.communication_type, true) },
         { k:'biz_type', label:'Business communication type', type:'select', opts:['','adv','info','service'] },
         { k:'aff_sub3', label:'aff_sub3' }
     ];
