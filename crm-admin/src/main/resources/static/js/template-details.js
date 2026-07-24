@@ -1413,9 +1413,15 @@ function refreshViewTemplateSelect() {
         items.forEach(function(t) {
             var opt = document.createElement('option');
             opt.value = t.id;
-            // канал в начале: при «всех каналах» коды повторяются между каналами и без него не различить
-            var ch = CH_LABELS[t.channel] || t.channel || '';
-            opt.textContent = (ch ? ch + ' · ' : '') + t.code + ' - ' + (t.name || String(t.code)) +
+            /* Канал выбран блоком выше — в подписи он лишний. Оставляем его только
+               если канал почему-то не задан: тогда список сборный, а коды между
+               каналами повторяются и без префикса не различить. */
+            var ch = VIEWER_CHANNEL ? '' : ((CH_LABELS[t.channel] || t.channel || '') + ' · ');
+            /* Номер шаблона и source_type: именно по source_type шаблон и ищут (поле
+               поиска рядом). communication_name — запасной вариант: у части записей
+               source_type пуст, и подпись выродилась бы в голый номер. */
+            var подпись = t.source || t.name || String(t.code);
+            opt.textContent = ch + t.code + ' — ' + подпись +
                               (t.active ? '' : ' ' + sfdTT('(неактивный)'));
             sel.appendChild(opt);
         });
