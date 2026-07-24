@@ -39,21 +39,25 @@ public class DictionaryService {
     }
 
     /**
-     * Значения communication_name для подсказок редактируемого combobox:
-     * справочник dictionary.d_communication_name + то, что уже встречается в шаблонах канала.
+     * Значения communication_name для выпадающего списка — ТОЛЬКО справочник
+     * dictionary.d_communication_name.
+     * <p>
+     * Раньше сюда подмешивались имена, уже встречающиеся в шаблонах канала. На тестовых
+     * данных это было незаметно, а на реальных превратило список в свалку исторических
+     * имён (warning-internet-block-unknown, with-question-a и подобное) — пользоваться
+     * им стало нельзя. Справочник на то и справочник: что в нём есть, то и предлагаем.
+     * <p>
+     * Вписать значение вне списка по-прежнему можно — поле осталось редактируемым,
+     * и у уже заведённых шаблонов их имена никуда не деваются.
+     *
+     * @param channel не влияет на результат; параметр сохранён ради совместимости
+     *                с вызовами вида /api/dictionaries/comm-names?channel=push
      */
     @Transactional(readOnly = true)
     public List<String> communicationNames(String channel) {
-        boolean all = channel == null || channel.isBlank();
-        String sql = "SELECT value FROM dictionary.d_communication_name WHERE is_active ORDER BY sort_order, value";
-        List<String> out = new java.util.ArrayList<>(jdbc.queryForList(sql, String.class));
-        String used = "SELECT DISTINCT communication_name FROM template.d_template" +
-                " WHERE communication_name IS NOT NULL AND communication_name <> ''" +
-                (all ? "" : " AND channel = ?") + " ORDER BY 1";
-        List<String> fromTemplates = all ? jdbc.queryForList(used, String.class)
-                                         : jdbc.queryForList(used, String.class, channel);
-        fromTemplates.forEach(v -> { if (!out.contains(v)) out.add(v); });
-        return out;
+        return jdbc.queryForList(
+                "SELECT value FROM dictionary.d_communication_name WHERE is_active ORDER BY sort_order, value",
+                String.class);
     }
 
     /** Точки касания (touch_point) из справочника. */

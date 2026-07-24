@@ -101,7 +101,9 @@ function sfdRecalcNames(){
    вводом руками. Тянем справочники сюда: touch_point — строгий список, а
    communication_name — список с возможностью вписать своё (новые имена заводятся
    постоянно, запрещать их нельзя). */
-var SFD_DICT = { touch: null, comm: {} };   /* comm — по каналу: список зависит от него */
+/* Оба списка одинаковы для всех каналов (справочники ни от чего не зависят),
+   поэтому тянем их по одному разу за загрузку страницы. */
+var SFD_DICT = { touch: null, comm: null };
 var SFD_DICT_REQ = {};                      /* что уже запрошено, чтобы не дёргать API повторно */
 
 function sfdEnsureDicts(channel){
@@ -113,13 +115,12 @@ function sfdEnsureDicts(channel){
             sfdRender();      /* справочник приехал — перерисовываем с готовым списком */
         }).catch(function(){ SFD_DICT.touch = []; });
     }
-    var ch = channel || '';
-    if (SFD_DICT.comm[ch] === undefined && !SFD_DICT_REQ['comm:' + ch] && CRM.dictCommNames){
-        SFD_DICT_REQ['comm:' + ch] = true;
-        CRM.dictCommNames(ch).then(function(list){
-            SFD_DICT.comm[ch] = list || [];
+    if (SFD_DICT.comm === null && !SFD_DICT_REQ.comm && CRM.dictCommNames){
+        SFD_DICT_REQ.comm = true;
+        CRM.dictCommNames(channel || '').then(function(list){
+            SFD_DICT.comm = list || [];
             sfdRender();
-        }).catch(function(){ SFD_DICT.comm[ch] = []; });
+        }).catch(function(){ SFD_DICT.comm = []; });
     }
 }
 
@@ -234,7 +235,7 @@ function sfdFieldDefs(d){
     /* combo, а не select: значение выбирается из справочника ИЛИ вписывается своё —
        новые имена коммуникаций заводятся регулярно, строгий список их бы отсёк. */
     mainRows.push({ k:'comname', label:'communication_name', wide:true, type:'combo',
-                    opts: sfdDictOpts(SFD_DICT.comm[ch], null, false),
+                    opts: sfdDictOpts(SFD_DICT.comm, null, false),
                     fmt:function(){ return SFD_STATE.work.comname; } });
 
     var secs = [
