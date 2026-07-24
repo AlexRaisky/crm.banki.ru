@@ -340,6 +340,31 @@ function rpEmbedSetupVisible(on){
   var box = document.getElementById('rpSetup');
   if (box) box.style.display = on ? '' : 'none';
 }
+
+/* Развёрнут ли блок настроек. null — «как решит rpEmbedSetupFold»: свёрнут, если
+   подключение уже задано. Как только админ нажал на шапку, его выбор держится до
+   переключения на другой отчёт. */
+var RP_SETUP_OPEN = null;
+function rpSetupToggle(){
+  var box = document.getElementById('rpSetup');
+  if (!box) return;
+  RP_SETUP_OPEN = box.classList.contains('collapsed');
+  rpEmbedSetupFold(rpEmbedCfg());
+}
+/* Свёрнутый вид: одна строка с адресом и книгой вместо трёх полей и кнопок. */
+function rpEmbedSetupFold(cfg){
+  var box = document.getElementById('rpSetup');
+  if (!box) return;
+  var задано = !!(cfg && cfg.server && cfg.view);
+  var открыт = (RP_SETUP_OPEN === null) ? !задано : RP_SETUP_OPEN;
+  box.classList.toggle('collapsed', !открыт);
+  var sum = document.getElementById('rpSetupSum');
+  if (sum) sum.textContent = (!открыт && задано)
+    ? String(cfg.server).replace(/^https?:\/\//, '') + ' · ' + cfg.view
+    : '';
+  var head = document.getElementById('rpSetupHead');
+  if (head) head.title = открыт ? rpT('Свернуть') : rpT('Изменить подключение');
+}
 /* Шапка (заголовок и описание) не зависит от конфига — ставим её сразу. */
 function rpEmbedHead(){
   var meta = RP_EMBED[RP_EMBED_CUR];
@@ -350,6 +375,8 @@ function rpEmbedHead(){
 }
 
 function rpEmbedOpen(key){
+  /* Другой отчёт — другое подключение, решение «развернуть» на него не переносим. */
+  if (RP_EMBED[key] && key !== RP_EMBED_CUR) RP_SETUP_OPEN = null;
   if (RP_EMBED[key]) RP_EMBED_CUR = key;
   if (!document.getElementById('rpEmbedTitle')) return;
 
@@ -402,6 +429,7 @@ function rpEmbedRender(){
         : '—';
       document.getElementById('rpEmbedStatus').textContent = '';
     }
+    rpEmbedSetupFold(cfg);
   }
   rpEmbedShow(cfg);
 }
@@ -415,6 +443,7 @@ function rpEmbedSave(){
   if (st) st.textContent = rpT('Сохраняем…');
   rpEmbedCfgSave(cfg).then(function(){
     if (st) st.textContent = rpT('Сохранено для всех пользователей.');
+    RP_SETUP_OPEN = false;   /* сохранили — сворачиваем, отчёт занимает освободившееся место */
     rpEmbedRender();
   }).catch(function(e){
     if (!st) return;
@@ -431,6 +460,7 @@ function rpEmbedClear(){
   if (!confirm(rpT('Очистить настройки подключения этого отчёта? Отчёт перестанет открываться у всех пользователей.'))) return;
   var st = document.getElementById('rpEmbedStatus');
   rpEmbedCfgDelete().then(function(){
+    RP_SETUP_OPEN = true;    /* очистили — форма нужна сразу, чтобы завести заново */
     rpEmbedRender();
     if (st) st.textContent = rpT('Подключение очищено.');
   }).catch(function(e){

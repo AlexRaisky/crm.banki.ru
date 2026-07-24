@@ -236,7 +236,13 @@
            показывается только админам (reports.js: rpEmbedSetupVisible), поэтому
            по умолчанию он скрыт: иначе не-админ успевал увидеть чужие поля. -->
       <div class="rp-setup" id="rpSetup" style="display:none">
-        <div class="rp-setup-head" data-i18n="Подключение к Tableau">Подключение к Tableau</div>
+        <!-- Когда подключение уже задано, блок свёрнут в одну строку: править его
+             нужно редко, а развёрнутым он отжимал отчёт вниз на ~180px. -->
+        <button type="button" class="rp-setup-head" id="rpSetupHead" onclick="rpSetupToggle()">
+          <span class="rp-setup-chev" aria-hidden="true">▾</span>
+          <span data-i18n="Подключение к Tableau">Подключение к Tableau</span>
+          <span class="rp-setup-sum" id="rpSetupSum"></span>
+        </button>
         <div class="rp-setup-grid">
           <label><span data-i18n="Адрес Tableau Server / Cloud">Адрес Tableau Server / Cloud</span>
             <input id="rpSrv" placeholder="https://tableau.banki.ru" autocomplete="off"></label>
