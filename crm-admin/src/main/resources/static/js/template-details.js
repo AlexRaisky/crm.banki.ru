@@ -245,7 +245,7 @@ function sfdFieldDefs(d){
     mainRows.push({ k:'active', label:sfdT('Статус'), type:'bool' });
     /* combo, а не select: значение выбирается из справочника ИЛИ вписывается своё —
        новые имена коммуникаций заводятся регулярно, строгий список их бы отсёк. */
-    mainRows.push({ k:'comname', label:'communication_name', wide:true, type:'combo',
+    mainRows.push({ k:'comname', label:'Communication name', wide:true, type:'combo',
                     opts: sfdDictOpts(SFD_DICT.comm, null, false),
                     fmt:function(){ return SFD_STATE.work.comname; } });
 
