@@ -199,7 +199,9 @@ function sfdFieldDefs(d){
                       wide:true, type:'textarea' });
     }
     var segRows = [
-        { k:'source', label:'Source_type (campaign_name)', wide:true, ro:true, fmt:function(){ return SFD_STATE.work.source; } },
+        /* колонка в БД называется source_type, но в работе это «campaign name» —
+           подпись по бизнес-имени, настоящее имя колонки остаётся в подсказке (SFD_DB) */
+        { k:'source', label:'Campaign name', wide:true, ro:true, fmt:function(){ return SFD_STATE.work.source; } },
         { k:'trigger', label:'Trigger type', type:'select', opts:['','promo','trigger'] },
         { k:'product', label:'Product type', type:'select',
           opts: sfdDictOpts(SFD_DICT.product, d.product, true) },
@@ -243,7 +245,7 @@ function sfdFieldDefs(d){
     mainRows.push({ k:'active', label:sfdT('Статус'), type:'bool' });
     /* combo, а не select: значение выбирается из справочника ИЛИ вписывается своё —
        новые имена коммуникаций заводятся регулярно, строгий список их бы отсёк. */
-    mainRows.push({ k:'comname', label:'Campaign name', wide:true, type:'combo',
+    mainRows.push({ k:'comname', label:'communication_name', wide:true, type:'combo',
                     opts: sfdDictOpts(SFD_DICT.comm, null, false),
                     fmt:function(){ return SFD_STATE.work.comname; } });
 
