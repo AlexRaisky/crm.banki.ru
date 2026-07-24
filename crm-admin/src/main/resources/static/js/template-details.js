@@ -171,17 +171,24 @@ function sfdFieldDefs(d){
         content.push({ k:'ttl', label:'TTL' });
         content.push({ k:'buttons', label:'Buttons (JSON)', wide:true, type:'textarea' });
     }
+    /* Live Activity. Контентная часть у неё пушевая (текст, заголовок, ссылки, кнопки) —
+       оставляем её в «Контенте и ссылках» рядом с остальными каналами. Собственные
+       параметры активности вынесены отдельной секцией ниже (laRows): их шесть, и в
+       общем списке они тонули, хотя относятся не к сообщению, а к самой активности. */
+    var laRows = [];
     if (isLa){
-        content.push({ k:'activity_name', label:'Activity name' });
-        content.push({ k:'la_event', label:'LA event' });
-        content.push({ k:'la_visualization', label:'LA visualization' });
-        content.push({ k:'la_status', label:'LA status' });
-        content.push({ k:'current_step', label:'Current step' });
         content.push({ k:'title', label:'Title' });
         content.push({ k:'deeplink', label:'Deep link', wide:true });
         content.push({ k:'webview', label:'Webview link', wide:true });
         content.push({ k:'action_buttons', label:'Action buttons (JSON)', wide:true, type:'textarea' });
-        content.push({ k:'la_visualization_attributes', label:'LA visualization attributes (JSON)', wide:true, type:'textarea' });
+
+        laRows.push({ k:'activity_name', label:'Activity name' });
+        laRows.push({ k:'la_event', label:'LA event' });
+        laRows.push({ k:'la_visualization', label:'LA visualization' });
+        laRows.push({ k:'la_status', label:'LA status' });
+        laRows.push({ k:'current_step', label:'Current step' });
+        laRows.push({ k:'la_visualization_attributes', label:'LA visualization attributes (JSON)',
+                      wide:true, type:'textarea' });
     }
     var segRows = [
         { k:'source', label:'Source_type (campaign_name)', wide:true, ro:true, fmt:function(){ return SFD_STATE.work.source; } },
@@ -244,6 +251,8 @@ function sfdFieldDefs(d){
         { k:'ch2d_operator_id', label:'CH2D operator ID' }
     ]});
     if (content.length) secs.push({ sec:'Контент и ссылки', rows:content });
+    /* Параметры самой активности — ниже контента: сначала что показываем, потом как */
+    if (laRows.length) secs.push({ sec:'Live Activity — параметры активности', rows:laRows });
     var svc = [
         { k:'communication_type', label:'communication_type' },
         { k:'biz_type', label:'Business communication type', type:'select', opts:['','adv','info','service'] },
