@@ -207,7 +207,7 @@ function sfdFieldDefs(d){
         { k:'touch', label:'Touch point', type:'select',
           opts: sfdDictOpts(SFD_DICT.touch, d.touch, true) },
         /* только цифры: значение уходит в source_type как Nday, буквы там ломают имя */
-        { k:'day', label:sfdT('День отправки'), type:'num' }
+        { k:'day', label:'Sending day', type:'num' }
     ];
     if (isVk) segRows.push({ k:'ab_group', label:'AB Group' });
     if (isCC){
@@ -243,7 +243,7 @@ function sfdFieldDefs(d){
     mainRows.push({ k:'active', label:sfdT('Статус'), type:'bool' });
     /* combo, а не select: значение выбирается из справочника ИЛИ вписывается своё —
        новые имена коммуникаций заводятся регулярно, строгий список их бы отсёк. */
-    mainRows.push({ k:'comname', label:'communication_name', wide:true, type:'combo',
+    mainRows.push({ k:'comname', label:'Campaign name', wide:true, type:'combo',
                     opts: sfdDictOpts(SFD_DICT.comm, null, false),
                     fmt:function(){ return SFD_STATE.work.comname; } });
 
@@ -267,10 +267,10 @@ function sfdFieldDefs(d){
         /* Значений всего два и они не меняются — список зашит здесь, справочник в БД
            заводить не за чем (в отличие от product_type/touch_point). Через sfdDictOpts,
            чтобы значение вне списка у старых шаблонов не подменилось молча первым. */
-        { k:'communication_type', label:'communication_type', type:'select',
+        { k:'communication_type', label:'Communication tunnel', type:'select',
           opts: sfdDictOpts(['adv','service'], d.communication_type, true) },
         { k:'biz_type', label:'Business communication type', type:'select', opts:['','adv','info','service'] },
-        { k:'aff_sub3', label:'aff_sub3' }
+        { k:'aff_sub3', label:'Landing page' }
     ];
     svc = svc.concat([
         { k:'marketplace', label:'marketplace', type:'bool' },
@@ -529,6 +529,23 @@ function sfdChainToggle(on){
     sfdRender();
 }
 function sfdChainDays(v){ if (SFD_STATE && SFD_STATE.chain) SFD_STATE.chain.days = v; }
+/* В поле дней допустимы только цифры и запятые. Всё остальное sfdChainBuild либо молча
+   отбрасывает (буквы превращаются в NaN и выпадают из списка), либо принимает за
+   разделитель — и человек получает не те шаги, не поняв почему. Отсекаем на вводе,
+   позицию курсора сохраняем, иначе правка середины строки прыгает в конец. */
+function sfdChainDaysInput(inp){
+    /* Пробел и «;» не выкидываем, а превращаем в запятую: они и раньше работали
+       разделителями, и вставленное «0 3 7» иначе слиплось бы в один день 037 —
+       ошибка молчаливая и заметная только по числу шагов. Остальное отбрасываем. */
+    var было = inp.value,
+        стало = было.replace(/[\s;]+/g, ',').replace(/[^\d,]+/g, '').replace(/,{2,}/g, ',');
+    if (было !== стало){
+        var pos = (inp.selectionStart || 0) - (было.length - стало.length);
+        inp.value = стало;
+        try { inp.setSelectionRange(pos, pos); } catch(e){}
+    }
+    sfdChainDays(inp.value);
+}
 function sfdChainBuild(){
     var st = SFD_STATE;
     if (!st || !st.chain) return;
@@ -558,8 +575,9 @@ function sfdChainHtml(d){
         sfdT('шаблон на каждый день цепочки') + '</label>';
     if (ch.on){
         body += '<div class="sfd-chain-days"><span>' + sfdT('Дни цепочки (числа через запятую)') + '</span>' +
-            '<input class="sfd-edit" value="' + sfdEsc(ch.days) + '" placeholder="0, 3, 7"' +
-            ' oninput="sfdChainDays(this.value)"' +
+            '<input class="sfd-edit" value="' + sfdEsc(ch.days) + '" placeholder="0,3,7"' +
+            ' inputmode="numeric" autocomplete="off"' +
+            ' oninput="sfdChainDaysInput(this)"' +
             ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();sfdChainBuild();}">' +
             '<button type="button" class="sf-btn" onclick="sfdChainBuild()">' + sfdT('Сгенерировать строки') + '</button></div>';
         if (ch.rows.length){
