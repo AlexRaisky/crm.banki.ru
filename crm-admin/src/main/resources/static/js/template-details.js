@@ -171,7 +171,9 @@ function sfdFieldDefs(d){
         isSms = ch === 'sms', isFa = ch === 'fa', isVk = ch === 'vk', isLa = ch === 'la';
     var content = [];
     if (isEmail){
-        content.push({ k:'subject', label:'Subject', wide:true });
+        /* Subject в карточке нет: тему письма проставляет отправка. В модели поле
+           осталось (прод-таблица требует его непустым — UnifiedTemplateService
+           .prodDefaults подставляет пустую строку), просто заводить его руками не нужно. */
         /* Считается по правилу (sfdComputeEmailFrom), руками не задаётся — как и
            Campaign name. Раньше это делала форма мастера (updateEmailSenderName);
            с переездом на карточку поле стало обычным вводом, и адрес перестал
@@ -649,8 +651,12 @@ function sfdCreateMissing(d){
     if (!String(d.product || '').trim()) miss.push('Product type');
     if (!String(d.touch || '').trim()) miss.push('Touch point');
     if (!d.comname || d.comname === 'NoComName') miss.push('communication_name');
-    if (d.channel === 'email'){ if (!String(d.subject || '').trim()) miss.push('Subject'); }
-    else if (d.channel !== 'cc' && !chainOn){ if (!String(d.message || '').trim()) miss.push('Message text'); }
+    /* У e-mail обязательного контента нет: тему проставляет отправка, вёрстка живёт
+       в Letteros. Остальным каналам текст сообщения нужен — кроме цепочки, где он
+       задаётся по дням. */
+    if (d.channel !== 'email' && d.channel !== 'cc' && !chainOn){
+        if (!String(d.message || '').trim()) miss.push('Message text');
+    }
     return miss;
 }
 function sfdCreate(){
@@ -970,15 +976,11 @@ function sfdRenderPreview(){
     }
     if (ch === 'email'){
         var url = sfdLetterosUrl(d);
-        /* Тот же адрес — карточку не пересобираем: iframe пересоздался бы, и Letteros
+        /* Тот же адрес — карточку не трогаем вовсе: iframe пересоздался бы, и Letteros
            перезагружался на каждое нажатие клавиши в любом поле (превью зовётся с
-           каждого input). Обновляем только тему. */
+           каждого input). Показывать в шапке нечего — тема письма задаётся отправкой. */
         var было = side.querySelector('.pv-em-frame');
-        if (url && было && было.dataset.url === url){
-            var mv = side.querySelector('.pv-em-meta .v');
-            if (mv) mv.textContent = d.subject || '—';
-            return;
-        }
+        if (url && было && было.dataset.url === url) return;
         var тело;
         if (url){
             /* sandbox оставляем: письмо чужое. allow-same-origin здесь безопасен —
@@ -996,9 +998,7 @@ function sfdRenderPreview(){
             тело = '<div class="pv-em-stub">' + sfdT('Укажите Letteros ID — письмо подтянется из Letteros') + '</div>';
         }
         side.innerHTML = '<div class="pv-card"><div class="pv-title">' + sfdT('Предпросмотр E-mail') + '</div>' +
-            '<div class="pv-em"><div class="pv-em-head">Letteros-шаблон</div>' +
-            '<div class="pv-em-meta"><div class="l">' + sfdT('Тема') + '</div><div class="v">' + sfdEsc(d.subject || '—') + '</div></div>' +
-            тело + '</div></div>';
+            '<div class="pv-em"><div class="pv-em-head">Letteros-шаблон</div>' + тело + '</div></div>';
         var fr = side.querySelector('.pv-em-frame');
         if (fr && !url){ fr.srcdoc = d.message; return; }
         if (fr){
