@@ -262,6 +262,17 @@ function sfdFieldDefs(d){
         { k:'c2d_account', label:'C2D Account' },
         { k:'ch2d_operator_id', label:'CH2D operator ID' }
     ]});
+    /* Цепочка: те же поля задаются по дням в таблице секции «Цепочка», и в карточке
+       они дубль. Дубль не безобидный — при создании он подставлялся в дни с нетронутой
+       ячейкой (см. sfdCreate), то есть текст уезжал туда, где его не вводили, а понять
+       это по экрану было нельзя. Убираем из карточки; выключение тумблера возвращает
+       поля вместе с набранным — состояние мы не трогаем. */
+    if (isCreate && SFD_STATE.chain && SFD_STATE.chain.on){
+        var chainKeys = sfdChainKeys(d.channel);
+        if (chainKeys.length) content = content.filter(function(f){ return chainKeys.indexOf(f.k) < 0; });
+    }
+    /* У push по-дневными оказываются все контентные поля разом — секцию тогда не
+       показываем совсем, пустая рамка с заголовком выглядит как потерянные поля. */
     if (content.length) secs.push({ sec:'Контент и ссылки', rows:content });
     /* Параметры самой активности — ниже контента: сначала что показываем, потом как */
     if (laRows.length) secs.push({ sec:'Live Activity — параметры активности', rows:laRows });
@@ -522,6 +533,11 @@ var SFD_CHAIN_COLS = {
 };
 var SFD_CHAIN_REQ = { sms:['message'], push:['title','message'], email:['letteros_id'] };
 function sfdChainAble(ch){ return !!SFD_CHAIN_COLS[ch]; }
+/* Поля, которые при включённой цепочке задаются по дням: карточка их прячет,
+   sfdCreate не подставляет их в общую часть шаблона. */
+function sfdChainKeys(ch){
+    return (SFD_CHAIN_COLS[ch] || []).map(function(c){ return c.key; });
+}
 
 function sfdChainToggle(on){
     var st = SFD_STATE;
@@ -647,9 +663,14 @@ function sfdCreate(){
             }
         }
         window.CRM_CURRENT = null;   /* цепочка — всегда создание */
+        /* По-дневные поля вычищаем из общей части: значение, набранное до включения
+           тумблера, иначе досталось бы дням с пустой ячейкой — а поля этого в карточке
+           уже не видно. Каждый день берёт контент только из своей строки таблицы. */
+        var base = Object.assign({}, d);
+        sfdChainKeys(d.channel).forEach(function(k){ base[k] = ''; });
         var seq = rows.reduce(function(p, row){
             return p.then(function(acc){
-                var dd = Object.assign({}, d, row.overrides, { day: String(row.day) });
+                var dd = Object.assign({}, base, row.overrides, { day: String(row.day) });
                 if (dd.channel === 'email' && dd.letteros_id) dd.code = dd.letteros_id;
                 var src = sfdComputeCampaignName(dd);
                 if (src) dd.source = src;
