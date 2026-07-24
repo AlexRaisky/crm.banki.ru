@@ -651,10 +651,12 @@ function sfdCreateMissing(d){
     if (!String(d.product || '').trim()) miss.push('Product type');
     if (!String(d.touch || '').trim()) miss.push('Touch point');
     if (!d.comname || d.comname === 'NoComName') miss.push('communication_name');
-    /* У e-mail обязательного контента нет: тему проставляет отправка, вёрстка живёт
-       в Letteros. Остальным каналам текст сообщения нужен — кроме цепочки, где он
-       задаётся по дням. */
-    if (d.channel !== 'email' && d.channel !== 'cc' && !chainOn){
+    /* У e-mail контент живёт в Letteros, а тему проставляет отправка — требуем не текст,
+       а Letteros ID: он же становится кодом шаблона, и без него за шаблоном не стоит
+       никакого письма. При цепочке ID задаётся по дням в таблице. */
+    if (d.channel === 'email'){
+        if (!chainOn && !String(d.letteros_id == null ? '' : d.letteros_id).trim()) miss.push('Letteros ID');
+    } else if (d.channel !== 'cc' && !chainOn){
         if (!String(d.message || '').trim()) miss.push('Message text');
     }
     return miss;
