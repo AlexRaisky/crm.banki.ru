@@ -198,7 +198,8 @@ function sfdFieldDefs(d){
         { k:'partner', label:'Partner name' },
         { k:'touch', label:'Touch point', type:'select',
           opts: sfdDictOpts(SFD_DICT.touch, d.touch, true) },
-        { k:'day', label:sfdT('День отправки') }
+        /* только цифры: значение уходит в source_type как Nday, буквы там ломают имя */
+        { k:'day', label:sfdT('День отправки'), type:'num' }
     ];
     if (isVk) segRows.push({ k:'ab_group', label:'AB Group' });
     if (isCC){
@@ -435,6 +436,13 @@ function sfdRowHtml(f){
             valHtml = '<select class="sfd-edit" data-k="' + f.k + '">' + f.opts.map(function(o){
                 return '<option value="' + o + '"' + (String(d[f.k] || '') === o ? ' selected' : '') + '>' + (o || '—') + '</option>';
             }).join('') + '</select>';
+        } else if (f.type === 'num'){
+            /* Не type=number: он в разных браузерах пропускает e, +, - и знаки экспоненты,
+               а нам нужны строго цифры. Текстовое поле с числовой клавиатурой на телефоне,
+               остальное отсекает обработчик ввода по data-num. */
+            valHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" data-num="1"' +
+                      ' inputmode="numeric" autocomplete="off"' +
+                      ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
         } else if (f.type === 'combo'){
             /* редактируемая выпадашка: нативный input+datalist — и выбрать из списка,
                и вписать своё, без самодельного дропдауна */
@@ -726,6 +734,17 @@ function sfdRender(){
     output.querySelectorAll('.sfd-edit, .sfd-edit-check').forEach(function(inp){
         var handler = function(){
             var k = inp.dataset.k;
+            /* числовое поле: вычищаем всё, кроме цифр, прямо в поле — иначе набранная
+               буква осталась бы на экране и уехала бы в source_type как часть Nday.
+               Позицию курсора держим, чтобы правка в середине значения не прыгала. */
+            if (inp.dataset.num){
+                var было = inp.value, стало = было.replace(/\D+/g, '');
+                if (было !== стало){
+                    var pos = (inp.selectionStart || 0) - (было.length - стало.length);
+                    inp.value = стало;
+                    try { inp.setSelectionRange(pos, pos); } catch(e){}
+                }
+            }
             st.work[k] = inp.type === 'checkbox' ? inp.checked : inp.value;
             /* тумблер Live Activity — не поле шаблона, а переключатель канала:
                набранное (текст, ссылки, сегментация) остаётся, меняется только
