@@ -159,14 +159,25 @@ function sfdFieldDefs(d){
         segRows.push({ k:'host_id', label:'Host Id' });
         segRows.push({ k:'kvint', label:'Kvint campaign Id' });
     }
+    var isCreate = !!(SFD_STATE && SFD_STATE.mode === 'create');
+    /* При заведении шаблона канал и код показывать незачем: канал только что выбран
+       вкладкой над карточкой, а код выдаёт бэкенд (TemplateService.create ->
+       TemplateStore.nextCode). Исключение — КЦ: там код это номер сегмента, его
+       задаёт человек, и без него create вернёт 400. В просмотре оба поля остаются:
+       для заведённого шаблона это его опознавательные признаки. */
+    var mainRows = [];
+    if (!isCreate) {
+        mainRows.push({ k:'channel', label:sfdT('Канал'), ro:true, fmt:function(v){ return CH_LABELS[v] || v; } });
+    }
+    if (!isCreate || isCC) {
+        mainRows.push({ k:'code', label: sfdCodeLabel(ch), ro: !isCreate });
+    }
+    mainRows.push({ k:'active', label:sfdT('Статус'), type:'bool' });
+    mainRows.push({ k:'comname', label:'communication_name', wide:true,
+                    fmt:function(){ return SFD_STATE.work.comname; } });
+
     var secs = [
-        { sec:'Основное', rows:[
-            { k:'channel', label:sfdT('Канал'), ro:true, fmt:function(v){ return CH_LABELS[v] || v; } },
-            /* code задаётся только при создании шаблона, потом это ключ записи */
-            { k:'code', label: sfdCodeLabel(ch), ro: !(SFD_STATE && SFD_STATE.mode === 'create') },
-            { k:'active', label:sfdT('Статус'), type:'bool' },
-            { k:'comname', label:'communication_name', wide:true, fmt:function(){ return SFD_STATE.work.comname; } }
-        ]},
+        { sec:'Основное', rows:mainRows },
         { sec:'Источник и сегментация', rows:segRows }
     ];
     /* Финансовый ассистент: параметры интеграции C2D отдельной секцией */
@@ -481,7 +492,11 @@ function sfdChainHtml(d){
 function sfdCreateMissing(d){
     var miss = [];
     var chainOn = SFD_STATE && SFD_STATE.mode === 'create' && SFD_STATE.chain && SFD_STATE.chain.on;
-    if (!chainOn && !String(d.code == null ? '' : d.code).trim()) miss.push(sfdCodeLabel(d.channel));
+    /* Код требуем только у КЦ: там это номер сегмента, который задаёт человек.
+       Остальным каналам код выдаёт бэкенд, и поля в форме больше нет. */
+    if (d.channel === 'cc' && !chainOn && !String(d.code == null ? '' : d.code).trim()) {
+        miss.push(sfdCodeLabel(d.channel));
+    }
     if (!String(d.product || '').trim()) miss.push('Product type');
     if (!String(d.touch || '').trim()) miss.push('Touch point');
     if (!d.comname || d.comname === 'NoComName') miss.push('communication_name');

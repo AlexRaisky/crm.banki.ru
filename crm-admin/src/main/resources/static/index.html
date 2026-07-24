@@ -1025,6 +1025,11 @@
         <button type="button" data-ch="cc" onclick="wizardSetChannel('cc')">КЦ</button>
         <button type="button" data-ch="fa" onclick="wizardSetChannel('fa')">FA</button>
         <button type="button" data-ch="vk" onclick="wizardSetChannel('vk')">VK</button>
+        <!-- Live Activity: раньше это был тумблер «Это Live Activity» внутри формы Push.
+             Форма ушла вместе с переходом мастера на карточку, и канал стал недоступен,
+             хотя в «Просмотре настроек» он есть. Возвращаем как отдельный канал —
+             у него своя таблица (notice.live_activity_template) и свои поля. -->
+        <button type="button" data-ch="la" onclick="wizardSetChannel('la')">Live Activity</button>
     </div>
 </div>
 
