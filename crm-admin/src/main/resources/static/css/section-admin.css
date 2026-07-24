@@ -899,6 +899,14 @@ button:hover{filter:brightness(1.08)}
 .pv-em-frame{width:100%;height:min(72vh,760px);border:0;background:#fff;display:block}
 .pv-em-stub{padding:26px 16px;text-align:center;color:var(--faint);font-size:12.5px;
     border:1px dashed rgba(80,195,255,.3);margin:12px;border-radius:10px}
+/* Подвал письма: ссылка на Letteros нужна всегда — если письма с таким ID нет
+   или Letteros не открывается из браузера, фрейм остаётся пустым и объяснить
+   это может только текст рядом. */
+.pv-em-foot{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;
+    padding:9px 12px;border-top:1px solid var(--line);background:var(--card2)}
+.pv-em-foot a{color:var(--blue);font-size:12px;text-decoration:none;white-space:nowrap}
+.pv-em-foot a:hover{text-decoration:underline}
+.pv-em-foot span{color:var(--faint);font-size:11px;line-height:1.45}
 
 /* ===== Мультиселект фильтров списка: несколько значений в одном фильтре ===== */
 .ms{position:relative}

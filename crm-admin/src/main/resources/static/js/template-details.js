@@ -861,6 +861,19 @@ function sfdSave(){
 }
 
 /* ---------- предпросмотр коммуникации ---------- */
+/* Письмо живёт в Letteros, у нас от него только идентификатор: показываем
+   опубликованную версию по адресу webv/<letteros_id>. У части шаблонов
+   letteros_id пуст, а идентификатор лежит в code — порядок тот же, что в
+   sfdBizCode и при сохранении (sfdCreate: code = letteros_id). */
+var SFD_LETTEROS_BASE = 'https://app.letteros.com/webv/';
+var SFD_EM_TIMER = null;
+function sfdLetterosUrl(d){
+    if (!d || (d.channel !== 'email')) return '';
+    var id = (d.letteros_id != null && d.letteros_id !== '') ? d.letteros_id : d.code;
+    id = String(id == null ? '' : id).trim();
+    return id ? SFD_LETTEROS_BASE + encodeURIComponent(id) : '';
+}
+
 /* Проверяем, помещается ли текст в карточку уведомления: заголовок обрезается
    одной строкой, тело — четырьмя (как в свёрнутом пуше на экране блокировки). */
 function sfdPushFit(side){
@@ -936,15 +949,50 @@ function sfdRenderPreview(){
         return;
     }
     if (ch === 'email'){
+        var url = sfdLetterosUrl(d);
+        /* Тот же адрес — карточку не пересобираем: iframe пересоздался бы, и Letteros
+           перезагружался на каждое нажатие клавиши в любом поле (превью зовётся с
+           каждого input). Обновляем только тему. */
+        var было = side.querySelector('.pv-em-frame');
+        if (url && было && было.dataset.url === url){
+            var mv = side.querySelector('.pv-em-meta .v');
+            if (mv) mv.textContent = d.subject || '—';
+            return;
+        }
+        var тело;
+        if (url){
+            /* sandbox оставляем: письмо чужое. allow-same-origin здесь безопасен —
+               документ сохраняет свой origin (app.letteros.com), то есть остаётся
+               кросс-доменным для панели и до её DOM не дотянется. */
+            тело = '<iframe class="pv-em-frame" title="Letteros" referrerpolicy="no-referrer"' +
+                   ' sandbox="allow-scripts allow-same-origin allow-popups"></iframe>' +
+                   '<div class="pv-em-foot"><a href="' + sfdEsc(url) + '" target="_blank" rel="noopener noreferrer">' +
+                   sfdT('Открыть в Letteros') + ' ↗</a><span>' +
+                   sfdT('Письмо подтягивается из Letteros по Letteros ID. Пустое окно означает, что письма с таким ID нет или Letteros недоступен из браузера.') +
+                   '</span></div>';
+        } else if (d.message){
+            тело = '<iframe class="pv-em-frame" sandbox="" title="Letteros"></iframe>';
+        } else {
+            тело = '<div class="pv-em-stub">' + sfdT('Укажите Letteros ID — письмо подтянется из Letteros') + '</div>';
+        }
         side.innerHTML = '<div class="pv-card"><div class="pv-title">' + sfdT('Предпросмотр E-mail') + '</div>' +
             '<div class="pv-em"><div class="pv-em-head">Letteros-шаблон</div>' +
             '<div class="pv-em-meta"><div class="l">' + sfdT('Тема') + '</div><div class="v">' + sfdEsc(d.subject || '—') + '</div></div>' +
-            (d.message
-                ? '<iframe class="pv-em-frame" sandbox="" title="Letteros"></iframe>'
-                : '<div class="pv-em-stub">' + sfdT('Вёрстка шаблона будет подтягиваться из Letteros') + '</div>') +
-            '</div></div>';
+            тело + '</div></div>';
         var fr = side.querySelector('.pv-em-frame');
-        if (fr) fr.srcdoc = d.message;
+        if (fr && !url){ fr.srcdoc = d.message; return; }
+        if (fr){
+            fr.dataset.url = url;
+            /* ID набирается посимвольно, и каждый промежуточный вариант — это запрос к
+               Letteros за несуществующим письмом. Грузим, когда человек допечатал. */
+            clearTimeout(SFD_EM_TIMER);
+            SFD_EM_TIMER = setTimeout(function(){
+                /* Ищем внутри своего host: карточка мастера и карточка просмотра живут
+                   в DOM одновременно, и поиск по документу находил чужой iframe. */
+                var f = host.querySelector('.pv-em-frame');
+                if (f && f.dataset.url === url && f.src !== url) f.src = url;
+            }, 500);
+        }
         return;
     }
     side.innerHTML = '';
