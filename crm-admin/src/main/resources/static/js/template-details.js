@@ -94,6 +94,46 @@ function sfdRecalcNames(){
     }
 }
 
+/* ---------- справочники значений для карточки ----------
+   dictionary.d_touch_point и dictionary.d_communication_name уже отдаются бэкендом
+   (/api/dictionaries/*). Раньше их подтягивал wizard.js в старые канальные формы;
+   формы ушли вместе с переходом мастера на карточку, и поля снова стали обычным
+   вводом руками. Тянем справочники сюда: touch_point — строгий список, а
+   communication_name — список с возможностью вписать своё (новые имена заводятся
+   постоянно, запрещать их нельзя). */
+var SFD_DICT = { touch: null, comm: {} };   /* comm — по каналу: список зависит от него */
+var SFD_DICT_REQ = {};                      /* что уже запрошено, чтобы не дёргать API повторно */
+
+function sfdEnsureDicts(channel){
+    if (!window.CRM) return;
+    if (SFD_DICT.touch === null && !SFD_DICT_REQ.touch && CRM.dictTouchPoints){
+        SFD_DICT_REQ.touch = true;
+        CRM.dictTouchPoints().then(function(list){
+            SFD_DICT.touch = list || [];
+            sfdRender();      /* справочник приехал — перерисовываем с готовым списком */
+        }).catch(function(){ SFD_DICT.touch = []; });
+    }
+    var ch = channel || '';
+    if (SFD_DICT.comm[ch] === undefined && !SFD_DICT_REQ['comm:' + ch] && CRM.dictCommNames){
+        SFD_DICT_REQ['comm:' + ch] = true;
+        CRM.dictCommNames(ch).then(function(list){
+            SFD_DICT.comm[ch] = list || [];
+            sfdRender();
+        }).catch(function(){ SFD_DICT.comm[ch] = []; });
+    }
+}
+
+/* Список для выпадашки: справочник + текущее значение, если его там нет.
+   Без этого открытие старого шаблона со снятым из справочника значением
+   молча подменяло бы его первым пунктом списка. */
+function sfdDictOpts(list, current, withEmpty){
+    var out = (list || []).slice();
+    var cur = String(current == null ? '' : current);
+    if (cur && out.indexOf(cur) === -1) out.unshift(cur);
+    if (withEmpty) out.unshift('');
+    return out;
+}
+
 /* ---------- поля карточки по каналам (реальные поля наших форм + dtoToV1; preheader у нас нет) ---------- */
 /* подпись ключевого поля (code) по каналу */
 function sfdCodeLabel(ch){
@@ -148,7 +188,8 @@ function sfdFieldDefs(d){
         { k:'trigger', label:'Trigger type', type:'select', opts:['','promo','trigger'] },
         { k:'product', label:'Product type' },
         { k:'partner', label:'Partner name' },
-        { k:'touch', label:'Touch point' },
+        { k:'touch', label:'Touch point', type:'select',
+          opts: sfdDictOpts(SFD_DICT.touch, d.touch, true) },
         { k:'day', label:sfdT('День отправки') }
     ];
     if (isVk) segRows.push({ k:'ab_group', label:'AB Group' });
@@ -183,7 +224,10 @@ function sfdFieldDefs(d){
         mainRows.push({ k:'code', label: sfdCodeLabel(ch), ro: !isCreate });
     }
     mainRows.push({ k:'active', label:sfdT('Статус'), type:'bool' });
-    mainRows.push({ k:'comname', label:'communication_name', wide:true,
+    /* combo, а не select: значение выбирается из справочника ИЛИ вписывается своё —
+       новые имена коммуникаций заводятся регулярно, строгий список их бы отсёк. */
+    mainRows.push({ k:'comname', label:'communication_name', wide:true, type:'combo',
+                    opts: sfdDictOpts(SFD_DICT.comm[ch], null, false),
                     fmt:function(){ return SFD_STATE.work.comname; } });
 
     var secs = [
@@ -381,6 +425,15 @@ function sfdRowHtml(f){
             valHtml = '<select class="sfd-edit" data-k="' + f.k + '">' + f.opts.map(function(o){
                 return '<option value="' + o + '"' + (String(d[f.k] || '') === o ? ' selected' : '') + '>' + (o || '—') + '</option>';
             }).join('') + '</select>';
+        } else if (f.type === 'combo'){
+            /* редактируемая выпадашка: нативный input+datalist — и выбрать из списка,
+               и вписать своё, без самодельного дропдауна */
+            var lid = 'sfd-dl-' + f.k;
+            valHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" list="' + lid + '"' +
+                      ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">' +
+                      '<datalist id="' + lid + '">' + (f.opts || []).map(function(o){
+                          return '<option value="' + sfdEsc(o) + '"></option>';
+                      }).join('') + '</datalist>';
         } else if (f.type === 'textarea'){
             valHtml = '<textarea class="sfd-edit" data-k="' + f.k + '">' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '</textarea>';
         } else {
@@ -603,6 +656,9 @@ function sfdRender(){
     var output = document.getElementById(isCreate ? 'wizardOutput' : 'settingsOutput');
     if (!output) return;
     var d = st.work;
+    /* Справочники тянем при первой отрисовке канала; когда приедут — перерисуемся.
+       Повторных запросов нет: sfdEnsureDicts помнит, что уже спрашивал. */
+    sfdEnsureDicts(d.channel);
     var chLabels = CH_LABELS;
     var isEmail = d.channel === 'email';
     var mainId = isEmail
