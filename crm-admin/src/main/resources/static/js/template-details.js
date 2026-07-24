@@ -79,8 +79,23 @@ function sfdComputeCampaignName(d){
     if (senderType === 'promo') return tab + '_' + senderType + '_' + product + '_' + partner + '_' + comname + '_' + date;
     return tab + '_' + senderType + '_' + product + '_' + comname + '_' + day + 'day';
 }
-var SFD_NAME_KEYS = { trigger:1, product:1, partner:1, comname:1, day:1, segment:1,
+/* touch здесь не ради comname/source (они его не используют), а ради адреса
+   отправителя: renewal — первое условие в правиле. */
+var SFD_NAME_KEYS = { trigger:1, product:1, partner:1, comname:1, day:1, segment:1, touch:1,
     marketplace:1, cross:1, dialog:1, loyalty:1, national_rating:1, news:1, mobile_app:1 };
+/* Адрес отправителя e-mail — копия generateEmail из v2. Порядок проверок значимый:
+   renewal (по touch_point) → service → info (по business_communication_type) →
+   trigger+adv → promo+adv (по trigger_type) → newsletter как общий случай. */
+function sfdComputeEmailFrom(d){
+    var email;
+    if (d.touch === 'renewal') email = 'renewal@email.banki.ru';
+    else if (d.biz_type === 'service') email = 'no-reply@email.banki.ru';
+    else if (d.biz_type === 'info') email = 'inform@email.banki.ru';
+    else if (d.trigger === 'trigger' && d.biz_type === 'adv') email = 'offers@email.banki.ru';
+    else if (d.trigger === 'promo' && d.biz_type === 'adv') email = 'advice@email.banki.ru';
+    else email = 'newsletter@email.banki.ru';
+    return 'Банки.ру<' + email + '>';
+}
 function sfdRecalcNames(){
     var st = SFD_STATE; if (!st) return;
     var d = st.work;
@@ -91,6 +106,7 @@ function sfdRecalcNames(){
     if (d.channel === 'email'){
         d.service_flag = d.biz_type === 'service';
         d.info_flag = d.biz_type === 'info';
+        d.email_from = sfdComputeEmailFrom(d);
     }
 }
 
@@ -156,7 +172,11 @@ function sfdFieldDefs(d){
     var content = [];
     if (isEmail){
         content.push({ k:'subject', label:'Subject', wide:true });
-        content.push({ k:'email_from', label:'Email from' });
+        /* Считается по правилу (sfdComputeEmailFrom), руками не задаётся — как и
+           Campaign name. Раньше это делала форма мастера (updateEmailSenderName);
+           с переездом на карточку поле стало обычным вводом, и адрес перестал
+           следовать за touch point и типом коммуникации. */
+        content.push({ k:'email_from', label:'Email from', ro:true });
         content.push({ k:'letteros_id', label:'Letteros ID' });
     } else if (!isCC){
         content.push({ k:'message', label:'Message text', wide:true, type:'textarea' });
@@ -386,7 +406,7 @@ var SFD_HELP = {
     host_id:            'Идентификатор хоста для выгрузки сегмента КЦ.',
     kvint:              'Идентификатор кампании в Kvint (робот-обзвон КЦ).',
     subject:            'Тема письма.',
-    email_from:         'Адрес отправителя: service → no-reply@, info → inform@, trigger → offers@, promo → advice@.',
+    email_from:         'Адрес отправителя, считается сам: touch point renewal → renewal@, иначе service → no-reply@, info → inform@, adv+trigger → offers@, adv+promo → advice@, во всех остальных случаях newsletter@.',
     letteros_id:        'Идентификатор письма в Letteros, он же код email-шаблона.',
     message:            'Текст сообщения: тело SMS или push-уведомления, для e-mail — вёрстка письма.',
     title:              'Заголовок push-уведомления — первая строка карточки на экране.',
