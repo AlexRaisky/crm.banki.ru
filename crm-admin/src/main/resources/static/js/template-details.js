@@ -166,6 +166,16 @@ function sfdFieldDefs(d){
        задаёт человек, и без него create вернёт 400. В просмотре оба поля остаются:
        для заведённого шаблона это его опознавательные признаки. */
     var mainRows = [];
+    /* Live Activity — разновидность пуша, а не самостоятельный канал в глазах человека:
+       заводится тумблером в карточке Mobile-push. Технически это всё же отдельный
+       канал (своя таблица notice.live_activity_template), поэтому тумблер переключает
+       d.channel между push и la, а карточка перерисовывается с полями LA.
+       Только при заведении: у сохранённого шаблона смена канала — это переезд между
+       таблицами, а не правка поля. */
+    if (isCreate && (isPush || isLa)) {
+        d.is_la = isLa;   /* держим тумблер в согласии с каналом */
+        mainRows.push({ k:'is_la', label:sfdT('Это Live Activity'), type:'bool' });
+    }
     if (!isCreate) {
         mainRows.push({ k:'channel', label:sfdT('Канал'), ro:true, fmt:function(v){ return CH_LABELS[v] || v; } });
     }
@@ -651,6 +661,10 @@ function sfdRender(){
         var handler = function(){
             var k = inp.dataset.k;
             st.work[k] = inp.type === 'checkbox' ? inp.checked : inp.value;
+            /* тумблер Live Activity — не поле шаблона, а переключатель канала:
+               набранное (текст, ссылки, сегментация) остаётся, меняется только
+               набор канальных полей и таблица, в которую шаблон уедет */
+            if (k === 'is_la') st.work.channel = inp.checked ? 'la' : 'push';
             if (SFD_NAME_KEYS[k] || k === 'biz_type') sfdRecalcNames();
             sfdRenderPreview();
         };
