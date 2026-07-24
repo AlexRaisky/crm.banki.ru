@@ -103,7 +103,7 @@ function sfdRecalcNames(){
    постоянно, запрещать их нельзя). */
 /* Оба списка одинаковы для всех каналов (справочники ни от чего не зависят),
    поэтому тянем их по одному разу за загрузку страницы. */
-var SFD_DICT = { touch: null, comm: null };
+var SFD_DICT = { touch: null, comm: null, product: null };
 var SFD_DICT_REQ = {};                      /* что уже запрошено, чтобы не дёргать API повторно */
 
 function sfdEnsureDicts(channel){
@@ -114,6 +114,13 @@ function sfdEnsureDicts(channel){
             SFD_DICT.touch = list || [];
             sfdRender();      /* справочник приехал — перерисовываем с готовым списком */
         }).catch(function(){ SFD_DICT.touch = []; });
+    }
+    if (SFD_DICT.product === null && !SFD_DICT_REQ.product && CRM.dictProductTypes){
+        SFD_DICT_REQ.product = true;
+        CRM.dictProductTypes().then(function(list){
+            SFD_DICT.product = list || [];
+            sfdRender();
+        }).catch(function(){ SFD_DICT.product = []; });
     }
     if (SFD_DICT.comm === null && !SFD_DICT_REQ.comm && CRM.dictCommNames){
         SFD_DICT_REQ.comm = true;
@@ -194,7 +201,8 @@ function sfdFieldDefs(d){
     var segRows = [
         { k:'source', label:'Source_type (campaign_name)', wide:true, ro:true, fmt:function(){ return SFD_STATE.work.source; } },
         { k:'trigger', label:'Trigger type', type:'select', opts:['','promo','trigger'] },
-        { k:'product', label:'Product type' },
+        { k:'product', label:'Product type', type:'select',
+          opts: sfdDictOpts(SFD_DICT.product, d.product, true) },
         { k:'partner', label:'Partner name' },
         { k:'touch', label:'Touch point', type:'select',
           opts: sfdDictOpts(SFD_DICT.touch, d.touch, true) },

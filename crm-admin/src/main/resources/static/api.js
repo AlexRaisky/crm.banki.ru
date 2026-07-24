@@ -233,6 +233,7 @@
     dictCcSegments: function () { return req("GET", "/api/dictionaries/cc-segments"); },
     dictCommNames: function (channel) { return req("GET", "/api/dictionaries/comm-names?channel=" + encodeURIComponent(channel)); },
     dictTouchPoints: function () { return req("GET", "/api/dictionaries/touch-points"); },
+    dictProductTypes: function () { return req("GET", "/api/dictionaries/product-types"); },
 
     // flow: материализация цепочек (предпросмотр инсертов слоя B и выполнение)
     flowPreview: function (journey) { return req("POST", "/api/flow/preview", journey); },

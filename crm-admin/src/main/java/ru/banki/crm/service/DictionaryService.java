@@ -67,4 +67,15 @@ public class DictionaryService {
                 "SELECT value FROM dictionary.d_touch_point WHERE is_active ORDER BY sort_order, value",
                 String.class);
     }
+
+    /**
+     * Продукты (product_type) из справочника. Порядок задан sort_order — он смысловой
+     * (сначала массовые продукты), поэтому по алфавиту не сортируем.
+     */
+    @Transactional(readOnly = true)
+    public List<String> productTypes() {
+        return jdbc.queryForList(
+                "SELECT value FROM dictionary.d_product_type WHERE is_active ORDER BY sort_order, value",
+                String.class);
+    }
 }

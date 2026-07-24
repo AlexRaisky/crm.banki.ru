@@ -38,4 +38,9 @@ public class DictionaryController {
     public List<String> touchPoints() {
         return service.touchPoints();
     }
+
+    @GetMapping("/product-types")
+    public List<String> productTypes() {
+        return service.productTypes();
+    }
 }
