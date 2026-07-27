@@ -35,11 +35,22 @@ public final class Sections {
      */
     public static final Set<String> WRITABLE = Set.of(ADMIN, TEMPLATES, PROMO);
 
+    /**
+     * Разделы только для админов: доступ к ним даёт роль администратора, а не матрица
+     * (JourneyController — hasRole ADMIN, «Доступ» — под /api/admin/** hasRole ADMIN).
+     * В матрице прав для не-админа их не показываем: галка там ничего бы не значила.
+     */
+    public static final Set<String> ADMIN_ONLY = Set.of(JOURNEYS, ACCESS);
+
     public static boolean isValid(String id) {
         return VALID.contains(id);
     }
 
     public static boolean isWritable(String id) {
         return WRITABLE.contains(id);
+    }
+
+    public static boolean isAdminOnly(String id) {
+        return ADMIN_ONLY.contains(id);
     }
 }

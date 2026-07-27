@@ -1,22 +1,34 @@
-/* Раздел «Управление доступом» (только ADMIN). Рендерит UI в #sec-access. */
+/* Раздел «Управление доступом» (только ADMIN). Рендерит UI в #sec-access.
+   Права задаются матрицей «раздел × [Просмотр/Добавление/Редактирование/Удаление]».
+   Роль — пресет: при её смене матрица заполняется значениями по умолчанию, дальше
+   админ правит клетки вручную (напр. ридеру дать add только в промо). Истина — матрица;
+   на бэке enforcement идёт по ней (см. AccessGuard.requireCapability). */
 (function () {
   "use strict";
 
   var SECTION_LABELS = {
     home: "Главная", deviations: "Панель отклонений", onelink: "OneLink Builder",
     admin: "Мастер коммуникаций", templates: "Список шаблонов",
-    dashboard: "Дашборд", access: "Управление доступом"
+    dashboard: "Дашборд", promo: "Планирование промо",
+    journeys: "Цепочки", access: "Управление доступом"
   };
   /* Перевод: t() — глобальный словарь оболочки (I18N_EN); до её загрузки отдаём как есть */
   function tr(s) { return (typeof window.t === "function") ? window.t(s) : s; }
   function sectionLabel(s) { return tr(SECTION_LABELS[s] || s); }
+  /* Роль-пресет. ADMIN обходит матрицу на сервере — при её выборе матрицу гасим. */
   var ROLES = [
-    { v: "READER", t: "Reader — только просмотр" },
-    { v: "EDITOR", t: "Editor — + создание/редактирование шаблонов" },
-    { v: "ADMIN", t: "Admin — + управление доступом" }
+    { v: "READER", t: "Reader — просмотр (права уточняются матрицей)" },
+    { v: "EDITOR", t: "Editor — просмотр + запись в доступных разделах" },
+    { v: "ADMIN", t: "Admin — полный доступ ко всем разделам" }
+  ];
+  var CAPS = [
+    { k: "read", t: "Просмотр" },
+    { k: "add", t: "Добавление" },
+    { k: "edit", t: "Редактирование" },
+    { k: "delete", t: "Удаление" }
   ];
 
-  var allSections = [];
+  var matrixSections = [];   // [{id, writable, adminOnly}] — только не-adminOnly
   var rendered = false;
 
   function h(tag, attrs, children) {
@@ -33,28 +45,26 @@
     return el;
   }
 
-  function sectionCheatboxes(selected, idPrefix) {
-    var wrap = h("div", { style: "display:flex;flex-wrap:wrap;gap:8px;margin-top:6px" });
-    allSections.forEach(function (s) {
-      var id = idPrefix + s;
-      var cb = h("input", { type: "checkbox", id: id, value: s });
-      if (selected && selected.indexOf(s) >= 0) cb.checked = true;
-      wrap.appendChild(h("label", { style: "display:flex;align-items:center;gap:5px;font-size:13px;color:var(--dim)" },
-        [cb, sectionLabel(s)]));
-    });
-    return wrap;
-  }
-
-  function collectSections(idPrefix) {
-    return allSections.filter(function (s) {
-      var el = document.getElementById(idPrefix + s);
-      return el && el.checked;
-    });
-  }
-
   /** Роль ADMIN доступна в списке только супер-администратору (сервер проверяет это же правило). */
   function isSuperAdmin() {
     return !!(window.CRM && CRM.me && CRM.me.isSuperAdmin);
+  }
+  /* Наружу супер-админ выглядит обычным админом (см. CRM.displayRole). */
+  function shownRole(role) {
+    return (window.CRM && CRM.displayRole) ? CRM.displayRole(role) : role;
+  }
+
+  function fieldStyle() {
+    return "padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-size:13px";
+  }
+  function btnStyle(bg) {
+    return "padding:7px 12px;border:0;border-radius:8px;background:" + (bg || "#4a6cf7") + ";color:#fff;font-size:13px;cursor:pointer";
+  }
+  function field(label, control) {
+    return h("div", { style: "margin:8px 0" }, [
+      h("div", { style: "font-size:12px;color:var(--faint);margin-bottom:4px" }, [label]),
+      control
+    ]);
   }
 
   function roleSelect(value) {
@@ -74,31 +84,147 @@
     return sel;
   }
 
-  function fieldStyle() {
-    return "padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-size:13px";
+  /* ---------- матрица прав ----------
+     accessList — [{section, read, add, edit, delete}] с сервера. Возвращает объект с
+     методами collect() (собрать в тот же формат) и applyPreset(role). */
+  function buildMatrix(accessList) {
+    var byId = {};
+    (accessList || []).forEach(function (a) { byId[a.section] = a; });
+    var rows = {};
+
+    var thStyle = "text-align:center;padding:6px 8px;border-bottom:1px solid var(--line);color:var(--dim);font-size:12px;font-weight:600";
+    var tdStyle = "text-align:center;padding:6px 8px;border-bottom:1px solid var(--line)";
+    var head = h("tr", null, [h("th", { style: thStyle.replace("center", "left") }, [tr("Раздел")])]
+      .concat(CAPS.map(function (c) { return h("th", { style: thStyle }, [tr(c.t)]); })));
+    var body = [head];
+
+    matrixSections.forEach(function (sec) {
+      var cur = byId[sec.id] || {};
+      var checks = {};
+      CAPS.forEach(function (c) {
+        var cb = h("input", { type: "checkbox" });
+        cb.checked = !!cur[c.k];
+        // add/edit/delete существуют только у writable-разделов (витрины — только просмотр)
+        if (c.k !== "read" && !sec.writable) { cb.checked = false; cb.disabled = true; }
+        checks[c.k] = cb;
+      });
+      // просмотр выключен → раздел не виден, право писать бессмысленно: гасим и блокируем
+      function sync() {
+        var on = checks.read.checked;
+        ["add", "edit", "delete"].forEach(function (k) {
+          if (!sec.writable) return;
+          checks[k].disabled = !on;
+          if (!on) checks[k].checked = false;
+        });
+      }
+      checks.read.addEventListener("change", sync);
+      sync();
+      rows[sec.id] = { sec: sec, checks: checks };
+
+      var cells = [h("td", { style: tdStyle.replace("center", "left") + ";color:var(--ink)" }, [sectionLabel(sec.id)])];
+      CAPS.forEach(function (c) {
+        var cell = h("td", { style: tdStyle });
+        if (c.k === "read" || sec.writable) cell.appendChild(checks[c.k]);
+        else cell.appendChild(h("span", { style: "color:var(--faint)" }, ["—"]));
+        cells.push(cell);
+      });
+      body.push(h("tr", null, cells));
+    });
+
+    var table = h("table", { style: "width:100%;border-collapse:collapse;font-size:13px" }, body);
+    var wrap = h("div", { style: "overflow-x:auto;border:1px solid var(--line);border-radius:8px" }, [table]);
+
+    return {
+      el: wrap,
+      collect: function () {
+        return matrixSections.map(function (sec) {
+          var r = rows[sec.id].checks;
+          return {
+            section: sec.id,
+            read: r.read.checked,
+            add: sec.writable && r.add.checked,
+            edit: sec.writable && r.edit.checked,
+            delete: sec.writable && r.delete.checked
+          };
+        }).filter(function (a) { return a.read || a.add || a.edit || a.delete; });
+      },
+      // Пресет по роли: читаемы все разделы; запись во writable — по роли. Дальше правится руками.
+      applyPreset: function (role) {
+        matrixSections.forEach(function (sec) {
+          var r = rows[sec.id].checks;
+          r.read.checked = true;
+          if (sec.writable) {
+            var w = role === "EDITOR";
+            r.add.checked = r.edit.checked = r.delete.checked = w;
+          }
+          // пересинхронизировать disabled-состояние записей
+          if (sec.writable) {
+            ["add", "edit", "delete"].forEach(function (k) { r[k].disabled = !r.read.checked; });
+          }
+        });
+      },
+      setEnabled: function (on) {
+        matrixSections.forEach(function (sec) {
+          var r = rows[sec.id].checks;
+          r.read.disabled = !on;
+          ["add", "edit", "delete"].forEach(function (k) {
+            if (sec.writable) r[k].disabled = !on || !r.read.checked;
+          });
+        });
+        wrap.style.opacity = on ? "1" : ".5";
+      }
+    };
   }
-  function btnStyle(bg) {
-    return "padding:7px 12px;border:0;border-radius:8px;background:" + (bg || "#4a6cf7") + ";color:#fff;font-size:13px;cursor:pointer";
+
+  /* Роль + матрица связаны: смена роли ADMIN гасит матрицу (админ и так может всё),
+     смена на READER/EDITOR — включает и заполняет пресетом. */
+  function wireRoleToMatrix(role, matrix, note) {
+    function apply() {
+      if (role.value === "ADMIN") {
+        matrix.setEnabled(false);
+        note.textContent = tr("Администратор имеет полный доступ ко всем разделам — матрица не применяется.");
+      } else {
+        matrix.setEnabled(true);
+        note.textContent = "";
+      }
+    }
+    role.addEventListener("change", function () {
+      if (role.value !== "ADMIN") matrix.applyPreset(role.value);
+      apply();
+    });
+    apply();
+  }
+
+  /* ---------- список пользователей ---------- */
+  function capLetters(a) {
+    var s = "";
+    if (a.read) s += "П"; if (a.add) s += "Д"; if (a.edit) s += "Р"; if (a.delete) s += "У";
+    return s;
+  }
+  function accessSummary(u) {
+    var list = (u.access || []).filter(function (a) { return a.read || a.add || a.edit || a.delete; });
+    if (!list.length) return "—";
+    return list.map(function (a) { return sectionLabel(a.section) + " " + capLetters(a); }).join(" · ");
   }
 
   function renderUsers(container) {
     CRM.adminListUsers().then(function (users) {
       container.innerHTML = "";
       var table = h("table", { style: "width:100%;border-collapse:collapse;font-size:13px" });
-      var head = h("tr", null, ["Почта", "Имя", "Роль", "Разделы", "Активен", ""].map(function (t) {
+      var head = h("tr", null, ["Почта", "Имя", "Роль", "Доступ", "Активен", ""].map(function (t) {
         return h("th", { style: "text-align:left;padding:8px;border-bottom:1px solid var(--line);color:var(--dim)" }, [t ? tr(t) : t]);
       }));
       table.appendChild(head);
       users.forEach(function (u) {
-        var secText = (u.sections || []).map(sectionLabel).join(", ");
+        var td = "padding:8px;border-bottom:1px solid var(--line)";
         var row = h("tr", null, [
-          h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.email]),
-          h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.displayName || "—"]),
-          h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.role]),
-          h("td", { style: "padding:8px;border-bottom:1px solid var(--line);color:var(--dim);max-width:260px" }, [secText || "—"]),
-          h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.enabled ? "✓" : "—"]),
+          h("td", { style: td }, [u.email]),
+          h("td", { style: td }, [u.displayName || "—"]),
+          h("td", { style: td }, [shownRole(u.role)]),
+          h("td", { style: td + ";color:var(--dim);max-width:340px" }, [accessSummary(u)]),
+          h("td", { style: td }, [u.enabled ? "✓" : "—"]),
           // manageable приходит с сервера: false — запись не в зоне ответственности текущего пользователя
-          h("td", { style: "padding:8px;border-bottom:1px solid var(--line);white-space:nowrap" },
+          h("td", { style: td + ";white-space:nowrap" },
             u.manageable === false
               ? [h("span", { style: "color:var(--faint)" }, ["—"])]
               : [
@@ -118,23 +244,30 @@
   function editUser(u, container) {
     var box = h("div", { style: "margin:12px 0;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--card)" });
     var name = h("input", { style: fieldStyle(), value: u.displayName || "" });
-    var role = roleSelect(u.role);
+    var role = roleSelect(shownRole(u.role));
     var enabled = h("input", { type: "checkbox" }); enabled.checked = u.enabled;
-    var secs = sectionCheatboxes(u.sections, "edit_" + u.id + "_");
+    var matrix = buildMatrix(u.access);
+    var note = h("div", { style: "font-size:12px;color:var(--faint);margin-top:6px" });
+    wireRoleToMatrix(role, matrix, note);
     box.appendChild(h("div", { style: "font-weight:600;margin-bottom:8px" }, [tr("Изменение: ") + u.email]));
     box.appendChild(field(tr("Имя"), name));
     box.appendChild(field(tr("Роль"), role));
     box.appendChild(field(tr("Активен"), enabled));
-    box.appendChild(field(tr("Разделы"), secs));
+    box.appendChild(field(tr("Права по разделам"), matrix.el));
+    box.appendChild(note);
     box.appendChild(h("button", {
       style: btnStyle() + ";margin-top:10px",
       onclick: function () {
         CRM.adminUpdateUser(u.id, {
           displayName: name.value, role: role.value, enabled: enabled.checked,
-          sections: collectSections("edit_" + u.id + "_")
+          access: matrix.collect()
         }).then(function () { renderUsers(container); }).catch(function (e) { alert(e.message); });
       }
     }, [tr("Сохранить")]));
+    box.appendChild(h("button", {
+      style: btnStyle("#475569") + ";margin:10px 0 0 8px",
+      onclick: function () { renderUsers(container); }
+    }, [tr("Отмена")]));
     container.insertBefore(box, container.firstChild);
   }
 
@@ -149,34 +282,32 @@
     CRM.adminDeleteUser(u.id).then(function () { renderUsers(container); }).catch(function (e) { alert(e.message); });
   }
 
-  function field(label, control) {
-    return h("div", { style: "margin:8px 0" }, [
-      h("div", { style: "font-size:12px;color:var(--faint);margin-bottom:4px" }, [label]),
-      control
-    ]);
-  }
-
   function createForm(usersContainer) {
     var email = h("input", { style: fieldStyle(), type: "email", placeholder: "name@banki.ru" });
     var name = h("input", { style: fieldStyle(), placeholder: tr("Имя") });
     var pwd = h("input", { style: fieldStyle(), type: "password", placeholder: tr("Пароль (мин. 8)") });
     var role = roleSelect("READER");
-    var secs = sectionCheatboxes([], "new_");
+    var matrix = buildMatrix([]);
+    matrix.applyPreset("READER");   // стартовый пресет — как у выбранной роли
+    var note = h("div", { style: "font-size:12px;color:var(--faint);margin-top:6px" });
+    wireRoleToMatrix(role, matrix, note);
     var box = h("div", { style: "padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--card);margin-bottom:18px" });
     box.appendChild(h("div", { style: "font-weight:600;margin-bottom:10px" }, [tr("Новый пользователь")]));
     box.appendChild(field(tr("Почта"), email));
     box.appendChild(field(tr("Имя"), name));
     box.appendChild(field(tr("Пароль"), pwd));
     box.appendChild(field(tr("Роль"), role));
-    box.appendChild(field(tr("Разделы"), secs));
+    box.appendChild(field(tr("Права по разделам"), matrix.el));
+    box.appendChild(note);
     box.appendChild(h("button", {
       style: btnStyle() + ";margin-top:12px",
       onclick: function () {
         CRM.adminCreateUser({
           email: email.value.trim(), displayName: name.value, password: pwd.value,
-          role: role.value, sections: collectSections("new_")
+          role: role.value, access: matrix.collect()
         }).then(function () {
           email.value = name.value = pwd.value = "";
+          matrix.applyPreset(role.value);
           renderUsers(usersContainer);
         }).catch(function (e) { alert(e.message); });
       }
@@ -195,7 +326,8 @@
     /* заголовок и описание рисует pane настроечной админки (pane-access) */
     var usersContainer = h("div", null, []);
     CRM.adminSections().then(function (secs) {
-      allSections = secs;
+      // secs — [{id, writable, adminOnly}]; в матрице только не-adminOnly разделы
+      matrixSections = (secs || []).filter(function (s) { return !s.adminOnly; });
       root.appendChild(createForm(usersContainer));
       root.appendChild(usersContainer);
       renderUsers(usersContainer);

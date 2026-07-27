@@ -20,10 +20,19 @@ public class AdminUserController {
         this.users = users;
     }
 
-    /** Section catalogue for the admin UI to render checkboxes. */
+    /**
+     * Справочник разделов для матрицы прав: id + метаданные. writable — есть ли
+     * add/edit/delete (иначе только просмотр), adminOnly — раздел даёт роль админа,
+     * в матрице не-админа он не нужен.
+     */
     @GetMapping("/sections")
-    public List<String> sections() {
-        return Sections.ALL;
+    public List<Map<String, Object>> sections() {
+        return Sections.ALL.stream()
+                .map(s -> Map.<String, Object>of(
+                        "id", s,
+                        "writable", Sections.isWritable(s),
+                        "adminOnly", Sections.isAdminOnly(s)))
+                .toList();
     }
 
     @GetMapping("/users")
