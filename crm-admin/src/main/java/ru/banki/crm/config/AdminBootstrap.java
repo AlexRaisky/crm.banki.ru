@@ -8,10 +8,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import ru.banki.crm.domain.AppUser;
 import ru.banki.crm.domain.Role;
+import ru.banki.crm.domain.SectionAccess;
 import ru.banki.crm.repo.AppUserRepository;
 import ru.banki.crm.service.Sections;
 
 import java.util.HashSet;
+import java.util.stream.Collectors;
 
 /** Creates the first super-admin from env on startup (idempotent). */
 @Component
@@ -69,7 +71,11 @@ public class AdminBootstrap implements CommandLineRunner {
         admin.setDisplayName("Администратор");
         admin.setRole(Role.SUPER_ADMIN);
         admin.setEnabled(true);
-        admin.setSections(new HashSet<>(Sections.ALL));
+        // Полный CRUD по всем разделам — для показа в матрице; на enforcement не влияет,
+        // супер-админ обходит матрицу на сервере.
+        admin.setSectionAccess(Sections.ALL.stream()
+                .map(s -> new SectionAccess(s, true, true, true, true))
+                .collect(Collectors.toCollection(HashSet::new)));
         users.save(admin);
         log.info("Created super-admin {} with all sections", adminEmail);
     }

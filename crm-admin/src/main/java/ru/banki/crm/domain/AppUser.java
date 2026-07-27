@@ -7,6 +7,7 @@ import lombok.Setter;
 import java.time.OffsetDateTime;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Getter
 @Setter
@@ -37,10 +38,31 @@ public class AppUser {
     @Column(name = "created_at", insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-    /** Section ids this user may see (home, deviations, onelink, admin, templates, dashboard, access). */
+    /**
+     * Права на разделы: по строке на каждый доступный раздел с флагами read/add/edit/delete.
+     * Заменяет прежний Set&lt;String&gt; (раздел виден / не виден). Набор всегда заменяют
+     * целиком (см. {@link SectionAccess}) — не мутируют элементы на месте.
+     */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "user_sections", schema = "app",
             joinColumns = @JoinColumn(name = "user_id"))
-    @Column(name = "section_id")
-    private Set<String> sections = new HashSet<>();
+    private Set<SectionAccess> sectionAccess = new HashSet<>();
+
+    /** Разделы, которые учётка видит (canRead) — для NAV и проверок видимости. */
+    public Set<String> getSections() {
+        return sectionAccess.stream()
+                .filter(SectionAccess::isCanRead)
+                .map(SectionAccess::getSectionId)
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
+    /** Есть ли у учётки право cap в разделе sectionId. */
+    public boolean hasCapability(String sectionId, Capability cap) {
+        for (SectionAccess sa : sectionAccess) {
+            if (sa.getSectionId().equals(sectionId)) {
+                return sa.has(cap);
+            }
+        }
+        return false;
+    }
 }

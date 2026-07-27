@@ -27,7 +27,19 @@ public final class Sections {
 
     public static final Set<String> VALID = Set.copyOf(ALL);
 
+    /**
+     * Разделы, где у не-админа осмысленны add/edit/delete (есть записи и серверные ручки
+     * записи). Для остальных из ALL значима только видимость (read): дашборд/отклонения —
+     * витрины; цепочки, доступ — только для админов (матрицу они обходят). В матрице прав
+     * у не-writable разделов показываем лишь чекбокс Read.
+     */
+    public static final Set<String> WRITABLE = Set.of(ADMIN, TEMPLATES, PROMO);
+
     public static boolean isValid(String id) {
         return VALID.contains(id);
+    }
+
+    public static boolean isWritable(String id) {
+        return WRITABLE.contains(id);
     }
 }

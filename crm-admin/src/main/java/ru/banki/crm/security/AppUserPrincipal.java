@@ -30,6 +30,10 @@ public class AppUserPrincipal implements UserDetails {
         return user.getSections();
     }
 
+    public boolean hasCapability(String sectionId, ru.banki.crm.domain.Capability cap) {
+        return user.hasCapability(sectionId, cap);
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         // SUPER_ADMIN получает и ROLE_ADMIN — все существующие проверки hasRole('ADMIN') работают

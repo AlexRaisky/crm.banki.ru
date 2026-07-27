@@ -8,9 +8,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ru.banki.crm.domain.AppUser;
 import ru.banki.crm.domain.Role;
+import ru.banki.crm.domain.SectionAccess;
 import ru.banki.crm.dto.UserDtos.*;
 import ru.banki.crm.repo.AppUserRepository;
 
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -48,7 +50,7 @@ public class UserService {
         u.setDisplayName(req.displayName());
         u.setRole(role);
         u.setPasswordHash(encoder.encode(req.password()));
-        u.setSections(validSections(req.sections()));
+        u.setSectionAccess(buildAccess(req.access(), req.sections(), role));
         u.setEnabled(true);
         return toView(users.save(u));
     }
@@ -65,7 +67,11 @@ public class UserService {
             u.setRole(target);
         }
         if (req.enabled() != null) u.setEnabled(req.enabled());
-        if (req.sections() != null) u.setSections(validSections(req.sections()));
+        // Права переписываем, если пришла матрица (access) или старый список (sections).
+        // Роль для вывода прав из списка — уже применённая (req.role() выше или прежняя).
+        if (req.access() != null || req.sections() != null) {
+            u.setSectionAccess(buildAccess(req.access(), req.sections(), u.getRole()));
+        }
         return toView(users.save(u));
     }
 
@@ -164,14 +170,40 @@ public class UserService {
         }
     }
 
-    private static Set<String> validSections(Set<String> sections) {
-        if (sections == null) return new HashSet<>();
-        for (String s : sections) {
-            if (!Sections.isValid(s)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный раздел: " + s);
+    /**
+     * Собрать строки прав. Приоритет — матрица access (новый UI); её нет — старый список
+     * разделов, и права выводятся из роли (EDITOR/админ → полный CRUD, READER → только
+     * чтение), как было до матрицы. У не-writable разделов (витрины, только чтение)
+     * add/edit/delete гасим независимо от входа: серверных ручек записи там нет, а true
+     * ввёл бы в заблуждение. Строку заводим только при наличии read — иначе раздел просто
+     * невидим (право писать без чтения бессмысленно).
+     */
+    private Set<SectionAccess> buildAccess(List<SectionAccessDto> access, Set<String> sectionIds, Role role) {
+        Set<SectionAccess> out = new HashSet<>();
+        if (access != null) {
+            for (SectionAccessDto a : access) {
+                if (!Sections.isValid(a.section())) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный раздел: " + a.section());
+                }
+                boolean read = a.read() || a.add() || a.edit() || a.delete();
+                if (!read) continue;
+                boolean w = Sections.isWritable(a.section());
+                out.add(new SectionAccess(a.section(), true,
+                        w && a.add(), w && a.edit(), w && a.delete()));
+            }
+            return out;
+        }
+        if (sectionIds != null) {
+            boolean editor = role == Role.EDITOR || role.isAdminLevel();
+            for (String s : sectionIds) {
+                if (!Sections.isValid(s)) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный раздел: " + s);
+                }
+                boolean w = Sections.isWritable(s) && editor;
+                out.add(new SectionAccess(s, true, w, w, w));
             }
         }
-        return new HashSet<>(sections);
+        return out;
     }
 
     /**
@@ -183,7 +215,12 @@ public class UserService {
         String role = u.getRole() == Role.SUPER_ADMIN ? Role.ADMIN.name() : u.getRole().name();
         boolean manageable = u.getRole() != Role.SUPER_ADMIN
                 && (!u.getRole().isAdminLevel() || currentIsSuperAdmin());
+        List<SectionAccessDto> access = u.getSectionAccess().stream()
+                .map(sa -> new SectionAccessDto(sa.getSectionId(), sa.isCanRead(),
+                        sa.isCanAdd(), sa.isCanEdit(), sa.isCanDelete()))
+                .sorted(Comparator.comparing(SectionAccessDto::section))
+                .toList();
         return new UserView(u.getId(), u.getEmail(), u.getDisplayName(),
-                role, u.isEnabled(), u.getSections(), manageable);
+                role, u.isEnabled(), u.getSections(), access, manageable);
     }
 }

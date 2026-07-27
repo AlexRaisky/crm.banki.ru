@@ -1,8 +1,8 @@
 package ru.banki.crm.web;
 
 import jakarta.validation.Valid;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import ru.banki.crm.domain.Capability;
 import ru.banki.crm.dto.ChainRequest;
 import ru.banki.crm.dto.TemplateDto;
 import ru.banki.crm.dto.TemplateListItemDto;
@@ -70,17 +70,15 @@ public class TemplateController {
     }
 
     @PostMapping("/{channel}")
-    @PreAuthorize("hasAnyRole('EDITOR','ADMIN')")
     public Map<String, String> create(@PathVariable String channel, @Valid @RequestBody TemplateDto dto) {
-        access.requireAnySection(Sections.ADMIN, Sections.TEMPLATES);
+        access.requireCapability(Capability.ADD, Sections.ADMIN, Sections.TEMPLATES);
         dto.setChannel(channel);
         return Map.of("code", service.create(dto));
     }
 
     @PostMapping("/{channel}/chain")
-    @PreAuthorize("hasAnyRole('EDITOR','ADMIN')")
     public Map<String, List<String>> createChain(@PathVariable String channel, @RequestBody ChainRequest req) {
-        access.requireAnySection(Sections.ADMIN, Sections.TEMPLATES);
+        access.requireCapability(Capability.ADD, Sections.ADMIN, Sections.TEMPLATES);
         if (req.getBase() != null) {
             req.getBase().setChannel(channel);
         }
@@ -88,17 +86,15 @@ public class TemplateController {
     }
 
     @PutMapping("/{channel}/{code}")
-    @PreAuthorize("hasAnyRole('EDITOR','ADMIN')")
     public void update(@PathVariable String channel, @PathVariable String code,
                        @RequestBody TemplateDto dto) {
-        access.requireAnySection(Sections.ADMIN, Sections.TEMPLATES);
+        access.requireCapability(Capability.EDIT, Sections.ADMIN, Sections.TEMPLATES);
         service.update(channel, code, dto);
     }
 
     @DeleteMapping("/{channel}/{code}")
-    @PreAuthorize("hasAnyRole('EDITOR','ADMIN')")
     public void delete(@PathVariable String channel, @PathVariable String code) {
-        access.requireAnySection(Sections.ADMIN, Sections.TEMPLATES);
+        access.requireCapability(Capability.DELETE, Sections.ADMIN, Sections.TEMPLATES);
         service.delete(channel, code);
     }
 }

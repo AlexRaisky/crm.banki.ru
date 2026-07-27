@@ -1,7 +1,7 @@
 package ru.banki.crm.web;
 
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import ru.banki.crm.domain.Capability;
 import ru.banki.crm.security.AccessGuard;
 import ru.banki.crm.service.PromoPlanService;
 import ru.banki.crm.service.Sections;
@@ -38,9 +38,8 @@ public class PromoPlanController {
 
     /** Завести промо. Каналов может быть несколько — вернётся столько же строк. */
     @PostMapping
-    @PreAuthorize("hasAnyRole('EDITOR','ADMIN')")
     public List<Map<String, Object>> create(@RequestBody Map<String, Object> body) {
-        access.requireAnySection(Sections.PROMO);
+        access.requireCapability(Capability.ADD, Sections.PROMO);
         return service.create(body);
     }
 
@@ -49,16 +48,14 @@ public class PromoPlanController {
      * ver — timestamp_upd, который видел клиент; разошёлся — 409.
      */
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAnyRole('EDITOR','ADMIN')")
     public Map<String, Object> update(@PathVariable long id, @RequestBody Map<String, Object> body) {
-        access.requireAnySection(Sections.PROMO);
+        access.requireCapability(Capability.EDIT, Sections.PROMO);
         return service.updateField(id, body);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('EDITOR','ADMIN')")
     public void delete(@PathVariable long id) {
-        access.requireAnySection(Sections.PROMO);
+        access.requireCapability(Capability.DELETE, Sections.PROMO);
         service.delete(id);
     }
 }
