@@ -87,14 +87,21 @@
   /* ---------- матрица прав ----------
      accessList — [{section, read, add, edit, delete}] с сервера. Возвращает объект с
      методами collect() (собрать в тот же формат) и applyPreset(role). */
+  /* Что даёт роль-пресет по записи в writable-разделах:
+       READER — только просмотр; EDITOR — всё, кроме удаления; ADMIN — всё. */
+  function presetWrites(role) {
+    if (role === "ADMIN") return { add: true, edit: true, delete: true };
+    if (role === "EDITOR") return { add: true, edit: true, delete: false };
+    return { add: false, edit: false, delete: false };
+  }
+
   function buildMatrix(accessList, initialRole) {
     var byId = {};
     (accessList || []).forEach(function (a) { byId[a.section] = a; });
     var rows = {};
-    /* Уровень записи по текущей роли: EDITOR — при включении раздела он получает
-       запись, READER — нет. Пресет НЕ выдаёт видимость всех разделов (это давало бы
-       «editor = всё»); он лишь задаёт, будет ли запись там, где раздел сделали видимым. */
-    var writeDefault = (initialRole === "EDITOR");
+    /* Текущий шаблон записи по роли — применяется к writable-разделу при включении
+       его просмотра (ручном или пресетом). Витрины остаются только на просмотр. */
+    var writePattern = presetWrites(initialRole);
 
     var thStyle = "text-align:center;padding:6px 8px;border-bottom:1px solid var(--line);color:var(--dim);font-size:12px;font-weight:600";
     var tdStyle = "text-align:center;padding:6px 8px;border-bottom:1px solid var(--line)";
@@ -119,14 +126,13 @@
         ["add", "edit", "delete"].forEach(function (k) { checks[k].disabled = !vis; });
       }
       // Ручное переключение просмотра: выключили — снимаем запись; включили — ставим
-      // запись по умолчанию текущей роли (writeDefault). Так «выбрать роль → отметить
-      // разделы» работает в один проход, а витрины остаются только на просмотр.
+      // запись по шаблону текущей роли (editor: add/edit без delete; reader: ничего).
       checks.read.addEventListener("change", function () {
         if (!sec.writable) return;
         var on = checks.read.checked;
         ["add", "edit", "delete"].forEach(function (k) {
           checks[k].disabled = !on;
-          checks[k].checked = on ? writeDefault : false;
+          checks[k].checked = on ? writePattern[k] : false;
         });
       });
       rows[sec.id] = { sec: sec, checks: checks };
@@ -158,20 +164,20 @@
           };
         }).filter(function (a) { return a.read || a.add || a.edit || a.delete; });
       },
-      /* Пресет по роли НЕ меняет видимость разделов (какие разделы видит человек —
-         выбирает админ галкой «Просмотр»). Он задаёт уровень записи: EDITOR — полный
-         CRUD в тех writable-разделах, что уже видимы; READER — снимает запись. Так
-         «editor» больше не означает «доступ ко всему». */
+      /* Пресет по роли — предвыбор по умолчанию (админ может уточнить любую клетку):
+         READER — все разделы на просмотр; EDITOR — все разделы, всё кроме удаления;
+         ADMIN — всё. Отмечает просмотр у ВСЕХ разделов и запись во writable по шаблону. */
       applyPreset: function (role) {
-        writeDefault = (role === "EDITOR");
+        writePattern = presetWrites(role);
         matrixSections.forEach(function (sec) {
-          if (!sec.writable) return;
           var r = rows[sec.id].checks;
-          var on = r.read.checked;
-          ["add", "edit", "delete"].forEach(function (k) {
-            r[k].disabled = !on;
-            r[k].checked = on ? writeDefault : false;
-          });
+          r.read.checked = true;
+          if (sec.writable) {
+            ["add", "edit", "delete"].forEach(function (k) {
+              r[k].disabled = false;
+              r[k].checked = writePattern[k];
+            });
+          }
         });
       },
       setEnabled: function (on) {
@@ -187,20 +193,21 @@
     };
   }
 
-  /* Роль + матрица связаны: смена роли ADMIN гасит матрицу (админ и так может всё),
-     смена на READER/EDITOR — включает и заполняет пресетом. */
+  /* Роль + матрица связаны: смена роли перезаполняет матрицу пресетом. У ADMIN пресет
+     отмечает всё, а матрица гасится с пометкой «доступ куда угодно» — админ обходит её
+     на сервере, поэтому редактировать клетки незачем. */
   function wireRoleToMatrix(role, matrix, note) {
     function apply() {
       if (role.value === "ADMIN") {
         matrix.setEnabled(false);
-        note.textContent = tr("Администратор имеет полный доступ ко всем разделам — матрица не применяется.");
+        note.textContent = tr("Администратор: доступ куда угодно и для чего угодно — матрица не ограничивает.");
       } else {
         matrix.setEnabled(true);
         note.textContent = "";
       }
     }
     role.addEventListener("change", function () {
-      if (role.value !== "ADMIN") matrix.applyPreset(role.value);
+      matrix.applyPreset(role.value);   // ADMIN — тоже: отметить всё, затем погасить
       apply();
     });
     apply();
@@ -298,9 +305,8 @@
     var name = h("input", { style: fieldStyle(), placeholder: tr("Имя") });
     var pwd = h("input", { style: fieldStyle(), type: "password", placeholder: tr("Пароль (мин. 8)") });
     var role = roleSelect("READER");
-    /* Пустая матрица: новый пользователь по умолчанию не видит ничего — админ явно
-       отмечает нужные разделы. Роль задаёт лишь уровень записи (см. buildMatrix). */
     var matrix = buildMatrix([], "READER");
+    matrix.applyPreset("READER");   // стартовый пресет: все разделы на просмотр
     var note = h("div", { style: "font-size:12px;color:var(--faint);margin-top:6px" });
     wireRoleToMatrix(role, matrix, note);
     var box = h("div", { style: "padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--card);margin-bottom:18px" });
