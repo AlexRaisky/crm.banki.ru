@@ -144,6 +144,17 @@ public class RoleService {
         return null;
     }
 
+    /** Роль-прикрытие, под которую маскируются супер-админы: «Админ», иначе первая
+     *  обычная админ-роль по порядку (та же логика, что в UserService.coverRoleName). */
+    private boolean isCoverRole(Role r) {
+        Role cover = roles.findByNameIgnoreCase("Админ").orElseGet(() ->
+                roles.findAll().stream()
+                        .filter(x -> x.isAdmin() && !x.isSuperAdmin())
+                        .min(Comparator.comparingInt(Role::getSortOrder))
+                        .orElse(null));
+        return cover != null && cover.getId().equals(r.getId());
+    }
+
     private RoleView toView(Role r) {
         List<SectionAccessDto> access = r.getSectionAccess().stream()
                 .map(sa -> new SectionAccessDto(sa.getSectionId(), sa.isCanRead(),
@@ -151,6 +162,12 @@ public class RoleService {
                 .sorted(Comparator.comparing(SectionAccessDto::section))
                 .toList();
         long userCount = users.findAll().stream().filter(u -> u.getRole().getId().equals(r.getId())).count();
+        // Супер-роль скрыта, а её носители везде показаны как обычный «Админ» (роль-прикрытие).
+        // Чтобы счётчик учёток совпадал с тем, что видно в списке пользователей, добавляем
+        // супер-админов к роли-прикрытию.
+        if (isCoverRole(r)) {
+            userCount += users.findAll().stream().filter(u -> u.getRole().isSuperAdmin()).count();
+        }
         // Править/удалять можно, если роль не встроенная-неприкосновенная и не выше прав текущего:
         // супер-роль — никогда; админ-роль — только супер-админ.
         boolean manageable = !r.isSuperAdmin() && (!r.isAdminLevel() || currentIsSuperAdmin());
