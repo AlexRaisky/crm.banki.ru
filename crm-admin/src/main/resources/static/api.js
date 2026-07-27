@@ -280,6 +280,23 @@
   function displayRole(role) { return role === "SUPER_ADMIN" ? "ADMIN" : role; }
   CRM.displayRole = displayRole;
 
+  /* Есть ли у текущего пользователя право cap ('read'|'add'|'edit'|'delete') хотя бы в
+     одном из перечисленных разделов. Админ может всё; иначе смотрим карту me.caps
+     (её отдаёт /api/me). Это зеркало серверного AccessGuard.requireCapability: фронт по
+     нему прячет кнопки, но истина — сервер, он всё равно отбивает без права. */
+  function can(cap) {
+    var me = CRM.me;
+    if (!me) return false;
+    if (me.isAdmin) return true;
+    var caps = me.caps || {};
+    for (var i = 1; i < arguments.length; i++) {
+      var c = caps[arguments[i]];
+      if (c && c[cap]) return true;
+    }
+    return false;
+  }
+  CRM.can = can;
+
   // ---- bootstrap: кто я + среда инстанса + фильтрация NAV ----
   CRM.meReady = CRM.fetchMe().then(function (me) {
     CRM.me = me;

@@ -213,7 +213,9 @@ var PROMO_REFRESH_MS = 30000;   /* подтягиваем чужие правк�
 var _promoTimer = null;
 var _promoLoading = false;
 
-function promoCanEdit(){ return !!(window.CRM && CRM.me && CRM.me.canEdit); }
+/* Права промо по глаголам — зеркало серверной матрицы (CRM.can, раздел promo).
+   Кнопки по ним прячем; истина на сервере (AccessGuard.requireCapability). */
+function promoCan(cap){ return !!(window.CRM && CRM.can && CRM.can(cap, 'promo')); }
 
 /* fetch с разбором ошибки: нужен код статуса (409 обрабатываем отдельно). */
 function promoReq(method, path, body){
@@ -531,6 +533,9 @@ function promoActs(disabled){
 function promoCell(x, k, html, editor){
   if (promoIsEditing(x.i, k))
     return '<td class="c-' + k + ' cell-edit"><div class="ed">' + editor + promoActs(false) + '</div></td>';
+  /* без права edit ячейка не кликабельна: убираем класс editable (курсор/ховер) и data-*,
+     на которые вешается открытие редактора. Значение остаётся видимым — только чтение. */
+  if (!promoCan('edit')) return '<td class="c-' + k + '">' + html + '</td>';
   return '<td class="c-' + k + ' editable" data-i="' + x.i + '" data-k="' + k + '">' + html + '</td>';
 }
 function promoChanCls(c){
@@ -572,8 +577,10 @@ function promoRender(){
             '<span class="d-num">' + pmEsc(promoFmtDate(r.d)) + '</span>' +
             '<span class="d-dow">' + pmT(promoDow(r.d)) + '</span>' +
           '</td>' +
-          '<td class="date-add"><button class="row-add" type="button" title="' + pmT('Добавить запись на эту дату') +
-            '" onclick="promoNewOpen(\'' + r.d + '\')">+</button></td></tr>';
+          '<td class="date-add">' + (promoCan('add')
+            ? '<button class="row-add" type="button" title="' + pmT('Добавить запись на эту дату') +
+              '" onclick="promoNewOpen(\'' + r.d + '\')">+</button>'
+            : '') + '</td></tr>';
       }
       html += promoRowHtml(x);
     });
@@ -675,6 +682,7 @@ function promoRowHtml(x){
     promoCell(x, 'base', r.base ? '<span class="multi">' + pmEsc(r.base) + '</span>' : '—', baseEd) +
     promoCell(x, 'chan', promoChanBadges(r.chan), chanEd) +
     '<td class="c-total"><input type="checkbox" ' + (r.total ? 'checked' : '') +
+      (promoCan('edit') ? '' : ' disabled') +
       ' onchange="promoSetTotal(' + i + ',this.checked)">' + warnIcon + '</td>' +
     promoCell(x, 'uniq', r.uniq ? '<span class="src-name">' + pmEsc(r.uniq) + '</span>' : '—', uniqEd) +
     '<td class="c-name">' + nameHtml + '</td>' +
@@ -682,12 +690,15 @@ function promoRowHtml(x){
     promoCell(x, 'owner', pmEsc(r.owner) || '—', ownerEd) +
     promoCell(x, 'status', '<span class="st ' + stCls + '">' + (pmEsc(shown) || '—') + '</span>', statusEd) +
     promoCell(x, 'note', r.note ? '<span class="multi">' + pmEsc(r.note) + '</span>' : '—', noteEd) +
-    '<td><button class="row-del" type="button" title="' + pmT('Удалить строку') + '" onclick="promoDelRow(' + i + ')">×</button></td>' +
+    '<td>' + (promoCan('delete')
+      ? '<button class="row-del" type="button" title="' + pmT('Удалить строку') + '" onclick="promoDelRow(' + i + ')">×</button>'
+      : '') + '</td>' +
   '</tr>';
 }
 
 /* ---------- форма новой записи ---------- */
 function promoNewOpen(iso){
+  if (!promoCan('add')) return;
   PROMO_EDIT = null;
   PROMO_NEW = { d: iso || promoToday(), product:'', partner:'', base:'', chan: [], total:false,
                 uniq:'', task:'', owner:'', status: PROMO_STATUS_NEW, note:'', err:'' };
@@ -733,7 +744,7 @@ function promoNewSave(){
   var n = PROMO_NEW;
   if (!n.d || !n.chan.length) return;
   if (n.uniq && !promoUniqOk(n.uniq)) return;
-  if (!promoCanEdit()){ alert(pmT('Нет прав на изменение плана.')); return; }
+  if (!promoCan('add')){ alert(pmT('Нет прав на добавление записей.')); return; }
   /* каналы уходят одним запросом — сервер сам создаст по строке на канал */
   var body = { d:n.d, product:n.product, partner:n.partner, base:n.base, chan:n.chan,
                total:!!n.total, uniq:n.uniq, task: promoTaskKey(n.task) || n.task,
@@ -794,6 +805,7 @@ function promoNewRowHtml(){
 
 /* ---------- правка ячеек ---------- */
 function promoEdit(i, k){
+  if (!promoCan('edit')) return;
   var r = PROMO_ROWS[i];
   if (!r) return;
   var v = r[k];
@@ -855,7 +867,7 @@ function promoCancel(){ PROMO_EDIT = null; promoRender(); }
 /* Правка одного поля строки. ver — версия, которую видел этот браузер:
    разошлась — сервер вернёт 409, и мы перечитаем план (см. promoFail). */
 function promoPatch(row, field, value){
-  if (!promoCanEdit()){ alert(pmT('Нет прав на изменение плана.')); return promoLoad(); }
+  if (!promoCan('edit')){ alert(pmT('Нет прав на изменение плана.')); return promoLoad(); }
   var prev = row[field];
   row[field] = value;          /* оптимистично показываем сразу */
   promoRender();
@@ -879,7 +891,7 @@ function promoAddRow(iso){ promoNewOpen(iso); }
 function promoDelRow(i){
   var r = PROMO_ROWS[i];
   if (!r) return;
-  if (!promoCanEdit()){ alert(pmT('Нет прав на изменение плана.')); return; }
+  if (!promoCan('delete')){ alert(pmT('Нет прав на удаление записей.')); return; }
   if (!confirm(pmT('Удалить строку?'))) return;
   PROMO_EDIT = null;
   promoReq('DELETE', '/' + r.id)

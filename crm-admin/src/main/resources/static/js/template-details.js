@@ -11,6 +11,10 @@ var CH_LABELS = { sms:'SMS', push:'Push', 'mobile-push':'Push', email:'Email',
 /* Подписи каналов — используются в карточке и в пикере «Просмотра настроек». */
 var CH_LABELS = { sms:'SMS', push:'Push', 'mobile-push':'Push', email:'Email', cc:'КЦ', fa:'FA', vk:'VK', la:'Live Activity' };
 function sfdT(s){ return (typeof t === 'function') ? t(s) : s; }
+/* Права на шаблоны по глаголу. Операции лежат за двумя разделами — admin (мастер) и
+   templates (список); право достаточно иметь в любом из них, как и проверяет сервер
+   (AccessGuard.requireCapability(cap, ADMIN, TEMPLATES)). Кнопки прячем — сервер отбивает. */
+function sfdCan(cap){ return !!(window.CRM && CRM.can && CRM.can(cap, 'admin', 'templates')); }
 function sfdEsc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
 
 function renderTemplateDetails(data, templateId) {
@@ -511,7 +515,8 @@ function sfdRowHtml(f){
             ? '<span class="v empty">—</span>'
             : '<span class="v">' + sfdEsc(raw) + '</span>';
     }
-    var pen = (!f.ro && !editing)
+    /* карандаш — только при праве edit; иначе поле остаётся, но правки нет (сервер отбил бы) */
+    var pen = (!f.ro && !editing && sfdCan('edit'))
         ? '<button class="sfd-pen" data-k="' + f.k + '" title="' + sfdT('Редактировать') + '" aria-label="' + sfdT('Редактировать') + '">' +
           '<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
           '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>'
@@ -664,6 +669,7 @@ function sfdCreateMissing(d){
 function sfdCreate(){
     var st = SFD_STATE;
     if (!st || st.mode !== 'create') return;
+    if (!sfdCan('add')){ alert(sfdT('Нет прав на создание шаблонов.')); return; }
     sfdRecalcNames();
     var d = Object.assign({}, st.work);
     if (sfdCreateMissing(d).length) return;
@@ -788,14 +794,19 @@ function sfdRender(){
         (isCreate && sfdChainAble(d.channel) ? sfdChainHtml(d) : '') +
         (isCreate
             ? '<div class="sfd-footer">' +
-                (miss.length ? '<span class="sfd-miss">' + sfdT('Заполните') + ': ' + sfdEsc(miss.join(', ')) + '</span>' : '') +
-                '<button type="button" class="sf-btn accent" id="sfdCreateBtn"' + (miss.length ? ' disabled' : '') + '>' +
-                    ((st.chain && st.chain.on)
-                        ? sfdT('Создать цепочку') + (st.chain.rows.length ? ' (' + st.chain.rows.length + ')' : '')
-                        : sfdT('Создать шаблон')) + '</button>' +
-                '<button type="button" class="sf-btn" id="sfdResetBtn">' + sfdT('Очистить') + '</button>' +
+                (sfdCan('add')
+                    ? (miss.length ? '<span class="sfd-miss">' + sfdT('Заполните') + ': ' + sfdEsc(miss.join(', ')) + '</span>' : '') +
+                      '<button type="button" class="sf-btn accent" id="sfdCreateBtn"' + (miss.length ? ' disabled' : '') + '>' +
+                          ((st.chain && st.chain.on)
+                              ? sfdT('Создать цепочку') + (st.chain.rows.length ? ' (' + st.chain.rows.length + ')' : '')
+                              : sfdT('Создать шаблон')) + '</button>' +
+                      '<button type="button" class="sf-btn" id="sfdResetBtn">' + sfdT('Очистить') + '</button>'
+                    /* нет права add: мастер открыт (раздел виден), но заводить нечем */
+                    : '<span class="sfd-miss">' + sfdT('Нет прав на создание шаблонов.') + '</span>') +
               '</div>'
-            : (dirty ? '<div class="sfd-footer">' +
+            /* save появляется только при dirty, а dirty возникает лишь через карандаш (edit),
+               который уже скрыт без права — но подстрахуемся и здесь */
+            : (dirty && sfdCan('edit') ? '<div class="sfd-footer">' +
                 '<button type="button" class="sf-btn accent" id="sfdSaveBtn">' + sfdT('Сохранить') + '</button>' +
                 '<button type="button" class="sf-btn" id="sfdCancelBtn">' + sfdT('Отменить') + '</button>' +
               '</div>' : '')) +
@@ -862,6 +873,7 @@ function sfdRender(){
 function sfdSave(){
     var st = SFD_STATE;
     if (!st) return;
+    if (!sfdCan('edit')){ alert(sfdT('Нет прав на изменение шаблона.')); return; }
     sfdRecalcNames();
     var d = Object.assign({}, st.work);
     var channel = d.channel;

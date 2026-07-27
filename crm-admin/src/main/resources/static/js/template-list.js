@@ -384,7 +384,10 @@ function listSortBy(col) {
    Перерисовываем только текущую страницу: за новыми данными на сервер не ходим,
    иначе открытие карандаша сбрасывало бы уже загруженные строки и позицию прокрутки. */
 var LIST_EDIT = null;   /* { id, k } */
-function listCellEdit(id, k){ LIST_EDIT = { id: id, k: k }; renderTemplateList(ALL_TEMPLATES); }
+function listCellEdit(id, k){
+    if (!(window.CRM && CRM.can && CRM.can('edit', 'templates', 'admin'))) return;
+    LIST_EDIT = { id: id, k: k }; renderTemplateList(ALL_TEMPLATES);
+}
 function listCellCancel(){ LIST_EDIT = null; renderTemplateList(ALL_TEMPLATES); }
 function listCellSave(id, k){
     var wrap = document.querySelector('#templateListBody .sf-cell-edit[data-id="' + id + '"]');
@@ -471,7 +474,10 @@ function renderTemplateList(templates) {
         } else {
             view = sfdEsc(tpl[c.k]);
         }
-        const pen = `<button class="sf-cell-pen" title="${sfdT('Редактировать')}" onclick="listCellEdit('${tpl.id}','${c.k}')"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>`;
+        /* карандаш inline-правки — только при праве edit на шаблоны (admin/templates);
+           без него ячейка остаётся на просмотр, сервер правку всё равно отбил бы */
+        const canEdit = !!(window.CRM && CRM.can && CRM.can('edit', 'templates', 'admin'));
+        const pen = canEdit ? `<button class="sf-cell-pen" title="${sfdT('Редактировать')}" onclick="listCellEdit('${tpl.id}','${c.k}')"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>` : '';
         return `<td class="sf-cell">${view}${pen}</td>`;
     }
 
