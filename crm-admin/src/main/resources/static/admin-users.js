@@ -87,10 +87,14 @@
   /* ---------- матрица прав ----------
      accessList — [{section, read, add, edit, delete}] с сервера. Возвращает объект с
      методами collect() (собрать в тот же формат) и applyPreset(role). */
-  function buildMatrix(accessList) {
+  function buildMatrix(accessList, initialRole) {
     var byId = {};
     (accessList || []).forEach(function (a) { byId[a.section] = a; });
     var rows = {};
+    /* Уровень записи по текущей роли: EDITOR — при включении раздела он получает
+       запись, READER — нет. Пресет НЕ выдаёт видимость всех разделов (это давало бы
+       «editor = всё»); он лишь задаёт, будет ли запись там, где раздел сделали видимым. */
+    var writeDefault = (initialRole === "EDITOR");
 
     var thStyle = "text-align:center;padding:6px 8px;border-bottom:1px solid var(--line);color:var(--dim);font-size:12px;font-weight:600";
     var tdStyle = "text-align:center;padding:6px 8px;border-bottom:1px solid var(--line)";
@@ -108,17 +112,23 @@
         if (c.k !== "read" && !sec.writable) { cb.checked = false; cb.disabled = true; }
         checks[c.k] = cb;
       });
-      // просмотр выключен → раздел не виден, право писать бессмысленно: гасим и блокируем
-      function sync() {
+      // Начальное состояние: только блокируем запись, если раздел не виден. Значения
+      // (из accessList при правке существующего) не трогаем — иначе стёрли бы права.
+      if (sec.writable) {
+        var vis = checks.read.checked;
+        ["add", "edit", "delete"].forEach(function (k) { checks[k].disabled = !vis; });
+      }
+      // Ручное переключение просмотра: выключили — снимаем запись; включили — ставим
+      // запись по умолчанию текущей роли (writeDefault). Так «выбрать роль → отметить
+      // разделы» работает в один проход, а витрины остаются только на просмотр.
+      checks.read.addEventListener("change", function () {
+        if (!sec.writable) return;
         var on = checks.read.checked;
         ["add", "edit", "delete"].forEach(function (k) {
-          if (!sec.writable) return;
           checks[k].disabled = !on;
-          if (!on) checks[k].checked = false;
+          checks[k].checked = on ? writeDefault : false;
         });
-      }
-      checks.read.addEventListener("change", sync);
-      sync();
+      });
       rows[sec.id] = { sec: sec, checks: checks };
 
       var cells = [h("td", { style: tdStyle.replace("center", "left") + ";color:var(--ink)" }, [sectionLabel(sec.id)])];
@@ -148,19 +158,20 @@
           };
         }).filter(function (a) { return a.read || a.add || a.edit || a.delete; });
       },
-      // Пресет по роли: читаемы все разделы; запись во writable — по роли. Дальше правится руками.
+      /* Пресет по роли НЕ меняет видимость разделов (какие разделы видит человек —
+         выбирает админ галкой «Просмотр»). Он задаёт уровень записи: EDITOR — полный
+         CRUD в тех writable-разделах, что уже видимы; READER — снимает запись. Так
+         «editor» больше не означает «доступ ко всему». */
       applyPreset: function (role) {
+        writeDefault = (role === "EDITOR");
         matrixSections.forEach(function (sec) {
+          if (!sec.writable) return;
           var r = rows[sec.id].checks;
-          r.read.checked = true;
-          if (sec.writable) {
-            var w = role === "EDITOR";
-            r.add.checked = r.edit.checked = r.delete.checked = w;
-          }
-          // пересинхронизировать disabled-состояние записей
-          if (sec.writable) {
-            ["add", "edit", "delete"].forEach(function (k) { r[k].disabled = !r.read.checked; });
-          }
+          var on = r.read.checked;
+          ["add", "edit", "delete"].forEach(function (k) {
+            r[k].disabled = !on;
+            r[k].checked = on ? writeDefault : false;
+          });
         });
       },
       setEnabled: function (on) {
@@ -246,7 +257,7 @@
     var name = h("input", { style: fieldStyle(), value: u.displayName || "" });
     var role = roleSelect(shownRole(u.role));
     var enabled = h("input", { type: "checkbox" }); enabled.checked = u.enabled;
-    var matrix = buildMatrix(u.access);
+    var matrix = buildMatrix(u.access, shownRole(u.role));
     var note = h("div", { style: "font-size:12px;color:var(--faint);margin-top:6px" });
     wireRoleToMatrix(role, matrix, note);
     box.appendChild(h("div", { style: "font-weight:600;margin-bottom:8px" }, [tr("Изменение: ") + u.email]));
@@ -287,8 +298,9 @@
     var name = h("input", { style: fieldStyle(), placeholder: tr("Имя") });
     var pwd = h("input", { style: fieldStyle(), type: "password", placeholder: tr("Пароль (мин. 8)") });
     var role = roleSelect("READER");
-    var matrix = buildMatrix([]);
-    matrix.applyPreset("READER");   // стартовый пресет — как у выбранной роли
+    /* Пустая матрица: новый пользователь по умолчанию не видит ничего — админ явно
+       отмечает нужные разделы. Роль задаёт лишь уровень записи (см. buildMatrix). */
+    var matrix = buildMatrix([], "READER");
     var note = h("div", { style: "font-size:12px;color:var(--faint);margin-top:6px" });
     wireRoleToMatrix(role, matrix, note);
     var box = h("div", { style: "padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--card);margin-bottom:18px" });
