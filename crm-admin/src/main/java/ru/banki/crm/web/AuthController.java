@@ -29,7 +29,7 @@ public class AuthController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Не авторизован"));
         AppUser u = p.user();
         boolean isAdmin = u.getRole().isAdminLevel();
-        boolean isSuperAdmin = u.getRole() == Role.SUPER_ADMIN;
+        boolean isSuperAdmin = u.getRole().isSuperAdmin();
         // ADMIN обходит ACL разделов на сервере — в NAV ему тоже отдаём всё,
         // чтобы новые разделы появлялись у админов без правки user_sections.
         // «Цепочки» — только админам: не-админу раздел не отдаём даже при ACL.
@@ -59,7 +59,7 @@ public class AuthController {
         boolean canEdit = isAdmin || caps.values().stream()
                 .anyMatch(c -> c.add() || c.edit() || c.delete());
 
-        return new MeDto(u.getEmail(), u.getDisplayName(), u.getRole().name(),
+        return new MeDto(u.getEmail(), u.getDisplayName(), u.getRole().getName(),
                 canEdit, isAdmin, sections, isSuperAdmin, caps);
     }
 

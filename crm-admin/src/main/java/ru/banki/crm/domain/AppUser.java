@@ -5,9 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.OffsetDateTime;
-import java.util.HashSet;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Getter
 @Setter
@@ -28,9 +26,14 @@ public class AppUser {
     @Column(name = "display_name")
     private String displayName;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Role role = Role.READER;
+    /**
+     * Роль учётки. Права ЖИВЫЕ — принадлежат роли (её матрице role_section), а не
+     * пользователю: смена/правка роли меняет доступ. Персональной матрицы у пользователя
+     * больше нет (таблица user_sections осиротела — резерв под будущие исключения).
+     */
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @JoinColumn(name = "role_id", nullable = false)
+    private Role role;
 
     @Column(nullable = false)
     private boolean enabled = true;
@@ -38,31 +41,13 @@ public class AppUser {
     @Column(name = "created_at", insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-    /**
-     * Права на разделы: по строке на каждый доступный раздел с флагами read/add/edit/delete.
-     * Заменяет прежний Set&lt;String&gt; (раздел виден / не виден). Набор всегда заменяют
-     * целиком (см. {@link SectionAccess}) — не мутируют элементы на месте.
-     */
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "user_sections", schema = "app",
-            joinColumns = @JoinColumn(name = "user_id"))
-    private Set<SectionAccess> sectionAccess = new HashSet<>();
-
-    /** Разделы, которые учётка видит (canRead) — для NAV и проверок видимости. */
+    /** Разделы, которые учётка видит — берутся из её роли. */
     public Set<String> getSections() {
-        return sectionAccess.stream()
-                .filter(SectionAccess::isCanRead)
-                .map(SectionAccess::getSectionId)
-                .collect(Collectors.toUnmodifiableSet());
+        return role != null ? role.getSections() : Set.of();
     }
 
-    /** Есть ли у учётки право cap в разделе sectionId. */
+    /** Есть ли право cap в разделе sectionId — по матрице роли. */
     public boolean hasCapability(String sectionId, Capability cap) {
-        for (SectionAccess sa : sectionAccess) {
-            if (sa.getSectionId().equals(sectionId)) {
-                return sa.has(cap);
-            }
-        }
-        return false;
+        return role != null && role.hasCapability(sectionId, cap);
     }
 }
