@@ -1306,7 +1306,11 @@ window.CRM = window.CRM || (function(){
     adminCreateUser:   u => req("POST", "/admin/users", u),
     adminUpdateUser:   (id, u) => req("PUT", "/admin/users/" + id, u),
     adminDeleteUser:   id => req("DELETE", "/admin/users/" + id),
-    adminResetPassword:(id, p) => req("PUT", "/admin/users/" + id + "/password", { newPassword: p })
+    adminResetPassword:(id, p) => req("PUT", "/admin/users/" + id + "/password", { newPassword: p }),
+    adminRoles:        () => req("GET", "/admin/roles"),
+    adminCreateRole:   r => req("POST", "/admin/roles", r),
+    adminUpdateRole:   (id, r) => req("PUT", "/admin/roles/" + id, r),
+    adminDeleteRole:   id => req("DELETE", "/admin/roles/" + id)
   };
   req("GET", "/me").then(me => { C.me = me; }).catch(() => {});
   return C;
