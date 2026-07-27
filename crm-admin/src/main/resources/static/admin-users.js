@@ -198,7 +198,9 @@
                   h("span", null, [" "]),
                   h("button", { style: btnStyle("#7c2d12"), onclick: function () { resetPwd(u); } }, [tr("Пароль")]),
                   h("span", null, [" "]),
-                  h("button", { style: btnStyle("#991b1b"), onclick: function () { delUser(u, container); } }, [tr("Удалить")])
+                  // Учётки не удаляем — только деактивируем/активируем (тумблер по u.enabled).
+                  h("button", { style: btnStyle(u.enabled ? "#92400e" : "#15803d"), onclick: function () { toggleActive(u, container); } },
+                    [tr(u.enabled ? "Деактивировать" : "Активировать")])
                 ])
         ]));
       });
@@ -244,9 +246,13 @@
     if (!pwd) return;
     CRM.adminResetPassword(u.id, pwd).then(function () { alert("Пароль обновлён"); }).catch(function (e) { alert(e.message); });
   }
-  function delUser(u, container) {
-    if (!confirm("Удалить пользователя " + u.email + "?")) return;
-    CRM.adminDeleteUser(u.id).then(function () { renderUsers(container); }).catch(function (e) { alert(e.message); });
+  /* Деактивация вместо удаления: учётку не стираем, а гасим (enabled=false) — вход
+     закрывается, данные и история остаются, при надобности активируем обратно. */
+  function toggleActive(u, container) {
+    var on = !u.enabled;
+    var verb = on ? tr("Активировать") : tr("Деактивировать");
+    if (!confirm(verb + " " + u.email + "?")) return;
+    CRM.adminUpdateUser(u.id, { enabled: on }).then(function () { renderUsers(container); }).catch(function (e) { alert(e.message); });
   }
 
   /* ================= РОЛИ ================= */
