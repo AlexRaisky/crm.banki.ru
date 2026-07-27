@@ -162,7 +162,7 @@
           <p data-i18n="Поиск шаблона по каналу, source_type и Letteros ID; аккуратная карточка всех настроек шаблона.">Поиск шаблона по каналу, source_type и Letteros ID; аккуратная карточка всех настроек шаблона.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" data-nav-ref="srcbuilder" data-no-acl="1" onclick="openSection('comms','srcbuilder')">
+        <div class="ov-card" data-nav-ref="srcbuilder" onclick="openSection('comms','srcbuilder')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7h7"/><path d="M14 12h7"/><path d="M14 17h7"/><path d="m3 7 2 2 4-4"/><path d="m3 17 2 2 4-4"/></svg></div>
           <h3 data-i18n="Конструктор source">Конструктор source</h3>
           <p data-i18n="Сборка source по правилам названия кампании: канал, тип, продукт и параметры — в реальном времени.">Сборка source по правилам названия кампании: канал, тип, продукт и параметры — в реальном времени.</p>
@@ -174,7 +174,7 @@
           <p data-i18n="Планирование промо-кампаний: календарь по дням, продуктам, партнёрам, каналам, задачам и ответственным.">Планирование промо-кампаний: календарь по дням, продуктам, партнёрам, каналам, задачам и ответственным.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" id="ovHeatmapCard" data-nav-ref="heatmap" data-no-acl="1" onclick="openSection('comms','heatmap')" style="display:none">
+        <div class="ov-card" id="ovHeatmapCard" data-nav-ref="heatmap" onclick="openSection('comms','heatmap')" style="display:none">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></div>
           <h3 data-i18n="Тепловая карта">Тепловая карта</h3>
           <p data-i18n="Тепловая карта коммуникационной нагрузки по сегментам и каналам. Раздел в разработке.">Тепловая карта коммуникационной нагрузки по сегментам и каналам. Раздел в разработке.</p>
@@ -195,30 +195,30 @@
     <section class="view ov-view" id="view-reports-overview">
       <div class="ov-head"><h1 data-i18n-html="h1_reports_ov">Отчёты <span class="grad">Tableau</span></h1></div>
       <div class="ov-sub" data-i18n="Отчёты компании, встраиваемые из Tableau. Выберите отчёт или воспользуйтесь меню слева.">Отчёты компании, встраиваемые из Tableau. Выберите отчёт или воспользуйтесь меню слева.</div>
-      <!-- data-no-acl у всех четырёх карточек: rep-* не серверные разделы (у отчётов нет
-           собственных прав, доступ решает само подключение к Tableau), и applyNavAcl,
-           не найдя их в me.sections, прятал карточки — страница оставалась пустой даже
-           у супер-админа. В сайдбаре у этих же пунктов стоит noAcl:true. -->
+      <!-- data-acl-section="reports" у всех четырёх карточек: rep-* следуют праву на
+           секцию reports (единое право на весь раздел отчётов). applyNavAcl прячет
+           карточку, если у пользователя нет секции reports. В сайдбаре у этих же
+           пунктов стоит aclSection:"reports". -->
       <div class="ov-grid">
-        <div class="ov-card" data-nav-ref="rep-planfact" data-no-acl="1" onclick="openSection('reports','rep-planfact')">
+        <div class="ov-card" data-nav-ref="rep-planfact" data-acl-section="reports" onclick="openSection('reports','rep-planfact')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-6M21 20H3"/></svg></div>
           <h3>Plan-Fact</h3>
           <p data-i18n="Общий финансовый отчёт компании: план и факт по ключевым показателям.">Общий финансовый отчёт компании: план и факт по ключевым показателям.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" data-nav-ref="rep-matrix" data-no-acl="1" onclick="openSection('reports','rep-matrix')">
+        <div class="ov-card" data-nav-ref="rep-matrix" data-acl-section="reports" onclick="openSection('reports','rep-matrix')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
           <h3>CRM Matrix</h3>
           <p data-i18n="Основной отчёт команды CRM: каналы, кампании и показатели в одном разрезе.">Основной отчёт команды CRM: каналы, кампании и показатели в одном разрезе.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" data-nav-ref="rep-leadgen" data-no-acl="1" onclick="openSection('reports','rep-leadgen')">
+        <div class="ov-card" data-nav-ref="rep-leadgen" data-acl-section="reports" onclick="openSection('reports','rep-leadgen')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
           <h3>CRM Leadgen</h3>
           <p data-i18n="Детализация лидогенерации: что именно покупают с каждой кампании.">Детализация лидогенерации: что именно покупают с каждой кампании.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" data-nav-ref="rep-demo" data-no-acl="1" onclick="openSection('reports','rep-demo')">
+        <div class="ov-card" data-nav-ref="rep-demo" data-acl-section="reports" onclick="openSection('reports','rep-demo')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-4M12 17V8M16 17v-6"/></svg></div>
           <h3 data-i18n="Пример визуализации отчёта">Пример визуализации отчёта</h3>
           <p data-i18n="Демо-макет окна Tableau на плейсхолдер-данных: как отчёт выглядит внутри панели.">Демо-макет окна Tableau на плейсхолдер-данных: как отчёт выглядит внутри панели.</p>
@@ -350,7 +350,7 @@
       <div class="ov-head"><h1 data-i18n-html="h1_mon">Мониторинг <span class="grad">процессов CRM</span></h1></div>
       <div class="ov-sub" data-i18n="Контроль работоспособности кампаний и интеграций. Выберите подраздел.">Контроль работоспособности кампаний и интеграций. Выберите подраздел.</div>
       <div class="ov-grid">
-        <div class="ov-card" data-nav-ref="mon-campaigns" data-no-acl="1" onclick="openSection('monitoring','mon-campaigns')">
+        <div class="ov-card" data-nav-ref="mon-campaigns" data-acl-section="monitoring" onclick="openSection('monitoring','mon-campaigns')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
           <h3 data-i18n="Базовая работа кампаний">Базовая работа кампаний</h3>
           <p data-i18n="Отбор базы, поступление событий, отправки, доставки и дублирование коммуникаций.">Отбор базы, поступление событий, отправки, доставки и дублирование коммуникаций.</p>

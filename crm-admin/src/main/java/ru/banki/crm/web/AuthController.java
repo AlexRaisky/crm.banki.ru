@@ -59,7 +59,10 @@ public class AuthController {
         boolean canEdit = isAdmin || caps.values().stream()
                 .anyMatch(c -> c.add() || c.edit() || c.delete());
 
-        return new MeDto(u.getEmail(), u.getDisplayName(), u.getRole().getName(),
+        // Супер-роль наружу не светим НИГДЕ, даже самому супер-админу: показываем как
+        // обычный «Админ» (флаг isSuperAdmin остаётся — полномочия работают по нему).
+        String roleName = isSuperAdmin ? "Админ" : u.getRole().getName();
+        return new MeDto(u.getEmail(), u.getDisplayName(), roleName,
                 canEdit, isAdmin, sections, isSuperAdmin, caps);
     }
 

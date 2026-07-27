@@ -36,10 +36,10 @@ public class RoleService {
 
     @Transactional(readOnly = true)
     public List<RoleView> list() {
-        // Не супер-админу супер-роль не показываем вовсе — как и в списке пользователей.
-        boolean superAdmin = currentIsSuperAdmin();
+        // Супер-роль не показываем в управлении ролями НИКОМУ (в т.ч. супер-админу):
+        // она остаётся в БД и работает, просто скрыта из списка.
         return roles.findAllByOrderBySortOrderAscNameAsc().stream()
-                .filter(r -> superAdmin || !r.isSuperAdmin())
+                .filter(r -> !r.isSuperAdmin())
                 .map(this::toView)
                 .toList();
     }

@@ -18,29 +18,29 @@ const NAV = [
       /* «Просмотр настроек» — тот же раздел admin: ACL следует правам admin (data-acl-section) */
       { id:"viewer",    label:"Просмотр настроек",   icon:"search", view:"sec-admin", adminMode:"view", aclSection:"admin" },
       /* клиентские инструменты без серверной секции — не фильтруются по me.sections (data-no-acl) */
-      { id:"srcbuilder",label:"Конструктор source",  icon:"pulse", view:"sec-srcbuilder", noAcl:true },
+      { id:"srcbuilder",label:"Конструктор source",  icon:"pulse", view:"sec-srcbuilder" },
       /* promo: пока данные лежат в localStorage — фильтровать по me.sections нечего.
          Как таблица переедет на сервер (app.promo_plan), noAcl снимаем — секция promo
          в RBAC уже заведена. */
       { id:"promo",     label:"Планирование промо",  icon:"calendar", view:"sec-promo", noAcl:true },
-      { id:"heatmap",   label:"Тепловая карта",      icon:"grid2", view:"view-heatmap", noAcl:true, appOnly:["Маркетинг"] },
+      { id:"heatmap",   label:"Тепловая карта",      icon:"grid2", view:"view-heatmap", appOnly:["Маркетинг"] },
   ]},
   /* «Отчёты» — встраивание отчётов Tableau: обзор с карточками, у каждого отчёта
      свой блок подключения (адрес сервера + книга); «Пример» — демо-макет окна */
   { id:"reports", label:"Отчёты", icon:"reports", overviewView:"view-reports-overview", children:[
-      { id:"rep-planfact", label:"Plan-Fact",   icon:"chart", view:"view-report-embed", report:"planfact", noAcl:true },
-      { id:"rep-matrix",   label:"CRM Matrix",  icon:"grid2", view:"view-report-embed", report:"matrix",   noAcl:true },
-      { id:"rep-leadgen",  label:"CRM Leadgen", icon:"pulse", view:"view-report-embed", report:"leadgen",  noAcl:true },
-      { id:"rep-demo",     label:"Пример визуализации отчёта", icon:"reports", view:"view-reports", noAcl:true },
+      { id:"rep-planfact", label:"Plan-Fact",   icon:"chart", view:"view-report-embed", report:"planfact", aclSection:"reports" },
+      { id:"rep-matrix",   label:"CRM Matrix",  icon:"grid2", view:"view-report-embed", report:"matrix",   aclSection:"reports" },
+      { id:"rep-leadgen",  label:"CRM Leadgen", icon:"pulse", view:"view-report-embed", report:"leadgen",  aclSection:"reports" },
+      { id:"rep-demo",     label:"Пример визуализации отчёта", icon:"reports", view:"view-reports", aclSection:"reports" },
   ]},
   { id:"dash", label:"Дашборд", icon:"gauge", overviewView:"view-dash-overview", children:[
       { id:"dashboard",  label:"Общая статистика",  icon:"chart", view:"sec-admin", adminMode:"dashboard" },
       { id:"deviations", label:"Панель отклонений", icon:"pulse", view:"sec-deviations" },
   ]},
   { id:"monitoring", label:"Мониторинг", icon:"monitor", overviewView:"view-mon-overview", children:[
-      { id:"mon-campaigns", label:"Базовая работа кампаний", icon:"pulse", view:"view-mon-campaigns", noAcl:true },
+      { id:"mon-campaigns", label:"Базовая работа кампаний", icon:"pulse", view:"view-mon-campaigns", aclSection:"monitoring" },
   ]},
-  { id:"uploads",  label:"Загруженные инструменты", icon:"upload", view:"view-uploads", noAcl:true },
+  { id:"uploads",  label:"Загруженные инструменты", icon:"upload", view:"view-uploads" },
   { id:"journeys", label:"Цепочки",             icon:"flow", view:"sec-journeys", adminOnly:true },
   /* «Управление доступом» переехало в настроечную админку (settings/ → pane access) */
 ];

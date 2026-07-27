@@ -17,13 +17,18 @@ public final class Sections {
     public static final String JOURNEYS = "journeys";   // Цепочки (схема-конструктор)
     public static final String ACCESS = "access";       // Управление доступом (ADMIN only)
     public static final String PROMO = "promo";         // Планирование промо (общая таблица)
+    public static final String SRCBUILDER = "srcbuilder"; // Конструктор source (только просмотр)
+    public static final String REPORTS = "reports";       // Отчёты (только просмотр)
+    public static final String HEATMAP = "heatmap";       // Тепловая карта (только просмотр)
+    public static final String MONITORING = "monitoring"; // Мониторинг (только просмотр)
+    public static final String UPLOADS = "uploads";       // Загруженные инструменты (только просмотр)
 
-    /* Здесь только разделы с серверными данными. Клиентские инструменты
-       (конструктор source, тепловая карта, отчёты, мониторинг, загруженные
-       инструменты) в RBAC не заводим: защищать на сервере нечего — в NAV они
-       помечены noAcl. */
+    /* Клиентские инструменты (конструктор source, отчёты, тепловая карта, мониторинг,
+       загруженные инструменты) заводим в RBAC только ради видимости в NAV: серверной
+       записи у них нет, поэтому они не входят в WRITABLE — значима лишь галка read. */
     public static final List<String> ALL = List.of(
-            HOME, DEVIATIONS, ONELINK, ADMIN, TEMPLATES, DASHBOARD, JOURNEYS, ACCESS, PROMO);
+            HOME, DEVIATIONS, ONELINK, ADMIN, TEMPLATES, DASHBOARD, JOURNEYS, ACCESS, PROMO,
+            SRCBUILDER, REPORTS, HEATMAP, MONITORING, UPLOADS);
 
     public static final Set<String> VALID = Set.copyOf(ALL);
 

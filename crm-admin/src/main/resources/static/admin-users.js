@@ -10,7 +10,10 @@
     home: "Главная", deviations: "Панель отклонений", onelink: "OneLink Builder",
     admin: "Мастер коммуникаций", templates: "Список шаблонов",
     dashboard: "Дашборд", promo: "Планирование промо",
-    journeys: "Цепочки", access: "Управление доступом"
+    journeys: "Цепочки", access: "Управление доступом",
+    srcbuilder: "Конструктор source", reports: "Отчёты",
+    heatmap: "Тепловая карта", monitoring: "Мониторинг",
+    uploads: "Загруженные инструменты"
   };
   function tr(s) { return (typeof window.t === "function") ? window.t(s) : s; }
   function sectionLabel(s) { return tr(SECTION_LABELS[s] || s); }
@@ -62,8 +65,32 @@
     var rows = {};
     var th = "text-align:center;padding:6px 8px;border-bottom:1px solid var(--line);color:var(--dim);font-size:12px;font-weight:600";
     var td = "text-align:center;padding:6px 8px;border-bottom:1px solid var(--line)";
+    function toggleColumn(capKey) {
+      // включаемые (не-disabled) чекбоксы столбца по всем разделам
+      var cells = [];
+      matrixSections.forEach(function (sec) {
+        var r = rows[sec.id];
+        if (!r) return;
+        var cb = r[capKey];
+        if (cb && !cb.disabled) cells.push(cb);
+      });
+      if (!cells.length) return;
+      // если хоть один выключен — включаем все, иначе выключаем все
+      var turnOn = cells.some(function (cb) { return !cb.checked; });
+      cells.forEach(function (cb) {
+        cb.checked = turnOn;
+        // для «Просмотра» прогоняем существующую логику синхронизации записей
+        if (capKey === "read") cb.dispatchEvent(new Event("change"));
+      });
+    }
     var head = h("tr", null, [h("th", { style: th.replace("center", "left") }, [tr("Раздел")])]
-      .concat(CAPS.map(function (c) { return h("th", { style: th }, [tr(c.t)]); })));
+      .concat(CAPS.map(function (c) {
+        return h("th", {
+          style: th + ";cursor:pointer",
+          title: tr("Выбрать/снять весь столбец"),
+          onclick: (function (capKey) { return function () { toggleColumn(capKey); }; })(c.k)
+        }, [tr(c.t)]);
+      })));
     var body = [head];
 
     matrixSections.forEach(function (sec) {

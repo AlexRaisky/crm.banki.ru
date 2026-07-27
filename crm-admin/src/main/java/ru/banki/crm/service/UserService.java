@@ -170,7 +170,7 @@ public class UserService {
      */
     private UserView toView(AppUser u) {
         boolean superTarget = u.getRole().isSuperAdmin();
-        boolean mask = superTarget && !currentIsSuperAdmin();
+        boolean mask = superTarget;   // супер-роль везде показываем как обычного «Админ», даже самому супер-админу
         String roleName = mask ? coverRoleName() : u.getRole().getName();
         Long roleId = mask ? null : u.getRole().getId();
         boolean manageable = !superTarget
@@ -179,12 +179,15 @@ public class UserService {
                 roleName, roleId, u.isEnabled(), manageable);
     }
 
-    /** Имя-прикрытие для супер-роли: первая обычная админ-роль; если такой нет — «Администратор». */
+    /** Имя-прикрытие для супер-роли: предпочитаем роль «Админ»; иначе первая обычная
+     *  админ-роль по порядку; если такой нет — «Админ». */
     private String coverRoleName() {
-        return roles.findAll().stream()
-                .filter(r -> r.isAdmin() && !r.isSuperAdmin())
-                .min(Comparator.comparingInt(Role::getSortOrder))
+        return roles.findByNameIgnoreCase("Админ")
                 .map(Role::getName)
-                .orElse("Администратор");
+                .orElseGet(() -> roles.findAll().stream()
+                        .filter(r -> r.isAdmin() && !r.isSuperAdmin())
+                        .min(Comparator.comparingInt(Role::getSortOrder))
+                        .map(Role::getName)
+                        .orElse("Админ"));
     }
 }
