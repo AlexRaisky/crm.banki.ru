@@ -120,6 +120,7 @@ const I18N_EN = {
   "Вид":"View", "Тема и язык интерфейса — только для вашей учётки":"Theme and interface language — for your account only",
   "Общие параметры":"General settings", "Тема оформления":"Theme",
   "Системная":"System", "Тёмная":"Dark", "Светлая":"Light", "Язык интерфейса":"Interface language",
+  "Название из импорта":"Name from import",
   /* виджеты главной */
   "Сводка по коммуникациям":"Communications summary", "Мои задачи":"My tasks",
   "Недавно использованные инструменты":"Recently used tools", "Быстрые ссылки":"Quick links",

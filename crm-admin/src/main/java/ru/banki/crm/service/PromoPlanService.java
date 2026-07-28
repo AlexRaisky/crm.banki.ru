@@ -65,7 +65,7 @@ public class PromoPlanService {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery(
                         "SELECT id, plan_date, product, partner, base, channel, is_total," +
-                        " uniq_name, task_key, owner_name, status, note, timestamp_upd" +
+                        " uniq_name, task_key, owner_name, status, note, communication_name, timestamp_upd" +
                         " FROM app.promo_plan ORDER BY plan_date, id")
                 .getResultList();
         List<Map<String, Object>> out = new ArrayList<>(rows.size());
@@ -90,7 +90,8 @@ public class PromoPlanService {
         m.put("owner", str(r[9]));
         m.put("status", str(r[10]));
         m.put("note", str(r[11]));
-        m.put("ver", instant(r[12]));
+        m.put("commName", str(r[12]));   // сохранённое «Название коммуникации» (обычно из импорта)
+        m.put("ver", instant(r[13]));
         return m;
     }
 

@@ -642,9 +642,14 @@ function promoRowHtml(x){
     '<div class="hint-s" id="promoUniqHint">' + pmT('Латиница, цифры и дефис') + '</div></div>';
 
   var nm = promoBuildName(r);
+  /* Приоритет — авто-собранное имя (правила Конструктора source). Если частей не хватает
+     (например, строка пришла импортом без партнёра/уник.имени), показываем сохранённое
+     «Название коммуникации» из БД (r.commName), и только если и его нет — подсказку. */
   var nameHtml = nm.ok
     ? '<span class="src-name">' + pmEsc(nm.value) + '</span>'
-    : '<span class="need" title="' + pmT('Название собирается автоматически') + '">' + pmT('нужно заполнить') + ': ' + pmEsc(nm.miss.join(', ')) + '</span>';
+    : (r.commName
+        ? '<span class="src-name" title="' + pmT('Название из импорта') + '">' + pmEsc(r.commName) + '</span>'
+        : '<span class="need" title="' + pmT('Название собирается автоматически') + '">' + pmT('нужно заполнить') + ': ' + pmEsc(nm.miss.join(', ')) + '</span>');
 
   var taskEd = '<input class="cell-in" value="' + pmAttr(draft != null ? draft : r.task) +
     '" placeholder="CRM-8748" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
@@ -943,7 +948,7 @@ function promoExportCsv(){
     var nm = promoBuildName(r);
     return [promoFmtDate(r.d), promoDow(r.d), r.product, r.partner, r.base,
             (r.chan || []).join(', '), r.total ? 'TRUE' : 'FALSE', r.uniq,
-            nm.ok ? nm.value : '', key ? PROMO_JIRA_BASE + key : '', r.owner,
+            nm.ok ? nm.value : (r.commName || ''), key ? PROMO_JIRA_BASE + key : '', r.owner,
             promoStatusShown(r), r.note, f.bad.concat(f.warn).join(' | ')];
   });
   var csv = [head].concat(rows).map(function(line){
