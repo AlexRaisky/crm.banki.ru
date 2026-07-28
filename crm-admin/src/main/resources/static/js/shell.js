@@ -31,6 +31,7 @@ const NAV = [
       { id:"rep-planfact", label:"Plan-Fact",   icon:"chart", view:"view-report-embed", report:"planfact", aclSection:"reports" },
       { id:"rep-matrix",   label:"CRM Matrix",  icon:"grid2", view:"view-report-embed", report:"matrix",   aclSection:"reports" },
       { id:"rep-leadgen",  label:"CRM Leadgen", icon:"pulse", view:"view-report-embed", report:"leadgen",  aclSection:"reports" },
+      { id:"rep-smscheck", label:"ЧЕК СМС траффик", icon:"download", view:"view-report-smscheck", aclSection:"reports" },
       { id:"rep-demo",     label:"Пример визуализации отчёта", icon:"reports", view:"view-reports", aclSection:"reports" },
   ]},
   { id:"dash", label:"Дашборд", icon:"gauge", overviewView:"view-dash-overview", children:[
@@ -58,6 +59,7 @@ const ICONS = {
   pen:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
   list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
   chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-6M21 20H3"/></svg>',
+  download:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>',
   pulse:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
   flow:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="6" height="5" rx="1"/><rect x="16" y="4" width="6" height="5" rx="1"/><rect x="9" y="15" width="6" height="5" rx="1"/><path d="M5 9v3a2 2 0 0 0 2 2h2M19 9v3a2 2 0 0 1-2 2h-2"/></svg>',
   gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>',
@@ -420,6 +422,7 @@ const I18N_HTML = {
     h1_srcbuilder:'Конструктор <span class="grad">source</span>',
     h1_promo:'Планирование <span class="grad">промо</span>',
     h1_reports:'Пример <span class="grad">визуализации отчёта</span>',
+    h1_smscheck:'ЧЕК <span class="grad">СМС траффик</span>',
     h1_reports_ov:'Отчёты <span class="grad">Tableau</span>',
     reports_sub:'Демо-макет того, как отчёт Tableau будет выглядеть в этом окне. Реальные отчёты подключаются на страницах Plan-Fact, CRM&nbsp;Matrix и CRM&nbsp;Leadgen — там задаются адрес сервера и книга. Все числа на макете — демонстрационные.',
   },
@@ -782,6 +785,8 @@ function openSection(sid, cid){
   if (target.adminMode && typeof setAdminMode === "function") setAdminMode(target.adminMode);
   /* отчёты Tableau: один view на все отчёты, содержимое задаёт reports.js */
   if (target.report && typeof rpEmbedOpen === "function") rpEmbedOpen(target.report);
+  /* «ЧЕК СМС траффик» — выгрузка Excel (smscheck.js) */
+  if (target.view === "view-report-smscheck" && typeof scInit === "function") scInit();
   if (sid === "journeys" && typeof initJourneysSection === "function") initJourneysSection();
   if (target.view === "sec-deviations") setTimeout(() => {
     /* графики Chart.js, созданные в скрытой секции, имеют нулевой размер —
