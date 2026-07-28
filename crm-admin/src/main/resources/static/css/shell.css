@@ -102,6 +102,10 @@
   .pwd-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
   .btn.pwd-save{background:var(--grad);color:#08131f;border:none;font-weight:600}
   .user-box .btn{flex:0 0 auto}
+  /* Кнопки учётки (Вид / Пароль / Выйти): иконка + подпись. На узком экране
+     подпись прячется (см. брейкпоинт 700px) — остаётся один значок. */
+  .ub-btn{display:inline-flex;align-items:center;gap:7px}
+  .ub-btn svg{width:15px;height:15px;flex:0 0 auto}
 
   /* «Общие параметры» (личные тема/язык): строки-радио темы и селект языка */
   .prefs-opts{display:flex;flex-direction:column;gap:4px;margin-top:2px}
@@ -529,6 +533,12 @@
   @media (max-width:1100px){
     .user-email{display:none}
     #homeActions{display:none !important}   /* «Настроить главную» прячем, экономим место */
+    /* Три текстовые кнопки учётки (Вид/Пароль/Выйти) перестают помещаться раньше,
+       чем кажется: на 768px шапка вылезала на 58px и тянула горизонтальный скролл
+       на всех разделах (название приложения и логотип не сжимаются). Оставляем
+       значки — подпись возвращается на широком экране, смысл держит title. */
+    .ub-btn span{display:none}
+    .ub-btn{padding:7px 9px}
   }
   @media (max-width:760px){
     .grid{grid-template-columns:1fr}
@@ -546,4 +556,5 @@
     .gheader-actions{padding-left:6px;gap:6px}
     /* «Пароль» и «Выйти» — последнее, что не влезало: на 375px не хватало ~11px */
     .user-box .btn{padding:7px 10px;font-size:12.5px}
+    .ub-btn{padding:7px 8px}
   }

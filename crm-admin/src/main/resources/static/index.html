@@ -68,11 +68,21 @@
       <a class="iconbtn" href="settings/" id="settingsLink" title="Настройки (настроечная админка)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
       </a>
+      <!-- Кнопки учётки: иконка + подпись. На узком экране подпись скрывается
+           (см. .ub-btn в shell.css) — три текстовые кнопки не помещались в шапку
+           и растягивали страницу горизонтально. data-i18n стоит на <span>, а не на
+           кнопке: translateStatic пишет в textContent и стёр бы иконку. -->
       <div class="user-box" id="userBox">
         <span class="user-email" id="userEmail"></span>
-        <button class="btn" data-i18n="Вид" onclick="openPrefsDialog()" title="Тема и язык интерфейса — только для вашей учётки">Вид</button>
-        <button class="btn" data-i18n="Пароль" onclick="openPwdDialog()" title="Сменить свой пароль">Пароль</button>
-        <button class="btn" data-i18n="Выйти" onclick="CRM.logout()">Выйти</button>
+        <button class="btn ub-btn" onclick="openPrefsDialog()" title="Тема и язык интерфейса — только для вашей учётки">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>
+          <span data-i18n="Вид">Вид</span></button>
+        <button class="btn ub-btn" onclick="openPwdDialog()" title="Сменить свой пароль">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M10.9 12.1 20 3M17 6l2.5 2.5M14.5 8.5 17 11"/></svg>
+          <span data-i18n="Пароль">Пароль</span></button>
+        <button class="btn ub-btn" onclick="CRM.logout()" title="Выйти из панели">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          <span data-i18n="Выйти">Выйти</span></button>
       </div>
 
       <!-- Смена собственного пароля (доступна любому пользователю) -->
