@@ -116,6 +116,10 @@ const I18N_EN = {
   "Настроить главную":"Customize home", "Готово":"Done", "Свернуть меню":"Collapse menu",
   "Настройки (настроечная админка)":"Settings (admin settings)",
   "Выбрать приложение":"Choose an app", "Добавить блок":"Add a block", "Выйти":"Log out",
+  /* личные «Общие параметры» (тема/язык) */
+  "Вид":"View", "Тема и язык интерфейса — только для вашей учётки":"Theme and interface language — for your account only",
+  "Общие параметры":"General settings", "Тема оформления":"Theme",
+  "Системная":"System", "Тёмная":"Dark", "Светлая":"Light", "Язык интерфейса":"Interface language",
   /* виджеты главной */
   "Сводка по коммуникациям":"Communications summary", "Мои задачи":"My tasks",
   "Недавно использованные инструменты":"Recently used tools", "Быстрые ссылки":"Quick links",
@@ -743,6 +747,25 @@ function submitPwdDialog(){
 }
 document.addEventListener("keydown", function(e){
   if (e.key === "Escape" && $("#pwdDialog") && $("#pwdDialog").style.display !== "none") closePwdDialog();
+});
+
+/* «Общие параметры» — личные тема и язык (доступны каждой учётке, хранятся в браузере).
+   Пишем в те же ключи crmpanel:theme / crmpanel:lang и применяем сразу — так же, как
+   настроечная админка, только без прав администратора. */
+function openPrefsDialog(){
+  var theme = store.get("theme", "dark");
+  var lang = store.get("lang", "ru");
+  var r = document.querySelector('input[name="prefTheme"][value="' + theme + '"]') ||
+          document.querySelector('input[name="prefTheme"][value="dark"]');
+  if (r) r.checked = true;
+  var ls = $("#prefLang"); if (ls) ls.value = (lang === "en" ? "en" : "ru");
+  var d = $("#prefsDialog"); if (d) d.style.display = "";
+}
+function closePrefsDialog(){ var d = $("#prefsDialog"); if (d) d.style.display = "none"; }
+function prefsThemeChange(v){ store.set("theme", v); applyTheme(); }
+function prefsLangChange(v){ store.set("lang", v === "en" ? "en" : "ru"); applyLang(true); }
+document.addEventListener("keydown", function(e){
+  if (e.key === "Escape" && $("#prefsDialog") && $("#prefsDialog").style.display !== "none") closePrefsDialog();
 });
 
 function openSection(sid, cid){

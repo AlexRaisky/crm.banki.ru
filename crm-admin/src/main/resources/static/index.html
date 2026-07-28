@@ -70,6 +70,7 @@
       </a>
       <div class="user-box" id="userBox">
         <span class="user-email" id="userEmail"></span>
+        <button class="btn" data-i18n="Вид" onclick="openPrefsDialog()" title="Тема и язык интерфейса — только для вашей учётки">Вид</button>
         <button class="btn" data-i18n="Пароль" onclick="openPwdDialog()" title="Сменить свой пароль">Пароль</button>
         <button class="btn" data-i18n="Выйти" onclick="CRM.logout()">Выйти</button>
       </div>
@@ -88,6 +89,28 @@
           <div class="pwd-actions">
             <button class="btn" data-i18n="Отмена" onclick="closePwdDialog()">Отмена</button>
             <button class="btn pwd-save" data-i18n="Сохранить" onclick="submitPwdDialog()">Сохранить</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- «Общие параметры» (тема и язык) — доступны любому пользователю, хранятся
+           в браузере под его учёткой (localStorage). Применяются сразу при выборе. -->
+      <div id="prefsDialog" class="pwd-dialog" style="display:none">
+        <div class="pwd-card">
+          <b data-i18n="Общие параметры">Общие параметры</b>
+          <label data-i18n="Тема оформления">Тема оформления</label>
+          <div class="prefs-opts">
+            <label class="prefs-opt"><input type="radio" name="prefTheme" value="system" onchange="prefsThemeChange(this.value)"> <span data-i18n="Системная">Системная</span></label>
+            <label class="prefs-opt"><input type="radio" name="prefTheme" value="dark" onchange="prefsThemeChange(this.value)"> <span data-i18n="Тёмная">Тёмная</span></label>
+            <label class="prefs-opt"><input type="radio" name="prefTheme" value="light" onchange="prefsThemeChange(this.value)"> <span data-i18n="Светлая">Светлая</span></label>
+          </div>
+          <label data-i18n="Язык интерфейса">Язык интерфейса</label>
+          <select id="prefLang" onchange="prefsLangChange(this.value)">
+            <option value="ru">Русский</option>
+            <option value="en">English</option>
+          </select>
+          <div class="pwd-actions">
+            <button class="btn pwd-save" data-i18n="Готово" onclick="closePrefsDialog()">Готово</button>
           </div>
         </div>
       </div>
