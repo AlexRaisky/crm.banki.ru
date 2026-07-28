@@ -42,6 +42,16 @@ public class PromoPlanService {
     /** note вынесен отдельно: Map.of ограничен 10 парами. */
     private static final String NOTE_COLUMN = "note";
 
+    /**
+     * Порядок колонок для {@link #toDto} — ОДИН на все выборки строк.
+     * toDto читает Object[] по индексам, поэтому список колонок нельзя дублировать
+     * в запросах: при добавлении communication_name одна из выборок осталась старой,
+     * и правка любой ячейки падала с «Index 13 out of bounds for length 13».
+     */
+    private static final String ROW_COLUMNS =
+            "id, plan_date, product, partner, base, channel, is_total," +
+            " uniq_name, task_key, owner_name, status, note, communication_name, timestamp_upd";
+
     private static final String STATUS_PLANNED = "запланировано";
     private static final String STATUS_SENT = "отправлено";
 
@@ -64,9 +74,7 @@ public class PromoPlanService {
     public List<Map<String, Object>> list() {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery(
-                        "SELECT id, plan_date, product, partner, base, channel, is_total," +
-                        " uniq_name, task_key, owner_name, status, note, communication_name, timestamp_upd" +
-                        " FROM app.promo_plan ORDER BY plan_date, id")
+                        "SELECT " + ROW_COLUMNS + " FROM app.promo_plan ORDER BY plan_date, id")
                 .getResultList();
         List<Map<String, Object>> out = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
@@ -229,9 +237,9 @@ public class PromoPlanService {
         for (String ch : channels.subList(Math.min(1, channels.size()), channels.size())) {
             em.createNativeQuery(
                             "INSERT INTO app.promo_plan (plan_date, product, partner, base, channel, is_total," +
-                            " uniq_name, task_key, owner_name, status, note, created_by, updated_by)" +
+                            " uniq_name, task_key, owner_name, status, note, communication_name, created_by, updated_by)" +
                             " SELECT plan_date, product, partner, base, :ch, is_total, uniq_name, task_key," +
-                            " owner_name, status, note, :u, :u FROM app.promo_plan WHERE id = :id")
+                            " owner_name, status, note, communication_name, :u, :u FROM app.promo_plan WHERE id = :id")
                     .setParameter("ch", ch)
                     .setParameter("u", CurrentUser.email())
                     .setParameter("id", id)
@@ -284,9 +292,7 @@ public class PromoPlanService {
         }
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery(
-                        "SELECT id, plan_date, product, partner, base, channel, is_total," +
-                        " uniq_name, task_key, owner_name, status, note, timestamp_upd" +
-                        " FROM app.promo_plan WHERE id IN (:ids) ORDER BY plan_date, id")
+                        "SELECT " + ROW_COLUMNS + " FROM app.promo_plan WHERE id IN (:ids) ORDER BY plan_date, id")
                 .setParameter("ids", ids)
                 .getResultList();
         List<Map<String, Object>> out = new ArrayList<>(rows.size());
