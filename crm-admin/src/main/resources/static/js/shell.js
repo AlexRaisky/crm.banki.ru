@@ -10,7 +10,11 @@
    и, для админки, adminMode (wizard|list|dashboard).
    id разделов НЕ менять: на них завязан RBAC (me.sections). */
 const NAV = [
-  { id:"home",  label:"Главная", icon:"home", view:"view-home" },
+  /* noAcl: «Главная» — личная страница (задачи, недавнее, быстрые ссылки), как раздел
+     не гейтится. shell.js её из ACL исключал (sectionAllowed/aclAllows), а applyNavAcl
+     в api.js — нет: роль без секции home (например Маркетолог после V23) теряла пункт
+     из сайдбара. Флаг выравнивает оба гейта. */
+  { id:"home",  label:"Главная", icon:"home", view:"view-home", noAcl:true },
   { id:"comms", label:"Управление коммуникациями", icon:"megaphone", overviewView:"view-comms-overview", children:[
       { id:"onelink",   label:"OneLink Builder",     icon:"link", view:"sec-onelink" },
       { id:"admin",     label:"Мастер коммуникаций", icon:"pen",  view:"sec-admin", adminMode:"wizard" },
