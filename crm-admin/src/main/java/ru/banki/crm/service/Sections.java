@@ -17,6 +17,7 @@ public final class Sections {
     public static final String JOURNEYS = "journeys";   // Цепочки (схема-конструктор)
     public static final String ACCESS = "access";       // Управление доступом (ADMIN only)
     public static final String PROMO = "promo";         // Планирование промо (общая таблица)
+    public static final String ABTESTS = "abtests";     // А/Б тесты (общая таблица)
     public static final String SRCBUILDER = "srcbuilder"; // Конструктор source (только просмотр)
     public static final String REPORTS = "reports";       // Отчёты (только просмотр)
     public static final String HEATMAP = "heatmap";       // Тепловая карта (только просмотр)
@@ -27,7 +28,7 @@ public final class Sections {
        загруженные инструменты) заводим в RBAC только ради видимости в NAV: серверной
        записи у них нет, поэтому они не входят в WRITABLE — значима лишь галка read. */
     public static final List<String> ALL = List.of(
-            HOME, DEVIATIONS, ONELINK, ADMIN, TEMPLATES, DASHBOARD, JOURNEYS, ACCESS, PROMO,
+            HOME, DEVIATIONS, ONELINK, ADMIN, TEMPLATES, DASHBOARD, JOURNEYS, ACCESS, PROMO, ABTESTS,
             SRCBUILDER, REPORTS, HEATMAP, MONITORING, UPLOADS);
 
     public static final Set<String> VALID = Set.copyOf(ALL);
@@ -38,7 +39,7 @@ public final class Sections {
      * витрины; цепочки, доступ — только для админов (матрицу они обходят). В матрице прав
      * у не-writable разделов показываем лишь чекбокс Read.
      */
-    public static final Set<String> WRITABLE = Set.of(ADMIN, TEMPLATES, PROMO);
+    public static final Set<String> WRITABLE = Set.of(ADMIN, TEMPLATES, PROMO, ABTESTS);
 
     /**
      * Разделы только для админов: доступ к ним даёт роль администратора, а не матрица

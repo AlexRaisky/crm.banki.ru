@@ -1,0 +1,121 @@
+/* ===== А/Б тесты — стили, изолированы.
+   Оформление снято с «Планирования промо» (тот же тип раздела: общая таблица
+   команды с правкой ячеек), но без блоков, которых здесь нет: правил планирования,
+   строк-разделителей по датам и мультивыбора каналов. ===== */
+@scope (#sec-abtests){
+  :scope{color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;padding:24px 22px 80px}
+  h1{font-size:26px;font-weight:700;letter-spacing:-.015em}
+  h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--dim);font-size:13.5px;margin:6px 0 20px;max-width:820px}
+
+  /* сводка по данным таблицы */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .kpi .l{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+  .kpi .v{font-size:23px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums}
+  .kpi .v.green{color:var(--green)} .kpi .v.blue{color:var(--blue)} .kpi .v.amber{color:var(--amber)}
+
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
+  .toolbar .f{display:flex;flex-direction:column;gap:5px}
+  .toolbar label{font-size:11.5px;color:var(--faint)}
+  .toolbar select,.toolbar input{background:var(--bg2);border:1px solid var(--line);border-radius:9px;
+    color:var(--ink);font-family:var(--sans);font-size:13px;padding:8px 10px;outline:none;min-width:140px}
+  .toolbar select option{background:#0D1826;color:#F2F7FD}
+  .toolbar select:focus,.toolbar input:focus{border-color:rgba(80,195,255,.5)}
+  .toolbar .spacer{margin-left:auto}
+  .btn{font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 14px;border-radius:9px;cursor:pointer;
+    border:1px solid var(--line);background:var(--card2);color:var(--ink);background-image:none}
+  .btn:hover{border-color:var(--blue);color:var(--blue);filter:none}
+  .btn.accent{background:var(--grad);color:#06101B;border:none}
+  .btn.accent:hover{color:#06101B;filter:brightness(1.08)}
+
+  .tbl-wrap{border:1px solid var(--line);border-radius:12px;overflow:auto;max-height:64vh}
+  table{width:100%;border-collapse:collapse}
+  thead th{position:sticky;top:0;z-index:3;background:var(--card2);color:var(--dim);font-size:11.5px;
+    text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;font-weight:600}
+  tbody td{padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top}
+  tbody tr:hover{background:rgba(80,195,255,.05)}
+  td.empty{text-align:center;color:var(--faint);padding:28px 10px}
+
+  /* идущий тест виден сразу: у него нет даты окончания */
+  tbody tr.running td:first-child{box-shadow:inset 3px 0 0 var(--green)}
+
+  /* форма новой записи под шапкой таблицы */
+  tr.new-row{background:var(--blue-bg)}
+  tr.new-row:hover{background:var(--blue-bg)}
+  tr.new-row td{border-bottom:none;padding:8px 8px 4px}
+  tr.new-foot td{background:var(--blue-bg);border-bottom:2px solid var(--blue);padding:4px 10px 10px}
+  .nf{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+  .nf-btns{display:flex;gap:8px;margin-left:auto}
+  .np{font-size:12px;color:var(--dim);min-width:220px;flex:1 1 260px}
+  .np-err{color:var(--coral);font-size:11.5px;margin-top:4px}
+
+  /* даты и длинные тексты */
+  td.c-d1,td.c-d2{white-space:nowrap}
+  .dv{font-family:var(--mono);font-size:12px;color:var(--ink)}
+  .dv.none{color:var(--faint);font-family:var(--sans)}
+  .st{display:inline-block;font-size:12px;font-weight:600;padding:3px 9px;border-radius:11px;line-height:1.35}
+  .st.run{background:var(--green-bg);color:var(--green)}
+  .st.done{background:var(--blue-bg);color:var(--blue)}
+  .multi{display:block;white-space:pre-wrap;max-width:280px}
+  .tpl{font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;word-break:break-word;max-width:240px}
+  .who{white-space:nowrap}
+  .need{color:var(--faint);font-size:11.5px;font-style:italic}
+
+  /* редактирование ячейки */
+  td.editable{cursor:text;position:relative}
+  td.editable:hover{box-shadow:inset 0 0 0 1px rgba(80,195,255,.35);border-radius:6px}
+  td.cell-edit{background:var(--bg2)}
+  td.cell-edit .ed{display:flex;align-items:flex-start;gap:6px;min-width:190px}
+  .cell-in{width:100%;background:var(--bg2);border:1px solid rgba(80,195,255,.45);border-radius:7px;
+    color:var(--ink);font-family:var(--sans);font-size:12.5px;padding:5px 7px;outline:none;box-sizing:border-box}
+  .cell-in.mono{font-family:var(--mono);font-size:11.5px}
+  .cell-in.ta{resize:vertical;min-height:56px;line-height:1.45}
+  .cell-in.bad{border-color:rgba(255,107,138,.7)}
+  .cell-act{display:flex;gap:4px;flex:0 0 auto}
+  .cell-ok,.cell-no{width:24px;height:24px;border-radius:7px;border:1px solid var(--line);cursor:pointer;
+    background:var(--card2);background-image:none;font-size:12px;line-height:1;padding:0;box-sizing:border-box}
+  .cell-ok{color:var(--green)} .cell-no{color:var(--faint)}
+  .cell-ok:hover{border-color:var(--green);filter:none}
+  .cell-no:hover{color:var(--coral);border-color:rgba(255,107,138,.45);filter:none}
+
+  .row-del{width:24px;height:24px;border-radius:7px;border:1px solid var(--line);background:var(--card2);
+    background-image:none;color:var(--faint);cursor:pointer;font-size:12px;line-height:1;padding:0;
+    box-sizing:border-box}
+  .row-del:hover{color:var(--coral);border-color:rgba(255,107,138,.45);filter:none}
+  .note{color:var(--faint);font-size:12px;margin-top:12px;line-height:1.55}
+  .note b{color:var(--dim)}
+
+  /* ---- Брейкпоинты. Таблица плотная (8 колонок) и в карточки не раскладывается —
+     на узких экранах едет горизонтально ВНУТРИ .tbl-wrap, страница стоит на месте. ---- */
+  @media(max-width:1100px){
+    .toolbar select,.toolbar input{min-width:120px}
+  }
+  @media(max-width:820px){
+    :scope{padding:18px 12px 60px}
+    h1{font-size:22px}
+    .sub{margin-bottom:14px}
+    .kpis{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+    .kpi{padding:12px 13px}
+    .kpi .v{font-size:20px}
+    .tbl-wrap{max-height:70vh;max-height:70dvh}
+  }
+  @media(max-width:560px){
+    .sub{display:none}
+    .kpis{grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px;margin-bottom:12px}
+    .kpi{padding:9px 10px;border-radius:11px}
+    .kpi .v{font-size:17px;margin-top:3px}
+    .toolbar .spacer{display:none}
+    .toolbar{gap:8px}
+    .toolbar .f{flex:1 1 calc(50% - 5px);min-width:0}
+    .toolbar select,.toolbar input{min-width:0;width:100%}
+    .toolbar .btn{flex:0 1 auto;padding:9px 11px;font-size:12.5px}
+    .tbl-wrap{max-height:66vh;max-height:66dvh}
+    .nf-btns{margin-left:0;width:100%}
+    .nf-btns .btn{flex:1 1 auto}
+    .np{min-width:0;flex:1 1 100%}
+  }
+  @media(min-width:1500px) and (min-height:900px){
+    .tbl-wrap{max-height:74vh;max-height:74dvh}
+  }
+}

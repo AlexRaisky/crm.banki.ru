@@ -26,6 +26,7 @@
 <link rel="stylesheet" href="css/section-onelink.css">
 <link rel="stylesheet" href="css/section-srcbuilder.css">
 <link rel="stylesheet" href="css/section-promo.css">
+<link rel="stylesheet" href="css/section-abtests.css">
 <link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-admin.css">
 </head>
@@ -975,6 +976,54 @@
       <li><span class="flag bad">▲</span> <span data-i18n="Если на день запланирован тотал, остальные промо в том же канале подсвечиваются.">Если на день запланирован тотал, остальные промо в том же канале подсвечиваются.</span></li>
     </ul>
     <span data-i18n="Одна запись — один канал: при сохранении нескольких каналов создаётся отдельная запись на каждый. Дату можно переназначить иконкой календаря — запись сама перейдёт в нужный блок дат. «Название коммуникации» собирается автоматически по формату Конструктора source из канала, продукта, партнёра, уникального имени и даты. Записи с прошедшей датой уходят на вкладку «Архивные». Правки сохраняются в браузере.">Одна запись — один канал: при сохранении нескольких каналов создаётся отдельная запись на каждый. Дату можно переназначить иконкой календаря — запись сама перейдёт в нужный блок дат. «Название коммуникации» собирается автоматически по формату Конструктора source из канала, продукта, партнёра, уникального имени и даты. Записи с прошедшей датой уходят на вкладку «Архивные». Правки сохраняются в браузере.</span>
+  </div>
+    </section>
+
+    <!-- ===== А/Б тесты ===== -->
+    <section class="view" id="sec-abtests">
+  <h1 data-i18n-html="h1_abtests">А/Б <span class="grad">тесты</span></h1>
+  <div class="sub" data-i18n="Журнал А/Б тестов: когда шёл тест, кто его инициировал, что проверяли, на каких шаблонах и к чему пришли. Ячейки редактируются по клику, правка подтверждается ✓ (или кликом мимо ячейки).">Журнал А/Б тестов: когда шёл тест, кто его инициировал, что проверяли, на каких шаблонах и к чему пришли. Ячейки редактируются по клику, правка подтверждается ✓ (или кликом мимо ячейки).</div>
+
+  <div class="kpis" id="abKpis"></div>
+
+  <div class="toolbar">
+    <div class="f"><label data-i18n="Год">Год</label>
+      <select id="abYear" onchange="abRender()"></select></div>
+    <div class="f"><label data-i18n="Кто тестировал">Кто тестировал</label>
+      <select id="abTester" onchange="abRender()"></select></div>
+    <div class="f"><label data-i18n="Статус">Статус</label>
+      <select id="abStatus" onchange="abRender()">
+        <option value="" data-i18n="Все тесты">Все тесты</option>
+        <option value="run" data-i18n="Идут сейчас">Идут сейчас</option>
+        <option value="done" data-i18n="Завершённые">Завершённые</option>
+      </select></div>
+    <div class="f"><label data-i18n="Поиск">Поиск</label>
+      <input id="abSearch" placeholder="Гипотеза, шаблон, результат…" data-i18n-ph="Гипотеза, шаблон, результат…" oninput="abRender()"></div>
+    <span class="spacer"></span>
+    <button class="btn accent" id="abAddBtn" onclick="abNewOpen()" data-i18n="Добавить тест">Добавить тест</button>
+    <button class="btn" onclick="abExportCsv()" data-i18n="Экспорт CSV">Экспорт CSV</button>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th data-i18n="Начало">Начало</th>
+          <th data-i18n="Окончание">Окончание</th>
+          <th data-i18n="Что тестировали">Что тестировали</th>
+          <th data-i18n="Шаблоны">Шаблоны</th>
+          <th data-i18n="Кто инициировал">Кто инициировал</th>
+          <th data-i18n="Кто тестировал">Кто тестировал</th>
+          <th data-i18n="Результаты">Результаты</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="abBody"></tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span data-i18n="Таблица общая: правки видят все, у кого есть доступ к разделу, и подтягиваются раз в полминуты. «Кто тестировал» при заведении подставляется из вашей учётки, но поле обычное — впишите другого человека, если тест вёл не вы. Пока не указана дата окончания, тест считается идущим.">Таблица общая: правки видят все, у кого есть доступ к разделу, и подтягиваются раз в полминуты. «Кто тестировал» при заведении подставляется из вашей учётки, но поле обычное — впишите другого человека, если тест вёл не вы. Пока не указана дата окончания, тест считается идущим.</span>
   </div>
     </section>
 
@@ -2168,6 +2217,7 @@
 
 <script src="js/srcbuilder.js"></script>
 <script src="js/promo.js"></script>
+<script src="js/abtests.js"></script>
 <script src="js/reports.js"></script>
 <script src="js/smscheck.js"></script>
 

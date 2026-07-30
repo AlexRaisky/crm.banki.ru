@@ -27,6 +27,9 @@ const NAV = [
          Как таблица переедет на сервер (app.promo_plan), noAcl снимаем — секция promo
          в RBAC уже заведена. */
       { id:"promo",     label:"Планирование промо",  icon:"calendar", view:"sec-promo", noAcl:true },
+      /* А/Б тесты: секция abtests в RBAC заведена (V26, права скопированы с promo),
+         поэтому пункт гейтится по me.sections — noAcl тут НЕ ставим. */
+      { id:"abtests",   label:"А/Б тесты",           icon:"beaker", view:"sec-abtests" },
       { id:"heatmap",   label:"Тепловая карта",      icon:"grid2", view:"view-heatmap", appOnly:["Маркетинг"] },
   ]},
   /* «Отчёты» — встраивание отчётов Tableau: обзор с карточками, у каждого отчёта
@@ -70,6 +73,7 @@ const ICONS = {
   doc:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
   search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
   calendar:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+  beaker:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6.5L5 18a2 2 0 0 0 1.7 3h10.6A2 2 0 0 0 19 18l-5-8.5V3"/><path d="M7.5 14h9"/></svg>',
   grid2:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
   monitor:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
   upload:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
@@ -433,6 +437,7 @@ const I18N_HTML = {
     h1_upform:'Загрузка <span class="grad">HTML-инструмента</span>',
     h1_srcbuilder:'Конструктор <span class="grad">source</span>',
     h1_promo:'Планирование <span class="grad">промо</span>',
+    h1_abtests:'А/Б <span class="grad">тесты</span>',
     h1_reports:'Пример <span class="grad">визуализации отчёта</span>',
     h1_smscheck:'ЧЕК <span class="grad">СМС траффик</span>',
     h1_reports_ov:'Отчёты <span class="grad">Tableau</span>',
@@ -449,6 +454,7 @@ const I18N_HTML = {
     h1_upform:'Upload an <span class="grad">HTML tool</span>',
     h1_srcbuilder:'Source <span class="grad">builder</span>',
     h1_promo:'Promo <span class="grad">planning</span>',
+    h1_abtests:'A/B <span class="grad">tests</span>',
     h1_reports:'Report visualisation <span class="grad">example</span>',
     h1_reports_ov:'Tableau <span class="grad">reports</span>',
     reports_sub:'A demo mock-up of how a Tableau report will look in this window. Real reports are connected on the Plan-Fact, CRM&nbsp;Matrix and CRM&nbsp;Leadgen pages, where the server address and workbook are set. All numbers in the mock-up are illustrative.',

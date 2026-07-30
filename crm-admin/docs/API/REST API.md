@@ -17,6 +17,7 @@ tags: [api, reference]
 | `JourneyController` | `/api/journeys` | цепочки-схемы — [[Цепочки (Journeys)]] |
 | `FlowController` | `/api/flow` | материализация — [[Материализация (Flow)]] |
 | `PromoPlanController` | `/api/promo/plan` | план промо — [[Планирование промо]] |
+| `AbTestController` | `/api/ab-tests` | журнал А/Б тестов — [[АБ тесты]] |
 | `SmsCheckReportController` | `/api/reports/sms-check` | выгрузка «ЧЕК СМС траффик» — [[Отчёты]] |
 | `ReportConnectionController` | `/api/reports/connections` | подключения Tableau — [[Отчёты]] |
 | `PanelSettingsController` | `/api/panel-settings` | настройки панели key → jsonb |
@@ -55,7 +56,7 @@ tags: [api, reference]
 
 Роли — это **данные** (`app.role` + `app.role_section`), а не enum. В Spring Security наружу выводятся только authority по флагам роли: `ROLE_SUPER_ADMIN` + `ROLE_ADMIN` у супер-админа, `ROLE_ADMIN` у админ-роли, `ROLE_USER` у всех прочих. Практическое следствие: **сохранившиеся в коде аннотации `hasAnyRole('EDITOR','ADMIN')` (мутации цепочек) фактически означают «только ADMIN»** — authority `ROLE_EDITOR` больше не выдаётся никому.
 
-Канонический список разделов — `service/Sections`: `home`, `deviations`, `onelink`, `admin` (мастер коммуникаций), `templates`, `dashboard`, `journeys`, `access`, `promo`, `srcbuilder`, `reports`, `heatmap`, `monitoring`, `uploads`. Записи есть только у `admin`, `templates`, `promo` (`Sections.WRITABLE`) — у остальных значима лишь галка «Просмотр». `journeys` и `access` (`ADMIN_ONLY`) доступны по роли, а не по матрице.
+Канонический список разделов — `service/Sections`: `home`, `deviations`, `onelink`, `admin` (мастер коммуникаций), `templates`, `dashboard`, `journeys`, `access`, `promo`, `abtests`, `srcbuilder`, `reports`, `heatmap`, `monitoring`, `uploads`. Записи есть только у `admin`, `templates`, `promo`, `abtests` (`Sections.WRITABLE`) — у остальных значима лишь галка «Просмотр». `journeys` и `access` (`ADMIN_ONLY`) доступны по роли, а не по матрице.
 
 ## Аутентификация (Spring Security, без контроллера)
 
@@ -136,6 +137,17 @@ Query-параметры списка (все опциональны, множе
 | `POST /api/flow/materialize` | сохранить цепочку и записать слои A и B одной транзакцией → `{journeyId, created[]}` | ADMIN + раздел `journeys` |
 
 `preview` отдаёт `200` даже при непустом `problems` (проблемы — данные, не ошибка); FK показываются спецзначением `"(auto)"`. `materialize` при проблемах валидации → `400` с их перечнем; недопустимая таблица или колонка (белый список из 8 таблиц слоя B) → `400`.
+
+## А/Б тесты → [[АБ тесты]]
+
+| Метод и путь | Назначение | Право |
+|---|---|---|
+| `GET /api/ab-tests` | все тесты, свежие сверху | `read` в `abtests` |
+| `POST /api/ab-tests` | завести тест; пустой `tester` заполняется почтой учётки | `add` в `abtests` |
+| `PATCH /api/ab-tests/{id}` | правка одного поля: `{field, value, ver}` | `edit` в `abtests` |
+| `DELETE /api/ab-tests/{id}` | удалить запись | `delete` в `abtests` |
+
+Ошибки: `400 «Поле нельзя менять: …»` (поле вне белого списка), `400 «Не указана дата начала»`, `409 «Строку изменил другой пользователь»` (разошёлся `ver`), `404 «Строку уже удалили»`. Каждая мутация пишется в `arch.t_admin_log`.
 
 ## Планирование промо → [[Планирование промо]]
 
