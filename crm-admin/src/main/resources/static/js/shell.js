@@ -1283,6 +1283,34 @@ function timeAgo(ts){
   return Math.round(h / 24) + t(" дн");
 }
 
+/* ---------- CSS-тултипы .info .tip: не даём вылезти за край экрана ----------
+   Тултип шириной 250px висит по центру значка (left:50% + translateX(-50%)) и сам
+   про край экрана не знает: у полей слева он уезжал на сайдбар, у правых — за окно.
+   Считаем нужный сдвиг и кладём его в --tip-dx; CSS двигает на него сам тултип и на
+   столько же в обратную сторону стрелку, чтобы она продолжала указывать на значок.
+   Значки в «Мастере коммуникаций» пользуются другим механизмом — общим попапом
+   #fieldHelpPopup (position:fixed), его позицию считает showFieldHelp. */
+function clampTip(info) {
+  const tip = info.querySelector(":scope > .tip");
+  if (!tip) return;
+  tip.style.setProperty("--tip-dx", "0px");
+  const r = tip.getBoundingClientRect();
+  const pad = 10;
+  let dx = 0;
+  if (r.left < pad) dx = pad - r.left;
+  else if (r.right > window.innerWidth - pad) dx = (window.innerWidth - pad) - r.right;
+  if (dx) tip.style.setProperty("--tip-dx", Math.round(dx) + "px");
+}
+/* mouseenter не всплывает — слушаем mouseover, он же ловит переход между значками */
+document.addEventListener("mouseover", e => {
+  const info = e.target.closest && e.target.closest(".info");
+  if (info) clampTip(info);
+});
+document.addEventListener("focusin", e => {
+  const info = e.target.closest && e.target.closest(".info");
+  if (info) clampTip(info);
+});
+
 /* первичная отрисовка шапки и меню (виджеты и восстановление раздела — в стартовом скрипте в конце документа) */
 renderLauncher();
 renderNav();

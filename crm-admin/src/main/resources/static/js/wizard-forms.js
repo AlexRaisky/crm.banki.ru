@@ -102,7 +102,10 @@ function showFieldHelp(el) {
     var pr = popup.getBoundingClientRect();
     var left = r.left;
     var top = r.bottom + 6;
+    /* не помещается снизу — показываем над значком; если и там не влезает
+       (высокая подсказка у верхнего края), прижимаем к верху экрана */
     if (top + pr.height > window.innerHeight) top = r.top - pr.height - 6;
+    if (top < 10) top = 10;
     if (left + pr.width > window.innerWidth) left = window.innerWidth - pr.width - 10;
     if (left < 10) left = 10;
     popup.style.left = left + 'px';
@@ -114,16 +117,22 @@ function hideFieldHelp() {
     if (popup) popup.style.display = 'none';
 }
 
-/* Подсказки к полям — значок (i) с тултипом при наведении, как на странице OneLink Builder. */
+/* Подсказки к полям — значок (i), по наведению общий попап #fieldHelpPopup.
+   Раньше внутрь значка вкладывался CSS-тултип .tip: он шириной 250px висит по центру
+   значка и не знает ни про край экрана, ни про обрезающие контейнеры — у левых полей
+   (например, фильтр «Канал» в списке шаблонов) уезжал на сайдбар и перекрывал шапку.
+   #fieldHelpPopup — position:fixed, его позицию считает showFieldHelp и держит в экране;
+   карточка шаблона (sfdHintHtml) пользуется им же. */
 function makeInfoIcon(text) {
     var span = document.createElement('span');
     span.className = 'info';
     span.tabIndex = 0;
     span.textContent = 'i';
-    var tip = document.createElement('span');
-    tip.className = 'tip';
-    tip.textContent = text;
-    span.appendChild(tip);
+    span.setAttribute('data-help', text);
+    span.addEventListener('mouseenter', function () { showFieldHelp(span); });
+    span.addEventListener('mouseleave', hideFieldHelp);
+    span.addEventListener('focus', function () { showFieldHelp(span); });
+    span.addEventListener('blur', hideFieldHelp);
     return span;
 }
 
