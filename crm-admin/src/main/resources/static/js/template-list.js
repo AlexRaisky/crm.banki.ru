@@ -15,7 +15,9 @@ var LIST_COLUMNS = [
     { k:'product',  label:'Продукт',     edit:'text' },
     { k:'touch',    label:'Touch point', edit:'text' },
     { k:'trigger',  label:'Trigger',     edit:'select', opts:['','trigger','promo'] },
-    { k:'partner',  label:'Партнёр',     edit:'text' },
+    /* combo, а не строгий select: значения берутся из dictionary.d_partner, но вписать
+       своё можно — партнёр в работе появляется раньше, чем его заводят в справочник */
+    { k:'partner',  label:'Партнёр',     edit:'combo', dict:'partner' },
     { k:'active',   label:'Статус',      edit:'bool' },
 ];
 var LIST_FILTERS = [
@@ -384,8 +386,27 @@ function listSortBy(col) {
    Перерисовываем только текущую страницу: за новыми данными на сервер не ходим,
    иначе открытие карандаша сбрасывало бы уже загруженные строки и позицию прокрутки. */
 var LIST_EDIT = null;   /* { id, k } */
+
+/* Справочники для колонок с edit:'combo'. Тянем по одному разу и только когда
+   карандаш действительно открыли: список шаблонов грузится всем, а справочник
+   нужен единицам. Пока не приехал — поле работает как обычный ввод. */
+var LIST_DICT = { partner: null };
+var LIST_DICT_LOADERS = { partner: function(){ return CRM.dictPartners(); } };
+var LIST_DICT_REQ = {};
+function listEnsureDict(name){
+    var load = LIST_DICT_LOADERS[name];
+    if (!load || LIST_DICT[name] !== null || LIST_DICT_REQ[name] || !window.CRM) return;
+    LIST_DICT_REQ[name] = true;
+    load().then(function(list){
+        LIST_DICT[name] = list || [];
+        if (LIST_EDIT) renderTemplateList(ALL_TEMPLATES);   /* дорисуем открытую ячейку */
+    }).catch(function(){ LIST_DICT[name] = []; });
+}
+
 function listCellEdit(id, k){
     if (!(window.CRM && CRM.can && CRM.can('edit', 'templates', 'admin'))) return;
+    var col = LIST_COLUMNS.find(function(c){ return c.k === k; });
+    if (col && col.dict) listEnsureDict(col.dict);
     LIST_EDIT = { id: id, k: k }; renderTemplateList(ALL_TEMPLATES);
 }
 function listCellCancel(){ LIST_EDIT = null; renderTemplateList(ALL_TEMPLATES); }
@@ -457,6 +478,16 @@ function renderTemplateList(templates) {
                 input = `<input type="checkbox" ${tpl[c.k] ? 'checked' : ''}>`;
             } else if (c.edit === 'select') {
                 input = `<select>${c.opts.map(o => `<option value="${o}" ${String(tpl[c.k] || '') === o ? 'selected' : ''}>${o ? (CH_LABELS[o] || o) : '—'}</option>`).join('')}</select>`;
+            } else if (c.edit === 'combo') {
+                /* нативный input + datalist: и выбрать из справочника, и вписать своё.
+                   Текущее значение подмешиваем в список — иначе снятое из справочника
+                   значение не предложилось бы обратно. */
+                const dlId = 'list-dl-' + c.k;
+                const cur = tpl[c.k] == null ? '' : String(tpl[c.k]);
+                const opts = (LIST_DICT[c.dict] || []).slice();
+                if (cur && opts.indexOf(cur) === -1) opts.unshift(cur);
+                input = `<input type="text" list="${dlId}" value="${sfdEsc(cur)}">` +
+                        `<datalist id="${dlId}">${opts.map(o => `<option value="${sfdEsc(o)}"></option>`).join('')}</datalist>`;
             } else {
                 input = `<input type="text" value="${sfdEsc(tpl[c.k] == null ? '' : tpl[c.k])}">`;
             }
