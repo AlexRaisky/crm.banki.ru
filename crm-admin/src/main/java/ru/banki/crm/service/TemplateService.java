@@ -58,6 +58,8 @@ public class TemplateService {
             case "trigger" -> java.util.Comparator.comparing(i -> nz(i.triggerType()), ru);
             case "partner" -> java.util.Comparator.comparing(i -> nz(i.partnerName()), ru);
             case "active"  -> java.util.Comparator.comparingInt(i -> Boolean.TRUE.equals(i.active()) ? 1 : 0);
+            // колонка «Live Activity» в списке: она вычисляется из канала, отдельного поля нет
+            case "is_la"   -> java.util.Comparator.comparingInt(i -> "la".equals(i.channel()) ? 1 : 0);
             // по умолчанию и для "code" — числовой порядок кода, нечисловые в конец
             default -> java.util.Comparator.comparingDouble((TemplateListItemDto i) -> codeNum(i.code()))
                     .thenComparing(i -> nz(i.code()), ru);

@@ -42,6 +42,10 @@
     return {
       id: t.channel + ":" + t.code,
       channel: t.channel,
+      // Live Activity — разновидность пуша: в списке оба канала показываются как Push,
+      // а различает их отдельная колонка. Настоящий канал в channel не трогаем — по нему
+      // ищется шаблон при открытии карточки.
+      is_la: t.channel === "la",
       code: t.code,
       name: t.communicationName || t.letterosId || (t.channel + " " + t.code),
       product: product,

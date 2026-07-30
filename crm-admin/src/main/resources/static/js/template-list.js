@@ -10,6 +10,11 @@
 /* Колонки списка. Порядок задаёт порядок в таблице; opts — значения для правки selectом. */
 var LIST_COLUMNS = [
     { k:'channel',  label:'Канал',       edit:'select', opts:['sms','push','email','cc','fa','vk','la'] },
+    /* Live Activity — разновидность пуша, отдельным каналом в списке не показывается:
+       в колонке «Канал» у него бейдж Push, а принадлежность к LA видна здесь.
+       Только чтение: смена канала у заведённого шаблона — это переезд между таблицами,
+       карточка её тоже не даёт (тумблер «Это Live Activity» есть лишь при создании). */
+    { k:'is_la',    label:'Live Activity', ro:true },
     { k:'code',     label:'Code / ID',   edit:'text', link:true },
     { k:'name',     label:'Название',    edit:'text', link:true },
     { k:'product',  label:'Продукт',     edit:'text' },
@@ -33,9 +38,30 @@ function lsGet(key, def){
 function lsSet(key, val){
     try { localStorage.setItem('crmpanel:' + key, JSON.stringify(val)); } catch(e){}
 }
+/* Колонки, появившиеся после того, как пользователи уже сохранили свой набор в
+   localStorage: без доливки новая колонка не показалась бы никому, кроме тех, кто нажмёт
+   «По умолчанию». Доливаем один раз (отметка в crmpanel:listColsAdded), чтобы осознанно
+   снятая колонка не возвращалась при каждой загрузке. */
+var LIST_COLS_ADDED = ['is_la'];
+function listMigrateCols(saved){
+    var done = lsGet('listColsAdded', []);
+    var add = LIST_COLS_ADDED.filter(function(k){
+        return done.indexOf(k) === -1 && saved.indexOf(k) === -1;
+    });
+    if (!add.length) return saved;
+    var next = saved.slice();
+    /* ставим на то же место, что и в наборе по умолчанию, а не в хвост */
+    add.forEach(function(k){
+        var at = DEFAULT_LIST_COLS.indexOf(k);
+        next.splice(at === -1 ? next.length : Math.min(at, next.length), 0, k);
+    });
+    lsSet('listCols', next);
+    lsSet('listColsAdded', done.concat(add));
+    return next;
+}
 function listVisibleCols(){
     var saved = lsGet('listCols', null);
-    var ids = Array.isArray(saved) && saved.length ? saved : DEFAULT_LIST_COLS;
+    var ids = (Array.isArray(saved) && saved.length) ? listMigrateCols(saved) : DEFAULT_LIST_COLS;
     return LIST_COLUMNS.filter(function(c){ return ids.indexOf(c.k) !== -1; });
 }
 function listVisibleFilters(){
@@ -118,10 +144,23 @@ var _listExhausted = false; // сервер отдал меньше LIST_PAGE �
 var MS_ALL_LABEL = { channel: 'Все каналы', product: 'Все продукты', touch: 'Все точки',
                      trigger: 'Все типы', partner: 'Все партнёры' };
 var MS_STATE = {};   // ключ фильтра -> { options: [{v,l}], selected: [] }
+/* «Push» в фильтре берёт и Live Activity: для человека это один канал, отличие
+   видно в колонке «Live Activity». Раскрывается в два значения при сборке запроса
+   (msExpand) — сервер по-прежнему знает про отдельный канал la. */
 var MS_CHANNELS = [
     { v: 'sms', l: 'SMS' }, { v: 'push', l: 'Push' }, { v: 'email', l: 'Email' }, { v: 'cc', l: 'КЦ' },
-    { v: 'fa', l: 'FA' }, { v: 'vk', l: 'VK' }, { v: 'la', l: 'Live Activity' }
+    { v: 'fa', l: 'FA' }, { v: 'vk', l: 'VK' }
 ];
+var MS_EXPAND = { channel: { push: ['push', 'la'] } };
+function msExpand(key, values) {
+    var map = MS_EXPAND[key];
+    if (!map) return values;
+    var out = [];
+    values.forEach(function (v) {
+        (map[v] || [v]).forEach(function (x) { if (out.indexOf(x) === -1) out.push(x); });
+    });
+    return out;
+}
 
 function msRoot(key) { return document.querySelector('.ms[data-filter="' + key + '"]'); }
 function msSelected(key) { return ((MS_STATE[key] || {}).selected || []).slice(); }
@@ -215,7 +254,7 @@ function msClear(key) {
 function collectListFilters() {
     var vis = listVisibleFilters();
     var shown = function (key) { return vis.indexOf(key) !== -1; };
-    var ms = function (key) { return shown(key) ? msSelected(key) : []; };
+    var ms = function (key) { return shown(key) ? msExpand(key, msSelected(key)) : []; };
     var val = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
     var f = {
         channel: ms('channel'),
@@ -375,7 +414,7 @@ function writeListStats(shown) {
 
 /* Сортировка списка по колонке (клик по заголовку) */
 var LIST_SORT = { col: 'code', dir: 1 };
-var LIST_SORT_LABELS = { channel: 'Канал', code: 'Code / ID', name: 'Название', product: 'Продукт', touch: 'Touch point', trigger: 'Trigger', partner: 'Партнёр', active: 'Статус' };
+var LIST_SORT_LABELS = { channel: 'Канал', is_la: 'Live Activity', code: 'Code / ID', name: 'Название', product: 'Продукт', touch: 'Touch point', trigger: 'Trigger', partner: 'Партнёр', active: 'Статус' };
 function listSortBy(col) {
     if (LIST_SORT.col === col) LIST_SORT.dir = -LIST_SORT.dir;
     else LIST_SORT = { col: col, dir: 1 };
@@ -497,7 +536,14 @@ function renderTemplateList(templates) {
         }
         let view;
         if (c.k === 'channel') {
-            view = `<span class="channel-badge channel-${tpl.channel}">${CH_LABELS[tpl.channel] || tpl.channel}</span>`;
+            /* Live Activity показываем как Push (и бейджем тоже): для человека это один
+               канал, а отличие видно в колонке «Live Activity». tpl.channel не трогаем. */
+            const shownCh = tpl.channel === 'la' ? 'push' : tpl.channel;
+            view = `<span class="channel-badge channel-${shownCh}">${CH_LABELS[shownCh] || shownCh}</span>`;
+        } else if (c.k === 'is_la') {
+            view = tpl.is_la
+                ? `<span class="status-active">● ${sfdT('да')}</span>`
+                : `<span class="v empty">—</span>`;
         } else if (c.edit === 'bool') {
             view = `<span class="${tpl[c.k] ? 'status-active' : 'status-inactive'}">${tpl[c.k] ? '● ' + sfdT('активный') : '○ ' + sfdT('неактивный')}</span>`;
         } else if (c.link) {
@@ -505,9 +551,10 @@ function renderTemplateList(templates) {
         } else {
             view = sfdEsc(tpl[c.k]);
         }
-        /* карандаш inline-правки — только при праве edit на шаблоны (admin/templates);
+        /* карандаш inline-правки — только при праве edit на шаблоны (admin/templates)
+           и только у правимых колонок (ro:true — вычисляемые, как «Live Activity»);
            без него ячейка остаётся на просмотр, сервер правку всё равно отбил бы */
-        const canEdit = !!(window.CRM && CRM.can && CRM.can('edit', 'templates', 'admin'));
+        const canEdit = !c.ro && !!(window.CRM && CRM.can && CRM.can('edit', 'templates', 'admin'));
         const pen = canEdit ? `<button class="sf-cell-pen" title="${sfdT('Редактировать')}" onclick="listCellEdit('${tpl.id}','${c.k}')"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>` : '';
         return `<td class="sf-cell">${view}${pen}</td>`;
     }
