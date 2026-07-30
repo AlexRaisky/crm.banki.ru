@@ -84,6 +84,8 @@ button {
 .combo-pop.open { display: block; }
 .combo-item { padding: 6px 10px; cursor: pointer; }
 .combo-item:hover, .combo-item.active { background: #f0f0f0; }
+/* Пункт «+ Добавить «…»» — пополнение справочника прямо из формы (combobox.js). */
+.combo-item.combo-create { color: #0b7285; font-weight: 600; border-top: 1px solid #e5e7eb; }
 .combo::after {
     content: "▾";
     position: absolute;
@@ -573,6 +575,7 @@ button:hover{filter:brightness(1.08)}
 .combo-pop{background:var(--card); border:1px solid var(--line)}
 .combo-item{color:var(--ink)}
 .combo-item:hover,.combo-item.active{background:var(--card2)}
+.combo-item.combo-create{color:var(--green); border-top:1px solid var(--line)}
 
 /* Группы флагов */
 .extra-flags .flags-group-label{color:var(--dim)}
@@ -813,6 +816,14 @@ button:hover{filter:brightness(1.08)}
 .sfd-row select.sfd-edit{cursor:pointer}
 .sfd-row select.sfd-edit option{background:#0D1826;color:#F2F7FD}
 .sfd-row .sfd-edit-check{width:17px;height:17px;accent-color:#3CFAB4;cursor:pointer}
+/* combo с пополнением справочника: поле + кнопка «+» справа от него */
+.sfd-row .sfd-combo-add{display:flex;align-items:center;gap:6px}
+.sfd-row .sfd-combo-add .sfd-edit{flex:1;min-width:0}
+.sfd-row .sfd-dict-add{flex:0 0 auto;width:28px;align-self:stretch;padding:0;border-radius:8px;
+    background:transparent;border:1px solid rgba(80,195,255,.45);color:var(--blue);
+    font-size:16px;line-height:1;cursor:pointer}
+.sfd-row .sfd-dict-add:hover{background:var(--blue);border-color:var(--blue);color:#08131f;filter:none}
+.sfd-row .sfd-dict-add:disabled{opacity:.5;cursor:default}
 
 /* секция «Цепочка» в карточке мастера */
 .sfd-chain{padding:12px 18px 16px;display:flex;flex-direction:column;gap:12px}

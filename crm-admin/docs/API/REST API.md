@@ -103,13 +103,16 @@ Query-параметры списка (все опциональны, множе
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
-| `GET /api/dictionaries/partners` | `["Альфа", …]` — distinct партнёры | аутентификация |
+| `GET /api/dictionaries/partners` | `["A7", …]` — партнёры из `dictionary.d_partner` (`V25`), сортировка регистронезависимая | аутентификация |
+| `POST /api/dictionaries/partners` | `{"name":"…"}` → `{"name":"…"}` — добавить партнёра в справочник из формы мастера | `add` в `admin` или `templates` |
 | `GET /api/dictionaries/cc-segments` | сегменты КЦ | аутентификация |
-| `GET /api/dictionaries/comm-names?channel=sms` | distinct `communication_name` канала (без параметра — по всем) | аутентификация |
+| `GET /api/dictionaries/comm-names?channel=sms` | значения `communication_name` из `dictionary.d_communication_name` (параметр `channel` не влияет, оставлен для совместимости) | аутентификация |
 | `GET /api/dictionaries/touch-points` | точки касания | аутентификация |
 | `GET /api/dictionaries/product-types` | типы продуктов (`d_product_type`, `V19`) | аутентификация |
 
-Ни роль, ни разделы здесь не проверяются: данные нужны формам нескольких разделов.
+На чтении ни роль, ни разделы не проверяются: данные нужны формам нескольких разделов.
+
+`POST /api/dictionaries/partners` — единственная мутация среди справочников: право то же, что на заведение шаблона. Имя обрезается по краям, сравнение с существующими **регистронезависимое** (`UNIQUE(name)` в БД считает «Sber» и «sber» разными, а для списка это дубль) — если партнёр уже есть, возвращается его каноническое написание и новой строки не появляется. Ошибки: `400 «Название партнёра пустое»`, `400 «Название партнёра длиннее 200 символов»`. Вставка пишется в `arch.t_admin_log` (`table_name = dictionary.d_partner`, `operation = INSERT`).
 
 ## Цепочки-схемы → [[Цепочки (Journeys)]]
 

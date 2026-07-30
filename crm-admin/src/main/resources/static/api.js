@@ -230,6 +230,7 @@
     createChain: function (channel, base, days) { return req("POST", "/api/templates/" + channel + "/chain", { base: base, days: days }); },
 
     dictPartners: function () { return req("GET", "/api/dictionaries/partners"); },
+    dictAddPartner: function (name) { return req("POST", "/api/dictionaries/partners", { name: name }); },
     dictCcSegments: function () { return req("GET", "/api/dictionaries/cc-segments"); },
     dictCommNames: function (channel) { return req("GET", "/api/dictionaries/comm-names?channel=" + encodeURIComponent(channel)); },
     dictTouchPoints: function () { return req("GET", "/api/dictionaries/touch-points"); },

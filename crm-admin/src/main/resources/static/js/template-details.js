@@ -123,11 +123,18 @@ function sfdRecalcNames(){
    постоянно, запрещать их нельзя). */
 /* Оба списка одинаковы для всех каналов (справочники ни от чего не зависят),
    поэтому тянем их по одному разу за загрузку страницы. */
-var SFD_DICT = { touch: null, comm: null, product: null };
+var SFD_DICT = { touch: null, comm: null, product: null, partner: null };
 var SFD_DICT_REQ = {};                      /* что уже запрошено, чтобы не дёргать API повторно */
 
 function sfdEnsureDicts(channel){
     if (!window.CRM) return;
+    if (SFD_DICT.partner === null && !SFD_DICT_REQ.partner && CRM.dictPartners){
+        SFD_DICT_REQ.partner = true;
+        CRM.dictPartners().then(function(list){
+            SFD_DICT.partner = list || [];
+            sfdRender();
+        }).catch(function(){ SFD_DICT.partner = []; });
+    }
     if (SFD_DICT.touch === null && !SFD_DICT_REQ.touch && CRM.dictTouchPoints){
         SFD_DICT_REQ.touch = true;
         CRM.dictTouchPoints().then(function(list){
@@ -160,6 +167,47 @@ function sfdDictOpts(list, current, withEmpty){
     if (cur && out.indexOf(cur) === -1) out.unshift(cur);
     if (withEmpty) out.unshift('');
     return out;
+}
+
+/* Какие поля карточки умеют пополнять свой справочник (кнопка «+» рядом с полем).
+   Пока только партнёр: остальные списки правятся осознанно, а партнёр появляется
+   в работе раньше, чем кто-то успевает добавить его в справочник. */
+var SFD_DICT_ADD = {
+    partner: function(name){ return CRM.dictAddPartner(name); }
+};
+
+/* Занести введённое в поле значение в справочник и подставить обратно то,
+   что вернул сервер (он может вернуть уже существующее написание). */
+function sfdDictAdd(key, btn){
+    var api = SFD_DICT_ADD[key];
+    if (!api || !window.CRM) return;
+    var row = btn.closest('.sfd-row');
+    var inp = row && row.querySelector('.sfd-edit[data-k="' + key + '"]');
+    var value = inp ? String(inp.value || '').trim() : '';
+    if (!value){ alert(sfdT('Сначала впишите значение.')); return; }
+    var list = SFD_DICT[key] || [];
+    var same = list.filter(function(o){ return String(o).toLowerCase() === value.toLowerCase(); })[0];
+    if (same){
+        /* уже в справочнике — запрос не нужен, просто выравниваем написание */
+        SFD_STATE.work[key] = same;
+        if (SFD_NAME_KEYS[key]) sfdRecalcNames();
+        sfdRender();
+        return;
+    }
+    btn.disabled = true;
+    api(value).then(function(res){
+        var saved = (res && res.name) || value;
+        if ((SFD_DICT[key] || []).indexOf(saved) === -1){
+            SFD_DICT[key] = (SFD_DICT[key] || []).concat([saved])
+                .sort(function(a, b){ return String(a).toLowerCase() < String(b).toLowerCase() ? -1 : 1; });
+        }
+        SFD_STATE.work[key] = saved;
+        if (SFD_NAME_KEYS[key]) sfdRecalcNames();
+        sfdRender();
+    }).catch(function(e){
+        btn.disabled = false;
+        alert(sfdT('Не удалось добавить в справочник') + ': ' + (e && e.message ? e.message : e));
+    });
 }
 
 /* ---------- поля карточки по каналам (реальные поля наших форм + dtoToV1; preheader у нас нет) ---------- */
@@ -231,7 +279,11 @@ function sfdFieldDefs(d){
         { k:'trigger', label:'Trigger type', type:'select', opts:['','promo','trigger'] },
         { k:'product', label:'Product type', type:'select',
           opts: sfdDictOpts(SFD_DICT.product, d.product, true) },
-        { k:'partner', label:'Partner name' },
+        /* combo + кнопка «+»: партнёры ведутся в dictionary.d_partner, но список закрытым
+           быть не может — новый партнёр появляется раньше, чем кто-то поправит справочник.
+           Кнопка добавляет введённое значение в справочник (право add), см. sfdDictAdd. */
+        { k:'partner', label:'Partner name', type:'combo', create:true,
+          opts: sfdDictOpts(SFD_DICT.partner, d.partner, false) },
         { k:'touch', label:'Touch point', type:'select',
           opts: sfdDictOpts(SFD_DICT.touch, d.touch, true) },
         /* только цифры: значение уходит в source_type как Nday, буквы там ломают имя */
@@ -498,8 +550,17 @@ function sfdRowHtml(f){
             /* редактируемая выпадашка: нативный input+datalist — и выбрать из списка,
                и вписать своё, без самодельного дропдауна */
             var lid = 'sfd-dl-' + f.k;
-            valHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" list="' + lid + '"' +
-                      ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">' +
+            var inpHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" list="' + lid + '"' +
+                      ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
+            /* f.create: вписанное значение можно тут же занести в справочник — иначе оно
+               осталось бы только в этом шаблоне и в следующий раз его снова набирали бы руками */
+            if (f.create && sfdCan('add')){
+                inpHtml = '<div class="sfd-combo-add">' + inpHtml +
+                    '<button type="button" class="sfd-dict-add" data-k="' + f.k + '"' +
+                    ' title="' + sfdT('Добавить значение в справочник') + '"' +
+                    ' aria-label="' + sfdT('Добавить значение в справочник') + '">+</button></div>';
+            }
+            valHtml = inpHtml +
                       '<datalist id="' + lid + '">' + (f.opts || []).map(function(o){
                           return '<option value="' + sfdEsc(o) + '"></option>';
                       }).join('') + '</datalist>';
@@ -853,6 +914,10 @@ function sfdRender(){
             handler();
             if (inp.type === 'checkbox' || inp.tagName === 'SELECT' || isCreate) sfdRender();
         });
+    });
+    /* «+» рядом с combo: занести введённое значение в справочник */
+    output.querySelectorAll('.sfd-dict-add').forEach(function(btn){
+        btn.onclick = function(){ sfdDictAdd(btn.dataset.k, btn); };
     });
     var createBtn = document.getElementById('sfdCreateBtn');
     if (createBtn) createBtn.onclick = sfdCreate;
