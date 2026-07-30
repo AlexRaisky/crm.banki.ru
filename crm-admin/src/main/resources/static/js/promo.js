@@ -85,7 +85,9 @@ var PROMO_PROD_ALIAS = {
   'Каско':'Каско', 'Инвестиции':'Инвестиции'
 };
 
-/* партнёры: partner_name, только латиница (регистровые дубли схлопнуты) */
+/* Партнёры: фолбэк на случай недоступного справочника. Основной источник —
+   dictionary.d_partner (GET /api/dictionaries/partners), куда этот список и залит
+   миграцией V25; см. promoFillPartnerList. Здесь он больше не правится. */
 var PROMO_PARTNERS = [
   'A7','A7-Veksel','Absolut','ADengi','Agroros','Ak-Bars','Alfa','AlphaStrahovanie','BankKazan',
   'Belkacredit','Beregovoy','Bistrodengi','BJF','BKS','Blanc','Caranga','CarMoney','Cash-to-you',
@@ -962,11 +964,21 @@ function promoExportCsv(){
   URL.revokeObjectURL(a.href);
 }
 
-/* справочник партнёров для ввода с подсказкой */
-function promoFillPartnerList(){
+/* Справочник партнёров для ввода с подсказкой — dictionary.d_partner (тот же
+   источник, что у поля «Partner name» в карточке шаблона). Пока список не приехал,
+   подставляем зашитый PROMO_PARTNERS: он же остаётся фолбэком, если справочник
+   недоступен, — поле в любом случае свободное для ввода. */
+function promoRenderPartnerList(list){
   var dl = document.getElementById('promoPartnerList');
-  if (!dl || dl.childElementCount) return;
-  dl.innerHTML = PROMO_PARTNERS.map(function(p){ return '<option value="' + pmAttr(p) + '">'; }).join('');
+  if (!dl) return;
+  dl.innerHTML = (list || []).map(function(p){ return '<option value="' + pmAttr(p) + '">'; }).join('');
+}
+function promoFillPartnerList(){
+  promoRenderPartnerList(PROMO_PARTNERS);
+  if (!window.CRM || !CRM.dictPartners) return;
+  CRM.dictPartners().then(function(list){
+    if (Array.isArray(list) && list.length) promoRenderPartnerList(list);
+  }).catch(function(){ /* справочник недоступен — остаётся зашитый список */ });
 }
 
 /* Первая загрузка плана с сервера; дальше раздел сам подтягивает чужие правки. */
