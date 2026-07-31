@@ -20,16 +20,24 @@ var AB_COLS = 8;                /* колонок до колонки с кно�
 var _abTimer = null;
 var _abLoading = false;
 
-/* Статус теста — проставляется вручную. «идёт» по умолчанию у новой записи;
-   раньше это выводилось из пустой даты окончания, но статус нужнее отдельно:
-   тест могут приостановить, когда дата окончания ещё не наступила. */
-var AB_RUN = 'идёт';
-var AB_STOP = 'не идёт';
-var AB_STATUSES = [AB_RUN, AB_STOP];
-function abRunning(r){ return (r.status || AB_RUN) === AB_RUN; }
+/* Статус теста — проставляется вручную, три ступени жизненного цикла.
+   «идёт» по умолчанию у новой записи (её же подсвечивает зелёная полоса и
+   считает счётчик «Идут сейчас»). */
+var AB_PLANNED = 'запланировано';
+var AB_RUNNING = 'идёт';
+var AB_DONE = 'завершён';
+var AB_STATUSES = [AB_PLANNED, AB_RUNNING, AB_DONE];
+var AB_STATUS_DEFAULT = AB_RUNNING;
+function abStatusOf(r){ return r.status || AB_STATUS_DEFAULT; }
+function abRunning(r){ return abStatusOf(r) === AB_RUNNING; }
+function abStatusCls(s){
+  if (s === AB_RUNNING) return 'run';
+  if (s === AB_DONE) return 'done';
+  return 'plan';                                   /* запланировано и всё прочее */
+}
 function abStatusBadge(s){
-  var run = (s || AB_RUN) === AB_RUN;
-  return '<span class="st ' + (run ? 'run' : 'done') + '">' + abEsc(s || AB_RUN) + '</span>';
+  s = s || AB_STATUS_DEFAULT;
+  return '<span class="st ' + abStatusCls(s) + '">' + abEsc(s) + '</span>';
 }
 
 function abT(s){ return (typeof t === 'function') ? t(s) : s; }
@@ -154,8 +162,7 @@ function abFiltered(){
     var r = x.r;
     if (y && String(r.d1 || '').slice(0, 4) !== y) return false;
     if (who && r.tester !== who) return false;
-    if (st === 'run' && !abRunning(r)) return false;
-    if (st === 'done' && abRunning(r)) return false;
+    if (st && abStatusOf(r) !== st) return false;   /* значение фильтра — сам статус */
     if (q){
       var hay = [r.subject, r.templates, r.owner, r.tester, r.result, r.status].join(' ').toLowerCase();
       if (hay.indexOf(q) === -1) return false;
@@ -167,12 +174,12 @@ function abFiltered(){
 function abRenderKpis(rows){
   var host = document.getElementById('abKpis');
   if (!host) return;
-  var running = rows.filter(function(x){ return abRunning(x.r); }).length;
-  var withResult = rows.filter(function(x){ return String(x.r.result || '').trim(); }).length;
+  var by = function(s){ return rows.filter(function(x){ return abStatusOf(x.r) === s; }).length; };
   host.innerHTML =
     '<div class="kpi"><div class="l">' + abT('Тестов') + '</div><div class="v">' + rows.length + '</div></div>' +
-    '<div class="kpi"><div class="l">' + abT('Идут сейчас') + '</div><div class="v green">' + running + '</div></div>' +
-    '<div class="kpi"><div class="l">' + abT('С результатом') + '</div><div class="v blue">' + withResult + '</div></div>';
+    '<div class="kpi"><div class="l">' + abT('Запланировано') + '</div><div class="v amber">' + by(AB_PLANNED) + '</div></div>' +
+    '<div class="kpi"><div class="l">' + abT('Идут сейчас') + '</div><div class="v green">' + by(AB_RUNNING) + '</div></div>' +
+    '<div class="kpi"><div class="l">' + abT('Завершено') + '</div><div class="v blue">' + by(AB_DONE) + '</div></div>';
 }
 
 /* ---------- ячейка ---------- */
@@ -228,7 +235,7 @@ function abRender(){
       abCell(x, 'status', abStatusBadge(r.status),
         '<select class="cell-in" onchange="abDraft(this.value)">' +
         AB_STATUSES.map(function(s){
-          return '<option value="' + abEsc(s) + '"' + ((r.status || AB_RUN) === s ? ' selected' : '') +
+          return '<option value="' + abEsc(s) + '"' + (abStatusOf(r) === s ? ' selected' : '') +
                  '>' + abEsc(s) + '</option>';
         }).join('') + '</select>') +
       abCell(x, 'subject', val(r.subject),
@@ -297,7 +304,7 @@ function abNewOpen(){
   if (!abCan('add')){ alert(abT('Нет прав на заведение записей.')); return; }
   AB_EDIT = null;
   /* «Кто тестировал» подставляем из учётки — обычно тест ведёт тот, кто его и заводит */
-  AB_NEW = { d1: abToday(), d2: '', status: AB_RUN, subject: '', templates: '', owner: '', tester: abMe(), result: '', err: '' };
+  AB_NEW = { d1: abToday(), d2: '', status: AB_STATUS_DEFAULT, subject: '', templates: '', owner: '', tester: abMe(), result: '', err: '' };
   abRender();
 }
 function abNewClose(){ AB_NEW = null; abRender(); }
@@ -377,7 +384,7 @@ function abExportCsv(){
   var lines = [head.map(esc).join(';')];
   rows.forEach(function(x){
     var r = x.r;
-    lines.push([abFmtDate(r.d1), abFmtDate(r.d2), (r.status || AB_RUN), r.subject, r.templates, r.owner, r.tester, r.result]
+    lines.push([abFmtDate(r.d1), abFmtDate(r.d2), abStatusOf(r), r.subject, r.templates, r.owner, r.tester, r.result]
       .map(esc).join(';'));
   });
   var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });

@@ -55,6 +55,7 @@
   .dv{font-family:var(--mono);font-size:12px;color:var(--ink)}
   .dv.none{color:var(--faint);font-family:var(--sans)}
   .st{display:inline-block;font-size:12px;font-weight:600;padding:3px 9px;border-radius:11px;line-height:1.35}
+  .st.plan{background:var(--amber-bg);color:var(--amber)}
   .st.run{background:var(--green-bg);color:var(--green)}
   .st.done{background:var(--blue-bg);color:var(--blue)}
   .multi{display:block;white-space:pre-wrap;max-width:280px}
