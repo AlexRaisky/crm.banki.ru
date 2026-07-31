@@ -2,6 +2,7 @@ package ru.banki.crm.service.prod;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,10 @@ public class ProdSyncService {
     private final UnifiedTemplateService unified;
     private final TransactionTemplate tx;
 
+    /** Сколько минут держать доставленные (OK) записи, потом удалять из очереди. */
+    @Value("${app.prodsync.ok-ttl-minutes:10}")
+    private int okTtlMinutes;
+
     public ProdSyncService(JdbcTemplate jdbc, ProdDbService prod,
                            UnifiedTemplateService unified, TransactionTemplate tx) {
         this.jdbc = jdbc;
@@ -47,11 +52,28 @@ public class ProdSyncService {
         }
     }
 
+    /**
+     * Уборка очереди: доставленные (OK) записи держим коротко, потом удаляем — очередь
+     * это список задач, а не журнал (аудит доставок лежит в log.t_admin_log / arch.t_admin_log).
+     * ERROR и PENDING НЕ трогаем: ERROR убирается только вручную (кнопки «Повтор»/«Отмена»),
+     * иначе несинхронизированное изменение потерялось бы без следа.
+     */
+    @Scheduled(fixedDelay = 60000, initialDelay = 30000)
+    public void cleanup() {
+        try {
+            int ok = jdbc.update("DELETE FROM app.prod_sync WHERE status = 'OK'" +
+                    " AND timestamp_upd < now() - make_interval(mins => ?)", okTtlMinutes);
+            if (ok > 0) log.debug("prod-sync cleanup: удалено {} OK (> {} мин)", ok, okTtlMinutes);
+        } catch (Exception e) {
+            log.warn("prod-sync cleanup failed: {}", e.getMessage());
+        }
+    }
+
     /** Обработать до limit записей очереди. Возвращает число успешно доставленных. */
     public int process(int limit) {
         if (!prod.configured()) return 0;
         List<Map<String, Object>> entries = jdbc.queryForList(
-                "SELECT id, channel, operation, local_code, payload::text AS payload" +
+                "SELECT id, channel, operation, local_code, payload::text AS payload, created_by" +
                 " FROM app.prod_sync WHERE status = 'PENDING' AND attempts < ? ORDER BY id LIMIT ?",
                 MAX_ATTEMPTS, limit);
         int ok = 0;
@@ -61,8 +83,9 @@ public class ProdSyncService {
             String operation = String.valueOf(e.get("operation"));
             long localCode = ((Number) e.get("local_code")).longValue();
             String payload = String.valueOf(e.get("payload"));
+            String createdBy = e.get("created_by") == null ? null : String.valueOf(e.get("created_by"));
             try {
-                long prodCode = prod.apply(channel, operation, localCode, payload);
+                long prodCode = prod.apply(channel, operation, localCode, payload, createdBy);
                 tx.executeWithoutResult(s -> {
                     jdbc.update("UPDATE app.prod_sync SET status = 'OK', prod_code = ?, attempts = attempts + 1," +
                                     " last_error = NULL, timestamp_upd = now() WHERE id = ?",

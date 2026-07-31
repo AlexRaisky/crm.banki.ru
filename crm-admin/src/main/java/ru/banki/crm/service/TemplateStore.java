@@ -52,6 +52,13 @@ public class TemplateStore {
             Map.entry("kvintCampaignId", "kvint_campaign_id"));
 
     /** Ядровые колонки d_template -> имя колонки в прод-таблице (для payload синка). */
+    /**
+     * Служебные метки времени прод-таблиц. Мы их НЕ храним у себя и НЕ отправляем обратно:
+     * их проставляет прод при записи (см. ProdDbService.insert/update). Иначе при синке
+     * ушла бы устаревшая метка и сломала отслеживание изменений, на котором держится ETL.
+     */
+    public static final java.util.Set<String> PROD_TIMESTAMPS = java.util.Set.of("timestamp_cr", "timestamp_upd");
+
     private static final Map<String, String> CORE_TO_PROD = new LinkedHashMap<>(Map.ofEntries(
             Map.entry("communication_name", "communication_name"),
             Map.entry("campaign_name", "source_type"),
@@ -159,6 +166,28 @@ public class TemplateStore {
             d.setSegmentDescr(txt(props, "segment_descr"));
             if (props.hasNonNull("host_id")) d.setHostId(props.get("host_id").asLong());
             d.setKvintCampaignId(txt(props, "kvint_campaign_id"));
+            // fa
+            d.setFaId(txt(props, "fa_id"));
+            d.setC2dTransport(txt(props, "c2d_transport"));
+            d.setC2dAccount(txt(props, "c2d_account"));
+            d.setWebUrl(txt(props, "web_url"));
+            d.setLinkTitle(txt(props, "link_title"));
+            if (props.has("need_push")) d.setNeedPush(bool(props, "need_push"));
+            if (props.hasNonNull("ch2d_operator_id")) d.setCh2dOperatorId(props.get("ch2d_operator_id").asLong());
+            if (props.hasNonNull("channel_id")) d.setChannelId(props.get("channel_id").asInt());
+            d.setActionButtons(jsonTxt(props, "action_buttons"));
+            // vk
+            d.setVkTemplateName(txt(props, "vk_template_name"));
+            d.setAbGroup(txt(props, "ab_group"));
+            if (props.hasNonNull("ttl")) d.setTtl(props.get("ttl").asInt());
+            d.setButtons(jsonTxt(props, "buttons"));
+            // la
+            d.setActivityName(txt(props, "activity_name"));
+            d.setLaEvent(txt(props, "la_event"));
+            d.setLaVisualization(txt(props, "la_visualization"));
+            d.setLaStatus(txt(props, "la_status"));
+            if (props.hasNonNull("current_step")) d.setCurrentStep(props.get("current_step").asInt());
+            d.setLaVisualizationAttributes(jsonTxt(props, "la_visualization_attributes"));
         }
         return d;
     }
@@ -193,6 +222,9 @@ public class TemplateStore {
             // null не отправляем: в проде такие колонки NOT NULL с дефолтом — пусть остаются как есть
             if (v != null && !v.isNull()) out.set(prodCol, v);
         });
+        // Метки времени прода наружу не отправляем: их проставляет сам прод (см. ProdDbService).
+        // Иначе записали бы туда устаревшее значение и сломали отслеживание изменений.
+        PROD_TIMESTAMPS.forEach(out::remove);
         List<String> emptyKeys = new ArrayList<>();
         out.fieldNames().forEachRemaining(k -> { if (out.get(k).isNull()) emptyKeys.add(k); });
         emptyKeys.forEach(out::remove);
@@ -203,7 +235,7 @@ public class TemplateStore {
     /** Имя колонки бизнес-кода в прод-таблице канала. */
     public static String codeColumn(String channel) {
         return switch (channel == null ? "" : channel) {
-            case "email" -> "id";
+            case "email", "fa", "vk", "la" -> "id";
             case "cc" -> "segment";
             default -> "code";
         };
@@ -295,6 +327,56 @@ public class TemplateStore {
         jdbc.update("DELETE FROM template.d_template WHERE channel = ? AND code = ?", channel, asLong(code));
     }
 
+    /**
+     * Обратный импорт: строка внешней прод-таблицы (jsonb, прод-имена колонок) → d_template.
+     * Ядро по CORE_TO_PROD (source_type→campaign_name и т.д.), остальное (кроме id и кода) →
+     * channel_props. Идемпотентно (ON CONFLICT DO UPDATE). НЕ ставит в очередь синка (тянем ИЗ прода).
+     */
+    public void upsertFromProdRow(String channel, JsonNode prod) {
+        String codeCol = UnifiedTemplateService.channelTable(channel).codeCol();
+        JsonNode codeNode = prod.get(codeCol);
+        if (codeNode == null || codeNode.isNull()) return;
+        long code = codeNode.asLong();
+        java.util.Set<String> coreProd = new java.util.HashSet<>(CORE_TO_PROD.values());
+        ObjectNode props = om.createObjectNode();
+        prod.fieldNames().forEachRemaining(k -> {
+            if (k.equals("id") || k.equals(codeCol) || coreProd.contains(k)) return;
+            if (PROD_TIMESTAMPS.contains(k)) return;   // метки — бухгалтерия прода, у себя не храним
+            props.set(k, prod.get(k));
+        });
+        List<String> products = new ArrayList<>();
+        JsonNode pt = prod.get("product_type");
+        if (pt != null && pt.isArray()) pt.forEach(n -> products.add(n.asText()));
+        jdbc.update(
+            "INSERT INTO template.d_template (channel, code, communication_name, campaign_name, communication_type," +
+            " business_communication_type, trigger_type, sending_day, product_type, partner_name, touch_point," +
+            " aff_sub3, selection_wizard_service, marketplace, dialog, loyalty, national_rating, news, mobile_app," +
+            " night_send, active_flag, permanent_exclude, channel_props)" +
+            " VALUES (?,?,?,?,?,?,?,?,CAST(? AS text[]),?,?,?,?,?,?,?,?,?,?,?,?,?,CAST(? AS jsonb))" +
+            " ON CONFLICT (channel, code) DO UPDATE SET communication_name=EXCLUDED.communication_name," +
+            " campaign_name=EXCLUDED.campaign_name, communication_type=EXCLUDED.communication_type," +
+            " business_communication_type=EXCLUDED.business_communication_type, trigger_type=EXCLUDED.trigger_type," +
+            " sending_day=EXCLUDED.sending_day, product_type=EXCLUDED.product_type, partner_name=EXCLUDED.partner_name," +
+            " touch_point=EXCLUDED.touch_point, aff_sub3=EXCLUDED.aff_sub3, selection_wizard_service=EXCLUDED.selection_wizard_service," +
+            " marketplace=EXCLUDED.marketplace, dialog=EXCLUDED.dialog, loyalty=EXCLUDED.loyalty," +
+            " national_rating=EXCLUDED.national_rating, news=EXCLUDED.news, mobile_app=EXCLUDED.mobile_app," +
+            " night_send=EXCLUDED.night_send, active_flag=EXCLUDED.active_flag," +
+            " permanent_exclude=EXCLUDED.permanent_exclude, channel_props=EXCLUDED.channel_props," +
+            " timestamp_upd=now()",
+            channel, code,
+            nz(text(prod, "communication_name")), nz(text(prod, "source_type")), nz(text(prod, "communication_type")),
+            nz(text(prod, "business_communication_type")), nz(text(prod, "trigger_type")),
+            jbInt(prod, "sending_day"), pgArray(products),
+            text(prod, "partner_name"), nz(text(prod, "touch_point")), nz(text(prod, "aff_sub3")), text(prod, "selection_wizard_service"),
+            jbBool(prod, "marketplace"), jbBool(prod, "dialog"), jbBool(prod, "loyalty"), jbBool(prod, "national_rating"),
+            jbBool(prod, "news"), jbBool(prod, "mobile_app"), jbBool(prod, "night_send"),
+            jbBoolTrue(prod, "active_flag"), jbBool(prod, "permanent_exclude"), props.toString());
+    }
+
+    private static int jbInt(JsonNode row, String f) { JsonNode v = row.get(f); return v == null || v.isNull() ? 0 : v.asInt(); }
+    private static boolean jbBool(JsonNode row, String f) { JsonNode v = row.get(f); return v != null && v.asBoolean(); }
+    private static boolean jbBoolTrue(JsonNode row, String f) { JsonNode v = row.get(f); return v == null || v.isNull() || v.asBoolean(); }
+
     // ---------------------------------------------------------------- helpers
     private JsonNode rowNode(String channel, String code) {
         List<String> r = jdbc.queryForList(
@@ -337,6 +419,28 @@ public class TemplateStore {
         if (d.getMlProbabilityRequired() != null) props.put("ml_probability_required", d.getMlProbabilityRequired());
         if (d.getCutpercent() != null) props.put("cutpercent", d.getCutpercent());
         if (d.getNocutpercent() != null) props.put("nocutpercent", d.getNocutpercent());
+        // fa
+        putIfSet(props, "fa_id", d.getFaId());
+        putIfSet(props, "c2d_transport", d.getC2dTransport());
+        putIfSet(props, "c2d_account", d.getC2dAccount());
+        putIfSet(props, "web_url", d.getWebUrl());
+        putIfSet(props, "link_title", d.getLinkTitle());
+        if (d.getNeedPush() != null) props.put("need_push", d.getNeedPush());
+        if (d.getCh2dOperatorId() != null) props.put("ch2d_operator_id", d.getCh2dOperatorId());
+        if (d.getChannelId() != null) props.put("channel_id", d.getChannelId());
+        putJsonIfSet(props, "action_buttons", d.getActionButtons());
+        // vk
+        putIfSet(props, "vk_template_name", d.getVkTemplateName());
+        putIfSet(props, "ab_group", d.getAbGroup());
+        if (d.getTtl() != null) props.put("ttl", d.getTtl());
+        putJsonIfSet(props, "buttons", d.getButtons());
+        // la
+        putIfSet(props, "activity_name", d.getActivityName());
+        putIfSet(props, "la_event", d.getLaEvent());
+        putIfSet(props, "la_visualization", d.getLaVisualization());
+        putIfSet(props, "la_status", d.getLaStatus());
+        if (d.getCurrentStep() != null) props.put("current_step", d.getCurrentStep());
+        putJsonIfSet(props, "la_visualization_attributes", d.getLaVisualizationAttributes());
         // поля, которые прод требует непустыми (напр. email.subject) — пустая строка вместо null
         UnifiedTemplateService.prodDefaults(channel).forEach((k, v) -> {
             if (!props.hasNonNull(k)) props.put(k, v);
@@ -346,6 +450,22 @@ public class TemplateStore {
 
     private static void putIfSet(ObjectNode n, String key, String value) {
         if (value != null) n.put(key, value);
+    }
+
+    /** jsonb-поле: парсим строку в узел; если не валидный JSON — кладём как строку (данные не теряем). */
+    private void putJsonIfSet(ObjectNode n, String key, String jsonText) {
+        if (jsonText == null || jsonText.isBlank()) return;
+        try {
+            n.set(key, om.readTree(jsonText));
+        } catch (Exception e) {
+            n.put(key, jsonText);
+        }
+    }
+
+    /** Читает jsonb-поле обратно как JSON-строку (для DTO). */
+    private static String jsonTxt(JsonNode props, String key) {
+        JsonNode v = props.get(key);
+        return (v == null || v.isNull()) ? null : v.toString();
     }
 
     private static void addSet(List<String> sets, List<Object> args, String col, Object value) {

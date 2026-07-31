@@ -2,6 +2,14 @@
    подсказки полей, автогенерация communication_name и campaign_name (правила v2),
    редактируемые выпадающие списки, загрузка/поиск шаблона.
    Сохранение и карточка просмотра — в template-details.js, витрина — в template-list.js. */
+/* Тумблер Live Activity в форме Push: показывает/прячет LA-поля.
+   При сохранении saveFromChannelForm подменяет канал push → la (live_activity_template). */
+function toggleLiveActivity(cb) {
+    var form = cb.closest('.form');
+    var block = form ? form.querySelector('.form-block-la') : null;
+    if (block) block.style.display = cb.checked ? '' : 'none';
+}
+
 function openTab(id, el) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.form').forEach(f => f.classList.remove('active'));
@@ -9,7 +17,7 @@ function openTab(id, el) {
     document.getElementById(id).classList.add('active');
     // Переход на вкладку создания канала = новый шаблон: сбрасываем контекст редактирования,
     // чтобы сохранение пошло как INSERT, а не UPDATE ранее открытого шаблона.
-    if (id === 'sms' || id === 'push' || id === 'email' || id === 'cc') {
+    if (id === 'sms' || id === 'push' || id === 'email' || id === 'cc' || id === 'fa' || id === 'vk' || id === 'la') {
         window.CRM_CURRENT = null;
     }
     if (id === 'dashboard' && DASHBOARD_DATA && Object.keys(DASHBOARD_DATA).length) {
@@ -94,7 +102,10 @@ function showFieldHelp(el) {
     var pr = popup.getBoundingClientRect();
     var left = r.left;
     var top = r.bottom + 6;
+    /* не помещается снизу — показываем над значком; если и там не влезает
+       (высокая подсказка у верхнего края), прижимаем к верху экрана */
     if (top + pr.height > window.innerHeight) top = r.top - pr.height - 6;
+    if (top < 10) top = 10;
     if (left + pr.width > window.innerWidth) left = window.innerWidth - pr.width - 10;
     if (left < 10) left = 10;
     popup.style.left = left + 'px';
@@ -106,16 +117,22 @@ function hideFieldHelp() {
     if (popup) popup.style.display = 'none';
 }
 
-/* Подсказки к полям — значок (i) с тултипом при наведении, как на странице OneLink Builder. */
+/* Подсказки к полям — значок (i), по наведению общий попап #fieldHelpPopup.
+   Раньше внутрь значка вкладывался CSS-тултип .tip: он шириной 250px висит по центру
+   значка и не знает ни про край экрана, ни про обрезающие контейнеры — у левых полей
+   (например, фильтр «Канал» в списке шаблонов) уезжал на сайдбар и перекрывал шапку.
+   #fieldHelpPopup — position:fixed, его позицию считает showFieldHelp и держит в экране;
+   карточка шаблона (sfdHintHtml) пользуется им же. */
 function makeInfoIcon(text) {
     var span = document.createElement('span');
     span.className = 'info';
     span.tabIndex = 0;
     span.textContent = 'i';
-    var tip = document.createElement('span');
-    tip.className = 'tip';
-    tip.textContent = text;
-    span.appendChild(tip);
+    span.setAttribute('data-help', text);
+    span.addEventListener('mouseenter', function () { showFieldHelp(span); });
+    span.addEventListener('mouseleave', hideFieldHelp);
+    span.addEventListener('focus', function () { showFieldHelp(span); });
+    span.addEventListener('blur', hideFieldHelp);
     return span;
 }
 
@@ -369,37 +386,45 @@ function loadTemplate(templateId) {
         return;
     }
     // Полные данные всегда тянем с бэкенда (id в списке = "channel:code").
-    if (ALL_TEMPLATES.some(function (t) { return t.id === templateId; })) {
-        viewFromList(templateId);
-        return;
-    }
-    document.getElementById('settingsOutput').innerHTML = '<p style="color: #e53935;">Шаблон не найден</p>';
+    // ALL_TEMPLATES с переходом на пагинацию содержит лишь загруженную страницу,
+    // поэтому по нему НЕ проверяем — viewFromList сам разберёт id и сходит на бэк.
+    viewFromList(templateId);
 }
 
-/* Поиск шаблона по коду (Code / Letteros ID / Segment) — по данным бэкенда */
+/* Поиск шаблона по коду (Code / Letteros ID / Segment) — ищем на бэкенде по всей базе,
+   а не по загруженной странице списка. */
 function searchTemplate() {
     const key = document.getElementById('searchKey').value.trim().toLowerCase();
     if (!key) return;
-    var found = ALL_TEMPLATES.filter(function (t) {
-        return String(t.code).toLowerCase() === key;
+    var out = document.getElementById('settingsOutput');
+    if (out) out.innerHTML = '<p style="color:#9aa2b1;">Поиск…</p>';
+
+    CRM.listTemplates({ q: key, limit: 200 }).then(function (raw) {
+        // q — подстрочный поиск по многим полям; оставляем только точное совпадение кода
+        var found = (raw || []).map(CRM.apiItemToList).filter(function (t) {
+            var letteros = (t.letteros == null ? '' : String(t.letteros)).toLowerCase();
+            return String(t.code).toLowerCase() === key || letteros === key;
+        });
+        if (!found.length) {
+            if (out) out.innerHTML = '<p style="color: #e53935;">Шаблон с кодом «' + sfdEsc(key) + '» не найден.</p>';
+            return;
+        }
+        // Код уникален внутри канала, но может совпадать между каналами — берём первый,
+        // остальные упоминаем подсказкой.
+        viewFromList(found[0].id);
+        if (found.length > 1) {
+            setTimeout(function () {
+                var o = document.getElementById('settingsOutput');
+                if (!o) return;
+                var note = document.createElement('p');
+                note.style.color = '#f59e0b';
+                note.textContent = 'Код найден в нескольких каналах: ' + found.map(function (t) { return t.channel; }).join(', ') + '. Показан ' + found[0].channel + '; остальные — через «Список шаблонов».';
+                o.prepend(note);
+            }, 300);
+        }
+    }).catch(function () {
+        if (out) out.innerHTML = '<p style="color: #e53935;">Не удалось выполнить поиск.</p>';
     });
-    if (!found.length) {
-        document.getElementById('settingsOutput').innerHTML = '<p style="color: #e53935;">Шаблон с кодом «' + key + '» не найден.</p>';
-        return;
-    }
-    // Код уникален внутри канала, но может совпадать между каналами — берём первый,
-    // остальные упоминаем подсказкой.
-    viewFromList(found[0].id);
-    if (found.length > 1) {
-        setTimeout(function () {
-            var out = document.getElementById('settingsOutput');
-            if (!out) return;
-            var note = document.createElement('p');
-            note.style.color = '#f59e0b';
-            note.textContent = 'Код найден в нескольких каналах: ' + found.map(function (t) { return t.channel; }).join(', ') + '. Показан ' + found[0].channel + '; остальные — через «Список шаблонов».';
-            out.prepend(note);
-        }, 300);
-    }
 }
 
 /* Восстановление базы communication_name из сохранённого значения (для просмотра/редактирования) */

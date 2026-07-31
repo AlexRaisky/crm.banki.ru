@@ -60,11 +60,21 @@ app:
     enabled: true
   # Внешняя прод-БД (схемы notice/callcenter 1:1): очередь app.prod_sync доставляет
   # туда операции мастера. Пусто = синк выключен, очередь копится в PENDING.
+  # ETL «прод -> мы»: актуализация нашей копии шаблонов из прод-таблиц.
+  # Выключен по умолчанию; молчит, если прод-приёмник не настроен/недоступен.
+  etl:
+    enabled: ${ETL_ENABLED:false}
+    interval-ms: ${ETL_INTERVAL_MS:300000}        # инкремент раз в 5 минут
+    overlap-minutes: ${ETL_OVERLAP_MINUTES:0}     # 0: метки в проде выставлены разом, перекрытие тянуло бы всю таблицу
+    initial-delay-ms: ${ETL_INITIAL_DELAY_MS:60000}
+    full-cron: ${ETL_FULL_CRON:0 0 22 * * *}      # полный прогон в 22:00
   proddb:
     url: ${PROD_DB_URL:}
     user: ${PROD_DB_USER:}
     password: ${PROD_DB_PASSWORD:}
     connect-timeout-ms: ${PROD_DB_CONNECT_TIMEOUT_MS:20000}
+    # метки времени в проде пишем/читаем в UTC+3
+    time-zone: ${PROD_DB_TIME_ZONE:Europe/Moscow}
   # Цепочки-схемы: по умолчанию в БД (app.journeys, jsonb); true = мок в памяти (dev без БД).
   journeys:
     mock: ${JOURNEYS_MOCK:false}
@@ -88,9 +98,19 @@ spring:
     activate:
       on-profile: docker
   flyway:
-    locations: classpath:db/migration,classpath:db/seed
-    # Сиды заняли версии V900+; новые схемные миграции (V3, V4, …) выходят «младше» уже
-    # применённых — разрешаем применять их задним числом (только dev-БД этого профиля).
+    # Сиды (db/seed, версии V900+) ОТКЛЮЧЕНЫ. V900 наполняет notice.*/callcenter.*, а их
+    # удаляет V12 — на уже поднятых контурах сид успел примениться раньше V12 и потому
+    # прошёл, но на ЧИСТОМ томе Flyway идёт по возрастанию версии: V12 сносит таблицы,
+    # V900 (900 > 24) выполняется последним и падает с «relation notice.push_template
+    # does not exist» — приложение не стартует. Демо-данные больше не нужны: шаблоны
+    # приезжают из прод-БД синком, цепочки заводятся в панели.
+    locations: classpath:db/migration
+    # Сиды уже записаны в flyway_schema_history поднятых контуров, поэтому после снятия
+    # локации Flyway валился бы на «applied migration not resolved locally». Записи о них
+    # вычищает FlywaySeedCleanup перед migrate (ignore-migration-patterns тут не годится —
+    # шаблон *:missing доступен только в платной редакции Flyway).
+    # Схемные миграции временами выходят «младше» уже применённых сидов V900+ —
+    # разрешаем применять их задним числом (наследие того же порядка версий).
     out-of-order: true
 
 ---

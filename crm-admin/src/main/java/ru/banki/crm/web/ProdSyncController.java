@@ -4,10 +4,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import ru.banki.crm.service.prod.ProdDbService;
+import ru.banki.crm.service.prod.ProdReconcileService;
 import ru.banki.crm.service.prod.ProdSyncService;
 
 import java.util.LinkedHashMap;
@@ -25,11 +27,40 @@ public class ProdSyncController {
     private final ProdDbService prod;
     private final ProdSyncService sync;
     private final JdbcTemplate jdbc;
+    private final ProdReconcileService reconcile;
 
-    public ProdSyncController(ProdDbService prod, ProdSyncService sync, JdbcTemplate jdbc) {
+    public ProdSyncController(ProdDbService prod, ProdSyncService sync, JdbcTemplate jdbc,
+                             ProdReconcileService reconcile) {
         this.prod = prod;
         this.sync = sync;
         this.jdbc = jdbc;
+        this.reconcile = reconcile;
+    }
+
+    /** Сверка d_template с внешним продом: корзины «только в проде / разошлись / только у нас». */
+    @GetMapping("/reconcile")
+    public Map<String, Object> reconcile() throws Exception {
+        return reconcile.report();
+    }
+
+    /** Импорт выбранных строк из прода в d_template (без очереди). Тело — список {channel, code}. */
+    @PostMapping("/reconcile/import")
+    public Map<String, Object> reconcileImport(@RequestBody List<Map<String, Object>> rows) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("imported", reconcile.importRows(rows));
+        return out;
+    }
+
+    /** Запустить фоновый импорт ВСЕЙ прод-базы в d_template (одна задача за раз). */
+    @PostMapping("/reconcile/import-all")
+    public Map<String, Object> reconcileImportAll() {
+        return reconcile.startBulkImport();
+    }
+
+    /** Статус фонового импорта (для поллинга в UI). */
+    @GetMapping("/reconcile/import-all/status")
+    public Map<String, Object> reconcileImportAllStatus() {
+        return reconcile.bulkStatus();
     }
 
     /** Соединение + наличие таблиц + счётчики очереди. */
@@ -40,18 +71,25 @@ public class ProdSyncController {
         return out;
     }
 
+    /** Только счётчики очереди (быстро, без коннекта к проду) — для авто-показа в /settings. */
+    @GetMapping("/queue-stats")
+    public Map<String, Object> queueStats() {
+        return sync.stats();
+    }
+
     /** Последние записи очереди (по умолчанию — проблемные и ожидающие). */
     @GetMapping("/queue")
     public List<Map<String, Object>> queue(@RequestParam(defaultValue = "50") int limit,
                                            @RequestParam(required = false) String status) {
-        String where = (status == null || status.isBlank())
-                ? "status IN ('PENDING','ERROR')" : "status = ?";
+        boolean all = status != null && status.equalsIgnoreCase("all");
+        boolean filter = status != null && !status.isBlank() && !all;
+        String where = filter ? "status = ?" : (all ? "1=1" : "status IN ('PENDING','ERROR')");
+        // source = source_type из payload (jsonb-строка канальной таблицы 1:1)
         String sql = "SELECT id, channel, operation, local_code, prod_code, status, attempts," +
+                " payload->>'source_type' AS source," +
                 " left(coalesce(last_error,''), 300) AS last_error, timestamp_cr, timestamp_upd" +
                 " FROM app.prod_sync WHERE " + where + " ORDER BY id DESC LIMIT " + Math.min(Math.max(limit, 1), 500);
-        return (status == null || status.isBlank())
-                ? jdbc.queryForList(sql)
-                : jdbc.queryForList(sql, status);
+        return filter ? jdbc.queryForList(sql, status) : jdbc.queryForList(sql);
     }
 
     /** Запустить доставку очереди прямо сейчас (не ждать шедулер). */
@@ -69,5 +107,11 @@ public class ProdSyncController {
     public void retry(@PathVariable long id) {
         jdbc.update("UPDATE app.prod_sync SET status = 'PENDING', attempts = 0, last_error = NULL," +
                 " timestamp_upd = now() WHERE id = ?", id);
+    }
+
+    /** Отменить операцию: убрать из очереди (только PENDING/ERROR — доставленные не трогаем). */
+    @PostMapping("/cancel/{id}")
+    public void cancel(@PathVariable long id) {
+        jdbc.update("DELETE FROM app.prod_sync WHERE id = ? AND status IN ('PENDING','ERROR')", id);
     }
 }

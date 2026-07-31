@@ -5,24 +5,18 @@ import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Service;
 import ru.banki.crm.security.CurrentUser;
 
-import java.util.List;
 import java.util.Map;
 
 /**
- * Единый справочник шаблонов template.d_template — ОСНОВНОЕ хранилище новой архитектуры.
- * Канальные таблицы (notice.* и callcenter.*) — staging-буфер прод-структуры 1:1:
- * из их строк собирается payload для синка во внешнюю прод-БД (app.prod_sync, outbox).
+ * Единый справочник шаблонов template.d_template — ЕДИНСТВЕННОЕ наше хранилище шаблонов.
+ * payload для синка собирается из d_template (см. TemplateStore.prodPayload) и кладётся
+ * в очередь app.prod_sync (outbox), откуда доставляется во ВНЕШНЮЮ прод-БД (ProdDbService).
+ * Имена внешних прод-таблиц отдаёт channelTable(); локальных копий этих таблиц у нас нет.
  *
  * Вызывается после каждой операции мастера (TemplateService) и при материализации цепочек.
  */
 @Service
 public class UnifiedTemplateService {
-
-    /** Ядровые колонки, одинаковые во всех 4 канальных таблицах (email/cc не имеют night_send). */
-    private static final String CORE_COLS =
-            "communication_name, source_type, communication_type, business_communication_type, trigger_type, " +
-            "sending_day, product_type, partner_name, touch_point, aff_sub3, selection_wizard_service, " +
-            "marketplace, dialog, loyalty, national_rating, news, mobile_app, night_send, permanent_exclude, active_flag";
 
     /**
      * @param codeLimit верхняя граница бизнес-кода (исключительно): код выделяется
@@ -41,6 +35,11 @@ public class UnifiedTemplateService {
             // у КЦ код (segment) — бизнес-ключ, задаётся пользователем, прод его не переназначает;
             // суррогатный id прод выдаёт по счётчику
             case "cc" -> new ChannelTable("callcenter.d_segment_properties", "segment", false, false, null);
+            // Новые типы. Схема прод-таблиц (notice.*) — предварительная, уточняется при
+            // подключении доставки; PK = id, отдельной «code»-колонки нет → codeCol = id (прод присваивает).
+            case "fa" -> new ChannelTable("notice.fa_template", "id", false, true, null);
+            case "vk" -> new ChannelTable("notice.vk_template", "id", false, true, null);
+            case "la" -> new ChannelTable("notice.live_activity_template", "id", true, true, null);
             default -> null;
         };
     }
@@ -60,45 +59,18 @@ public class UnifiedTemplateService {
     @PersistenceContext
     private EntityManager em;
 
-    /** Адрес внешней прод-БД (пусто = синк не настроен, очередь не ведём). */
-    @org.springframework.beans.factory.annotation.Value("${app.proddb.url:}")
-    private String prodDbUrl;
+    /**
+     * Настроен ли прод-приёмник. Спрашиваем ProdDbService — источник истины ОДИН:
+     * активная строка app.db_connection с флагом is_prod_sync. Раньше здесь читалась
+     * переменная окружения app.proddb.url, и после переезда конфигурации в реестр
+     * (env остался только для одноразового сида) очередь переставала вестись:
+     * правка тихо меняла лишь локальную базу и в прод не уезжала.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    private ru.banki.crm.service.prod.ProdDbService prodDb;
 
     private boolean prodConfigured() {
-        return prodDbUrl != null && !prodDbUrl.isBlank();
-    }
-
-    /** Свёртка строки канальной таблицы в единый справочник (channel_props = всё, что не ядро). */
-    public void upsertFromChannel(String channel, long code) {
-        ChannelTable ct = channelTable(channel);
-        if (ct == null) return;
-        String nightExpr = ct.hasNight() ? "coalesce(t.night_send, false)" : "false";
-        String sql =
-            "INSERT INTO template.d_template (channel, code, communication_name, campaign_name, communication_type, " +
-            "  business_communication_type, trigger_type, sending_day, product_type, partner_name, touch_point, " +
-            "  aff_sub3, selection_wizard_service, marketplace, dialog, loyalty, national_rating, news, mobile_app, " +
-            "  night_send, permanent_exclude, active_flag, channel_props) " +
-            "SELECT :ch, t." + ct.codeCol() + ", t.communication_name, t.source_type, t.communication_type, " +
-            "  t.business_communication_type, t.trigger_type, t.sending_day, t.product_type, t.partner_name, t.touch_point, " +
-            "  t.aff_sub3, t.selection_wizard_service, coalesce(t.marketplace,false), coalesce(t.dialog,false), " +
-            "  coalesce(t.loyalty,false), coalesce(t.national_rating,false), coalesce(t.news,false), " +
-            "  coalesce(t.mobile_app,false), " + nightExpr + ", coalesce(t.permanent_exclude,false), coalesce(t.active_flag,true), " +
-            "  to_jsonb(t) - string_to_array('id," + ct.codeCol() + "," + CORE_COLS.replace(" ", "") + "', ',') " +
-            "FROM " + ct.table() + " t WHERE t." + ct.codeCol() + " = :c " +
-            "ON CONFLICT (channel, code) DO UPDATE SET " +
-            "  communication_name = EXCLUDED.communication_name, campaign_name = EXCLUDED.campaign_name, " +
-            "  communication_type = EXCLUDED.communication_type, business_communication_type = EXCLUDED.business_communication_type, " +
-            "  trigger_type = EXCLUDED.trigger_type, sending_day = EXCLUDED.sending_day, product_type = EXCLUDED.product_type, " +
-            "  partner_name = EXCLUDED.partner_name, touch_point = EXCLUDED.touch_point, aff_sub3 = EXCLUDED.aff_sub3, " +
-            "  selection_wizard_service = EXCLUDED.selection_wizard_service, marketplace = EXCLUDED.marketplace, " +
-            "  dialog = EXCLUDED.dialog, loyalty = EXCLUDED.loyalty, national_rating = EXCLUDED.national_rating, " +
-            "  news = EXCLUDED.news, mobile_app = EXCLUDED.mobile_app, night_send = EXCLUDED.night_send, " +
-            "  permanent_exclude = EXCLUDED.permanent_exclude, active_flag = EXCLUDED.active_flag, " +
-            "  channel_props = EXCLUDED.channel_props, timestamp_upd = now()";
-        em.createNativeQuery(sql)
-                .setParameter("ch", channel)
-                .setParameter("c", code)
-                .executeUpdate();
+        return prodDb != null && prodDb.configured();
     }
 
     /** Удаление из единого справочника (при удалении шаблона в мастере). */
@@ -107,17 +79,6 @@ public class UnifiedTemplateService {
                 .setParameter("ch", channel)
                 .setParameter("c", code)
                 .executeUpdate();
-    }
-
-    /** Актуальная строка канальной таблицы как json (payload прод-синка). Требует flush изменений. */
-    public String channelRowJson(String channel, long code) {
-        ChannelTable ct = channelTable(channel);
-        if (ct == null) return null;
-        List<?> r = em.createNativeQuery(
-                        "SELECT to_jsonb(t)::text FROM " + ct.table() + " t WHERE t." + ct.codeCol() + " = :c")
-                .setParameter("c", code)
-                .getResultList();
-        return r.isEmpty() ? null : String.valueOf(r.get(0));
     }
 
     /**
@@ -137,15 +98,11 @@ public class UnifiedTemplateService {
                 .executeUpdate();
     }
 
-    /** Смена кода после присвоения прод-БД: канальная строка + единый справочник. */
+    /** Смена кода после присвоения прод-БД: единый справочник d_template + хвост очереди. */
     public void applyProdCode(String channel, long localCode, long prodCode) {
         if (localCode == prodCode) return;
         ChannelTable ct = channelTable(channel);
         if (ct == null || !ct.prodAssignsCode()) return;
-        em.createNativeQuery("UPDATE " + ct.table() + " SET " + ct.codeCol() + " = :n WHERE " + ct.codeCol() + " = :o")
-                .setParameter("n", prodCode)
-                .setParameter("o", localCode)
-                .executeUpdate();
         em.createNativeQuery("UPDATE template.d_template SET code = :n, timestamp_upd = now()" +
                         " WHERE channel = :ch AND code = :o")
                 .setParameter("n", prodCode)

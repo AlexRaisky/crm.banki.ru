@@ -167,7 +167,7 @@ public class MaterializationService {
                 m.put("event_name", prop(start, "event_name"));
                 m.put("system", prop(start, "system"));
                 m.put("id_comm_creation", AUTO);
-                m.put("is_active", true);
+                m.put("is_active", boolProp(start, "is_active", true));
                 m.put("sub_channel", prop(start, "sub_channel"));
                 m.put("platform", prop(start, "platform"));
                 m.put("group_event_descr", prop(start, "group_event_descr"));
@@ -185,7 +185,7 @@ public class MaterializationService {
                 m.put("source", resolveSource(j)); // source — из шаблона первой comm-ноды
                 m.put("allow_ml", boolProp(start, "allow_ml"));
                 m.put("notify_channel", prop(start, "notify_channel"));
-                m.put("is_active", true);
+                m.put("is_active", boolProp(start, "is_active", true));
                 m.put("life_time", intProp(start, "life_time", 1000));
             }));
             rows.add(row("scheduler.t_launch_settings", m -> {
@@ -194,23 +194,24 @@ public class MaterializationService {
                 m.put("crontab", prop(start, "crontab"));
                 m.put("database", nz(prop(start, "database"), "crmdb"));
                 m.put("description", j.name());
-                m.put("is_active", true);
+                m.put("is_active", boolProp(start, "is_active", true));
                 m.put("status", "NEW");
-                m.put("is_batch", true);
+                // массовый метод отправки против единичного — выбор пользователя
+                m.put("is_batch", boolProp(start, "is_batch", true));
                 m.put("max_retry_attempts", 1);
                 m.put("job_group", "CRM");
             }));
-            List<String> steps = sqlSteps(start);
+            List<SqlStep> steps = sqlSteps(start);
             for (int i = 0; i < steps.size(); i++) {
                 final int orderNum = i + 1;
-                final String sqlText = steps.get(i);
+                final SqlStep step = steps.get(i);
                 rows.add(row("scheduler.t_execution_steps", m -> {
                     m.put("t_launch_settings_id", AUTO);
                     m.put("process_name", selection);
                     m.put("order_num", orderNum);
-                    m.put("is_active", true);
+                    m.put("is_active", step.active());   // активность конкретного шага
                     m.put("returns_result_set", true);
-                    m.put("sql_text", sqlText);
+                    m.put("sql_text", step.sql());
                 }));
             }
         }
@@ -303,11 +304,11 @@ public class MaterializationService {
         String kind = "startTime".equals(s.type()) ? "time" : "income";
         Object idObj = em.createNativeQuery(
                         "INSERT INTO flow.d_event (kind, event_name, system, source, group_event_descr, description, journey_id, is_active)" +
-                        " VALUES (:k, :n, :sys, :src, :grp, :d, :jid, true)" +
+                        " VALUES (:k, :n, :sys, :src, :grp, :d, :jid, :act)" +
                         " ON CONFLICT (event_name, system) DO UPDATE SET kind = EXCLUDED.kind," +
                         "   source = EXCLUDED.source, group_event_descr = EXCLUDED.group_event_descr," +
                         "   description = EXCLUDED.description, journey_id = EXCLUDED.journey_id," +
-                        "   is_active = true, timestamp_upd = now()" +
+                        "   is_active = EXCLUDED.is_active, timestamp_upd = now()" +
                         " RETURNING id")
                 .setParameter("k", kind)
                 .setParameter("n", prop(s, "event_name"))
@@ -316,6 +317,8 @@ public class MaterializationService {
                 .setParameter("grp", prop(s, "group_event_descr"))
                 .setParameter("d", j.name())
                 .setParameter("jid", j.id())
+                // активность события задаёт пользователь; раньше всегда писали true
+                .setParameter("act", boolProp(s, "is_active", true))
                 .getSingleResult();
         long eventId = ((Number) idObj).longValue();
 
@@ -341,21 +344,24 @@ public class MaterializationService {
         if ("time".equals(kind)) {
             em.createNativeQuery("INSERT INTO flow.d_event_schedule" +
                             " (event_id, crontab, database, is_batch)" +
-                            " VALUES (:e, :c, :db, true)")
+                            " VALUES (:e, :c, :db, :batch)")
                     .setParameter("e", eventId)
                     .setParameter("c", prop(s, "crontab"))
                     .setParameter("db", nz(prop(s, "database"), "crmdb"))
+                    // массовый метод отправки против единичного; раньше всегда писали true
+                    .setParameter("batch", boolProp(s, "is_batch", true))
                     .executeUpdate();
             String processName = nz(prop(s, "process_name"), prop(s, "event_name"));
-            List<String> steps = sqlSteps(s);
+            List<SqlStep> steps = sqlSteps(s);
             for (int i = 0; i < steps.size(); i++) {
                 em.createNativeQuery("INSERT INTO flow.d_event_step" +
-                                " (event_id, order_num, process_name, sql_text, returns_result_set)" +
-                                " VALUES (:e, :on, :pn, :sql, true)")
+                                " (event_id, order_num, process_name, sql_text, returns_result_set, is_active)" +
+                                " VALUES (:e, :on, :pn, :sql, true, :act)")
                         .setParameter("e", eventId)
                         .setParameter("on", i + 1)
                         .setParameter("pn", processName)
-                        .setParameter("sql", steps.get(i))
+                        .setParameter("sql", steps.get(i).sql())
+                        .setParameter("act", steps.get(i).active())
                         .executeUpdate();
             }
         }
@@ -534,23 +540,45 @@ public class MaterializationService {
     }
 
     /** SQL-шаги Time event: props.sql_steps — JSON-массив строк; старые схемы — одиночный props.sql. */
-    private List<String> sqlSteps(JourneyNode n) {
-        List<String> out = new ArrayList<>();
+    /** Шаг выборки: SQL + признак активности (scheduler.t_execution_steps.is_active). */
+    public record SqlStep(String sql, boolean active) {}
+
+    /**
+     * Шаги выборки события. Исторически хранились массивом строк, сейчас — массивом
+     * {@code {sql, active}}. Старый формат читаем как прежде: строка = активный шаг.
+     */
+    private List<SqlStep> sqlSteps(JourneyNode n) {
+        List<SqlStep> out = new ArrayList<>();
         String raw = prop(n, "sql_steps");
         if (!blank(raw)) {
             try {
                 for (Object o : json.readValue(raw, List.class)) {
-                    String v = o == null ? null : String.valueOf(o);
-                    if (!blank(v)) out.add(v);
+                    if (o instanceof Map<?, ?> m) {
+                        Object sql = m.get("sql");
+                        String v = sql == null ? null : String.valueOf(sql);
+                        if (!blank(v)) out.add(new SqlStep(v, !Boolean.FALSE.equals(m.get("active"))));
+                    } else {
+                        String v = o == null ? null : String.valueOf(o);
+                        if (!blank(v)) out.add(new SqlStep(v, true));
+                    }
                 }
             } catch (Exception ignored) { /* битый JSON — считаем, что шагов нет */ }
         }
-        if (out.isEmpty() && !blank(prop(n, "sql"))) out.add(prop(n, "sql"));
+        if (out.isEmpty() && !blank(prop(n, "sql"))) out.add(new SqlStep(prop(n, "sql"), true));
         return out;
     }
 
     private static boolean boolProp(JourneyNode n, String key) {
         return "true".equalsIgnoreCase(prop(n, key));
+    }
+
+    /**
+     * Булев признак с умолчанием: у цепочек, сохранённых до появления поля, его просто нет,
+     * и «пусто» должно читаться как прежнее поведение (is_active/is_batch = true), а не как false.
+     */
+    private static boolean boolProp(JourneyNode n, String key, boolean def) {
+        String v = prop(n, key);
+        return blank(v) ? def : "true".equalsIgnoreCase(v);
     }
 
     private static Integer intProp(JourneyNode n, String key, Integer def) {

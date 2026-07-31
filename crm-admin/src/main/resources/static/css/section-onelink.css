@@ -85,13 +85,19 @@
     border-radius:50%;border:1px solid var(--faint);color:var(--dim);font-size:11px;font-weight:700;cursor:help;
     font-family:var(--mono);flex:0 0 auto}
   .info:hover{border-color:var(--blue);color:var(--blue)}
-  .info .tip{position:absolute;bottom:135%;left:50%;transform:translateX(-50%) translateY(4px);
+  /* --tip-dx: сдвиг, которым shell.js удерживает тултип в пределах экрана
+     (у левых и правых полей тултип шириной 250px иначе вылезал за край).
+     Стрелка ::after сдвигается на столько же в обратную сторону, чтобы
+     продолжать указывать на значок. */
+  .info .tip{position:absolute;bottom:135%;left:50%;
+    transform:translateX(calc(-50% + var(--tip-dx, 0px))) translateY(4px);
     width:250px;background:#06101B;border:1px solid var(--line);border-radius:9px;padding:10px 12px;
     font-family:var(--sans);font-weight:400;font-size:12.5px;line-height:1.5;color:var(--dim);text-transform:none;
     letter-spacing:normal;opacity:0;visibility:hidden;transition:.15s;z-index:20;box-shadow:0 10px 30px rgba(0,0,0,.5)}
-  .info .tip::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);
-    border:6px solid transparent;border-top-color:#06101B}
-  .info:hover .tip,.info:focus .tip{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+  .info .tip::after{content:"";position:absolute;top:100%;left:calc(50% - var(--tip-dx, 0px));
+    transform:translateX(-50%);border:6px solid transparent;border-top-color:#06101B}
+  .info:hover .tip,.info:focus .tip{opacity:1;visibility:visible;
+    transform:translateX(calc(-50% + var(--tip-dx, 0px))) translateY(0)}
   .info .tip b{color:var(--ink)}
 
   code.inline{font-family:var(--mono);background:var(--card2);color:var(--blue);padding:2px 7px;border-radius:5px;font-size:12.5px}

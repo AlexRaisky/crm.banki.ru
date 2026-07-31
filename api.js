@@ -42,6 +42,10 @@
     return {
       id: t.channel + ":" + t.code,
       channel: t.channel,
+      // Live Activity — разновидность пуша: в списке оба канала показываются как Push,
+      // а различает их отдельная колонка. Настоящий канал в channel не трогаем — по нему
+      // ищется шаблон при открытии карточки.
+      is_la: t.channel === "la",
       code: t.code,
       name: t.communicationName || t.letterosId || (t.channel + " " + t.code),
       product: product,
@@ -52,6 +56,27 @@
       source: t.sourceType || "",
       letteros: t.letterosId || ""
     };
+  }
+
+  /* Query-строка из объекта фильтров. Массив = несколько значений одного параметра
+     (channel=sms&channel=email) — бэк трактует их как OR внутри фильтра. */
+  function buildQuery(filters) {
+    var qs = [];
+    if (filters) {
+      Object.keys(filters).forEach(function (k) {
+        var v = filters[k];
+        if (Array.isArray(v)) {
+          v.forEach(function (item) {
+            if (item !== null && item !== undefined && item !== "") {
+              qs.push(encodeURIComponent(k) + "=" + encodeURIComponent(item));
+            }
+          });
+        } else if (v) {
+          qs.push(encodeURIComponent(k) + "=" + encodeURIComponent(v));
+        }
+      });
+    }
+    return qs.length ? "?" + qs.join("&") : "";
   }
 
   function bool(v) { return v == null ? null : !!v; }
@@ -97,7 +122,29 @@
       nationalRating: bool(d.national_rating),
       news: bool(d.news),
       mobileApp: bool(d.mobile_app),
-      nightSend: bool(d.night_send)
+      nightSend: bool(d.night_send),
+      // fa
+      faId: d.fa_id || null,
+      channelId: d.channel_id != null && d.channel_id !== "" ? Number(d.channel_id) : null,
+      needPush: bool(d.need_push),
+      c2dTransport: d.c2d_transport || null,
+      c2dAccount: d.c2d_account || null,
+      ch2dOperatorId: d.ch2d_operator_id != null && d.ch2d_operator_id !== "" ? Number(d.ch2d_operator_id) : null,
+      webUrl: d.web_url || null,
+      linkTitle: d.link_title || null,
+      actionButtons: d.action_buttons || null,
+      // vk
+      vkTemplateName: d.vk_template_name || null,
+      ttl: d.ttl != null && d.ttl !== "" ? Number(d.ttl) : null,
+      abGroup: d.ab_group || null,
+      buttons: d.buttons || null,
+      // la
+      activityName: d.activity_name || null,
+      laEvent: d.la_event || null,
+      laVisualization: d.la_visualization || null,
+      laVisualizationAttributes: d.la_visualization_attributes || null,
+      laStatus: d.la_status || null,
+      currentStep: d.current_step != null && d.current_step !== "" ? Number(d.current_step) : null
     };
   }
 
@@ -138,7 +185,29 @@
       national_rating: !!t.nationalRating,
       news: !!t.news,
       mobile_app: !!t.mobileApp,
-      night_send: !!t.nightSend
+      night_send: !!t.nightSend,
+      // fa
+      fa_id: t.faId || "",
+      channel_id: t.channelId != null ? t.channelId : "",
+      need_push: !!t.needPush,
+      c2d_transport: t.c2dTransport || "",
+      c2d_account: t.c2dAccount || "",
+      ch2d_operator_id: t.ch2dOperatorId != null ? t.ch2dOperatorId : "",
+      web_url: t.webUrl || "",
+      link_title: t.linkTitle || "",
+      action_buttons: t.actionButtons || "",
+      // vk
+      vk_template_name: t.vkTemplateName || "",
+      ttl: t.ttl != null ? t.ttl : "",
+      ab_group: t.abGroup || "",
+      buttons: t.buttons || "",
+      // la
+      activity_name: t.activityName || "",
+      la_event: t.laEvent || "",
+      la_visualization: t.laVisualization || "",
+      la_visualization_attributes: t.laVisualizationAttributes || "",
+      la_status: t.laStatus || "",
+      current_step: t.currentStep != null ? t.currentStep : ""
     };
   }
 
@@ -152,14 +221,12 @@
     fetchEnv: function () { return req("GET", "/api/env"); },
 
     listTemplates: function (filters) {
-      var qs = [];
-      if (filters) {
-        Object.keys(filters).forEach(function (k) {
-          if (filters[k]) qs.push(encodeURIComponent(k) + "=" + encodeURIComponent(filters[k]));
-        });
-      }
-      return req("GET", "/api/templates" + (qs.length ? "?" + qs.join("&") : ""));
+      return req("GET", "/api/templates" + buildQuery(filters));
     },
+    countTemplates: function (filters) {
+      return req("GET", "/api/templates/count" + buildQuery(filters));
+    },
+    facetsTemplates: function () { return req("GET", "/api/templates/facets"); },
     getTemplate: function (channel, code) { return req("GET", "/api/templates/" + channel + "/" + code); },
     createTemplate: function (dto) { return req("POST", "/api/templates/" + dto.channel, dto); },
     updateTemplate: function (channel, code, dto) { return req("PUT", "/api/templates/" + channel + "/" + code, dto); },
@@ -167,9 +234,11 @@
     createChain: function (channel, base, days) { return req("POST", "/api/templates/" + channel + "/chain", { base: base, days: days }); },
 
     dictPartners: function () { return req("GET", "/api/dictionaries/partners"); },
+    dictAddPartner: function (name) { return req("POST", "/api/dictionaries/partners", { name: name }); },
     dictCcSegments: function () { return req("GET", "/api/dictionaries/cc-segments"); },
     dictCommNames: function (channel) { return req("GET", "/api/dictionaries/comm-names?channel=" + encodeURIComponent(channel)); },
     dictTouchPoints: function () { return req("GET", "/api/dictionaries/touch-points"); },
+    dictProductTypes: function () { return req("GET", "/api/dictionaries/product-types"); },
 
     // flow: материализация цепочек (предпросмотр инсертов слоя B и выполнение)
     flowPreview: function (journey) { return req("POST", "/api/flow/preview", journey); },
@@ -211,11 +280,33 @@
 
   window.CRM = CRM;
 
+  /* Роль для показа в интерфейсе: SUPER_ADMIN наружу не светим — выглядит как ADMIN.
+     Реальные права super-admin проверяются на сервере, а на клиенте — по флагу me.isSuperAdmin. */
+  function displayRole(role) { return role === "SUPER_ADMIN" ? "ADMIN" : role; }
+  CRM.displayRole = displayRole;
+
+  /* Есть ли у текущего пользователя право cap ('read'|'add'|'edit'|'delete') хотя бы в
+     одном из перечисленных разделов. Админ может всё; иначе смотрим карту me.caps
+     (её отдаёт /api/me). Это зеркало серверного AccessGuard.requireCapability: фронт по
+     нему прячет кнопки, но истина — сервер, он всё равно отбивает без права. */
+  function can(cap) {
+    var me = CRM.me;
+    if (!me) return false;
+    if (me.isAdmin) return true;
+    var caps = me.caps || {};
+    for (var i = 1; i < arguments.length; i++) {
+      var c = caps[arguments[i]];
+      if (c && c[cap]) return true;
+    }
+    return false;
+  }
+  CRM.can = can;
+
   // ---- bootstrap: кто я + среда инстанса + фильтрация NAV ----
   CRM.meReady = CRM.fetchMe().then(function (me) {
     CRM.me = me;
     window.CRM_ME = me;
-    document.body && document.body.setAttribute("data-role", me.role);
+    document.body && document.body.setAttribute("data-role", displayRole(me.role));
     return me;
   }).catch(function () { /* redirect уже произошёл в req() при 401 */ });
 
@@ -245,12 +336,12 @@
     // Шестерёнка настроечной админки (/settings) — только админам
     var gear = document.getElementById("settingsLink");
     if (gear) gear.style.display = me.isAdmin ? "" : "none";
-    document.body.setAttribute("data-role", me.role);
+    document.body.setAttribute("data-role", displayRole(me.role));
     if (!me.canEdit) document.body.setAttribute("data-readonly", "1");
     var ue = document.getElementById("userEmail");
     if (ue) {
       ue.textContent = me.email;
-      ue.title = (me.displayName ? me.displayName + " · " : "") + me.email + " (" + me.role + ")";
+      ue.title = (me.displayName ? me.displayName + " · " : "") + me.email + " (" + displayRole(me.role) + ")";
     }
     var envName = (CRM.envInfo && CRM.envInfo.name) || null;
     // Виден ли раздел по персональному ACL (nav id == section id).

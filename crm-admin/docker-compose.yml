@@ -40,6 +40,10 @@ services:
       PROD_DB_URL: ${PROD_DB_URL:-}
       PROD_DB_USER: ${PROD_DB_USER:-}
       PROD_DB_PASSWORD: ${PROD_DB_PASSWORD:-}
+      # ETL «прод -> мы»: выключен по умолчанию, включается на нужном контуре
+      ETL_ENABLED: ${ETL_ENABLED:-false}
+      ETL_INTERVAL_MS: ${ETL_INTERVAL_MS:-300000}
+      ETL_FULL_CRON: ${ETL_FULL_CRON:-0 0 22 * * *}
       # Среда: имя, dev-разделы выключены, свои имена кук
       APP_ENV: prod
       FEATURES_DEV: "false"
@@ -90,6 +94,10 @@ services:
       PROD_DB_URL: ${PROD_DB_URL_PREPROD:-}
       PROD_DB_USER: ${PROD_DB_USER:-}
       PROD_DB_PASSWORD: ${PROD_DB_PASSWORD:-}
+      # ETL «прод -> мы»: выключен по умолчанию, включается на нужном контуре
+      ETL_ENABLED: ${ETL_ENABLED:-false}
+      ETL_INTERVAL_MS: ${ETL_INTERVAL_MS:-300000}
+      ETL_FULL_CRON: ${ETL_FULL_CRON:-0 0 22 * * *}
       APP_ENV: preprod
       FEATURES_DEV: "false"
       SESSION_COOKIE: CRMSID_PREPROD
@@ -139,6 +147,10 @@ services:
       PROD_DB_URL: ${PROD_DB_URL_TEST:-}
       PROD_DB_USER: ${PROD_DB_USER:-}
       PROD_DB_PASSWORD: ${PROD_DB_PASSWORD:-}
+      # ETL «прод -> мы»: выключен по умолчанию, включается на нужном контуре
+      ETL_ENABLED: ${ETL_ENABLED:-false}
+      ETL_INTERVAL_MS: ${ETL_INTERVAL_MS:-300000}
+      ETL_FULL_CRON: ${ETL_FULL_CRON:-0 0 22 * * *}
       APP_ENV: test
       FEATURES_DEV: "true"
       SESSION_COOKIE: CRMSID_TEST

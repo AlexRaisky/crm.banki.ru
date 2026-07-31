@@ -1,23 +1,33 @@
 /* ========== Список шаблонов (формат Salesforce list view) ==========
 
-   Настройка списка (какие колонки и фильтры показывать) хранится
-   в localStorage: crmpanel:listCols / crmpanel:listFilters.
-   Ячейки редактируются по карандашу; правка применяется галочкой ✓
-   и уходит на бэкенд (PUT /api/templates/{channel}/{code}). */
+   Фильтрация, поиск, сортировка и подсчёт идут на бэкенде: в браузер приезжают
+   страницы по LIST_PAGE строк, весь справочник (десятки тысяч) сюда не грузится.
 
+   Настройка списка (какие колонки и фильтры показывать) — личная, живёт в
+   localStorage: crmpanel:listCols / crmpanel:listFilters.
+   Ячейки правятся по карандашу, правка применяется ✓ и уходит на бэкенд. */
+
+/* Колонки списка. Порядок задаёт порядок в таблице; opts — значения для правки selectом. */
 var LIST_COLUMNS = [
-    { k:'channel',  label:'Канал',       edit:'select', opts:['sms','push','email','cc'] },
+    { k:'channel',  label:'Канал',       edit:'select', opts:['sms','push','email','cc','fa','vk','la'] },
+    /* Live Activity — разновидность пуша, отдельным каналом в списке не показывается:
+       в колонке «Канал» у него бейдж Push, а принадлежность к LA видна здесь.
+       Только чтение: смена канала у заведённого шаблона — это переезд между таблицами,
+       карточка её тоже не даёт (тумблер «Это Live Activity» есть лишь при создании). */
+    { k:'is_la',    label:'Live Activity', ro:true },
     { k:'code',     label:'Code / ID',   edit:'text', link:true },
     { k:'name',     label:'Название',    edit:'text', link:true },
     { k:'product',  label:'Продукт',     edit:'text' },
     { k:'touch',    label:'Touch point', edit:'text' },
     { k:'trigger',  label:'Trigger',     edit:'select', opts:['','trigger','promo'] },
-    { k:'partner',  label:'Партнёр',     edit:'text' },
+    /* combo, а не строгий select: значения берутся из dictionary.d_partner, но вписать
+       своё можно — партнёр в работе появляется раньше, чем его заводят в справочник */
+    { k:'partner',  label:'Партнёр',     edit:'combo', dict:'partner' },
     { k:'active',   label:'Статус',      edit:'bool' },
 ];
 var LIST_FILTERS = [
     { k:'channel', label:'Канал' }, { k:'product', label:'Продукт' }, { k:'touch', label:'Touch point' },
-    { k:'trigger', label:'Trigger type' }, { k:'active', label:'Статус' },
+    { k:'trigger', label:'Trigger type' }, { k:'partner', label:'Партнёр' }, { k:'active', label:'Статус' },
 ];
 var DEFAULT_LIST_COLS = LIST_COLUMNS.map(function(c){ return c.k; });
 var DEFAULT_LIST_FILTERS = LIST_FILTERS.map(function(f){ return f.k; });
@@ -28,9 +38,30 @@ function lsGet(key, def){
 function lsSet(key, val){
     try { localStorage.setItem('crmpanel:' + key, JSON.stringify(val)); } catch(e){}
 }
+/* Колонки, появившиеся после того, как пользователи уже сохранили свой набор в
+   localStorage: без доливки новая колонка не показалась бы никому, кроме тех, кто нажмёт
+   «По умолчанию». Доливаем один раз (отметка в crmpanel:listColsAdded), чтобы осознанно
+   снятая колонка не возвращалась при каждой загрузке. */
+var LIST_COLS_ADDED = ['is_la'];
+function listMigrateCols(saved){
+    var done = lsGet('listColsAdded', []);
+    var add = LIST_COLS_ADDED.filter(function(k){
+        return done.indexOf(k) === -1 && saved.indexOf(k) === -1;
+    });
+    if (!add.length) return saved;
+    var next = saved.slice();
+    /* ставим на то же место, что и в наборе по умолчанию, а не в хвост */
+    add.forEach(function(k){
+        var at = DEFAULT_LIST_COLS.indexOf(k);
+        next.splice(at === -1 ? next.length : Math.min(at, next.length), 0, k);
+    });
+    lsSet('listCols', next);
+    lsSet('listColsAdded', done.concat(add));
+    return next;
+}
 function listVisibleCols(){
     var saved = lsGet('listCols', null);
-    var ids = Array.isArray(saved) && saved.length ? saved : DEFAULT_LIST_COLS;
+    var ids = (Array.isArray(saved) && saved.length) ? listMigrateCols(saved) : DEFAULT_LIST_COLS;
     return LIST_COLUMNS.filter(function(c){ return ids.indexOf(c.k) !== -1; });
 }
 function listVisibleFilters(){
@@ -67,7 +98,8 @@ function renderListPanel(){
             colsBox.querySelectorAll('input[data-col]').forEach(function(x){ if (x.checked) ids.push(x.dataset.col); });
             if (!ids.length){ ch.checked = true; return; }   /* хотя бы одна колонка */
             lsSet('listCols', ids);
-            applyFilters();
+            // колонки — дело отрисовки, за новой страницей на сервер не идём
+            renderTemplateList(ALL_TEMPLATES);
         };
     });
     filtBox.querySelectorAll('input[data-filt]').forEach(function(ch){
@@ -76,7 +108,7 @@ function renderListPanel(){
             filtBox.querySelectorAll('input[data-filt]').forEach(function(x){ if (x.checked) ids.push(x.dataset.filt); });
             lsSet('listFilters', ids);
             applyListFilterVisibility();
-            applyFilters();
+            applyFilters();   // скрытый фильтр перестаёт применяться — выборка меняется
         };
     });
 }
@@ -97,10 +129,326 @@ function applyListFilterVisibility(){
     if (row) row.style.display = vis.length ? '' : 'none';
 }
 
-/* ---------- inline-редактирование ячеек списка ---------- */
+/* Сколько строк тянем с сервера за раз (пагинация: не грузим весь справочник в браузер). */
+var LIST_PAGE = 50;
+var _listReqSeq = 0;        // защита от гонки: применяем только последний набор
+var _listDebounce = null;   // чтобы не бить в бэк на каждый символ поиска
+var _listCount = null;      // {total, active} под текущими фильтрами (для строки статистики)
+var _listOffset = 0;        // сколько строк уже загружено (курсор для дозагрузки)
+var _listLoading = false;   // идёт запрос страницы
+var _listExhausted = false; // сервер отдал меньше LIST_PAGE — грузить больше нечего
+
+/* ===== Мультиселект фильтра: кнопка + выпадающая панель с чекбоксами =====
+   Внутри одного фильтра выбранные значения комбинируются по ИЛИ (сервер получает
+   несколько одноимённых параметров), между фильтрами — И. */
+var MS_ALL_LABEL = { channel: 'Все каналы', product: 'Все продукты', touch: 'Все точки',
+                     trigger: 'Все типы', partner: 'Все партнёры' };
+var MS_STATE = {};   // ключ фильтра -> { options: [{v,l}], selected: [] }
+/* «Push» в фильтре берёт и Live Activity: для человека это один канал, отличие
+   видно в колонке «Live Activity». Раскрывается в два значения при сборке запроса
+   (msExpand) — сервер по-прежнему знает про отдельный канал la. */
+var MS_CHANNELS = [
+    { v: 'sms', l: 'SMS' }, { v: 'push', l: 'Push' }, { v: 'email', l: 'Email' }, { v: 'cc', l: 'КЦ' },
+    { v: 'fa', l: 'FA' }, { v: 'vk', l: 'VK' }
+];
+var MS_EXPAND = { channel: { push: ['push', 'la'] } };
+function msExpand(key, values) {
+    var map = MS_EXPAND[key];
+    if (!map) return values;
+    var out = [];
+    values.forEach(function (v) {
+        (map[v] || [v]).forEach(function (x) { if (out.indexOf(x) === -1) out.push(x); });
+    });
+    return out;
+}
+
+function msRoot(key) { return document.querySelector('.ms[data-filter="' + key + '"]'); }
+function msSelected(key) { return ((MS_STATE[key] || {}).selected || []).slice(); }
+
+/* Разовая привязка обработчиков открытия/закрытия. */
+function msInit() {
+    Object.keys(MS_ALL_LABEL).forEach(function (key) {
+        MS_STATE[key] = MS_STATE[key] || { options: [], selected: [] };
+        var root = msRoot(key);
+        if (!root || root.dataset.wired) return;
+        root.dataset.wired = '1';
+        root.querySelector('.ms-btn').addEventListener('click', function (e) {
+            e.stopPropagation();
+            var wasOpen = root.classList.contains('open');
+            document.querySelectorAll('.ms.open').forEach(function (o) { o.classList.remove('open'); });
+            if (!wasOpen) root.classList.add('open');
+        });
+        root.querySelector('.ms-panel').addEventListener('click', function (e) { e.stopPropagation(); });
+        msSyncLabel(key);
+    });
+}
+document.addEventListener('click', function () {   // клик мимо — закрыть все панели
+    document.querySelectorAll('.ms.open').forEach(function (o) { o.classList.remove('open'); });
+});
+
+/* opts — массив строк либо {v,l}. Ранее выбранные значения, которых больше нет, отбрасываем. */
+function msSetOptions(key, opts) {
+    var st = MS_STATE[key] = MS_STATE[key] || { options: [], selected: [] };
+    st.options = (opts || []).map(function (o) { return (typeof o === 'string') ? { v: o, l: o } : o; });
+    var valid = st.options.map(function (o) { return o.v; });
+    st.selected = st.selected.filter(function (v) { return valid.indexOf(v) !== -1; });
+
+    var root = msRoot(key);
+    if (!root) return;
+    var panel = root.querySelector('.ms-panel');
+    panel.innerHTML =
+        '<label class="ms-opt ms-all"><input type="checkbox" data-all="1"' + (st.selected.length ? '' : ' checked') +
+        '><span>' + sfdEsc(sfdT(MS_ALL_LABEL[key])) + '</span></label>' +
+        st.options.map(function (o) {
+            return '<label class="ms-opt"><input type="checkbox" value="' + sfdEsc(o.v) + '"' +
+                   (st.selected.indexOf(o.v) !== -1 ? ' checked' : '') + '><span>' + sfdEsc(o.l) + '</span></label>';
+        }).join('');
+    panel.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+            if (cb.dataset.all) {                       // «Все» — снять весь выбор
+                st.selected = [];
+                panel.querySelectorAll('input[type=checkbox]').forEach(function (o) { o.checked = !!o.dataset.all; });
+            } else {
+                var i = st.selected.indexOf(cb.value);
+                if (cb.checked && i === -1) st.selected.push(cb.value);
+                if (!cb.checked && i !== -1) st.selected.splice(i, 1);
+                var all = panel.querySelector('input[data-all]');
+                if (all) all.checked = st.selected.length === 0;
+            }
+            msSyncLabel(key);
+            applyFilters();
+        });
+    });
+    msSyncLabel(key);
+}
+
+/* Подпись на кнопке: «Все …» / единственное значение / «N выбрано». */
+function msSyncLabel(key) {
+    var st = MS_STATE[key], root = msRoot(key);
+    if (!st || !root) return;
+    var btn = root.querySelector('.ms-btn');
+    if (st.selected.length === 0) {
+        btn.textContent = sfdT(MS_ALL_LABEL[key]);
+    } else if (st.selected.length === 1) {
+        var o = st.options.filter(function (x) { return x.v === st.selected[0]; })[0];
+        btn.textContent = o ? o.l : st.selected[0];
+    } else {
+        btn.textContent = st.selected.length + ' ' + sfdT('выбрано');
+    }
+    btn.title = btn.textContent;
+    root.classList.toggle('has-sel', st.selected.length > 0);
+}
+
+function msClear(key) {
+    var st = MS_STATE[key];
+    if (!st) return;
+    st.selected = [];
+    var root = msRoot(key);
+    if (root) root.querySelectorAll('input[type=checkbox]').forEach(function (cb) { cb.checked = !!cb.dataset.all; });
+    msSyncLabel(key);
+}
+
+/* Текущие значения фильтров и поиска из DOM (мультифильтры — массивами).
+   Спрятанный в настройках фильтр не применяется: иначе выборка молча сужалась бы
+   значением, которого пользователь на экране не видит. */
+function collectListFilters() {
+    var vis = listVisibleFilters();
+    var shown = function (key) { return vis.indexOf(key) !== -1; };
+    var ms = function (key) { return shown(key) ? msExpand(key, msSelected(key)) : []; };
+    var val = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
+    var f = {
+        channel: ms('channel'),
+        product: ms('product'),
+        touch: ms('touch'),
+        trigger: ms('trigger'),
+        partner: ms('partner'),
+        active: shown('active') ? val('filterActive') : ''
+    };
+    var s = document.getElementById('listSearch');
+    f.q = s ? s.value.trim() : '';
+    return f;
+}
+
+/* Запрос страницы списка с сервера: фильтры + поиск + limit + offset. Фильтрация/поиск идут
+   по всей базе на бэке, в браузер приезжают порциями по LIST_PAGE.
+   reset=true — новый набор (сброс курсора, заменяем список); иначе — дозагрузка (append). */
+function fetchListPage(reset) {
+    // Догрузку не дублируем, а вот смену фильтра/сортировки/поиска (reset) НИКОГДА не глотаем:
+    // иначе изменение, сделанное пока летит предыдущий запрос, терялось бы молча.
+    // Ответ устаревшего запроса отбрасывается по _listReqSeq ниже.
+    if (!reset && (_listLoading || _listExhausted)) return Promise.resolve();
+
+    var f = collectListFilters();
+    if (reset) { _listOffset = 0; _listExhausted = false; _listReqSeq++; }
+    var my = _listReqSeq;
+    _listLoading = true;
+
+    var params = {};
+    // массив = мультифильтр (пустой не отправляем); строка — как есть
+    Object.keys(f).forEach(function (k) {
+        var v = f[k];
+        if (Array.isArray(v)) { if (v.length) params[k] = v; }
+        else if (v) params[k] = v;
+    });
+    params.sort = LIST_SORT.col;                       // сортирует сервер по всей выборке
+    params.dir = LIST_SORT.dir === 1 ? 'asc' : 'desc';
+    params.limit = LIST_PAGE;
+    if (_listOffset > 0) params.offset = _listOffset;
+
+    var stats = document.getElementById('listStats');
+    if (reset && stats) stats.textContent = sfdT('Загрузка…');
+    if (!reset) setLoadMoreNote(sfdT('Загрузка…'));
+
+    var p = CRM.listTemplates(params).then(function (items) {
+        if (my !== _listReqSeq) return;             // фильтры сменились на лету — ответ устарел
+        var mapped = (items || []).map(CRM.apiItemToList);
+        ALL_TEMPLATES = reset ? mapped : ALL_TEMPLATES.concat(mapped);
+        _listOffset = ALL_TEMPLATES.length;
+        if (mapped.length < LIST_PAGE) _listExhausted = true;   // хвост — больше страниц нет
+        renderTemplateList(ALL_TEMPLATES);
+    }).catch(function () {}).then(function () {
+        if (my !== _listReqSeq) return;   // устаревший запрос не снимает флаг с актуального
+        _listLoading = false;
+        updateLoadMoreNote();
+        maybeLoadMore();     // добить, если первый экран ещё не заполнен
+    });
+
+    if (reset) {
+        CRM.countTemplates(f).then(function (c) {
+            if (my !== _listReqSeq) return;
+            _listCount = c;
+            writeListStats((ALL_TEMPLATES || []).length);
+        }).catch(function () {});
+    }
+    return p;
+}
+
+/* Наполнение мультифильтров: канал — фиксированный справочник каналов,
+   продукт/точка/триггер — реальные значения из базы (facets). */
+function populateFilterFacets() {
+    msInit();
+    msSetOptions('channel', MS_CHANNELS);
+    if (!CRM || typeof CRM.facetsTemplates !== 'function') return;
+    CRM.facetsTemplates().then(function (f) {
+        msSetOptions('product', (f && f.products) || []);
+        msSetOptions('touch', (f && f.touches) || []);
+        msSetOptions('trigger', (f && f.triggers) || []);
+        msSetOptions('partner', (f && f.partners) || []);
+    }).catch(function () {});
+}
+
+/* Применение фильтров — новый набор с дебаунсом. */
+function applyFilters() {
+    if (_listDebounce) clearTimeout(_listDebounce);
+    _listDebounce = setTimeout(function () { fetchListPage(true); }, 180);
+}
+
+/* Подпись у сентинела бесконечной прокрутки. */
+function setLoadMoreNote(txt) {
+    var el = document.getElementById('listLoadMore');
+    if (el) el.textContent = txt || '';
+}
+function updateLoadMoreNote() {
+    if (!ALL_TEMPLATES || !ALL_TEMPLATES.length) { setLoadMoreNote(''); return; }
+    setLoadMoreNote(_listExhausted ? '— ' + sfdT('всё загружено') + ' —' : '');
+}
+
+/* Ближайший прокручиваемый предок (таблица списка живёт в .sf-table-wrap с max-height+overflow). */
+function listScrollParent() {
+    var el = document.getElementById('templateListBody');
+    while (el && el !== document.body) {
+        var oy = getComputedStyle(el).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 1) return el;
+        el = el.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+}
+
+/* Догрузка следующей страницы, когда прокрутили близко к концу СВОЕГО скролл-контейнера. */
+function maybeLoadMore() {
+    if (_listLoading || _listExhausted) return;
+    var list = document.getElementById('list');
+    if (!list || list.offsetParent === null) return;   // список не активен/не виден
+    var sc = listScrollParent();
+    var remaining;
+    if (sc === document.scrollingElement || sc === document.documentElement || sc === document.body) {
+        var vh = window.innerHeight || document.documentElement.clientHeight;
+        remaining = document.documentElement.scrollHeight - (window.scrollY + vh);
+    } else {
+        remaining = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
+    }
+    if (remaining < 300) fetchListPage(false);          // близко к низу — тянем следующие 50
+}
+
+var _listScrollRaf = null;
+function onListScroll() {
+    if (_listScrollRaf) return;
+    _listScrollRaf = requestAnimationFrame(function () { _listScrollRaf = null; maybeLoadMore(); });
+}
+/* scroll не всплывает — слушаем в фазе перехвата, чтобы поймать любой скролл-контейнер. */
+window.addEventListener('scroll', onListScroll, true);
+window.addEventListener('resize', onListScroll);
+
+/* Сброс фильтров */
+function resetFilters() {
+    ['channel', 'product', 'touch', 'trigger', 'partner'].forEach(msClear);
+    var act = document.getElementById('filterActive');
+    if (act) act.value = '';
+    const searchEl = document.getElementById('listSearch');
+    if (searchEl) searchEl.value = '';
+    applyFilters();
+}
+
+/* Строка статистики: сколько показано из общего числа под фильтрами (total/active — с сервера). */
+function writeListStats(shown) {
+    var stats = document.getElementById('listStats');
+    if (!stats) return;
+    var total = _listCount ? _listCount.total : shown;
+    var active = _listCount ? _listCount.active : null;
+    var more = total > shown;
+    stats.innerHTML = shown + ' ' + sfdT('элементов') +
+        (more ? ' <span style="color:var(--dim,#9ab)">(' + sfdT('показано') + ' ' + shown + ' ' + sfdT('из') + ' ' + total + ' — ' + sfdT('листайте, чтобы загрузить ещё') + ')</span>' : '') +
+        ' · ' + sfdT('Отсортировано по') + ' «' + sfdT(LIST_SORT_LABELS[LIST_SORT.col] || LIST_SORT.col) + '»' +
+        (active != null ? ' · ' + sfdT('всего') + ' ' + total + ' (' + sfdT('активных') + ': ' + active + ', ' + sfdT('неактивных') + ': ' + (total - active) + ')' : '');
+}
+
+/* Сортировка списка по колонке (клик по заголовку) */
+var LIST_SORT = { col: 'code', dir: 1 };
+var LIST_SORT_LABELS = { channel: 'Канал', is_la: 'Live Activity', code: 'Code / ID', name: 'Название', product: 'Продукт', touch: 'Touch point', trigger: 'Trigger', partner: 'Партнёр', active: 'Статус' };
+function listSortBy(col) {
+    if (LIST_SORT.col === col) LIST_SORT.dir = -LIST_SORT.dir;
+    else LIST_SORT = { col: col, dir: 1 };
+    fetchListPage(true);   // сортирует сервер по всей выборке — тянем страницу заново
+}
+
+/* ---------- inline-редактирование ячеек списка ----------
+   Перерисовываем только текущую страницу: за новыми данными на сервер не ходим,
+   иначе открытие карандаша сбрасывало бы уже загруженные строки и позицию прокрутки. */
 var LIST_EDIT = null;   /* { id, k } */
-function listCellEdit(id, k){ LIST_EDIT = { id: id, k: k }; applyFilters(); }
-function listCellCancel(){ LIST_EDIT = null; applyFilters(); }
+
+/* Справочники для колонок с edit:'combo'. Тянем по одному разу и только когда
+   карандаш действительно открыли: список шаблонов грузится всем, а справочник
+   нужен единицам. Пока не приехал — поле работает как обычный ввод. */
+var LIST_DICT = { partner: null };
+var LIST_DICT_LOADERS = { partner: function(){ return CRM.dictPartners(); } };
+var LIST_DICT_REQ = {};
+function listEnsureDict(name){
+    var load = LIST_DICT_LOADERS[name];
+    if (!load || LIST_DICT[name] !== null || LIST_DICT_REQ[name] || !window.CRM) return;
+    LIST_DICT_REQ[name] = true;
+    load().then(function(list){
+        LIST_DICT[name] = list || [];
+        if (LIST_EDIT) renderTemplateList(ALL_TEMPLATES);   /* дорисуем открытую ячейку */
+    }).catch(function(){ LIST_DICT[name] = []; });
+}
+
+function listCellEdit(id, k){
+    if (!(window.CRM && CRM.can && CRM.can('edit', 'templates', 'admin'))) return;
+    var col = LIST_COLUMNS.find(function(c){ return c.k === k; });
+    if (col && col.dict) listEnsureDict(col.dict);
+    LIST_EDIT = { id: id, k: k }; renderTemplateList(ALL_TEMPLATES);
+}
+function listCellCancel(){ LIST_EDIT = null; renderTemplateList(ALL_TEMPLATES); }
 function listCellSave(id, k){
     var wrap = document.querySelector('#templateListBody .sf-cell-edit[data-id="' + id + '"]');
     if (!wrap) return;
@@ -109,12 +457,12 @@ function listCellSave(id, k){
     var val = (col && col.edit === 'bool') ? inp.checked : inp.value;
     if (k === 'code' && val !== '' && !isNaN(Number(val))) val = Number(val);
 
-    var li = ALL_TEMPLATES.find(function(x){ return x.id === id; });
+    var li = (ALL_TEMPLATES || []).find(function(x){ return x.id === id; });
     if (!li) return;
     var prevChannel = li.channel, prevCode = li.code;
     li[k] = val;
     LIST_EDIT = null;
-    applyFilters();
+    renderTemplateList(ALL_TEMPLATES);
 
     /* правка уходит на бэкенд: тянем шаблон целиком, меняем поле и сохраняем */
     CRM.getTemplate(prevChannel, prevCode)
@@ -130,89 +478,18 @@ function listCellSave(id, k){
             console.error('Не удалось сохранить правку списка:', err);
             li[k] = k === 'channel' ? prevChannel : (k === 'code' ? prevCode : li[k]);
             alert(sfdT('Не удалось сохранить изменение на сервере. Значение возвращено.'));
-            applyFilters();
+            renderTemplateList(ALL_TEMPLATES);
         });
 }
 
-/* Применение фильтров */
-function applyFilters() {
-    /* скрытые в настройках фильтры не применяются */
-    const visF = listVisibleFilters();
-    const fval = (id, key) => visF.indexOf(key) === -1 ? '' : (document.getElementById(id) || { value: '' }).value;
-    const channelFilter = fval('filterChannel', 'channel');
-    const productFilter = fval('filterProduct', 'product');
-    const touchFilter = fval('filterTouch', 'touch');
-    const triggerFilter = fval('filterTrigger', 'trigger');
-    const activeFilter = fval('filterActive', 'active');
-
-    // Начинаем со всех шаблонов
-    let filtered = [...ALL_TEMPLATES];
-
-    // Фильтр по статусу
-    if (activeFilter === 'active') {
-        filtered = filtered.filter(t => t.active);
-    } else if (activeFilter === 'inactive') {
-        filtered = filtered.filter(t => !t.active);
-    }
-
-    if (channelFilter) {
-        filtered = filtered.filter(t => t.channel === channelFilter);
-    }
-    if (productFilter) {
-        filtered = filtered.filter(t => t.product === productFilter);
-    }
-    if (touchFilter) {
-        filtered = filtered.filter(t => t.touch === touchFilter);
-    }
-    if (triggerFilter) {
-        filtered = filtered.filter(t => t.trigger === triggerFilter);
-    }
-
-    // Поиск по списку (как в Salesforce): code / название / продукт / партнёр / точка / триггер
-    const searchEl = document.getElementById('listSearch');
-    const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
-    if (q) {
-        filtered = filtered.filter(t =>
-            [t.code, t.name, t.product, t.partner, t.touch, t.trigger]
-                .some(v => String(v || '').toLowerCase().indexOf(q) !== -1));
-    }
-
-    renderTemplateList(filtered);
-}
-
-/* Сброс фильтров */
-function resetFilters() {
-    document.getElementById('filterChannel').value = '';
-    document.getElementById('filterProduct').value = '';
-    document.getElementById('filterTouch').value = '';
-    document.getElementById('filterTrigger').value = '';
-    document.getElementById('filterActive').value = '';
-    const searchEl = document.getElementById('listSearch');
-    if (searchEl) searchEl.value = '';
-    applyFilters();
-}
-
-/* Сортировка списка по колонке (клик по заголовку) */
-var LIST_SORT = { col: 'code', dir: 1 };
-var LIST_SORT_LABELS = { channel: 'Канал', code: 'Code / ID', name: 'Название', product: 'Продукт', touch: 'Touch point', trigger: 'Trigger', partner: 'Партнёр', active: 'Статус' };
-function listSortBy(col) {
-    if (LIST_SORT.col === col) LIST_SORT.dir = -LIST_SORT.dir;
-    else LIST_SORT = { col: col, dir: 1 };
-    applyFilters();
-}
-
-/* Отрисовка списка (формат Salesforce list view) */
+/* Отрисовка списка (формат Salesforce list view). templates — накопленный набор загруженных
+   строк (растёт по мере прокрутки). Порядок и состав задаёт сервер, здесь только рисуем. */
 function renderTemplateList(templates) {
     const tbody = document.getElementById('templateListBody');
-    const stats = document.getElementById('listStats');
+    if (!tbody) return;
 
-    const sorted = templates.slice().sort((a, b) => {
-        let va = a[LIST_SORT.col], vb = b[LIST_SORT.col];
-        if (typeof va === 'boolean') { va = va ? 1 : 0; vb = vb ? 1 : 0; }
-        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * LIST_SORT.dir;
-        return String(va || '').localeCompare(String(vb || ''), 'ru') * LIST_SORT.dir;
-    });
-
+    // порядок задаёт сервер (сортировка идёт по всей выборке, а не по загруженным строкам)
+    const sorted = templates || [];
     const cols = listVisibleCols();
 
     /* шапка таблицы строится по настройке отображаемых полей */
@@ -224,16 +501,12 @@ function renderTemplateList(templates) {
             '<th></th></tr>';
     }
 
-    const totalAll = ALL_TEMPLATES.length;
-    const totalActive = ALL_TEMPLATES.filter(x => x.active).length;
-    stats.innerHTML = `${sorted.length} ${sfdT('элементов')} · ${sfdT('Отсортировано по')} «${sfdT(LIST_SORT_LABELS[LIST_SORT.col] || LIST_SORT.col)}» · ${sfdT('всего')} ${totalAll} (${sfdT('активных')}: ${totalActive}, ${sfdT('неактивных')}: ${totalAll - totalActive})`;
+    writeListStats(sorted.length);
 
     if (sorted.length === 0) {
         tbody.innerHTML = `<tr><td colspan="${cols.length + 2}" style="text-align: center; padding: 30px; color: #888;">${sfdT('Нет шаблонов по заданным фильтрам')}</td></tr>`;
         return;
     }
-
-    const channelLabels = { sms: 'SMS', push: 'Mobile-push', 'mobile-push': 'Mobile-push', email: 'E-mail', cc: 'КЦ', fa: 'FA', vk: 'VK' };
 
     /* ячейка: просмотр (значение + карандаш) либо правка (поле + ✓ / ✕) */
     function cellHtml(tpl, c) {
@@ -243,7 +516,17 @@ function renderTemplateList(templates) {
             if (c.edit === 'bool') {
                 input = `<input type="checkbox" ${tpl[c.k] ? 'checked' : ''}>`;
             } else if (c.edit === 'select') {
-                input = `<select>${c.opts.map(o => `<option value="${o}" ${String(tpl[c.k] || '') === o ? 'selected' : ''}>${o ? (channelLabels[o] || o) : '—'}</option>`).join('')}</select>`;
+                input = `<select>${c.opts.map(o => `<option value="${o}" ${String(tpl[c.k] || '') === o ? 'selected' : ''}>${o ? (CH_LABELS[o] || o) : '—'}</option>`).join('')}</select>`;
+            } else if (c.edit === 'combo') {
+                /* нативный input + datalist: и выбрать из справочника, и вписать своё.
+                   Текущее значение подмешиваем в список — иначе снятое из справочника
+                   значение не предложилось бы обратно. */
+                const dlId = 'list-dl-' + c.k;
+                const cur = tpl[c.k] == null ? '' : String(tpl[c.k]);
+                const opts = (LIST_DICT[c.dict] || []).slice();
+                if (cur && opts.indexOf(cur) === -1) opts.unshift(cur);
+                input = `<input type="text" list="${dlId}" value="${sfdEsc(cur)}">` +
+                        `<datalist id="${dlId}">${opts.map(o => `<option value="${sfdEsc(o)}"></option>`).join('')}</datalist>`;
             } else {
                 input = `<input type="text" value="${sfdEsc(tpl[c.k] == null ? '' : tpl[c.k])}">`;
             }
@@ -253,7 +536,14 @@ function renderTemplateList(templates) {
         }
         let view;
         if (c.k === 'channel') {
-            view = `<span class="channel-badge channel-${tpl.channel}">${channelLabels[tpl.channel] || tpl.channel}</span>`;
+            /* Live Activity показываем как Push (и бейджем тоже): для человека это один
+               канал, а отличие видно в колонке «Live Activity». tpl.channel не трогаем. */
+            const shownCh = tpl.channel === 'la' ? 'push' : tpl.channel;
+            view = `<span class="channel-badge channel-${shownCh}">${CH_LABELS[shownCh] || shownCh}</span>`;
+        } else if (c.k === 'is_la') {
+            view = tpl.is_la
+                ? `<span class="status-active">● ${sfdT('да')}</span>`
+                : `<span class="v empty">—</span>`;
         } else if (c.edit === 'bool') {
             view = `<span class="${tpl[c.k] ? 'status-active' : 'status-inactive'}">${tpl[c.k] ? '● ' + sfdT('активный') : '○ ' + sfdT('неактивный')}</span>`;
         } else if (c.link) {
@@ -261,7 +551,11 @@ function renderTemplateList(templates) {
         } else {
             view = sfdEsc(tpl[c.k]);
         }
-        const pen = `<button class="sf-cell-pen" title="${sfdT('Редактировать')}" onclick="listCellEdit('${tpl.id}','${c.k}')"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>`;
+        /* карандаш inline-правки — только при праве edit на шаблоны (admin/templates)
+           и только у правимых колонок (ro:true — вычисляемые, как «Live Activity»);
+           без него ячейка остаётся на просмотр, сервер правку всё равно отбил бы */
+        const canEdit = !c.ro && !!(window.CRM && CRM.can && CRM.can('edit', 'templates', 'admin'));
+        const pen = canEdit ? `<button class="sf-cell-pen" title="${sfdT('Редактировать')}" onclick="listCellEdit('${tpl.id}','${c.k}')"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>` : '';
         return `<td class="sf-cell">${view}${pen}</td>`;
     }
 
@@ -287,16 +581,26 @@ function renderTemplateList(templates) {
     }
 }
 
-/* Открыть шаблон из списка */
+/* Открыть шаблон из списка (или из узла цепочки — тогда строки может не быть на текущей странице). */
 function viewFromList(templateId) {
-    const listItem = ALL_TEMPLATES.find(t => t.id === templateId);
-    if (!listItem) return;
+    var listItem = (ALL_TEMPLATES || []).find(function (t) { return t.id === templateId; });
+    var channel, code;
+    if (listItem) {
+        channel = listItem.channel; code = listItem.code;
+    } else {
+        // id = "channel:code"; кода с двоеточием нет, режем по первому
+        var i = templateId.indexOf(':');
+        if (i < 0) return;
+        channel = templateId.slice(0, i);
+        code = templateId.slice(i + 1);
+    }
     // Помечаем контекст редактирования, чтобы сохранение пошло как UPDATE именно этого шаблона.
-    window.CRM_CURRENT = { channel: listItem.channel, code: listItem.code };
-    // Тянем полные данные шаблона из бэкенда; при ошибке — частичные из строки списка.
-    CRM.getTemplate(listItem.channel, listItem.code)
+    window.CRM_CURRENT = { channel: channel, code: code };
+    // Тянем полные данные шаблона из бэкенда; при ошибке — частичные из строки списка (если она есть).
+    CRM.getTemplate(channel, code)
         .then(function (dto) { showTemplateInViewer(templateId, CRM.dtoToV1(dto)); })
         .catch(function () {
+            if (!listItem) { alert('Не удалось загрузить шаблон: ' + templateId); return; }
             showTemplateInViewer(templateId, {
                 channel: listItem.channel, code: listItem.code, name: listItem.name, brief: listItem.name,
                 trigger: listItem.trigger, product: listItem.product, partner: listItem.partner,
@@ -345,9 +649,7 @@ var FALLBACK_LIST_TEMPLATES = [
     { id: "email_2", channel: "email", code: 67890, name: "Подтверждение email", product: "account", touch: "sign", trigger: "trigger", partner: "registration", active: true },
     { id: "email_6", channel: "email", code: 44444, name: "Старое письмо", product: "loan", touch: "abandoned-form", trigger: "trigger", partner: "old", active: false },
     { id: "cc_1", channel: "cc", code: 4001, name: "Сегмент удержания", product: "subscription", touch: "renewal", trigger: "trigger", partner: "retention", active: true },
-    { id: "cc_2", channel: "cc", code: 4002, name: "Продление подписки", product: "subscription", touch: "renewal", trigger: "trigger", partner: "billing", active: false },
-    { id: "fa_1", channel: "fa", code: 5001, name: "Промо в Фин. ассистенте", product: "card", touch: "issue", trigger: "promo", partner: "fin", active: true },
-    { id: "vk_1", channel: "vk", code: 6001, name: "VK промо кредит", product: "loan", touch: "issue", trigger: "promo", partner: "vk", active: true }
+    { id: "cc_2", channel: "cc", code: 4002, name: "Продление подписки", product: "subscription", touch: "renewal", trigger: "trigger", partner: "billing", active: false }
 ];
 var FALLBACK_DASHBOARD = {
     today: { total: 12847, success: 12104, error: 743, byChannel: { sms: { total: 4521, success: 4298, error: 223 }, push: { total: 5892, success: 5614, error: 278 }, email: { total: 1987, success: 1812, error: 175 }, cc: { total: 447, success: 380, error: 67 } } },
@@ -413,16 +715,17 @@ function templateToListItem(t, id) {
     };
 }
 
-/* Данные списка шаблонов приходят из бэкенда (GET /api/templates), а не из mock-data.json.
+/* Данные списка шаблонов приходят из бэкенда (GET /api/templates) постранично — грузим первую
+   страницу (LIST_PAGE строк) под текущими фильтрами, а не весь справочник.
    Дашборд пока вне скоупа — оставляем демо-данные (FALLBACK_DASHBOARD). */
 function loadMockData() {
-    return CRM.listTemplates()
-        .then(function (items) {
-            ALL_TEMPLATES = (items || []).map(CRM.apiItemToList);
-            MOCK_TEMPLATES = {};
-            if (typeof FALLBACK_DASHBOARD !== 'undefined') DASHBOARD_DATA = FALLBACK_DASHBOARD;
-            if (typeof refreshViewTemplateSelect === 'function') refreshViewTemplateSelect();
-        });
+    if (typeof MOCK_TEMPLATES === 'undefined' || !MOCK_TEMPLATES) MOCK_TEMPLATES = {};
+    if (typeof FALLBACK_DASHBOARD !== 'undefined') DASHBOARD_DATA = FALLBACK_DASHBOARD;
+    applyListFilterVisibility();   // прячем фильтры, снятые в «Настройке списка»
+    populateFilterFacets();   // наполняем выпадашки продукт/точка/триггер реальными значениями
+    return fetchListPage(true).then(function () {
+        if (typeof refreshViewTemplateSelect === 'function') refreshViewTemplateSelect();
+    });
 }
 
 /* Минимальный HTML писем для fallback (когда mock-data.json не загружен) */
@@ -465,7 +768,6 @@ function applyOnlyMode() {
 /* Инициализация списка и подсказок при загрузке */
 document.addEventListener('DOMContentLoaded', () => {
     applyOnlyMode();
-    applyListFilterVisibility();
     loadMockData()
         .then(() => {
             applyFilters();

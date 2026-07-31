@@ -9,25 +9,31 @@ import org.springframework.stereotype.Component;
 import ru.banki.crm.domain.AppUser;
 import ru.banki.crm.domain.Role;
 import ru.banki.crm.repo.AppUserRepository;
-import ru.banki.crm.service.Sections;
+import ru.banki.crm.repo.RoleRepository;
 
-import java.util.HashSet;
+import java.util.Comparator;
 
-/** Creates the first super-admin from env on startup (idempotent). */
+/**
+ * Держит супер-админа привязанным к учётке из конфигурации (ADMIN_EMAIL). Роль супер-админа —
+ * запись справочника (флаг is_super_admin, засеяна миграцией). На старте: понижаем любого
+ * чужого носителя супер-роли до обычной админ-роли и назначаем/создаём ADMIN_EMAIL супер-роль.
+ */
 @Component
 public class AdminBootstrap implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AdminBootstrap.class);
 
     private final AppUserRepository users;
+    private final RoleRepository roles;
     private final PasswordEncoder encoder;
     private final String adminEmail;
     private final String adminPassword;
 
-    public AdminBootstrap(AppUserRepository users, PasswordEncoder encoder,
+    public AdminBootstrap(AppUserRepository users, RoleRepository roles, PasswordEncoder encoder,
                           @Value("${app.admin.email:}") String adminEmail,
                           @Value("${app.admin.password:}") String adminPassword) {
         this.users = users;
+        this.roles = roles;
         this.encoder = encoder;
         this.adminEmail = adminEmail == null ? "" : adminEmail.trim().toLowerCase();
         this.adminPassword = adminPassword == null ? "" : adminPassword;
@@ -39,25 +45,34 @@ public class AdminBootstrap implements CommandLineRunner {
             log.warn("app.admin.email/password not set — skipping super-admin bootstrap");
             return;
         }
-        // Роль супер-админа принадлежит ТОЛЬКО учётке из конфигурации: если адрес сменили,
-        // прежний супер-админ понижается до обычного администратора.
+        Role superRole = roles.findAll().stream().filter(Role::isSuperAdmin).findFirst().orElse(null);
+        if (superRole == null) {
+            log.error("Super-admin role missing — migration V21 not applied? skipping bootstrap");
+            return;
+        }
+        // Обычная админ-роль — «прикрытие» для понижаемого чужого супер-админа.
+        Role adminRole = roles.findAll().stream()
+                .filter(r -> r.isAdmin() && !r.isSuperAdmin())
+                .min(Comparator.comparingInt(Role::getSortOrder))
+                .orElse(superRole);
+
+        // Супер-роль — только у ADMIN_EMAIL: чужих понижаем.
         users.findAll().stream()
-                .filter(u -> u.getRole() == Role.SUPER_ADMIN)
+                .filter(u -> u.getRole() != null && u.getRole().isSuperAdmin())
                 .filter(u -> !u.getEmail().equalsIgnoreCase(adminEmail))
                 .forEach(u -> {
-                    u.setRole(Role.ADMIN);
+                    u.setRole(adminRole);
                     users.save(u);
-                    log.warn("Demoted stale super-admin {} to ADMIN (config points to {})", u.getEmail(), adminEmail);
+                    log.warn("Demoted stale super-admin {} (config points to {})", u.getEmail(), adminEmail);
                 });
 
         var existing = users.findByEmailIgnoreCase(adminEmail);
         if (existing.isPresent()) {
-            // роль супер-админа выдаётся только этой учётке и восстанавливается при старте
             AppUser u = existing.get();
-            if (u.getRole() != Role.SUPER_ADMIN) {
-                u.setRole(Role.SUPER_ADMIN);
+            if (u.getRole() == null || !u.getRole().isSuperAdmin()) {
+                u.setRole(superRole);
                 users.save(u);
-                log.info("Upgraded {} to SUPER_ADMIN", adminEmail);
+                log.info("Upgraded {} to super-admin role", adminEmail);
             } else {
                 log.info("Super-admin {} already present", adminEmail);
             }
@@ -67,10 +82,9 @@ public class AdminBootstrap implements CommandLineRunner {
         admin.setEmail(adminEmail);
         admin.setPasswordHash(encoder.encode(adminPassword));
         admin.setDisplayName("Администратор");
-        admin.setRole(Role.SUPER_ADMIN);
+        admin.setRole(superRole);
         admin.setEnabled(true);
-        admin.setSections(new HashSet<>(Sections.ALL));
         users.save(admin);
-        log.info("Created super-admin {} with all sections", adminEmail);
+        log.info("Created super-admin {}", adminEmail);
     }
 }

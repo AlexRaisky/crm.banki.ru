@@ -34,7 +34,9 @@
         { k: "life_time",           l: "Life time",          kind: "number" },
         { k: "allow_ml",            l: "Allow ML",           kind: "bool", def: "false" },
         { k: "definition_key",      l: "Definition key",     kind: "select", opts: DEFINITION_KEYS },
-        { k: "business_key_prefix", l: "Business key prefix", kind: "select", opts: BUSINESS_KEY_PREFIXES }
+        { k: "business_key_prefix", l: "Business key prefix", kind: "select", opts: BUSINESS_KEY_PREFIXES },
+        /* активность события: раньше в прод всегда уезжало is_active = true */
+        { k: "is_active",           l: "Событие активно",    kind: "bool", def: "true" }
       ]
     },
     startTime: {
@@ -43,12 +45,16 @@
         { k: "event_name",          l: "Имя события",        kind: "text" },
         { k: "system",              l: "Система",            kind: "text" },
         { k: "notify_channel",      l: "Канал (notify)",     kind: "select", opts: NOTIFY_CHANNELS },
+        /* is_batch: массовый метод отправки (true) против единичного (false).
+           Раньше в прод всегда уезжало true. */
+        { k: "is_batch",            l: "Массовый метод отправки", kind: "bool", def: "true" },
         { k: "crontab",             l: "Crontab (текстом, напр. 0 9 * * *)", kind: "text" },
         { k: "database",            l: "База выборки",       kind: "select", opts: DATABASES, def: "crmdb" },
         { k: "process_name",        l: "Имя процесса (selection)", kind: "text" },
         { k: "sql_steps",           l: "SQL-шаги выборки",   kind: "steps" },
         { k: "definition_key",      l: "Definition key",     kind: "select", opts: DEFINITION_KEYS },
-        { k: "business_key_prefix", l: "Business key prefix", kind: "select", opts: BUSINESS_KEY_PREFIXES }
+        { k: "business_key_prefix", l: "Business key prefix", kind: "select", opts: BUSINESS_KEY_PREFIXES },
+        { k: "is_active",           l: "Событие активно",    kind: "bool", def: "true" }
       ]
     },
     comm: {
@@ -146,10 +152,18 @@
   function esc(s) {
     return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
   }
+  /* Шаги выборки. Исторически хранились массивом строк, теперь — массивом
+     { sql, active } (активность шага уезжает в scheduler.t_execution_steps.is_active).
+     Старый формат читаем как есть: строка = активный шаг. */
   function parseSteps(v) {
     try {
       var a = JSON.parse(v || "[]");
-      return Array.isArray(a) ? a.map(function (s) { return String(s == null ? "" : s); }) : [];
+      if (!Array.isArray(a)) return [];
+      return a.map(function (s) {
+        if (s && typeof s === "object")
+          return { sql: String(s.sql == null ? "" : s.sql), active: s.active !== false };
+        return { sql: String(s == null ? "" : s), active: true };
+      });
     } catch (e) { return []; }
   }
 
@@ -194,7 +208,7 @@
       case "startIncome":
         return [d.event_name || "событие не задано", d.system].filter(Boolean).join(" · ");
       case "startTime": {
-        var n = parseSteps(d.sql_steps).filter(function (s) { return s.trim(); }).length;
+        var n = parseSteps(d.sql_steps).filter(function (s) { return s.sql.trim(); }).length;
         return [d.event_name || "событие не задано",
                 d.crontab ? "cron: " + d.crontab : null,
                 "SQL-шагов: " + n].filter(Boolean).join("\n");
@@ -667,7 +681,7 @@
     if (f.kind === "steps") {
       // кол-во SQL-шагов + textarea на каждый шаг (flow.d_event_step / scheduler.t_execution_steps)
       var steps = parseSteps(v);
-      if (!steps.length) steps = [""];
+      if (!steps.length) steps = [{ sql: "", active: true }];
       var cnt = document.createElement("input");
       cnt.type = "number"; cnt.min = "1"; cnt.value = String(steps.length);
       cnt.className = "jre-steps-count";
@@ -679,11 +693,22 @@
       wrap.appendChild(box);
       var renderSteps = function (arr) {
         box.innerHTML = "";
-        arr.forEach(function (sqlText, i) {
+        arr.forEach(function (st, i) {
           var l = document.createElement("label");
+          l.className = "jre-step-head";
           l.textContent = "Шаг " + (i + 1) + " — SQL";
+          /* активность шага → scheduler.t_execution_steps.is_active */
+          var act = document.createElement("label");
+          act.className = "jre-step-act";
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = st.active !== false;
+          cb.dataset.stepAct = String(i);
+          act.appendChild(cb);
+          act.appendChild(document.createTextNode(" активен"));
+          l.appendChild(act);
           var ta = document.createElement("textarea");
-          ta.value = sqlText;
+          ta.value = st.sql;
           ta.dataset.step = String(i);
           box.appendChild(l);
           box.appendChild(ta);
@@ -694,8 +719,12 @@
         var n = Math.max(1, parseInt(cnt.value, 10) || 1);
         cnt.value = String(n);
         var cur = [];
-        box.querySelectorAll("textarea[data-step]").forEach(function (ta) { cur.push(ta.value); });
-        while (cur.length < n) cur.push("");
+        box.querySelectorAll("textarea[data-step]").forEach(function (ta) {
+          var i = ta.dataset.step;
+          var cb = box.querySelector('[data-step-act="' + i + '"]');
+          cur.push({ sql: ta.value, active: !cb || cb.checked });
+        });
+        while (cur.length < n) cur.push({ sql: "", active: true });
         cur.length = n;
         renderSteps(cur);
       });
@@ -805,8 +834,13 @@
     NODE_TYPES[n.name].fields.forEach(function (f) {
       if (f.kind === "steps") {
         var arr = [];
+        var stepsBox = body.querySelector('[data-steps-box="' + f.k + '"]');
         body.querySelectorAll('[data-steps-box="' + f.k + '"] textarea[data-step]')
-          .forEach(function (ta) { if (ta.value.trim()) arr.push(ta.value); });
+          .forEach(function (ta) {
+            if (!ta.value.trim()) return;
+            var cb = stepsBox ? stepsBox.querySelector('[data-step-act="' + ta.dataset.step + '"]') : null;
+            arr.push({ sql: ta.value, active: !cb || cb.checked });
+          });
         data[f.k] = JSON.stringify(arr);
       } else {
         var el = body.querySelector('[data-k="' + f.k + '"]');
@@ -829,22 +863,17 @@
     var code = inp ? (inp.value || "").trim() : "";
     if (!channel || !code) { alert("В блоке не указан канал или код шаблона."); return; }
 
-    var open = function () {
-      var id = channel + ":" + code;
-      var exists = (window.ALL_TEMPLATES || []).some(function (t) { return t.id === id; });
-      if (!exists) {
+    // Проверяем наличие шаблона запросом к бэку (список в браузере теперь постраничный, всего не держим).
+    var id = channel + ":" + code;
+    CRM.getTemplate(channel, code)
+      .then(function () {
+        window.jrEditClose();
+        if (typeof openSection === "function") openSection("admin");
+        if (typeof viewFromList === "function") viewFromList(id); // сам переключит вкладку «Просмотр настроек»
+      })
+      .catch(function () {
         alert("Шаблон " + channel.toUpperCase() + " с кодом " + code + " не найден. Заведи его в «Мастере коммуникаций».");
-        return;
-      }
-      window.jrEditClose();
-      if (typeof openSection === "function") openSection("admin");
-      if (typeof viewFromList === "function") viewFromList(id); // сам переключит вкладку «Просмотр настроек»
-    };
-    if ((window.ALL_TEMPLATES || []).length === 0 && typeof loadMockData === "function") {
-      loadMockData().then(open);
-    } else {
-      open();
-    }
+      });
   };
 
   // ↗ у Subflow: открыть выбранную вложенную цепочку в этом же редакторе.

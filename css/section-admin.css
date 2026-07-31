@@ -84,6 +84,8 @@ button {
 .combo-pop.open { display: block; }
 .combo-item { padding: 6px 10px; cursor: pointer; }
 .combo-item:hover, .combo-item.active { background: #f0f0f0; }
+/* Пункт «+ Добавить «…»» — пополнение справочника прямо из формы (combobox.js). */
+.combo-item.combo-create { color: #0b7285; font-weight: 600; border-top: 1px solid #e5e7eb; }
 .combo::after {
     content: "▾";
     position: absolute;
@@ -573,6 +575,7 @@ button:hover{filter:brightness(1.08)}
 .combo-pop{background:var(--card); border:1px solid var(--line)}
 .combo-item{color:var(--ink)}
 .combo-item:hover,.combo-item.active{background:var(--card2)}
+.combo-item.combo-create{color:var(--green); border-top:1px solid var(--line)}
 
 /* Группы флагов */
 .extra-flags .flags-group-label{color:var(--dim)}
@@ -607,7 +610,9 @@ button:hover{filter:brightness(1.08)}
 .stat-card.success{border-left-color:var(--green)}
 .stat-card.error{border-left-color:var(--coral)}
 .stat-card.warning{border-left-color:var(--amber)}
-.stat-card.info{border-left-color:var(--blue)}
+/* .info ниже — глобальный значок-подсказка (17×17, круглый inline-flex). На блочной
+   карточке он схлопывал её в кружок, поэтому модификатор явно возвращает геометрию блока. */
+.stat-card.info{border-left-color:var(--blue);display:block;width:auto;height:auto;border-radius:16px;margin-left:0}
 .stat-card .stat-label{color:var(--faint)}
 .stat-card .stat-value{color:var(--ink)}
 .stat-card .stat-sub{color:var(--faint)}
@@ -673,13 +678,19 @@ button:hover{filter:brightness(1.08)}
     margin-left:6px;border-radius:50%;border:1px solid var(--faint);color:var(--dim);font-size:11px;font-weight:700;
     cursor:help;font-family:var(--mono);flex:0 0 auto;vertical-align:middle;line-height:1}
 .info:hover{border-color:var(--blue);color:var(--blue)}
-.info .tip{position:absolute;bottom:135%;left:50%;transform:translateX(-50%) translateY(4px);
+/* --tip-dx: сдвиг, которым shell.js удерживает тултип в пределах экрана; стрелка
+   ::after сдвигается на столько же в обратную сторону. Значки самого мастера
+   пользуются попапом #fieldHelpPopup (makeInfoIcon), эти правила остаются для
+   статических .info > .tip в разметке. */
+.info .tip{position:absolute;bottom:135%;left:50%;
+    transform:translateX(calc(-50% + var(--tip-dx, 0px))) translateY(4px);
     width:250px;background:#06101B;border:1px solid var(--line);border-radius:9px;padding:10px 12px;
     font-family:var(--sans);font-weight:400;font-size:12.5px;line-height:1.5;color:var(--dim);text-transform:none;
     letter-spacing:normal;opacity:0;visibility:hidden;transition:.15s;z-index:20;box-shadow:0 10px 30px rgba(0,0,0,.5)}
-.info .tip::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);
-    border:6px solid transparent;border-top-color:#06101B}
-.info:hover .tip,.info:focus .tip{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+.info .tip::after{content:"";position:absolute;top:100%;left:calc(50% - var(--tip-dx, 0px));
+    transform:translateX(-50%);border:6px solid transparent;border-top-color:#06101B}
+.info:hover .tip,.info:focus .tip{opacity:1;visibility:visible;
+    transform:translateX(calc(-50% + var(--tip-dx, 0px))) translateY(0)}
 
 /* ---- Вкладки мастера в логике Salesforce Lightning:
        плоские соседние вкладки-сущности с нижним индикатором ---- */
@@ -811,6 +822,14 @@ button:hover{filter:brightness(1.08)}
 .sfd-row select.sfd-edit{cursor:pointer}
 .sfd-row select.sfd-edit option{background:#0D1826;color:#F2F7FD}
 .sfd-row .sfd-edit-check{width:17px;height:17px;accent-color:#3CFAB4;cursor:pointer}
+/* combo с пополнением справочника: поле + кнопка «+» справа от него */
+.sfd-row .sfd-combo-add{display:flex;align-items:center;gap:6px}
+.sfd-row .sfd-combo-add .sfd-edit{flex:1;min-width:0}
+.sfd-row .sfd-dict-add{flex:0 0 auto;width:28px;align-self:stretch;padding:0;border-radius:8px;
+    background:transparent;border:1px solid rgba(80,195,255,.45);color:var(--blue);
+    font-size:16px;line-height:1;cursor:pointer}
+.sfd-row .sfd-dict-add:hover{background:var(--blue);border-color:var(--blue);color:#08131f;filter:none}
+.sfd-row .sfd-dict-add:disabled{opacity:.5;cursor:default}
 
 /* секция «Цепочка» в карточке мастера */
 .sfd-chain{padding:12px 18px 16px;display:flex;flex-direction:column;gap:12px}
@@ -897,6 +916,33 @@ button:hover{filter:brightness(1.08)}
 .pv-em-frame{width:100%;height:min(72vh,760px);border:0;background:#fff;display:block}
 .pv-em-stub{padding:26px 16px;text-align:center;color:var(--faint);font-size:12.5px;
     border:1px dashed rgba(80,195,255,.3);margin:12px;border-radius:10px}
+/* Подвал письма: ссылка на Letteros нужна всегда — если письма с таким ID нет
+   или Letteros не открывается из браузера, фрейм остаётся пустым и объяснить
+   это может только текст рядом. */
+.pv-em-foot{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;
+    padding:9px 12px;border-top:1px solid var(--line);background:var(--card2)}
+.pv-em-foot a{color:var(--blue);font-size:12px;text-decoration:none;white-space:nowrap}
+.pv-em-foot a:hover{text-decoration:underline}
+.pv-em-foot span{color:var(--faint);font-size:11px;line-height:1.45}
+
+/* ===== Мультиселект фильтров списка: несколько значений в одном фильтре ===== */
+.ms{position:relative}
+.ms-btn{width:100%;text-align:left;background:var(--bg2);border:1px solid var(--line);border-radius:4px;
+    color:var(--ink);font-family:var(--sans);font-weight:400;font-size:15px;padding:8px 26px 8px 8px;
+    cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-btn:hover{filter:none;border-color:var(--blue)}          /* гасим глобальный button:hover */
+.ms.has-sel .ms-btn{border-color:var(--blue)}
+.ms::after{content:"▾";position:absolute;right:9px;top:50%;transform:translateY(-50%);
+    color:var(--faint);pointer-events:none;font-size:12px}
+.ms-panel{display:none;position:absolute;z-index:60;top:calc(100% + 4px);left:0;min-width:100%;
+    max-height:260px;overflow-y:auto;background:var(--card);border:1px solid var(--line);
+    border-radius:10px;padding:6px;box-shadow:0 12px 34px rgba(0,0,0,.45)}
+.ms.open .ms-panel{display:block}
+.ms-opt{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;font-size:13.5px;
+    color:var(--ink);cursor:pointer;white-space:nowrap}
+.ms-opt:hover{background:var(--card2)}
+.ms-opt input{accent-color:#3CFAB4;width:15px;height:15px;cursor:pointer;flex:0 0 auto;margin:0}
+.ms-opt.ms-all{color:var(--dim);border-bottom:1px solid var(--line);margin-bottom:4px;border-radius:8px 8px 0 0}
 }
 
 /* ---- Настройка списка: отображаемые колонки и фильтры ---- */

@@ -1,22 +1,31 @@
-/* Раздел «Управление доступом» (только ADMIN). Рендерит UI в #sec-access. */
+/* Раздел «Управление доступом» (только ADMIN). Рендерит UI в #sec-access.
+   Модель — живые роли (Salesforce): права принадлежат РОЛИ (её матрице), все носители
+   делят один набор, правка роли меняет всех. Пользователю назначается роль; персональной
+   матрицы нет. Здесь два блока: «Пользователи» (список + форма с выбором роли) и «Роли»
+   (список + создание/правка роли с матрицей прав и флагом «админ»). */
 (function () {
   "use strict";
 
   var SECTION_LABELS = {
     home: "Главная", deviations: "Панель отклонений", onelink: "OneLink Builder",
     admin: "Мастер коммуникаций", templates: "Список шаблонов",
-    dashboard: "Дашборд", access: "Управление доступом"
+    dashboard: "Дашборд", promo: "Планирование промо",
+    journeys: "Цепочки", access: "Управление доступом",
+    srcbuilder: "Конструктор source", reports: "Отчёты",
+    heatmap: "Тепловая карта", monitoring: "Мониторинг",
+    uploads: "Загруженные инструменты"
   };
-  /* Перевод: t() — глобальный словарь оболочки (I18N_EN); до её загрузки отдаём как есть */
   function tr(s) { return (typeof window.t === "function") ? window.t(s) : s; }
   function sectionLabel(s) { return tr(SECTION_LABELS[s] || s); }
-  var ROLES = [
-    { v: "READER", t: "Reader — только просмотр" },
-    { v: "EDITOR", t: "Editor — + создание/редактирование шаблонов" },
-    { v: "ADMIN", t: "Admin — + управление доступом" }
+  var CAPS = [
+    { k: "read", t: "Просмотр" },
+    { k: "add", t: "Добавление" },
+    { k: "edit", t: "Редактирование" },
+    { k: "delete", t: "Удаление" }
   ];
 
-  var allSections = [];
+  var matrixSections = [];   // [{id, writable, adminOnly}] — не-adminOnly, для матрицы роли
+  var allRoles = [];         // [{id, name, isAdmin, isSuperAdmin, isSystem, access, manageable, users}]
   var rendered = false;
 
   function h(tag, attrs, children) {
@@ -32,110 +41,204 @@
     });
     return el;
   }
-
-  function sectionCheatboxes(selected, idPrefix) {
-    var wrap = h("div", { style: "display:flex;flex-wrap:wrap;gap:8px;margin-top:6px" });
-    allSections.forEach(function (s) {
-      var id = idPrefix + s;
-      var cb = h("input", { type: "checkbox", id: id, value: s });
-      if (selected && selected.indexOf(s) >= 0) cb.checked = true;
-      wrap.appendChild(h("label", { style: "display:flex;align-items:center;gap:5px;font-size:13px;color:var(--dim)" },
-        [cb, sectionLabel(s)]));
-    });
-    return wrap;
-  }
-
-  function collectSections(idPrefix) {
-    return allSections.filter(function (s) {
-      var el = document.getElementById(idPrefix + s);
-      return el && el.checked;
-    });
-  }
-
-  /** Роль ADMIN доступна в списке только супер-администратору (сервер проверяет это же правило). */
-  function isSuperAdmin() {
-    return !!(window.CRM && CRM.me && CRM.me.isSuperAdmin);
-  }
-
-  function roleSelect(value) {
-    var sel = h("select", { style: fieldStyle() });
-    ROLES.filter(function (r) {
-      return r.v !== "ADMIN" || isSuperAdmin() || value === "ADMIN";
-    }).forEach(function (r) {
-      var o = h("option", { value: r.v }, [tr(r.t)]);
-      if (r.v === value) o.selected = true;
-      sel.appendChild(o);
-    });
-    // не супер-админ не может ни назначить, ни снять администратора
-    if (!isSuperAdmin() && value === "ADMIN") {
-      sel.disabled = true;
-      sel.title = tr("Менять роль администратора может только супер-администратор");
-    }
-    return sel;
-  }
-
+  function isSuperAdmin() { return !!(window.CRM && CRM.me && CRM.me.isSuperAdmin); }
   function fieldStyle() {
     return "padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-size:13px";
   }
   function btnStyle(bg) {
     return "padding:7px 12px;border:0;border-radius:8px;background:" + (bg || "#4a6cf7") + ";color:#fff;font-size:13px;cursor:pointer";
   }
+  function field(label, control) {
+    return h("div", { style: "margin:8px 0" }, [
+      h("div", { style: "font-size:12px;color:var(--faint);margin-bottom:4px" }, [label]),
+      control
+    ]);
+  }
+  function sectionTitle(t) {
+    return h("div", { style: "font-weight:700;font-size:15px;margin:22px 0 10px" }, [tr(t)]);
+  }
+
+  /* ---------- матрица роли (раздел × право) ---------- */
+  function buildMatrix(access) {
+    var byId = {};
+    (access || []).forEach(function (a) { byId[a.section] = a; });
+    var rows = {};
+    var th = "text-align:center;padding:6px 8px;border-bottom:1px solid var(--line);color:var(--dim);font-size:12px;font-weight:600";
+    var td = "text-align:center;padding:6px 8px;border-bottom:1px solid var(--line)";
+    function toggleColumn(capKey) {
+      // включаемые (не-disabled) чекбоксы столбца по всем разделам
+      var cells = [];
+      matrixSections.forEach(function (sec) {
+        var r = rows[sec.id];
+        if (!r) return;
+        var cb = r[capKey];
+        if (cb && !cb.disabled) cells.push(cb);
+      });
+      if (!cells.length) return;
+      // если хоть один выключен — включаем все, иначе выключаем все
+      var turnOn = cells.some(function (cb) { return !cb.checked; });
+      cells.forEach(function (cb) {
+        cb.checked = turnOn;
+        // для «Просмотра» прогоняем существующую логику синхронизации записей
+        if (capKey === "read") cb.dispatchEvent(new Event("change"));
+      });
+    }
+    var head = h("tr", null, [h("th", { style: th.replace("center", "left") }, [tr("Раздел")])]
+      .concat(CAPS.map(function (c) {
+        return h("th", {
+          style: th + ";cursor:pointer",
+          title: tr("Выбрать/снять весь столбец"),
+          onclick: (function (capKey) { return function () { toggleColumn(capKey); }; })(c.k)
+        }, [tr(c.t)]);
+      })));
+    var body = [head];
+
+    matrixSections.forEach(function (sec) {
+      var cur = byId[sec.id] || {};
+      var checks = {};
+      CAPS.forEach(function (c) {
+        var cb = h("input", { type: "checkbox" });
+        cb.checked = !!cur[c.k];
+        if (c.k !== "read" && !sec.writable) { cb.checked = false; cb.disabled = true; }
+        checks[c.k] = cb;
+      });
+      if (sec.writable) {
+        var vis = checks.read.checked;
+        ["add", "edit", "delete"].forEach(function (k) { checks[k].disabled = !vis; });
+      }
+      checks.read.addEventListener("change", function () {
+        if (!sec.writable) return;
+        var on = checks.read.checked;
+        ["add", "edit", "delete"].forEach(function (k) {
+          checks[k].disabled = !on;
+          if (!on) checks[k].checked = false;
+        });
+      });
+      rows[sec.id] = checks;
+      var cells = [h("td", { style: td.replace("center", "left") + ";color:var(--ink)" }, [sectionLabel(sec.id)])];
+      CAPS.forEach(function (c) {
+        var cell = h("td", { style: td });
+        if (c.k === "read" || sec.writable) cell.appendChild(checks[c.k]);
+        else cell.appendChild(h("span", { style: "color:var(--faint)" }, ["—"]));
+        cells.push(cell);
+      });
+      body.push(h("tr", null, cells));
+    });
+
+    var table = h("table", { style: "width:100%;border-collapse:collapse;font-size:13px" }, body);
+    var wrap = h("div", { style: "overflow-x:auto;border:1px solid var(--line);border-radius:8px" }, [table]);
+    return {
+      el: wrap,
+      collect: function () {
+        return matrixSections.map(function (sec) {
+          var r = rows[sec.id];
+          return {
+            section: sec.id, read: r.read.checked,
+            add: sec.writable && r.add.checked,
+            edit: sec.writable && r.edit.checked,
+            delete: sec.writable && r.delete.checked
+          };
+        }).filter(function (a) { return a.read || a.add || a.edit || a.delete; });
+      },
+      setEnabled: function (on) {
+        matrixSections.forEach(function (sec) {
+          var r = rows[sec.id];
+          r.read.disabled = !on;
+          ["add", "edit", "delete"].forEach(function (k) {
+            if (sec.writable) r[k].disabled = !on || !r.read.checked;
+          });
+        });
+        wrap.style.opacity = on ? "1" : ".5";
+      }
+    };
+  }
+
+  /* ================= ПОЛЬЗОВАТЕЛИ ================= */
+  /* Роли, которые текущий пользователь может назначить: без супер-роли; админ-роли —
+     только супер-админ. */
+  function assignableRoles() {
+    return allRoles.filter(function (r) {
+      return !r.isSuperAdmin && (!r.isAdmin || isSuperAdmin());
+    });
+  }
+  function roleSelect(currentRoleId) {
+    var sel = h("select", { style: fieldStyle() });
+    var list = assignableRoles();
+    // роль редактируемой учётки может быть не в assignable (напр. её нельзя переназначить) —
+    // но такие записи не редактируются (manageable=false), так что сюда не попадают.
+    list.forEach(function (r) {
+      var o = h("option", { value: String(r.id) }, [r.name + (r.isAdmin ? " · админ" : "")]);
+      if (currentRoleId != null && r.id === currentRoleId) o.selected = true;
+      sel.appendChild(o);
+    });
+    if (!list.length) sel.appendChild(h("option", { value: "" }, [tr("нет доступных ролей")]));
+    return sel;
+  }
 
   function renderUsers(container) {
     CRM.adminListUsers().then(function (users) {
       container.innerHTML = "";
       var table = h("table", { style: "width:100%;border-collapse:collapse;font-size:13px" });
-      var head = h("tr", null, ["Почта", "Имя", "Роль", "Разделы", "Активен", ""].map(function (t) {
+      var head = h("tr", null, ["Почта", "Имя", "Роль", "Активен", ""].map(function (t) {
         return h("th", { style: "text-align:left;padding:8px;border-bottom:1px solid var(--line);color:var(--dim)" }, [t ? tr(t) : t]);
       }));
       table.appendChild(head);
       users.forEach(function (u) {
-        var secText = (u.sections || []).map(sectionLabel).join(", ");
-        var row = h("tr", null, [
-          h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.email]),
-          h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.displayName || "—"]),
-          h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.role]),
-          h("td", { style: "padding:8px;border-bottom:1px solid var(--line);color:var(--dim);max-width:260px" }, [secText || "—"]),
-          h("td", { style: "padding:8px;border-bottom:1px solid var(--line)" }, [u.enabled ? "✓" : "—"]),
-          // manageable приходит с сервера: false — запись не в зоне ответственности текущего пользователя
-          h("td", { style: "padding:8px;border-bottom:1px solid var(--line);white-space:nowrap" },
+        var cell = "padding:8px;border-bottom:1px solid var(--line)";
+        table.appendChild(h("tr", null, [
+          h("td", { style: cell }, [u.email]),
+          h("td", { style: cell }, [u.displayName || "—"]),
+          h("td", { style: cell }, [u.role || "—"]),
+          h("td", { style: cell }, [u.enabled ? "✓" : "—"]),
+          h("td", { style: cell + ";white-space:nowrap" },
             u.manageable === false
               ? [h("span", { style: "color:var(--faint)" }, ["—"])]
               : [
-                  h("button", { style: btnStyle("#334155"), onclick: function () { editUser(u, container); } }, [tr("Изменить")]),
+                  h("button", { style: btnStyle("#334155"), onclick: function () { userForm(u, container); } }, [tr("Изменить")]),
                   h("span", null, [" "]),
                   h("button", { style: btnStyle("#7c2d12"), onclick: function () { resetPwd(u); } }, [tr("Пароль")]),
                   h("span", null, [" "]),
-                  h("button", { style: btnStyle("#991b1b"), onclick: function () { delUser(u, container); } }, [tr("Удалить")])
+                  // Учётки не удаляем — только деактивируем/активируем (тумблер по u.enabled).
+                  h("button", { style: btnStyle(u.enabled ? "#92400e" : "#15803d"), onclick: function () { toggleActive(u, container); } },
+                    [tr(u.enabled ? "Деактивировать" : "Активировать")])
                 ])
-        ]);
-        table.appendChild(row);
+        ]));
       });
       container.appendChild(table);
     }).catch(function (e) { container.textContent = "Ошибка: " + e.message; });
   }
 
-  function editUser(u, container) {
+  function userForm(existing, container) {
     var box = h("div", { style: "margin:12px 0;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--card)" });
-    var name = h("input", { style: fieldStyle(), value: u.displayName || "" });
-    var role = roleSelect(u.role);
-    var enabled = h("input", { type: "checkbox" }); enabled.checked = u.enabled;
-    var secs = sectionCheatboxes(u.sections, "edit_" + u.id + "_");
-    box.appendChild(h("div", { style: "font-weight:600;margin-bottom:8px" }, [tr("Изменение: ") + u.email]));
+    var email = existing ? null : h("input", { style: fieldStyle(), type: "email", placeholder: "name@banki.ru" });
+    var name = h("input", { style: fieldStyle(), value: existing ? (existing.displayName || "") : "", placeholder: tr("Имя") });
+    var pwd = existing ? null : h("input", { style: fieldStyle(), type: "password", placeholder: tr("Пароль (мин. 8)") });
+    var role = roleSelect(existing ? existing.roleId : null);
+    var enabled = h("input", { type: "checkbox" }); if (existing) enabled.checked = existing.enabled;
+
+    box.appendChild(h("div", { style: "font-weight:600;margin-bottom:8px" },
+      [existing ? (tr("Изменение: ") + existing.email) : tr("Новый пользователь")]));
+    if (email) box.appendChild(field(tr("Почта"), email));
     box.appendChild(field(tr("Имя"), name));
+    if (pwd) box.appendChild(field(tr("Пароль"), pwd));
     box.appendChild(field(tr("Роль"), role));
-    box.appendChild(field(tr("Активен"), enabled));
-    box.appendChild(field(tr("Разделы"), secs));
+    if (existing) box.appendChild(field(tr("Активен"), enabled));
+
     box.appendChild(h("button", {
       style: btnStyle() + ";margin-top:10px",
       onclick: function () {
-        CRM.adminUpdateUser(u.id, {
-          displayName: name.value, role: role.value, enabled: enabled.checked,
-          sections: collectSections("edit_" + u.id + "_")
-        }).then(function () { renderUsers(container); }).catch(function (e) { alert(e.message); });
+        var roleId = role.value ? Number(role.value) : null;
+        var p = existing
+          ? CRM.adminUpdateUser(existing.id, { displayName: name.value, roleId: roleId, enabled: enabled.checked })
+          : CRM.adminCreateUser({ email: email.value.trim(), displayName: name.value, password: pwd.value, roleId: roleId });
+        p.then(function () { renderUsers(container); }).catch(function (e) { alert(e.message); });
       }
-    }, [tr("Сохранить")]));
-    container.insertBefore(box, container.firstChild);
+    }, [tr(existing ? "Сохранить" : "Создать")]));
+    if (existing) box.appendChild(h("button", {
+      style: btnStyle("#475569") + ";margin:10px 0 0 8px", onclick: function () { renderUsers(container); }
+    }, [tr("Отмена")]));
+    if (existing) container.insertBefore(box, container.firstChild);
+    else container.parentElement.insertBefore(box, container);
   }
 
   function resetPwd(u) {
@@ -143,48 +246,110 @@
     if (!pwd) return;
     CRM.adminResetPassword(u.id, pwd).then(function () { alert("Пароль обновлён"); }).catch(function (e) { alert(e.message); });
   }
-
-  function delUser(u, container) {
-    if (!confirm("Удалить пользователя " + u.email + "?")) return;
-    CRM.adminDeleteUser(u.id).then(function () { renderUsers(container); }).catch(function (e) { alert(e.message); });
+  /* Деактивация вместо удаления: учётку не стираем, а гасим (enabled=false) — вход
+     закрывается, данные и история остаются, при надобности активируем обратно. */
+  function toggleActive(u, container) {
+    var on = !u.enabled;
+    var verb = on ? tr("Активировать") : tr("Деактивировать");
+    if (!confirm(verb + " " + u.email + "?")) return;
+    CRM.adminUpdateUser(u.id, { enabled: on }).then(function () { renderUsers(container); }).catch(function (e) { alert(e.message); });
   }
 
-  function field(label, control) {
-    return h("div", { style: "margin:8px 0" }, [
-      h("div", { style: "font-size:12px;color:var(--faint);margin-bottom:4px" }, [label]),
-      control
-    ]);
+  /* ================= РОЛИ ================= */
+  function capLetters(a) {
+    var s = "";
+    if (a.read) s += "П"; if (a.add) s += "Д"; if (a.edit) s += "Р"; if (a.delete) s += "У";
+    return s;
+  }
+  function roleSummary(r) {
+    if (r.isSuperAdmin || r.isAdmin) return tr("доступ ко всему");
+    var list = (r.access || []).filter(function (a) { return a.read || a.add || a.edit || a.delete; });
+    if (!list.length) return "—";
+    return list.map(function (a) { return sectionLabel(a.section) + " " + capLetters(a); }).join(" · ");
   }
 
-  function createForm(usersContainer) {
-    var email = h("input", { style: fieldStyle(), type: "email", placeholder: "name@banki.ru" });
-    var name = h("input", { style: fieldStyle(), placeholder: tr("Имя") });
-    var pwd = h("input", { style: fieldStyle(), type: "password", placeholder: tr("Пароль (мин. 8)") });
-    var role = roleSelect("READER");
-    var secs = sectionCheatboxes([], "new_");
-    var box = h("div", { style: "padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--card);margin-bottom:18px" });
-    box.appendChild(h("div", { style: "font-weight:600;margin-bottom:10px" }, [tr("Новый пользователь")]));
-    box.appendChild(field(tr("Почта"), email));
-    box.appendChild(field(tr("Имя"), name));
-    box.appendChild(field(tr("Пароль"), pwd));
-    box.appendChild(field(tr("Роль"), role));
-    box.appendChild(field(tr("Разделы"), secs));
+  function renderRoles(container) {
+    return CRM.adminRoles().then(function (roles) {
+      allRoles = roles;
+      container.innerHTML = "";
+      container.appendChild(h("button", {
+        style: btnStyle() + ";margin-bottom:12px", onclick: function () { roleForm(null, container); }
+      }, ["+ " + tr("Создать роль")]));
+      var table = h("table", { style: "width:100%;border-collapse:collapse;font-size:13px" });
+      table.appendChild(h("tr", null, ["Роль", "Тип", "Права", "Учёток", ""].map(function (t) {
+        return h("th", { style: "text-align:left;padding:8px;border-bottom:1px solid var(--line);color:var(--dim)" }, [tr(t)]);
+      })));
+      roles.forEach(function (r) {
+        var cell = "padding:8px;border-bottom:1px solid var(--line)";
+        var type = r.isSuperAdmin ? tr("супер-админ") : (r.isAdmin ? tr("админ") : tr("обычная"))
+          + (r.isSystem ? " · " + tr("встроенная") : "");
+        table.appendChild(h("tr", null, [
+          h("td", { style: cell }, [r.name]),
+          h("td", { style: cell + ";color:var(--dim)" }, [type]),
+          h("td", { style: cell + ";color:var(--dim);max-width:320px" }, [roleSummary(r)]),
+          h("td", { style: cell }, [String(r.users)]),
+          h("td", { style: cell + ";white-space:nowrap" },
+            r.manageable === false
+              ? [h("span", { style: "color:var(--faint)" }, ["—"])]
+              : [
+                  h("button", { style: btnStyle("#334155"), onclick: function () { roleForm(r, container); } }, [tr("Изменить")]),
+                  h("span", null, [" "]),
+                  r.isSystem ? h("span", { style: "color:var(--faint);font-size:12px" }, [tr("встроенная")])
+                    : h("button", { style: btnStyle("#991b1b"), onclick: function () { delRole(r, container); } }, [tr("Удалить")])
+                ])
+        ]));
+      });
+      container.appendChild(table);
+    }).catch(function (e) { container.textContent = "Ошибка: " + e.message; });
+  }
+
+  function roleForm(existing, container) {
+    var box = h("div", { style: "margin:12px 0;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--card)" });
+    var name = h("input", { style: fieldStyle(), value: existing ? existing.name : "", placeholder: tr("Название роли") });
+    if (existing && existing.isSystem) { name.disabled = true; name.title = tr("Встроенную роль переименовать нельзя"); }
+    var isAdmin = h("input", { type: "checkbox" });
+    if (existing) isAdmin.checked = existing.isAdmin;
+    // Флаг «админ» может ставить только супер-админ.
+    if (!isSuperAdmin()) { isAdmin.disabled = true; isAdmin.title = tr("Админ-роль задаёт только супер-администратор"); }
+    var matrix = buildMatrix(existing ? existing.access : []);
+    var note = h("div", { style: "font-size:12px;color:var(--faint);margin-top:6px" });
+
+    function syncAdmin() {
+      if (isAdmin.checked) {
+        matrix.setEnabled(false);
+        note.textContent = tr("Админ-роль: доступ куда угодно и для чего угодно — матрица не ограничивает.");
+      } else { matrix.setEnabled(true); note.textContent = ""; }
+    }
+    isAdmin.addEventListener("change", syncAdmin);
+
+    box.appendChild(h("div", { style: "font-weight:600;margin-bottom:8px" },
+      [existing ? (tr("Изменение роли: ") + existing.name) : tr("Новая роль")]));
+    box.appendChild(field(tr("Название"), name));
+    box.appendChild(field(tr("Админ-полномочия (управление доступом, обход матрицы)"), isAdmin));
+    box.appendChild(field(tr("Права по разделам"), matrix.el));
+    box.appendChild(note);
+    syncAdmin();
+
     box.appendChild(h("button", {
-      style: btnStyle() + ";margin-top:12px",
+      style: btnStyle() + ";margin-top:10px",
       onclick: function () {
-        CRM.adminCreateUser({
-          email: email.value.trim(), displayName: name.value, password: pwd.value,
-          role: role.value, sections: collectSections("new_")
-        }).then(function () {
-          email.value = name.value = pwd.value = "";
-          renderUsers(usersContainer);
-        }).catch(function (e) { alert(e.message); });
+        var body = { name: name.value.trim(), isAdmin: isAdmin.checked, access: matrix.collect() };
+        var p = existing ? CRM.adminUpdateRole(existing.id, body) : CRM.adminCreateRole(body);
+        p.then(function () { renderRoles(container); }).catch(function (e) { alert(e.message); });
       }
-    }, [tr("Создать")]));
-    return box;
+    }, [tr(existing ? "Сохранить" : "Создать")]));
+    box.appendChild(h("button", {
+      style: btnStyle("#475569") + ";margin:10px 0 0 8px", onclick: function () { renderRoles(container); }
+    }, [tr("Отмена")]));
+    container.insertBefore(box, container.firstChild);
   }
 
-  /* Сброс кэша отрисовки (например, при смене языка) — раздел перерисуется при следующем открытии */
+  function delRole(r, container) {
+    if (!confirm(tr("Удалить роль") + " «" + r.name + "»?")) return;
+    CRM.adminDeleteRole(r.id).then(function () { renderRoles(container); }).catch(function (e) { alert(e.message); });
+  }
+
+  /* ---------- вход в раздел ---------- */
   window.accessInvalidate = function () { rendered = false; };
 
   window.renderAccessSection = function () {
@@ -192,13 +357,21 @@
     if (!root) return;
     if (rendered) return;
     root.innerHTML = "";
-    /* заголовок и описание рисует pane настроечной админки (pane-access) */
-    var usersContainer = h("div", null, []);
-    CRM.adminSections().then(function (secs) {
-      allSections = secs;
-      root.appendChild(createForm(usersContainer));
-      root.appendChild(usersContainer);
-      renderUsers(usersContainer);
+    var usersC = h("div", null, []);
+    var rolesC = h("div", null, []);
+    // сначала роли (нужны для выпадашки в форме пользователя), затем пользователи
+    Promise.all([CRM.adminSections(), CRM.adminRoles()]).then(function (res) {
+      matrixSections = (res[0] || []).filter(function (s) { return !s.adminOnly; });
+      allRoles = res[1] || [];
+      root.appendChild(sectionTitle("Пользователи"));
+      root.appendChild(h("button", {
+        style: btnStyle() + ";margin-bottom:12px", onclick: function () { userForm(null, usersC); }
+      }, ["+ " + tr("Новый пользователь")]));
+      root.appendChild(usersC);
+      root.appendChild(sectionTitle("Роли"));
+      root.appendChild(rolesC);
+      renderUsers(usersC);
+      renderRoles(rolesC);
       rendered = true;
     }).catch(function (e) { root.appendChild(h("div", null, ["Ошибка: " + e.message])); });
   };

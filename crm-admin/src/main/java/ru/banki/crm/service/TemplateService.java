@@ -35,17 +35,133 @@ public class TemplateService {
 
     // ------------------------------------------------------------------- LIST
     @Transactional(readOnly = true)
-    public List<TemplateListItemDto> list(String channel, String product, String touch,
-                                          String trigger, String active) {
+    public List<TemplateListItemDto> list(List<String> channel, List<String> product, List<String> touch,
+                                          List<String> trigger, List<String> partner, String active, String q,
+                                          String sort, String dir, Integer limit, Integer offset) {
+        // сортируем ВСЮ отфильтрованную выборку и только потом режем страницу,
+        // иначе порядок был бы виден лишь внутри загруженных строк
+        var s = filtered(channel, product, touch, trigger, partner, active, q)
+                .sorted(comparator(sort, "desc".equalsIgnoreCase(dir)));
+        if (offset != null && offset > 0) s = s.skip(offset);   // пагинация: пропускаем уже загруженные
+        if (limit != null && limit > 0) s = s.limit(limit);
+        return s.toList();
+    }
+
+    /** Сортировка списка по колонке таблицы. Числовые коды сравниваем как числа («9» < «10»). */
+    private static java.util.Comparator<TemplateListItemDto> comparator(String sort, boolean desc) {
+        java.text.Collator ru = java.text.Collator.getInstance(new java.util.Locale("ru"));
+        java.util.Comparator<TemplateListItemDto> c = switch (sort == null ? "" : sort) {
+            case "channel" -> java.util.Comparator.comparing(i -> nz(i.channel()), ru);
+            case "name"    -> java.util.Comparator.comparing(i -> nz(i.communicationName()), ru);
+            case "product" -> java.util.Comparator.comparing(TemplateService::firstProduct, ru);
+            case "touch"   -> java.util.Comparator.comparing(i -> nz(i.touchPoint()), ru);
+            case "trigger" -> java.util.Comparator.comparing(i -> nz(i.triggerType()), ru);
+            case "partner" -> java.util.Comparator.comparing(i -> nz(i.partnerName()), ru);
+            case "active"  -> java.util.Comparator.comparingInt(i -> Boolean.TRUE.equals(i.active()) ? 1 : 0);
+            // колонка «Live Activity» в списке: она вычисляется из канала, отдельного поля нет
+            case "is_la"   -> java.util.Comparator.comparingInt(i -> "la".equals(i.channel()) ? 1 : 0);
+            // по умолчанию и для "code" — числовой порядок кода, нечисловые в конец
+            default -> java.util.Comparator.comparingDouble((TemplateListItemDto i) -> codeNum(i.code()))
+                    .thenComparing(i -> nz(i.code()), ru);
+        };
+        // стабильный доп. ключ, чтобы страницы не «плавали» при равных значениях
+        c = c.thenComparing(i -> nz(i.channel())).thenComparingDouble(i -> codeNum(i.code()));
+        return desc ? c.reversed() : c;
+    }
+
+    private static String nz(String s) { return s == null ? "" : s; }
+
+    private static String firstProduct(TemplateListItemDto i) {
+        return (i.productType() == null || i.productType().isEmpty()) ? "" : nz(i.productType().get(0));
+    }
+
+    /** Код как число; нечисловой — в конец сортировки. */
+    private static double codeNum(String code) {
+        if (code == null || code.isBlank()) return Double.MAX_VALUE;
+        try { return Double.parseDouble(code.trim()); }
+        catch (NumberFormatException e) { return Double.MAX_VALUE; }
+    }
+
+    /** Наборы значений для выпадающих фильтров списка — из реальных данных d_template,
+     *  а не хардкод (иначе фильтр по несуществующему значению всегда даёт пусто). */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, java.util.List<String>> facets() {
+        java.util.TreeSet<String> products = new java.util.TreeSet<>();
+        java.util.TreeSet<String> touches = new java.util.TreeSet<>();
+        java.util.TreeSet<String> triggers = new java.util.TreeSet<>();
+        java.util.TreeSet<String> partners = new java.util.TreeSet<>();
+        for (var i : store.list()) {
+            if (i.productType() != null)
+                for (var p : i.productType()) if (p != null && !p.isBlank()) products.add(p);
+            if (i.touchPoint() != null && !i.touchPoint().isBlank()) touches.add(i.touchPoint());
+            if (i.triggerType() != null && !i.triggerType().isBlank()) triggers.add(i.triggerType());
+            if (i.partnerName() != null && !i.partnerName().isBlank()) partners.add(i.partnerName());
+        }
+        return java.util.Map.of(
+                "products", new java.util.ArrayList<>(products),
+                "touches", new java.util.ArrayList<>(touches),
+                "triggers", new java.util.ArrayList<>(triggers),
+                "partners", new java.util.ArrayList<>(partners));
+    }
+
+    /** Счётчик под теми же фильтрами (для строки «всего N, активных M») — без выгрузки строк на клиент. */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Long> count(List<String> channel, List<String> product, List<String> touch,
+                                             List<String> trigger, List<String> partner, String active, String q) {
+        var rows = filtered(channel, product, touch, trigger, partner, active, q).toList();
+        long total = rows.size();
+        long act = rows.stream().filter(i -> Boolean.TRUE.equals(i.active())).count();
+        return java.util.Map.of("total", total, "active", act);
+    }
+
+    /** Выбранные значения фильтра без пустых (пустой список = фильтр не задан). */
+    private static List<String> clean(List<String> selected) {
+        if (selected == null) return List.of();
+        return selected.stream().filter(s -> s != null && !s.isBlank()).toList();
+    }
+
+    /** Пусто = фильтр не задан. Иначе строка проходит, если её значение есть в списке (OR внутри фильтра). */
+    private static boolean anyOf(List<String> selected, String value) {
+        var vals = clean(selected);
+        return vals.isEmpty() || vals.contains(value);
+    }
+
+    /** Общий пайплайн фильтрации (канал/продукт/точка/триггер/партнёр/статус + свободный поиск q).
+     *  Внутри каждого фильтра — OR по выбранным значениям, между фильтрами — AND. */
+    private java.util.stream.Stream<TemplateListItemDto> filtered(List<String> channel, List<String> product,
+                                                                  List<String> touch, List<String> trigger,
+                                                                  List<String> partner, String active, String q) {
+        String needle = q == null ? "" : q.trim().toLowerCase();
         return store.list().stream()
-                .filter(i -> channel == null || channel.isBlank() || channel.equals(i.channel()))
-                .filter(i -> touch == null || touch.isBlank() || touch.equals(i.touchPoint()))
-                .filter(i -> trigger == null || trigger.isBlank() || trigger.equals(i.triggerType()))
-                .filter(i -> product == null || product.isBlank()
-                        || (i.productType() != null && i.productType().contains(product)))
+                .filter(i -> anyOf(channel, i.channel()))
+                .filter(i -> anyOf(touch, i.touchPoint()))
+                .filter(i -> anyOf(trigger, i.triggerType()))
+                .filter(i -> anyOf(partner, i.partnerName()))
+                // продукт — у самой строки это список: проходит, если пересекается с выбранными
+                .filter(i -> {
+                    var sel = clean(product);
+                    return sel.isEmpty()
+                            || (i.productType() != null && i.productType().stream().anyMatch(sel::contains));
+                })
                 .filter(i -> active == null || active.isBlank()
                         || ("active".equals(active) == Boolean.TRUE.equals(i.active())))
-                .toList();
+                .filter(i -> needle.isEmpty() || matches(i, needle));
+    }
+
+    /** Поиск как в списке на клиенте: code / название / продукт / партнёр / точка / триггер / source. */
+    private static boolean matches(TemplateListItemDto i, String needle) {
+        return contains(i.code(), needle)
+                || contains(i.communicationName(), needle)
+                || contains(i.partnerName(), needle)
+                || contains(i.touchPoint(), needle)
+                || contains(i.triggerType(), needle)
+                || contains(i.sourceType(), needle)
+                || contains(i.letterosId(), needle)
+                || (i.productType() != null && i.productType().stream().anyMatch(p -> contains(p, needle)));
+    }
+
+    private static boolean contains(String v, String needle) {
+        return v != null && v.toLowerCase().contains(needle);
     }
 
     // -------------------------------------------------------------------- GET
@@ -59,7 +175,7 @@ public class TemplateService {
     public String create(TemplateDto dto) {
         audit.mark();
         String channel = norm(dto.getChannel());
-        if (!List.of("sms", "push", "email", "cc").contains(channel)) {
+        if (!List.of("sms", "push", "email", "cc", "fa", "vk", "la").contains(channel)) {
             throw badChannel(dto.getChannel());
         }
         long code;

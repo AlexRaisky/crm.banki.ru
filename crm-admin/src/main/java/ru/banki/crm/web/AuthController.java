@@ -29,8 +29,7 @@ public class AuthController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Не авторизован"));
         AppUser u = p.user();
         boolean isAdmin = u.getRole().isAdminLevel();
-        boolean canEdit = u.getRole() == Role.EDITOR || isAdmin;
-        boolean isSuperAdmin = u.getRole() == Role.SUPER_ADMIN;
+        boolean isSuperAdmin = u.getRole().isSuperAdmin();
         // ADMIN обходит ACL разделов на сервере — в NAV ему тоже отдаём всё,
         // чтобы новые разделы появлялись у админов без правки user_sections.
         // «Цепочки» — только админам: не-админу раздел не отдаём даже при ACL.
@@ -39,8 +38,32 @@ public class AuthController {
                 : u.getSections().stream()
                         .filter(s -> !ru.banki.crm.service.Sections.JOURNEYS.equals(s))
                         .collect(java.util.stream.Collectors.toUnmodifiableSet());
-        return new MeDto(u.getEmail(), u.getDisplayName(), u.getRole().name(),
-                canEdit, isAdmin, sections, isSuperAdmin);
+
+        // Карта прав по разделам. Админу — всё true по всем разделам (он и так обходит
+        // матрицу на сервере). Не-админу — из его строк user_sections.
+        java.util.Map<String, MeDto.Caps> caps = new java.util.HashMap<>();
+        if (isAdmin) {
+            for (String s : ru.banki.crm.service.Sections.ALL) {
+                caps.put(s, new MeDto.Caps(true, true, true, true));
+            }
+        } else {
+            for (String s : sections) {
+                caps.put(s, new MeDto.Caps(
+                        u.hasCapability(s, ru.banki.crm.domain.Capability.READ),
+                        u.hasCapability(s, ru.banki.crm.domain.Capability.ADD),
+                        u.hasCapability(s, ru.banki.crm.domain.Capability.EDIT),
+                        u.hasCapability(s, ru.banki.crm.domain.Capability.DELETE)));
+            }
+        }
+        // Грубый флаг для нынешнего data-readonly (до этапа 3): может ли писать хоть где-то.
+        boolean canEdit = isAdmin || caps.values().stream()
+                .anyMatch(c -> c.add() || c.edit() || c.delete());
+
+        // Супер-роль наружу не светим НИГДЕ, даже самому супер-админу: показываем как
+        // обычный «Админ» (флаг isSuperAdmin остаётся — полномочия работают по нему).
+        String roleName = isSuperAdmin ? "Админ" : u.getRole().getName();
+        return new MeDto(u.getEmail(), u.getDisplayName(), roleName,
+                canEdit, isAdmin, sections, isSuperAdmin, caps);
     }
 
     @PutMapping("/me/password")

@@ -14,7 +14,10 @@
    · правила планирования (тоталы по неделям, лимиты промо на день
      и т.д.) подсвечивают проблемные строки.
 
-   Данные хранятся в localStorage (crmpanel:promoPlan).
+   План общий для всей команды: строки лежат в app.promo_plan и правятся
+   через /api/promo/plan. Правка идёт по одному полю вместе с версией строки —
+   если её успел изменить кто-то ещё, сервер отвечает 409 и раздел перечитывает
+   план, а не затирает чужое. Раз в 30 секунд подтягиваются чужие правки.
    ========================================================= */
 
 /* ---------- справочники ---------- */
@@ -82,7 +85,9 @@ var PROMO_PROD_ALIAS = {
   'Каско':'Каско', 'Инвестиции':'Инвестиции'
 };
 
-/* партнёры: partner_name, только латиница (регистровые дубли схлопнуты) */
+/* Партнёры: фолбэк на случай недоступного справочника. Основной источник —
+   dictionary.d_partner (GET /api/dictionaries/partners), куда этот список и залит
+   миграцией V25; см. promoFillPartnerList. Здесь он больше не правится. */
 var PROMO_PARTNERS = [
   'A7','A7-Veksel','Absolut','ADengi','Agroros','Ak-Bars','Alfa','AlphaStrahovanie','BankKazan',
   'Belkacredit','Beregovoy','Bistrodengi','BJF','BKS','Blanc','Caranga','CarMoney','Cash-to-you',
@@ -104,67 +109,8 @@ var PROMO_PARTNERS = [
 
 var PROMO_JIRA_BASE = 'https://jira.banki.ru/browse/';
 
-/* ---------- исходные данные (июль–август 2026) ---------- */
-var PROMO_SEED = [
-  { d:'2026-07-07', product:'КК', base:'КК, ПК', chan:'push', total:false, name:'Альфа-Карта', owner:'Саша', status:'запланировано', note:'' },
-  { d:'2026-07-08', product:'Ипотека', base:'Вся база Москва+МО', chan:'email, push', total:false, name:'Береговой 8% (премиум ипотека) (гео)', owner:'Саша', status:'запланировано', note:'' },
-  { d:'2026-07-08', product:'РКО', base:'Бизнес', chan:'email', total:false, name:'ВТБ РКО', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-08', product:'КВ', base:'КВ, Инвестиции', chan:'email, push', total:false, name:'Альфа Банк', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-09', product:'general', base:'Диалог', chan:'push, email', total:false, name:'Диалог', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-09', product:'КК', base:'КК, ПК', chan:'email', total:false, name:'Т-Банк Карта', owner:'', status:'', note:'' },
-  { d:'2026-07-09', product:'general', base:'клики и открытия из 1-го промо', chan:'email, push', total:false, name:'Розыгрыш Steam', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-10', product:'ДК', base:'ДК, ОСАГО, Вклады', chan:'push, email', total:false, name:'Плати по миру', owner:'Саша', status:'', note:'' },
-  { d:'2026-07-10', product:'general', base:'КВ, Инвестиции', chan:'email, push', total:false, name:'Розыгрыш Ozon', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-10', product:'general', base:'КК, ПК, Ипотека, КПЗН', chan:'email, push', total:false, name:'Розыгрыш Ozon', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-11', product:'КК', base:'КК, ПК', chan:'push', total:false, name:'Т-Банк Карта', owner:'', status:'запланировано', note:'' },
-  { d:'2026-07-11', product:'general', base:'Диалог', chan:'push, email', total:false, name:'Диалог', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-11', product:'ОСАГО', base:'ОСАГО', chan:'email', total:false, name:'ОСАГО от Ренессанс', owner:'Таня', status:'запланировано', note:'' },
-  { d:'2026-07-13', product:'КПЗН', base:'КПЗН, Ипотека', chan:'email', total:false, name:'Кредит-Клаб', owner:'', status:'', note:'' },
-  { d:'2026-07-13', product:'КК', base:'', chan:'email', total:false, name:'Уралсиб', owner:'', status:'', note:'' },
-  { d:'2026-07-13', product:'general, ИС', base:'Диалог', chan:'push', total:false, name:'Диалог', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-13', product:'Вклады', base:'Вклады, НС, ДК, КВ, Инвестиции', chan:'email, push', total:false, name:'БЖФ', owner:'Таня', status:'запланировано', note:'' },
-  { d:'2026-07-14', product:'general', base:'ИС, ОСАГО, Каско', chan:'email', total:false, name:'НР: Бонус за отзыв в НРСК (Альфа страхование)', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-14', product:'general', base:'Диалог', chan:'push', total:false, name:'Диалог', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-15', product:'ДК', base:'Тотал', chan:'push', total:true, name:'ВТБ', owner:'Саша', status:'запланировано', note:'' },
-  { d:'2026-07-15', product:'РКО', base:'Бизнес', chan:'email', total:false, name:'Инго Банк РКО', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-15', product:'ОСАГО', base:'ОСАГО', chan:'email', total:false, name:'Новости: Выплаты по ОСАГО выросли на 10%: что изменилось и почему это важно', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-16', product:'КК', base:'КК, ПК', chan:'email', total:false, name:'Уралсиб', owner:'Саша', status:'запланировано', note:'https://jira.banki.ru/browse/CRM-8742' },
-  { d:'2026-07-16', product:'КПЗН', base:'', chan:'', total:false, name:'Норвик', owner:'', status:'', note:'' },
-  { d:'2026-07-16', product:'general', base:'Диалог', chan:'email, push', total:false, name:'Диалог', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-16', product:'general', base:'Инвестиции, КВ', chan:'email, push', total:false, name:'Розыгрыш Ozon (напоминание)', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-17', product:'КВ', base:'КВ', chan:'email', total:false, name:'Новости: Порвал/испортил доллар, что с ним делать', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-17', product:'ОСАГО', base:'ОСАГО', chan:'email', total:false, name:'Новости: Реальная история: ездил без полиса, попал в ДТП, заплатил 700 000 ₽ и не смог списать долг', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-17', product:'ДК', base:'ДК, МФО', chan:'push', total:false, name:'Плати по миру', owner:'', status:'запланировано', note:'https://jira.banki.ru/browse/CRM-8745' },
-  { d:'2026-07-18', product:'ОСАГО', base:'ОСАГО', chan:'email, push', total:false, name:'ОСАГО Авто (3 письмо)', owner:'Таня', status:'', note:'' },
-  { d:'2026-07-18', product:'ДК', base:'ДК, ОСАГО, ПК', chan:'push', total:false, name:'ПСБ 1000 Б', owner:'', status:'запланировано', note:'https://jira.banki.ru/browse/CRM-8759' },
-  { d:'2026-07-20', product:'ОСАГО', base:'ОСАГО', chan:'email', total:false, name:'Новости: Где найти ОСАГО дешевле: сравнение цен от 23 страховых на Банки.ру', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-20', product:'general, ИС', base:'Диалог', chan:'email, push', total:false, name:'Диалог', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-20', product:'РКО', base:'Бизнес', chan:'email', total:false, name:'ПСБ РКО', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-20', product:'Вклады', base:'Вклады, НС, ДК, КВ, Инвестиции', chan:'email, push', total:false, name:'Банк Свой', owner:'Таня', status:'запланировано', note:'https://jira.banki.ru/browse/CRM-8650' },
-  { d:'2026-07-21', product:'Вклады', base:'Тотал', chan:'email, push', total:true, name:'', owner:'Таня', status:'', note:'' },
-  { d:'2026-07-22', product:'general', base:'Диалог', chan:'push', total:false, name:'Диалог', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-22', product:'ДК', base:'ДК, Инвестиции, Вклады', chan:'email, push', total:false, name:'Уралсиб', owner:'', status:'запланировано', note:'CRM-8748 и CRM-8749; меняем на КК уралсиб' },
-  { d:'2026-07-22', product:'ОСАГО', base:'ОСАГО', chan:'email', total:false, name:'Новости: Где найти ОСАГО дешевле: сравнение цен от 23 страховых на Банки.ру', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-22', product:'ПК', base:'ПК', chan:'email, push', total:false, name:'Лояльность Экстра-бонус по кредиту за 1 Б', owner:'Таня', status:'', note:'кредитование' },
-  { d:'2026-07-23', product:'ОСАГО', base:'', chan:'email, push', total:false, name:'ОСАГО Авто (4 письмо)', owner:'Таня', status:'', note:'' },
-  { d:'2026-07-23', product:'КВ', base:'КВ', chan:'email', total:false, name:'Новости: Прогноз по юаню до конца лета', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-23', product:'ДК', base:'КК, ПК, МФО', chan:'push', total:false, name:'Займер', owner:'Саша', status:'запланировано', note:'https://jira.banki.ru/browse/CRM-8746' },
-  { d:'2026-07-24', product:'Вклады', base:'Тотал', chan:'email', total:true, name:'ЦБ (решение)', owner:'Таня', status:'', note:'' },
-  { d:'2026-07-25', product:'КВ', base:'КВ', chan:'email', total:false, name:'Новости: Заседание ЦБ — что будет с рублем', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-25', product:'ДК', base:'ПК, ДК', chan:'email', total:false, name:'ПСБ 1000 Б', owner:'', status:'запланировано', note:'https://jira.banki.ru/browse/CRM-8760' },
-  { d:'2026-07-25', product:'general', base:'Диалог', chan:'email, push', total:false, name:'Диалог', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-26', product:'ОСАГО', base:'ОСАГО, ИС', chan:'email, push', total:false, name:'Промо для наших клиентов / Кэшбэк начисляем быстрее', owner:'Таня', status:'', note:'https://jira.banki.ru/browse/CRM-8774' },
-  { d:'2026-07-27', product:'КВ', base:'КВ', chan:'email, push', total:false, name:'Камкомбанк', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-27', product:'РКО', base:'Бизнес', chan:'email', total:false, name:'РКО Ozon', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-07-27', product:'ОСАГО', base:'ОСАГО', chan:'email, push', total:false, name:'для ОСАГО мото', owner:'Таня', status:'', note:'' },
-  { d:'2026-07-28', product:'КК', base:'Тотал', chan:'email', total:true, name:'Альфа', owner:'', status:'запланировано', note:'CRM-8734; если что, меняем на Т-Банк' },
-  { d:'2026-07-29', product:'ПК', base:'ПК', chan:'email, push', total:false, name:'Лояльность Экстра-бонус по кредиту за 1 Б', owner:'Таня', status:'', note:'Среда, кредитование' },
-  { d:'2026-07-29', product:'НС', base:'Вклады, НС, Инвестиции, ДК, КВ', chan:'', total:false, name:'НС Морской банк с повышенной ставкой', owner:'Таня', status:'', note:'https://jira.banki.ru/browse/CRM-8650' },
-  { d:'2026-07-30', product:'КПЗН', base:'ИС, Ипотека, КПЗН', chan:'email', total:false, name:'Рефинансирование', owner:'', status:'запланировано', note:'https://jira.banki.ru/browse/CRM-8748' },
-  { d:'2026-07-31', product:'КВ', base:'КВ', chan:'email', total:false, name:'Новости: Прогноз евро и доллара на август', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-08-01', product:'Кредит для бизнеса', base:'Бизнес', chan:'email', total:false, name:'Займы для бизнеса Доброзайм', owner:'Юля', status:'запланировано', note:'' },
-  { d:'2026-08-01', product:'ПК', base:'ПК', chan:'push, email', total:false, name:'Лояльность Экстра-бонус по кредиту за 1 Б', owner:'Таня', status:'', note:'кредитование' },
-];
+/* Демо-данных больше нет: план общий и живёт в app.promo_plan.
+   Пустая таблица — нормальное стартовое состояние. */
 
 var PROMO_DOW = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
 var PROMO_MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
@@ -176,7 +122,6 @@ var PROMO_COLS = 12;          /* колонок до кнопки «+» в ст�
 var PROMO_CAL_ICO = '<svg class="cal-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
   '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>';
-var PROMO_VER = 3;            /* версия схемы строк */
 var PROMO_ROWS = [];
 var PROMO_EDIT = null;        /* { i, k, v } — v это черновик правки */
 var PROMO_NEW = null;         /* форма новой записи над таблицей */
@@ -246,92 +191,102 @@ function promoUniqSlug(v){
     .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
-/* v1/v2 → v3: продукт и каналы к справочникам, задача из комментария,
-   прежнее название в комментарий, одна запись — один канал */
-function promoMigrateRows(rows){
-  var out = [];
-  rows.forEach(function(r){
-    var o = {
-      d: r.d || '',
-      product: promoNormProduct(r.product),
-      partner: r.partner || '',
-      base: r.base || '',
-      chan: promoNormChan(r.chan),
-      total: !!r.total,
-      uniq: r.uniq || '',
-      task: r.task || '',
-      owner: r.owner || '',
-      status: r.status || '',
-      note: r.note || ''
-    };
-    if (!o.task){
-      var key = promoTaskKey(o.note);
-      if (key){
-        o.task = key;
-        if (/^https?:\/\/\S+$/.test(o.note.trim())) o.note = '';
-      }
-    }
-    /* прежнее «Название коммуникации» переезжает в комментарий:
-       теперь название собирается автоматически по формату source */
-    var old = (r.name || '').trim();
-    if (old && !/^[a-z-]+_(promo|trigger)_/.test(old)){
-      o.note = o.note ? (o.note + '; ' + old) : old;
-      if (!o.uniq) o.uniq = promoUniqSlug(old).slice(0, 40);
-    }
-    /* одна запись = один канал */
-    if (o.chan.length <= 1){ out.push(o); return; }
-    o.chan.forEach(function(c){
-      var copy = Object.assign({}, o);
-      copy.chan = [c];
-      out.push(copy);
-    });
-  });
-  return out;
-}
-function promoSeedRows(){ return promoMigrateRows(PROMO_SEED); }
-
-/* архив: у прошедших дат «запланировано» → «отправлено» */
-function promoArchiveSync(){
-  var changed = false;
-  PROMO_ROWS.forEach(function(r){
-    if (promoIsPast(r.d) && r.status === 'запланировано'){ r.status = 'отправлено'; changed = true; }
-  });
-  return changed;
-}
 function promoStatusShown(r){
   if (!promoIsPast(r.d)) return r.status || '';
   if (r.status === 'отправлено' || r.status === 'отменено') return r.status;
   return PROMO_STATUS_ASK;
 }
 
+/* ============================================================
+   ОБМЕН С СЕРВЕРОМ
+
+   План общий для команды и лежит в app.promo_plan. У строки есть id и ver
+   (timestamp_upd, каким его видел этот браузер). Правку шлём по одному полю
+   вместе с ver: если в базе версия уже другая — сервер отвечает 409, значит
+   строку успел поменять кто-то ещё, и мы перечитываем план вместо того,
+   чтобы затереть чужую правку.
+
+   Перевод прошедших «запланировано» → «отправлено» теперь делает сервер при
+   чтении списка: раньше это делал каждый клиент у себя и тут же сохранял,
+   то есть на общей таблице запись шла бы с каждого открытия страницы.
+   ============================================================ */
+var PROMO_API = '/api/promo/plan';
+var PROMO_REFRESH_MS = 30000;   /* подтягиваем чужие правки */
+var _promoTimer = null;
+var _promoLoading = false;
+
+/* Права промо по глаголам — зеркало серверной матрицы (CRM.can, раздел promo).
+   Кнопки по ним прячем; истина на сервере (AccessGuard.requireCapability). */
+function promoCan(cap){ return !!(window.CRM && CRM.can && CRM.can(cap, 'promo')); }
+
+/* fetch с разбором ошибки: нужен код статуса (409 обрабатываем отдельно). */
+function promoReq(method, path, body){
+  var opts = { method: method, credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
+  if (body !== undefined){
+    opts.headers['Content-Type'] = 'application/json; charset=utf-8';
+    opts.body = JSON.stringify(body);
+  }
+  return fetch(PROMO_API + (path || ''), opts).then(function(r){
+    if (r.status === 401){ location.href = 'login.html'; throw { status: 401 }; }
+    if (!r.ok){
+      return r.text().then(function(t){
+        var msg = t;
+        try { msg = JSON.parse(t).message || t; } catch(e){}
+        throw { status: r.status, message: msg };
+      });
+    }
+    return r.status === 204 ? null : r.text().then(function(t){ return t ? JSON.parse(t) : null; });
+  });
+}
+
+/* Ошибка операции: 409 — чужая правка, перечитываем; остальное показываем. */
+function promoFail(e){
+  PROMO_EDIT = null;
+  if (e && e.status === 409){
+    alert(pmT('Строку изменил другой пользователь. Показываю актуальные данные.'));
+  } else if (e && e.status === 404){
+    alert(pmT('Строку уже удалили. Показываю актуальные данные.'));
+  } else if (e && e.status === 403){
+    alert(pmT('Нет прав на изменение плана.'));
+  } else if (e && e.status !== 401){
+    alert(pmT('Не удалось сохранить: ') + ((e && e.message) || e));
+  }
+  return promoLoad();
+}
+
+/* Заменить строку в наборе на пришедшую с сервера (по id). */
+function promoApplyRow(row){
+  if (!row) return;
+  for (var i = 0; i < PROMO_ROWS.length; i++){
+    if (PROMO_ROWS[i].id === row.id){ PROMO_ROWS[i] = row; return; }
+  }
+  PROMO_ROWS.push(row);
+}
+
 function promoLoad(){
-  var raw = null, ver = 0;
-  try {
-    raw = localStorage.getItem('crmpanel:promoPlan');
-    ver = parseInt(localStorage.getItem('crmpanel:promoPlanVer') || '0', 10) || 0;
-  } catch(e){}
-  if (!raw){ PROMO_ROWS = promoSeedRows(); promoArchiveSync(); promoSave(); return; }
-  try {
-    var rows = JSON.parse(raw);
-    PROMO_ROWS = (ver >= PROMO_VER)
-      ? rows.map(function(r){ r.chan = promoNormChan(r.chan); return r; })
-      : promoMigrateRows(rows);
-    promoArchiveSync();
-    promoSave();
-  } catch(e){ PROMO_ROWS = promoSeedRows(); promoArchiveSync(); promoSave(); }
+  if (_promoLoading) return Promise.resolve();
+  _promoLoading = true;
+  return promoReq('GET', '').then(function(rows){
+    PROMO_ROWS = (rows || []).map(function(r){ r.chan = promoNormChan(r.chan); return r; });
+    promoRender();
+  }).catch(function(e){
+    if (e && e.status === 403){
+      var body = document.getElementById('promoBody');
+      if (body) body.innerHTML = '<tr><td colspan="13" class="empty">' + pmT('Нет доступа к разделу') + '</td></tr>';
+    }
+  }).then(function(){ _promoLoading = false; });
 }
-function promoSave(){
-  try {
-    localStorage.setItem('crmpanel:promoPlan', JSON.stringify(PROMO_ROWS));
-    localStorage.setItem('crmpanel:promoPlanVer', String(PROMO_VER));
-  } catch(e){}
-}
-function promoReset(){
-  if (!confirm(pmT('Сбросить таблицу к исходным данным?'))) return;
-  PROMO_ROWS = promoSeedRows();
-  promoArchiveSync();
-  PROMO_EDIT = null; PROMO_NEW = null;
-  promoSave(); promoRender();
+
+/* Пока раздел открыт — подтягиваем чужие правки. Во время правки ячейки
+   и заведения записи не трогаем, чтобы не выдёргивать поле из-под рук. */
+function promoAutoRefresh(){
+  if (_promoTimer) return;
+  _promoTimer = setInterval(function(){
+    var sec = document.getElementById('sec-promo');
+    if (!sec || sec.offsetParent === null) return;   /* раздел не открыт */
+    if (PROMO_EDIT || PROMO_NEW) return;
+    promoLoad();
+  }, PROMO_REFRESH_MS);
 }
 
 /* ---------- название коммуникации (формат Конструктора source) ---------- */
@@ -580,6 +535,9 @@ function promoActs(disabled){
 function promoCell(x, k, html, editor){
   if (promoIsEditing(x.i, k))
     return '<td class="c-' + k + ' cell-edit"><div class="ed">' + editor + promoActs(false) + '</div></td>';
+  /* без права edit ячейка не кликабельна: убираем класс editable (курсор/ховер) и data-*,
+     на которые вешается открытие редактора. Значение остаётся видимым — только чтение. */
+  if (!promoCan('edit')) return '<td class="c-' + k + '">' + html + '</td>';
   return '<td class="c-' + k + ' editable" data-i="' + x.i + '" data-k="' + k + '">' + html + '</td>';
 }
 function promoChanCls(c){
@@ -621,8 +579,10 @@ function promoRender(){
             '<span class="d-num">' + pmEsc(promoFmtDate(r.d)) + '</span>' +
             '<span class="d-dow">' + pmT(promoDow(r.d)) + '</span>' +
           '</td>' +
-          '<td class="date-add"><button class="row-add" type="button" title="' + pmT('Добавить запись на эту дату') +
-            '" onclick="promoNewOpen(\'' + r.d + '\')">+</button></td></tr>';
+          '<td class="date-add">' + (promoCan('add')
+            ? '<button class="row-add" type="button" title="' + pmT('Добавить запись на эту дату') +
+              '" onclick="promoNewOpen(\'' + r.d + '\')">+</button>'
+            : '') + '</td></tr>';
       }
       html += promoRowHtml(x);
     });
@@ -684,9 +644,14 @@ function promoRowHtml(x){
     '<div class="hint-s" id="promoUniqHint">' + pmT('Латиница, цифры и дефис') + '</div></div>';
 
   var nm = promoBuildName(r);
+  /* Приоритет — авто-собранное имя (правила Конструктора source). Если частей не хватает
+     (например, строка пришла импортом без партнёра/уник.имени), показываем сохранённое
+     «Название коммуникации» из БД (r.commName), и только если и его нет — подсказку. */
   var nameHtml = nm.ok
     ? '<span class="src-name">' + pmEsc(nm.value) + '</span>'
-    : '<span class="need" title="' + pmT('Название собирается автоматически') + '">' + pmT('нужно заполнить') + ': ' + pmEsc(nm.miss.join(', ')) + '</span>';
+    : (r.commName
+        ? '<span class="src-name" title="' + pmT('Название из импорта') + '">' + pmEsc(r.commName) + '</span>'
+        : '<span class="need" title="' + pmT('Название собирается автоматически') + '">' + pmT('нужно заполнить') + ': ' + pmEsc(nm.miss.join(', ')) + '</span>');
 
   var taskEd = '<input class="cell-in" value="' + pmAttr(draft != null ? draft : r.task) +
     '" placeholder="CRM-8748" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
@@ -724,6 +689,7 @@ function promoRowHtml(x){
     promoCell(x, 'base', r.base ? '<span class="multi">' + pmEsc(r.base) + '</span>' : '—', baseEd) +
     promoCell(x, 'chan', promoChanBadges(r.chan), chanEd) +
     '<td class="c-total"><input type="checkbox" ' + (r.total ? 'checked' : '') +
+      (promoCan('edit') ? '' : ' disabled') +
       ' onchange="promoSetTotal(' + i + ',this.checked)">' + warnIcon + '</td>' +
     promoCell(x, 'uniq', r.uniq ? '<span class="src-name">' + pmEsc(r.uniq) + '</span>' : '—', uniqEd) +
     '<td class="c-name">' + nameHtml + '</td>' +
@@ -731,12 +697,15 @@ function promoRowHtml(x){
     promoCell(x, 'owner', pmEsc(r.owner) || '—', ownerEd) +
     promoCell(x, 'status', '<span class="st ' + stCls + '">' + (pmEsc(shown) || '—') + '</span>', statusEd) +
     promoCell(x, 'note', r.note ? '<span class="multi">' + pmEsc(r.note) + '</span>' : '—', noteEd) +
-    '<td><button class="row-del" type="button" title="' + pmT('Удалить строку') + '" onclick="promoDelRow(' + i + ')">×</button></td>' +
+    '<td>' + (promoCan('delete')
+      ? '<button class="row-del" type="button" title="' + pmT('Удалить строку') + '" onclick="promoDelRow(' + i + ')">×</button>'
+      : '') + '</td>' +
   '</tr>';
 }
 
 /* ---------- форма новой записи ---------- */
 function promoNewOpen(iso){
+  if (!promoCan('add')) return;
   PROMO_EDIT = null;
   PROMO_NEW = { d: iso || promoToday(), product:'', partner:'', base:'', chan: [], total:false,
                 uniq:'', task:'', owner:'', status: PROMO_STATUS_NEW, note:'', err:'' };
@@ -782,13 +751,18 @@ function promoNewSave(){
   var n = PROMO_NEW;
   if (!n.d || !n.chan.length) return;
   if (n.uniq && !promoUniqOk(n.uniq)) return;
-  n.chan.forEach(function(c){
-    PROMO_ROWS.push({ d:n.d, product:n.product, partner:n.partner, base:n.base, chan:[c],
-                      total:!!n.total, uniq:n.uniq, task: promoTaskKey(n.task) || n.task,
-                      owner:n.owner, status:n.status || PROMO_STATUS_NEW, note:n.note });
-  });
+  if (!promoCan('add')){ alert(pmT('Нет прав на добавление записей.')); return; }
+  /* каналы уходят одним запросом — сервер сам создаст по строке на канал */
+  var body = { d:n.d, product:n.product, partner:n.partner, base:n.base, chan:n.chan,
+               total:!!n.total, uniq:n.uniq, task: promoTaskKey(n.task) || n.task,
+               owner:n.owner, status:n.status || PROMO_STATUS_NEW, note:n.note };
   PROMO_NEW = null;
-  promoSave(); promoRender();
+  promoReq('POST', '', body)
+    .then(function(created){
+      (created || []).forEach(promoApplyRow);
+      promoRender();
+    })
+    .catch(promoFail);
 }
 function promoNewRowHtml(){
   var n = PROMO_NEW;
@@ -838,6 +812,7 @@ function promoNewRowHtml(){
 
 /* ---------- правка ячеек ---------- */
 function promoEdit(i, k){
+  if (!promoCan('edit')) return;
   var r = PROMO_ROWS[i];
   if (!r) return;
   var v = r[k];
@@ -874,45 +849,65 @@ function promoKey(e, multiline){
 function promoCommit(){
   if (!PROMO_EDIT) return;
   var e = PROMO_EDIT, r = PROMO_ROWS[e.i];
-  if (r){
-    var v = e.v;
-    if (e.k === 'uniq'){
-      v = String(v || '').trim();
-      if (v && !promoUniqOk(v)){ promoDraftUniq(v); return; }
-    }
-    if (e.k === 'd' && !String(v || '').trim()){ PROMO_EDIT = null; promoRender(); return; }  /* дату не очищаем */
-    if (e.k === 'task') v = promoTaskKey(v) || String(v || '').trim();
-    if (e.k === 'chan'){
-      var list = promoNormChan(v);
-      r.chan = list.slice(0, 1);
-      /* один канал = одна запись: остальные каналы уходят в копии строки */
-      list.slice(1).forEach(function(c){
-        var copy = Object.assign({}, r);
-        copy.chan = [c];
-        PROMO_ROWS.push(copy);
-      });
-      PROMO_EDIT = null;
-      promoSave(); promoRender();
-      return;
-    }
-    if (typeof v === 'string' && e.k !== 'base' && e.k !== 'note') v = v.trim();
-    r[e.k] = v;
+  if (!r){ PROMO_EDIT = null; promoRender(); return; }
+
+  var v = e.v;
+  if (e.k === 'uniq'){
+    v = String(v || '').trim();
+    if (v && !promoUniqOk(v)){ promoDraftUniq(v); return; }
   }
+  if (e.k === 'd' && !String(v || '').trim()){ PROMO_EDIT = null; promoRender(); return; }  /* дату не очищаем */
+  if (e.k === 'task') v = promoTaskKey(v) || String(v || '').trim();
+  if (e.k === 'chan') v = promoNormChan(v);   /* несколько каналов сервер развернёт в копии строк */
+  if (typeof v === 'string' && e.k !== 'base' && e.k !== 'note') v = v.trim();
+
+  /* значение не изменилось — на сервер не ходим */
+  var was = r[e.k];
+  var same = Array.isArray(v) ? String(was) === String(v) : String(was == null ? '' : was) === String(v == null ? '' : v);
   PROMO_EDIT = null;
-  promoSave(); promoRender();
+  if (same){ promoRender(); return; }
+
+  promoPatch(r, e.k, v);
 }
 function promoCancel(){ PROMO_EDIT = null; promoRender(); }
+
+/* Правка одного поля строки. ver — версия, которую видел этот браузер:
+   разошлась — сервер вернёт 409, и мы перечитаем план (см. promoFail). */
+function promoPatch(row, field, value){
+  if (!promoCan('edit')){ alert(pmT('Нет прав на изменение плана.')); return promoLoad(); }
+  var prev = row[field];
+  row[field] = value;          /* оптимистично показываем сразу */
+  promoRender();
+  return promoReq('PATCH', '/' + row.id, { field: field, value: value, ver: row.ver })
+    .then(function(updated){
+      if (field === 'chan' && Array.isArray(value) && value.length > 1){
+        return promoLoad();    /* сервер создал копии строк — проще перечитать */
+      }
+      promoApplyRow(updated);
+      promoRender();
+    })
+    .catch(function(err){ row[field] = prev; return promoFail(err); });
+}
+
 function promoSetTotal(i, on){
-  if (!PROMO_ROWS[i]) return;
-  PROMO_ROWS[i].total = !!on;
-  promoSave(); promoRender();
+  var r = PROMO_ROWS[i];
+  if (!r) return;
+  promoPatch(r, 'total', !!on);
 }
 function promoAddRow(iso){ promoNewOpen(iso); }
 function promoDelRow(i){
+  var r = PROMO_ROWS[i];
+  if (!r) return;
+  if (!promoCan('delete')){ alert(pmT('Нет прав на удаление записей.')); return; }
   if (!confirm(pmT('Удалить строку?'))) return;
-  PROMO_ROWS.splice(i, 1);
   PROMO_EDIT = null;
-  promoSave(); promoRender();
+  promoReq('DELETE', '/' + r.id)
+    .then(function(){
+      var at = PROMO_ROWS.indexOf(r);
+      if (at > -1) PROMO_ROWS.splice(at, 1);
+      promoRender();
+    })
+    .catch(promoFail);
 }
 
 /* клик мимо ячейки = сохранить; клик по другой ячейке сразу открывает её */
@@ -955,7 +950,7 @@ function promoExportCsv(){
     var nm = promoBuildName(r);
     return [promoFmtDate(r.d), promoDow(r.d), r.product, r.partner, r.base,
             (r.chan || []).join(', '), r.total ? 'TRUE' : 'FALSE', r.uniq,
-            nm.ok ? nm.value : '', key ? PROMO_JIRA_BASE + key : '', r.owner,
+            nm.ok ? nm.value : (r.commName || ''), key ? PROMO_JIRA_BASE + key : '', r.owner,
             promoStatusShown(r), r.note, f.bad.concat(f.warn).join(' | ')];
   });
   var csv = [head].concat(rows).map(function(line){
@@ -969,13 +964,25 @@ function promoExportCsv(){
   URL.revokeObjectURL(a.href);
 }
 
-/* справочник партнёров для ввода с подсказкой */
-function promoFillPartnerList(){
+/* Справочник партнёров для ввода с подсказкой — dictionary.d_partner (тот же
+   источник, что у поля «Partner name» в карточке шаблона). Пока список не приехал,
+   подставляем зашитый PROMO_PARTNERS: он же остаётся фолбэком, если справочник
+   недоступен, — поле в любом случае свободное для ввода. */
+function promoRenderPartnerList(list){
   var dl = document.getElementById('promoPartnerList');
-  if (!dl || dl.childElementCount) return;
-  dl.innerHTML = PROMO_PARTNERS.map(function(p){ return '<option value="' + pmAttr(p) + '">'; }).join('');
+  if (!dl) return;
+  dl.innerHTML = (list || []).map(function(p){ return '<option value="' + pmAttr(p) + '">'; }).join('');
+}
+function promoFillPartnerList(){
+  promoRenderPartnerList(PROMO_PARTNERS);
+  if (!window.CRM || !CRM.dictPartners) return;
+  CRM.dictPartners().then(function(list){
+    if (Array.isArray(list) && list.length) promoRenderPartnerList(list);
+  }).catch(function(){ /* справочник недоступен — остаётся зашитый список */ });
 }
 
-promoLoad();
+/* Первая загрузка плана с сервера; дальше раздел сам подтягивает чужие правки. */
 promoFillPartnerList();
 promoRender();
+promoLoad();
+promoAutoRefresh();

@@ -4,7 +4,17 @@
    Данные — v1-объект (CRM.dtoToV1), сохранение — CRM.updateTemplate.
    ==================================================================================== */
 var SFD_STATE = null; /* { id, orig, work, editing:{}, pushOS } */
+/* Подписи каналов — единственное место, где они заданы: карточка, пикер
+   «Просмотра настроек» и список шаблонов берут их отсюда. */
+var CH_LABELS = { sms:'SMS', push:'Push', 'mobile-push':'Push', email:'Email',
+                  cc:'КЦ', fa:'FA', vk:'VK', la:'Live Activity' };
+/* Подписи каналов — используются в карточке и в пикере «Просмотра настроек». */
+var CH_LABELS = { sms:'SMS', push:'Push', 'mobile-push':'Push', email:'Email', cc:'КЦ', fa:'FA', vk:'VK', la:'Live Activity' };
 function sfdT(s){ return (typeof t === 'function') ? t(s) : s; }
+/* Права на шаблоны по глаголу. Операции лежат за двумя разделами — admin (мастер) и
+   templates (список); право достаточно иметь в любом из них, как и проверяет сервер
+   (AccessGuard.requireCapability(cap, ADMIN, TEMPLATES)). Кнопки прячем — сервер отбивает. */
+function sfdCan(cap){ return !!(window.CRM && CRM.can && CRM.can(cap, 'admin', 'templates')); }
 function sfdEsc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
 
 function renderTemplateDetails(data, templateId) {
@@ -73,8 +83,23 @@ function sfdComputeCampaignName(d){
     if (senderType === 'promo') return tab + '_' + senderType + '_' + product + '_' + partner + '_' + comname + '_' + date;
     return tab + '_' + senderType + '_' + product + '_' + comname + '_' + day + 'day';
 }
-var SFD_NAME_KEYS = { trigger:1, product:1, partner:1, comname:1, day:1, segment:1,
+/* touch здесь не ради comname/source (они его не используют), а ради адреса
+   отправителя: renewal — первое условие в правиле. */
+var SFD_NAME_KEYS = { trigger:1, product:1, partner:1, comname:1, day:1, segment:1, touch:1,
     marketplace:1, cross:1, dialog:1, loyalty:1, national_rating:1, news:1, mobile_app:1 };
+/* Адрес отправителя e-mail — копия generateEmail из v2. Порядок проверок значимый:
+   renewal (по touch_point) → service → info (по business_communication_type) →
+   trigger+adv → promo+adv (по trigger_type) → newsletter как общий случай. */
+function sfdComputeEmailFrom(d){
+    var email;
+    if (d.touch === 'renewal') email = 'renewal@email.banki.ru';
+    else if (d.biz_type === 'service') email = 'no-reply@email.banki.ru';
+    else if (d.biz_type === 'info') email = 'inform@email.banki.ru';
+    else if (d.trigger === 'trigger' && d.biz_type === 'adv') email = 'offers@email.banki.ru';
+    else if (d.trigger === 'promo' && d.biz_type === 'adv') email = 'advice@email.banki.ru';
+    else email = 'newsletter@email.banki.ru';
+    return 'Банки.ру<' + email + '>';
+}
 function sfdRecalcNames(){
     var st = SFD_STATE; if (!st) return;
     var d = st.work;
@@ -85,25 +110,127 @@ function sfdRecalcNames(){
     if (d.channel === 'email'){
         d.service_flag = d.biz_type === 'service';
         d.info_flag = d.biz_type === 'info';
+        d.email_from = sfdComputeEmailFrom(d);
     }
+}
+
+/* ---------- справочники значений для карточки ----------
+   dictionary.d_touch_point и dictionary.d_communication_name уже отдаются бэкендом
+   (/api/dictionaries/*). Раньше их подтягивал wizard.js в старые канальные формы;
+   формы ушли вместе с переходом мастера на карточку, и поля снова стали обычным
+   вводом руками. Тянем справочники сюда: touch_point — строгий список, а
+   communication_name — список с возможностью вписать своё (новые имена заводятся
+   постоянно, запрещать их нельзя). */
+/* Оба списка одинаковы для всех каналов (справочники ни от чего не зависят),
+   поэтому тянем их по одному разу за загрузку страницы. */
+var SFD_DICT = { touch: null, comm: null, product: null, partner: null };
+var SFD_DICT_REQ = {};                      /* что уже запрошено, чтобы не дёргать API повторно */
+
+function sfdEnsureDicts(channel){
+    if (!window.CRM) return;
+    if (SFD_DICT.partner === null && !SFD_DICT_REQ.partner && CRM.dictPartners){
+        SFD_DICT_REQ.partner = true;
+        CRM.dictPartners().then(function(list){
+            SFD_DICT.partner = list || [];
+            sfdRender();
+        }).catch(function(){ SFD_DICT.partner = []; });
+    }
+    if (SFD_DICT.touch === null && !SFD_DICT_REQ.touch && CRM.dictTouchPoints){
+        SFD_DICT_REQ.touch = true;
+        CRM.dictTouchPoints().then(function(list){
+            SFD_DICT.touch = list || [];
+            sfdRender();      /* справочник приехал — перерисовываем с готовым списком */
+        }).catch(function(){ SFD_DICT.touch = []; });
+    }
+    if (SFD_DICT.product === null && !SFD_DICT_REQ.product && CRM.dictProductTypes){
+        SFD_DICT_REQ.product = true;
+        CRM.dictProductTypes().then(function(list){
+            SFD_DICT.product = list || [];
+            sfdRender();
+        }).catch(function(){ SFD_DICT.product = []; });
+    }
+    if (SFD_DICT.comm === null && !SFD_DICT_REQ.comm && CRM.dictCommNames){
+        SFD_DICT_REQ.comm = true;
+        CRM.dictCommNames(channel || '').then(function(list){
+            SFD_DICT.comm = list || [];
+            sfdRender();
+        }).catch(function(){ SFD_DICT.comm = []; });
+    }
+}
+
+/* Список для выпадашки: справочник + текущее значение, если его там нет.
+   Без этого открытие старого шаблона со снятым из справочника значением
+   молча подменяло бы его первым пунктом списка. */
+function sfdDictOpts(list, current, withEmpty){
+    var out = (list || []).slice();
+    var cur = String(current == null ? '' : current);
+    if (cur && out.indexOf(cur) === -1) out.unshift(cur);
+    if (withEmpty) out.unshift('');
+    return out;
+}
+
+/* Какие поля карточки умеют пополнять свой справочник (кнопка «+» рядом с полем).
+   Пока только партнёр: остальные списки правятся осознанно, а партнёр появляется
+   в работе раньше, чем кто-то успевает добавить его в справочник. */
+var SFD_DICT_ADD = {
+    partner: function(name){ return CRM.dictAddPartner(name); }
+};
+
+/* Занести введённое в поле значение в справочник и подставить обратно то,
+   что вернул сервер (он может вернуть уже существующее написание). */
+function sfdDictAdd(key, btn){
+    var api = SFD_DICT_ADD[key];
+    if (!api || !window.CRM) return;
+    var row = btn.closest('.sfd-row');
+    var inp = row && row.querySelector('.sfd-edit[data-k="' + key + '"]');
+    var value = inp ? String(inp.value || '').trim() : '';
+    if (!value){ alert(sfdT('Сначала впишите значение.')); return; }
+    var list = SFD_DICT[key] || [];
+    var same = list.filter(function(o){ return String(o).toLowerCase() === value.toLowerCase(); })[0];
+    if (same){
+        /* уже в справочнике — запрос не нужен, просто выравниваем написание */
+        SFD_STATE.work[key] = same;
+        if (SFD_NAME_KEYS[key]) sfdRecalcNames();
+        sfdRender();
+        return;
+    }
+    btn.disabled = true;
+    api(value).then(function(res){
+        var saved = (res && res.name) || value;
+        if ((SFD_DICT[key] || []).indexOf(saved) === -1){
+            SFD_DICT[key] = (SFD_DICT[key] || []).concat([saved])
+                .sort(function(a, b){ return String(a).toLowerCase() < String(b).toLowerCase() ? -1 : 1; });
+        }
+        SFD_STATE.work[key] = saved;
+        if (SFD_NAME_KEYS[key]) sfdRecalcNames();
+        sfdRender();
+    }).catch(function(e){
+        btn.disabled = false;
+        alert(sfdT('Не удалось добавить в справочник') + ': ' + (e && e.message ? e.message : e));
+    });
 }
 
 /* ---------- поля карточки по каналам (реальные поля наших форм + dtoToV1; preheader у нас нет) ---------- */
 /* подпись ключевого поля (code) по каналу */
 function sfdCodeLabel(ch){
     if (ch === 'cc') return sfdT('Сегмент (code)');
-    if (ch === 'fa') return 'FA ID';
-    if (ch === 'vk') return 'VK Template Name';
+    /* у fa/vk свои поля fa_id и vk_template_name, code — обычный код записи */
     return 'Code';
 }
 function sfdFieldDefs(d){
     var ch = d.channel;
     var isEmail = ch === 'email', isCC = ch === 'cc', isPush = (ch === 'push' || ch === 'mobile-push'),
-        isSms = ch === 'sms', isFa = ch === 'fa', isVk = ch === 'vk';
+        isSms = ch === 'sms', isFa = ch === 'fa', isVk = ch === 'vk', isLa = ch === 'la';
     var content = [];
     if (isEmail){
-        content.push({ k:'subject', label:'Subject', wide:true });
-        content.push({ k:'email_from', label:'Email from' });
+        /* Subject в карточке нет: тему письма проставляет отправка. В модели поле
+           осталось (прод-таблица требует его непустым — UnifiedTemplateService
+           .prodDefaults подставляет пустую строку), просто заводить его руками не нужно. */
+        /* Считается по правилу (sfdComputeEmailFrom), руками не задаётся — как и
+           Campaign name. Раньше это делала форма мастера (updateEmailSenderName);
+           с переездом на карточку поле стало обычным вводом, и адрес перестал
+           следовать за touch point и типом коммуникации. */
+        content.push({ k:'email_from', label:'Email from', ro:true });
         content.push({ k:'letteros_id', label:'Letteros ID' });
     } else if (!isCC){
         content.push({ k:'message', label:'Message text', wide:true, type:'textarea' });
@@ -115,23 +242,52 @@ function sfdFieldDefs(d){
         content.push({ k:'webview', label:'Webview link', wide:true });
     }
     if (isFa){
-        content.push({ k:'link_title', label:'Link Title' });
-        content.push({ k:'deeplink', label:'Deep Link' });
-        content.push({ k:'webview', label:'Webview link' });
-        content.push({ k:'web_url', label:'Web URL' });
-        content.push({ k:'action_buttons', label:'Action Buttons (JSON)', wide:true, type:'textarea' });
+        content.push({ k:'link_title', label:'Link title' });
+        content.push({ k:'deeplink', label:'Deep link', wide:true });
+        content.push({ k:'webview', label:'Webview link', wide:true });
+        content.push({ k:'web_url', label:'Web URL', wide:true });
+        content.push({ k:'action_buttons', label:'Action buttons (JSON)', wide:true, type:'textarea' });
     }
     if (isVk){
+        content.push({ k:'vk_template_name', label:'VK template name' });
         content.push({ k:'ttl', label:'TTL' });
         content.push({ k:'buttons', label:'Buttons (JSON)', wide:true, type:'textarea' });
     }
+    /* Live Activity. Контентная часть у неё пушевая (текст, заголовок, ссылки, кнопки) —
+       оставляем её в «Контенте и ссылках» рядом с остальными каналами. Собственные
+       параметры активности вынесены отдельной секцией ниже (laRows): их шесть, и в
+       общем списке они тонули, хотя относятся не к сообщению, а к самой активности. */
+    var laRows = [];
+    if (isLa){
+        content.push({ k:'title', label:'Title' });
+        content.push({ k:'deeplink', label:'Deep link', wide:true });
+        content.push({ k:'webview', label:'Webview link', wide:true });
+        content.push({ k:'action_buttons', label:'Action buttons (JSON)', wide:true, type:'textarea' });
+
+        laRows.push({ k:'activity_name', label:'Activity name' });
+        laRows.push({ k:'la_event', label:'LA event' });
+        laRows.push({ k:'la_visualization', label:'LA visualization' });
+        laRows.push({ k:'la_status', label:'LA status' });
+        laRows.push({ k:'current_step', label:'Current step' });
+        laRows.push({ k:'la_visualization_attributes', label:'LA visualization attributes (JSON)',
+                      wide:true, type:'textarea' });
+    }
     var segRows = [
-        { k:'source', label:'Source_type (campaign_name)', wide:true, ro:true, fmt:function(){ return SFD_STATE.work.source; } },
+        /* колонка в БД называется source_type, но в работе это «campaign name» —
+           подпись по бизнес-имени, настоящее имя колонки остаётся в подсказке (SFD_DB) */
+        { k:'source', label:'Campaign name', wide:true, ro:true, fmt:function(){ return SFD_STATE.work.source; } },
         { k:'trigger', label:'Trigger type', type:'select', opts:['','promo','trigger'] },
-        { k:'product', label:'Product type' },
-        { k:'partner', label:'Partner name' },
-        { k:'touch', label:'Touch point' },
-        { k:'day', label:sfdT('День отправки') }
+        { k:'product', label:'Product type', type:'select',
+          opts: sfdDictOpts(SFD_DICT.product, d.product, true) },
+        /* combo + кнопка «+»: партнёры ведутся в dictionary.d_partner, но список закрытым
+           быть не может — новый партнёр появляется раньше, чем кто-то поправит справочник.
+           Кнопка добавляет введённое значение в справочник (право add), см. sfdDictAdd. */
+        { k:'partner', label:'Partner name', type:'combo', create:true,
+          opts: sfdDictOpts(SFD_DICT.partner, d.partner, false) },
+        { k:'touch', label:'Touch point', type:'select',
+          opts: sfdDictOpts(SFD_DICT.touch, d.touch, true) },
+        /* только цифры: значение уходит в source_type как Nday, буквы там ломают имя */
+        { k:'day', label:'Sending day', type:'num' }
     ];
     if (isVk) segRows.push({ k:'ab_group', label:'AB Group' });
     if (isCC){
@@ -141,34 +297,72 @@ function sfdFieldDefs(d){
         segRows.push({ k:'host_id', label:'Host Id' });
         segRows.push({ k:'kvint', label:'Kvint campaign Id' });
     }
+    var isCreate = !!(SFD_STATE && SFD_STATE.mode === 'create');
+    /* При заведении шаблона канал и код показывать незачем: канал только что выбран
+       вкладкой над карточкой, а код выдаёт бэкенд (TemplateService.create ->
+       TemplateStore.nextCode). Исключение — КЦ: там код это номер сегмента, его
+       задаёт человек, и без него create вернёт 400. В просмотре оба поля остаются:
+       для заведённого шаблона это его опознавательные признаки. */
+    var mainRows = [];
+    /* Live Activity — разновидность пуша, а не самостоятельный канал в глазах человека:
+       заводится тумблером в карточке Mobile-push. Технически это всё же отдельный
+       канал (своя таблица notice.live_activity_template), поэтому тумблер переключает
+       d.channel между push и la, а карточка перерисовывается с полями LA.
+       Только при заведении: у сохранённого шаблона смена канала — это переезд между
+       таблицами, а не правка поля. */
+    if (isCreate && (isPush || isLa)) {
+        d.is_la = isLa;   /* держим тумблер в согласии с каналом */
+        mainRows.push({ k:'is_la', label:sfdT('Это Live Activity'), type:'bool' });
+    }
+    if (!isCreate) {
+        mainRows.push({ k:'channel', label:sfdT('Канал'), ro:true, fmt:function(v){ return CH_LABELS[v] || v; } });
+    }
+    if (!isCreate || isCC) {
+        mainRows.push({ k:'code', label: sfdCodeLabel(ch), ro: !isCreate });
+    }
+    mainRows.push({ k:'active', label:sfdT('Статус'), type:'bool' });
+    /* combo, а не select: значение выбирается из справочника ИЛИ вписывается своё —
+       новые имена коммуникаций заводятся регулярно, строгий список их бы отсёк. */
+    mainRows.push({ k:'comname', label:'Communication name', wide:true, type:'combo',
+                    opts: sfdDictOpts(SFD_DICT.comm, null, false),
+                    fmt:function(){ return SFD_STATE.work.comname; } });
+
     var secs = [
-        { sec:'Основное', rows:[
-            { k:'channel', label:sfdT('Канал'), ro:true, fmt:function(v){ return ({sms:'SMS',push:'Mobile-push','mobile-push':'Mobile-push',email:'E-mail',cc:'КЦ',fa:'FA','vk':'VK'})[v] || v; } },
-            /* code задаётся только при создании шаблона, потом это ключ записи */
-            { k:'code', label: sfdCodeLabel(ch), ro: !(SFD_STATE && SFD_STATE.mode === 'create') },
-            { k:'active', label:sfdT('Статус'), type:'bool' },
-            { k:'comname', label:'communication_name', wide:true, fmt:function(){ return SFD_STATE.work.comname; } }
-        ]},
+        { sec:'Основное', rows:mainRows },
         { sec:'Источник и сегментация', rows:segRows }
     ];
     /* Финансовый ассистент: параметры интеграции C2D отдельной секцией */
     if (isFa) secs.push({ sec:'Интеграция FA', rows:[
+        { k:'fa_id', label:'FA ID' },
         { k:'channel_id', label:'Channel ID' },
         { k:'need_push', label:'Need Push', type:'bool' },
         { k:'c2d_transport', label:'C2D Transport' },
         { k:'c2d_account', label:'C2D Account' },
-        { k:'c2d_operator', label:'C2D Operator ID' }
+        { k:'ch2d_operator_id', label:'CH2D operator ID' }
     ]});
-    if (content.length) secs.push({ sec:'Контент и ссылки', rows:content });
-    var svc = [
-        { k:'communication_type', label:'communication_type' },
-        { k:'biz_type', label:'Business communication type', type:'select', opts:['','adv','info','service'] },
-        { k:'aff_sub3', label:'aff_sub3' }
-    ];
-    if (isFa || isVk){
-        svc.push({ k:'tunnel', label:'Communication Tunnel' });
-        svc.push({ k:'landing', label:'Landing Page' });
+    /* Цепочка: те же поля задаются по дням в таблице секции «Цепочка», и в карточке
+       они дубль. Дубль не безобидный — при создании он подставлялся в дни с нетронутой
+       ячейкой (см. sfdCreate), то есть текст уезжал туда, где его не вводили, а понять
+       это по экрану было нельзя. Убираем из карточки; выключение тумблера возвращает
+       поля вместе с набранным — состояние мы не трогаем. */
+    if (isCreate && SFD_STATE.chain && SFD_STATE.chain.on){
+        var chainKeys = sfdChainKeys(d.channel);
+        if (chainKeys.length) content = content.filter(function(f){ return chainKeys.indexOf(f.k) < 0; });
     }
+    /* У push по-дневными оказываются все контентные поля разом — секцию тогда не
+       показываем совсем, пустая рамка с заголовком выглядит как потерянные поля. */
+    if (content.length) secs.push({ sec:'Контент и ссылки', rows:content });
+    /* Параметры самой активности — ниже контента: сначала что показываем, потом как */
+    if (laRows.length) secs.push({ sec:'Live Activity — параметры активности', rows:laRows });
+    var svc = [
+        /* Значений всего два и они не меняются — список зашит здесь, справочник в БД
+           заводить не за чем (в отличие от product_type/touch_point). Через sfdDictOpts,
+           чтобы значение вне списка у старых шаблонов не подменилось молча первым. */
+        { k:'communication_type', label:'Communication tunnel', type:'select',
+          opts: sfdDictOpts(['adv','service'], d.communication_type, true) },
+        { k:'biz_type', label:'Business communication type', type:'select', opts:['','adv','info','service'] },
+        { k:'aff_sub3', label:'Landing page' }
+    ];
     svc = svc.concat([
         { k:'marketplace', label:'marketplace', type:'bool' },
         { k:'cross', label:'cross', type:'bool' },
@@ -178,7 +372,7 @@ function sfdFieldDefs(d){
         { k:'news', label:'news', type:'bool' },
         { k:'mobile_app', label:'mobile_app', type:'bool' }
     ]);
-    /* night_send есть только в таблицах push и sms */
+    /* night_send есть в таблицах push, sms и live_activity — но не в fa/vk */
     if (!isFa && !isVk) svc.push({ k:'night_send', label:'night_send', type:'bool' });
     secs.push({ sec:'Служебные параметры и флаги', rows: svc });
     return secs;
@@ -190,9 +384,12 @@ function sfdFieldDefs(d){
 var SFD_TABLES = { push:'notice.push_template', 'mobile-push':'notice.push_template',
                    sms:'notice.d_com_sms_template', email:'notice.email_template',
                    cc:'callcenter.d_segment_properties',
-                   /* каналы FA и VK: таблиц в БД пока нет — имена планируемые,
-                      миграция появится при подключении бэкенда */
-                   fa:'notice.fa_template (план)', vk:'notice.vk_template (план)' };
+                   /* fa/vk/la: у нас поля живут в channel_props, но прод-таблиц ещё нет
+                      (в notice есть только sms/push/email). Имена — планируемые, при
+                      доставке ProdDbService шлёт ключи channel_props как имена колонок,
+                      поэтому окончательные названия сверяем при заведении таблиц. */
+                   fa:'notice.fa_template (план)', vk:'notice.vk_template (план)',
+                   la:'notice.live_activity_template (план)' };
 var SFD_DB = {
     channel:            { all:'—' },
     code:               { push:'code', sms:'code', email:'trigger_code', cc:'segment' },
@@ -233,16 +430,22 @@ var SFD_DB = {
     need_push:          { fa:'need_push' },
     c2d_transport:      { fa:'c2d_transport' },
     c2d_account:        { fa:'c2d_account' },
-    c2d_operator:       { fa:'c2d_operator_id' },
+    ch2d_operator_id:   { fa:'ch2d_operator_id' },
+    fa_id:              { fa:'fa_id' },
+    vk_template_name:   { vk:'template_name' },
+    activity_name:      { la:'activity_name' },
+    la_event:           { la:'event' },
+    la_visualization:   { la:'visualization' },
+    la_visualization_attributes: { la:'visualization_attributes' },
+    la_status:          { la:'status' },
+    current_step:       { la:'current_step' },
     web_url:            { fa:'web_url' },
     link_title:         { fa:'link_title' },
     action_buttons:     { fa:'action_buttons' },
     /* VK */
     ttl:                { vk:'time_to_live' },
     ab_group:           { vk:'ab_group' },
-    buttons:            { vk:'buttons' },
-    tunnel:             { fa:'communication_tunnel', vk:'communication_tunnel' },
-    landing:            { fa:'landing_page', vk:'landing_page' }
+    buttons:            { vk:'buttons' }
 };
 var SFD_HELP = {
     channel:            'Канал шаблона: SMS, Mobile-push, E-mail, КЦ, FA (Финансовый ассистент) или VK. Определяет таблицу, в которой хранится шаблон.',
@@ -261,7 +464,7 @@ var SFD_HELP = {
     host_id:            'Идентификатор хоста для выгрузки сегмента КЦ.',
     kvint:              'Идентификатор кампании в Kvint (робот-обзвон КЦ).',
     subject:            'Тема письма.',
-    email_from:         'Адрес отправителя: service → no-reply@, info → inform@, trigger → offers@, promo → advice@.',
+    email_from:         'Адрес отправителя, считается сам: touch point renewal → renewal@, иначе service → no-reply@, info → inform@, adv+trigger → offers@, adv+promo → advice@, во всех остальных случаях newsletter@.',
     letteros_id:        'Идентификатор письма в Letteros, он же код email-шаблона.',
     message:            'Текст сообщения: тело SMS или push-уведомления, для e-mail — вёрстка письма.',
     title:              'Заголовок push-уведомления — первая строка карточки на экране.',
@@ -284,16 +487,22 @@ var SFD_HELP = {
     need_push:          'Дублировать сообщение пуш-уведомлением в приложении.',
     c2d_transport:      'Транспорт C2D, через который уходит сообщение Финансового ассистента.',
     c2d_account:        'Учётная запись C2D для отправки.',
-    c2d_operator:       'Идентификатор оператора C2D.',
+    ch2d_operator_id:   'Идентификатор оператора CH2D.',
+    fa_id:              'Идентификатор шаблона в Финансовом ассистенте.',
+    vk_template_name:   'Имя шаблона на стороне VK.',
+    activity_name:      'Имя Live Activity, под которым активность показывается на устройстве.',
+    la_event:           'Событие Live Activity: старт, обновление или завершение активности.',
+    la_visualization:   'Вариант визуализации Live Activity.',
+    la_visualization_attributes: 'Атрибуты визуализации Live Activity, JSON.',
+    la_status:          'Статус активности, отображаемый пользователю.',
+    current_step:       'Текущий шаг активности (для многошаговых сценариев).',
     web_url:            'Веб-ссылка для перехода из сообщения (открывается в браузере).',
     link_title:         'Подпись ссылки, отображаемая в сообщении.',
     action_buttons:     'Кнопки действий в сообщении, JSON: [{"title":"...","action":"..."}].',
     /* VK */
     ttl:                'Время жизни сообщения (TTL): не доставлено за это время — не отправляется.',
     ab_group:           'Группа A/B-теста шаблона.',
-    buttons:            'Кнопки VK-сообщения, JSON: [{"label":"...","link":"..."}].',
-    tunnel:             'Туннель коммуникации: к какой цепочке/потоку относится шаблон.',
-    landing:            'Посадочная страница, на которую ведёт сообщение.'
+    buttons:            'Кнопки VK-сообщения, JSON: [{"label":"...","link":"..."}].'
 };
 function sfdDbField(k, channel){
     /* канал сам по себе не колонка — он определяет таблицу хранения */
@@ -330,6 +539,31 @@ function sfdRowHtml(f){
             valHtml = '<select class="sfd-edit" data-k="' + f.k + '">' + f.opts.map(function(o){
                 return '<option value="' + o + '"' + (String(d[f.k] || '') === o ? ' selected' : '') + '>' + (o || '—') + '</option>';
             }).join('') + '</select>';
+        } else if (f.type === 'num'){
+            /* Не type=number: он в разных браузерах пропускает e, +, - и знаки экспоненты,
+               а нам нужны строго цифры. Текстовое поле с числовой клавиатурой на телефоне,
+               остальное отсекает обработчик ввода по data-num. */
+            valHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" data-num="1"' +
+                      ' inputmode="numeric" autocomplete="off"' +
+                      ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
+        } else if (f.type === 'combo'){
+            /* редактируемая выпадашка: нативный input+datalist — и выбрать из списка,
+               и вписать своё, без самодельного дропдауна */
+            var lid = 'sfd-dl-' + f.k;
+            var inpHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" list="' + lid + '"' +
+                      ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
+            /* f.create: вписанное значение можно тут же занести в справочник — иначе оно
+               осталось бы только в этом шаблоне и в следующий раз его снова набирали бы руками */
+            if (f.create && sfdCan('add')){
+                inpHtml = '<div class="sfd-combo-add">' + inpHtml +
+                    '<button type="button" class="sfd-dict-add" data-k="' + f.k + '"' +
+                    ' title="' + sfdT('Добавить значение в справочник') + '"' +
+                    ' aria-label="' + sfdT('Добавить значение в справочник') + '">+</button></div>';
+            }
+            valHtml = inpHtml +
+                      '<datalist id="' + lid + '">' + (f.opts || []).map(function(o){
+                          return '<option value="' + sfdEsc(o) + '"></option>';
+                      }).join('') + '</datalist>';
         } else if (f.type === 'textarea'){
             valHtml = '<textarea class="sfd-edit" data-k="' + f.k + '">' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '</textarea>';
         } else {
@@ -342,7 +576,8 @@ function sfdRowHtml(f){
             ? '<span class="v empty">—</span>'
             : '<span class="v">' + sfdEsc(raw) + '</span>';
     }
-    var pen = (!f.ro && !editing)
+    /* карандаш — только при праве edit; иначе поле остаётся, но правки нет (сервер отбил бы) */
+    var pen = (!f.ro && !editing && sfdCan('edit'))
         ? '<button class="sfd-pen" data-k="' + f.k + '" title="' + sfdT('Редактировать') + '" aria-label="' + sfdT('Редактировать') + '">' +
           '<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
           '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>'
@@ -359,9 +594,11 @@ function sfdBlank(channel){
              deeplink:'', webview:'', subject:'', email_from:'', letteros_id:'',
              segment:'', segment_desc:'', source_system:'', host_id:'', kvint:'',
              communication_type:'', biz_type:'', aff_sub3:'',
-             /* FA */ channel_id:'', need_push:false, c2d_transport:'', c2d_account:'',
-             c2d_operator:'', web_url:'', link_title:'', action_buttons:'',
-             /* VK */ ttl:'', ab_group:'', buttons:'', tunnel:'', landing:'',
+             /* FA */ fa_id:'', channel_id:'', need_push:false, c2d_transport:'', c2d_account:'',
+             ch2d_operator_id:'', web_url:'', link_title:'', action_buttons:'',
+             /* VK */ vk_template_name:'', ttl:'', ab_group:'', buttons:'',
+             /* Live Activity */ activity_name:'', la_event:'', la_visualization:'',
+             la_visualization_attributes:'', la_status:'', current_step:'',
              marketplace:false, cross:false, dialog:false, loyalty:false,
              national_rating:false, news:false, mobile_app:false, night_send:false };
 }
@@ -384,6 +621,11 @@ var SFD_CHAIN_COLS = {
 };
 var SFD_CHAIN_REQ = { sms:['message'], push:['title','message'], email:['letteros_id'] };
 function sfdChainAble(ch){ return !!SFD_CHAIN_COLS[ch]; }
+/* Поля, которые при включённой цепочке задаются по дням: карточка их прячет,
+   sfdCreate не подставляет их в общую часть шаблона. */
+function sfdChainKeys(ch){
+    return (SFD_CHAIN_COLS[ch] || []).map(function(c){ return c.key; });
+}
 
 function sfdChainToggle(on){
     var st = SFD_STATE;
@@ -393,6 +635,23 @@ function sfdChainToggle(on){
     sfdRender();
 }
 function sfdChainDays(v){ if (SFD_STATE && SFD_STATE.chain) SFD_STATE.chain.days = v; }
+/* В поле дней допустимы только цифры и запятые. Всё остальное sfdChainBuild либо молча
+   отбрасывает (буквы превращаются в NaN и выпадают из списка), либо принимает за
+   разделитель — и человек получает не те шаги, не поняв почему. Отсекаем на вводе,
+   позицию курсора сохраняем, иначе правка середины строки прыгает в конец. */
+function sfdChainDaysInput(inp){
+    /* Пробел и «;» не выкидываем, а превращаем в запятую: они и раньше работали
+       разделителями, и вставленное «0 3 7» иначе слиплось бы в один день 037 —
+       ошибка молчаливая и заметная только по числу шагов. Остальное отбрасываем. */
+    var было = inp.value,
+        стало = было.replace(/[\s;]+/g, ',').replace(/[^\d,]+/g, '').replace(/,{2,}/g, ',');
+    if (было !== стало){
+        var pos = (inp.selectionStart || 0) - (было.length - стало.length);
+        inp.value = стало;
+        try { inp.setSelectionRange(pos, pos); } catch(e){}
+    }
+    sfdChainDays(inp.value);
+}
 function sfdChainBuild(){
     var st = SFD_STATE;
     if (!st || !st.chain) return;
@@ -422,8 +681,9 @@ function sfdChainHtml(d){
         sfdT('шаблон на каждый день цепочки') + '</label>';
     if (ch.on){
         body += '<div class="sfd-chain-days"><span>' + sfdT('Дни цепочки (числа через запятую)') + '</span>' +
-            '<input class="sfd-edit" value="' + sfdEsc(ch.days) + '" placeholder="0, 3, 7"' +
-            ' oninput="sfdChainDays(this.value)"' +
+            '<input class="sfd-edit" value="' + sfdEsc(ch.days) + '" placeholder="0,3,7"' +
+            ' inputmode="numeric" autocomplete="off"' +
+            ' oninput="sfdChainDaysInput(this)"' +
             ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();sfdChainBuild();}">' +
             '<button type="button" class="sf-btn" onclick="sfdChainBuild()">' + sfdT('Сгенерировать строки') + '</button></div>';
         if (ch.rows.length){
@@ -449,17 +709,28 @@ function sfdChainHtml(d){
 function sfdCreateMissing(d){
     var miss = [];
     var chainOn = SFD_STATE && SFD_STATE.mode === 'create' && SFD_STATE.chain && SFD_STATE.chain.on;
-    if (!chainOn && !String(d.code == null ? '' : d.code).trim()) miss.push(sfdCodeLabel(d.channel));
+    /* Код требуем только у КЦ: там это номер сегмента, который задаёт человек.
+       Остальным каналам код выдаёт бэкенд, и поля в форме больше нет. */
+    if (d.channel === 'cc' && !chainOn && !String(d.code == null ? '' : d.code).trim()) {
+        miss.push(sfdCodeLabel(d.channel));
+    }
     if (!String(d.product || '').trim()) miss.push('Product type');
     if (!String(d.touch || '').trim()) miss.push('Touch point');
     if (!d.comname || d.comname === 'NoComName') miss.push('communication_name');
-    if (d.channel === 'email'){ if (!String(d.subject || '').trim()) miss.push('Subject'); }
-    else if (d.channel !== 'cc' && !chainOn){ if (!String(d.message || '').trim()) miss.push('Message text'); }
+    /* У e-mail контент живёт в Letteros, а тему проставляет отправка — требуем не текст,
+       а Letteros ID: он же становится кодом шаблона, и без него за шаблоном не стоит
+       никакого письма. При цепочке ID задаётся по дням в таблице. */
+    if (d.channel === 'email'){
+        if (!chainOn && !String(d.letteros_id == null ? '' : d.letteros_id).trim()) miss.push('Letteros ID');
+    } else if (d.channel !== 'cc' && !chainOn){
+        if (!String(d.message || '').trim()) miss.push('Message text');
+    }
     return miss;
 }
 function sfdCreate(){
     var st = SFD_STATE;
     if (!st || st.mode !== 'create') return;
+    if (!sfdCan('add')){ alert(sfdT('Нет прав на создание шаблонов.')); return; }
     sfdRecalcNames();
     var d = Object.assign({}, st.work);
     if (sfdCreateMissing(d).length) return;
@@ -487,9 +758,14 @@ function sfdCreate(){
             }
         }
         window.CRM_CURRENT = null;   /* цепочка — всегда создание */
+        /* По-дневные поля вычищаем из общей части: значение, набранное до включения
+           тумблера, иначе досталось бы дням с пустой ячейкой — а поля этого в карточке
+           уже не видно. Каждый день берёт контент только из своей строки таблицы. */
+        var base = Object.assign({}, d);
+        sfdChainKeys(d.channel).forEach(function(k){ base[k] = ''; });
         var seq = rows.reduce(function(p, row){
             return p.then(function(acc){
-                var dd = Object.assign({}, d, row.overrides, { day: String(row.day) });
+                var dd = Object.assign({}, base, row.overrides, { day: String(row.day) });
                 if (dd.channel === 'email' && dd.letteros_id) dd.code = dd.letteros_id;
                 var src = sfdComputeCampaignName(dd);
                 if (src) dd.source = src;
@@ -546,7 +822,10 @@ function sfdRender(){
     var output = document.getElementById(isCreate ? 'wizardOutput' : 'settingsOutput');
     if (!output) return;
     var d = st.work;
-    var chLabels = { sms:'SMS', push:'Mobile-push', 'mobile-push':'Mobile-push', email:'E-mail', cc:'КЦ', fa:'FA', vk:'VK' };
+    /* Справочники тянем при первой отрисовке канала; когда приедут — перерисуемся.
+       Повторных запросов нет: sfdEnsureDicts помнит, что уже спрашивал. */
+    sfdEnsureDicts(d.channel);
+    var chLabels = CH_LABELS;
     var isEmail = d.channel === 'email';
     var mainId = isEmail
         ? (d.letteros_id != null && d.letteros_id !== '' ? d.letteros_id : d.code)
@@ -576,14 +855,19 @@ function sfdRender(){
         (isCreate && sfdChainAble(d.channel) ? sfdChainHtml(d) : '') +
         (isCreate
             ? '<div class="sfd-footer">' +
-                (miss.length ? '<span class="sfd-miss">' + sfdT('Заполните') + ': ' + sfdEsc(miss.join(', ')) + '</span>' : '') +
-                '<button type="button" class="sf-btn accent" id="sfdCreateBtn"' + (miss.length ? ' disabled' : '') + '>' +
-                    ((st.chain && st.chain.on)
-                        ? sfdT('Создать цепочку') + (st.chain.rows.length ? ' (' + st.chain.rows.length + ')' : '')
-                        : sfdT('Создать шаблон')) + '</button>' +
-                '<button type="button" class="sf-btn" id="sfdResetBtn">' + sfdT('Очистить') + '</button>' +
+                (sfdCan('add')
+                    ? (miss.length ? '<span class="sfd-miss">' + sfdT('Заполните') + ': ' + sfdEsc(miss.join(', ')) + '</span>' : '') +
+                      '<button type="button" class="sf-btn accent" id="sfdCreateBtn"' + (miss.length ? ' disabled' : '') + '>' +
+                          ((st.chain && st.chain.on)
+                              ? sfdT('Создать цепочку') + (st.chain.rows.length ? ' (' + st.chain.rows.length + ')' : '')
+                              : sfdT('Создать шаблон')) + '</button>' +
+                      '<button type="button" class="sf-btn" id="sfdResetBtn">' + sfdT('Очистить') + '</button>'
+                    /* нет права add: мастер открыт (раздел виден), но заводить нечем */
+                    : '<span class="sfd-miss">' + sfdT('Нет прав на создание шаблонов.') + '</span>') +
               '</div>'
-            : (dirty ? '<div class="sfd-footer">' +
+            /* save появляется только при dirty, а dirty возникает лишь через карандаш (edit),
+               который уже скрыт без права — но подстрахуемся и здесь */
+            : (dirty && sfdCan('edit') ? '<div class="sfd-footer">' +
                 '<button type="button" class="sf-btn accent" id="sfdSaveBtn">' + sfdT('Сохранить') + '</button>' +
                 '<button type="button" class="sf-btn" id="sfdCancelBtn">' + sfdT('Отменить') + '</button>' +
               '</div>' : '')) +
@@ -603,7 +887,22 @@ function sfdRender(){
     output.querySelectorAll('.sfd-edit, .sfd-edit-check').forEach(function(inp){
         var handler = function(){
             var k = inp.dataset.k;
+            /* числовое поле: вычищаем всё, кроме цифр, прямо в поле — иначе набранная
+               буква осталась бы на экране и уехала бы в source_type как часть Nday.
+               Позицию курсора держим, чтобы правка в середине значения не прыгала. */
+            if (inp.dataset.num){
+                var было = inp.value, стало = было.replace(/\D+/g, '');
+                if (было !== стало){
+                    var pos = (inp.selectionStart || 0) - (было.length - стало.length);
+                    inp.value = стало;
+                    try { inp.setSelectionRange(pos, pos); } catch(e){}
+                }
+            }
             st.work[k] = inp.type === 'checkbox' ? inp.checked : inp.value;
+            /* тумблер Live Activity — не поле шаблона, а переключатель канала:
+               набранное (текст, ссылки, сегментация) остаётся, меняется только
+               набор канальных полей и таблица, в которую шаблон уедет */
+            if (k === 'is_la') st.work.channel = inp.checked ? 'la' : 'push';
             if (SFD_NAME_KEYS[k] || k === 'biz_type') sfdRecalcNames();
             sfdRenderPreview();
         };
@@ -615,6 +914,10 @@ function sfdRender(){
             handler();
             if (inp.type === 'checkbox' || inp.tagName === 'SELECT' || isCreate) sfdRender();
         });
+    });
+    /* «+» рядом с combo: занести введённое значение в справочник */
+    output.querySelectorAll('.sfd-dict-add').forEach(function(btn){
+        btn.onclick = function(){ sfdDictAdd(btn.dataset.k, btn); };
     });
     var createBtn = document.getElementById('sfdCreateBtn');
     if (createBtn) createBtn.onclick = sfdCreate;
@@ -635,6 +938,7 @@ function sfdRender(){
 function sfdSave(){
     var st = SFD_STATE;
     if (!st) return;
+    if (!sfdCan('edit')){ alert(sfdT('Нет прав на изменение шаблона.')); return; }
     sfdRecalcNames();
     var d = Object.assign({}, st.work);
     var channel = d.channel;
@@ -662,6 +966,19 @@ function sfdSave(){
 }
 
 /* ---------- предпросмотр коммуникации ---------- */
+/* Письмо живёт в Letteros, у нас от него только идентификатор: показываем
+   опубликованную версию по адресу webv/<letteros_id>. У части шаблонов
+   letteros_id пуст, а идентификатор лежит в code — порядок тот же, что в
+   sfdBizCode и при сохранении (sfdCreate: code = letteros_id). */
+var SFD_LETTEROS_BASE = 'https://app.letteros.com/webv/';
+var SFD_EM_TIMER = null;
+function sfdLetterosUrl(d){
+    if (!d || (d.channel !== 'email')) return '';
+    var id = (d.letteros_id != null && d.letteros_id !== '') ? d.letteros_id : d.code;
+    id = String(id == null ? '' : id).trim();
+    return id ? SFD_LETTEROS_BASE + encodeURIComponent(id) : '';
+}
+
 /* Проверяем, помещается ли текст в карточку уведомления: заголовок обрезается
    одной строкой, тело — четырьмя (как в свёрнутом пуше на экране блокировки). */
 function sfdPushFit(side){
@@ -737,15 +1054,44 @@ function sfdRenderPreview(){
         return;
     }
     if (ch === 'email'){
+        var url = sfdLetterosUrl(d);
+        /* Тот же адрес — карточку не трогаем вовсе: iframe пересоздался бы, и Letteros
+           перезагружался на каждое нажатие клавиши в любом поле (превью зовётся с
+           каждого input). Показывать в шапке нечего — тема письма задаётся отправкой. */
+        var было = side.querySelector('.pv-em-frame');
+        if (url && было && было.dataset.url === url) return;
+        var тело;
+        if (url){
+            /* sandbox оставляем: письмо чужое. allow-same-origin здесь безопасен —
+               документ сохраняет свой origin (app.letteros.com), то есть остаётся
+               кросс-доменным для панели и до её DOM не дотянется. */
+            тело = '<iframe class="pv-em-frame" title="Letteros" referrerpolicy="no-referrer"' +
+                   ' sandbox="allow-scripts allow-same-origin allow-popups"></iframe>' +
+                   '<div class="pv-em-foot"><a href="' + sfdEsc(url) + '" target="_blank" rel="noopener noreferrer">' +
+                   sfdT('Открыть в Letteros') + ' ↗</a><span>' +
+                   sfdT('Письмо подтягивается из Letteros по Letteros ID. Пустое окно означает, что письма с таким ID нет или Letteros недоступен из браузера.') +
+                   '</span></div>';
+        } else if (d.message){
+            тело = '<iframe class="pv-em-frame" sandbox="" title="Letteros"></iframe>';
+        } else {
+            тело = '<div class="pv-em-stub">' + sfdT('Укажите Letteros ID — письмо подтянется из Letteros') + '</div>';
+        }
         side.innerHTML = '<div class="pv-card"><div class="pv-title">' + sfdT('Предпросмотр E-mail') + '</div>' +
-            '<div class="pv-em"><div class="pv-em-head">Letteros-шаблон</div>' +
-            '<div class="pv-em-meta"><div class="l">' + sfdT('Тема') + '</div><div class="v">' + sfdEsc(d.subject || '—') + '</div></div>' +
-            (d.message
-                ? '<iframe class="pv-em-frame" sandbox="" title="Letteros"></iframe>'
-                : '<div class="pv-em-stub">' + sfdT('Вёрстка шаблона будет подтягиваться из Letteros') + '</div>') +
-            '</div></div>';
+            '<div class="pv-em"><div class="pv-em-head">Letteros-шаблон</div>' + тело + '</div></div>';
         var fr = side.querySelector('.pv-em-frame');
-        if (fr) fr.srcdoc = d.message;
+        if (fr && !url){ fr.srcdoc = d.message; return; }
+        if (fr){
+            fr.dataset.url = url;
+            /* ID набирается посимвольно, и каждый промежуточный вариант — это запрос к
+               Letteros за несуществующим письмом. Грузим, когда человек допечатал. */
+            clearTimeout(SFD_EM_TIMER);
+            SFD_EM_TIMER = setTimeout(function(){
+                /* Ищем внутри своего host: карточка мастера и карточка просмотра живут
+                   в DOM одновременно, и поиск по документу находил чужой iframe. */
+                var f = host.querySelector('.pv-em-frame');
+                if (f && f.dataset.url === url && f.src !== url) f.src = url;
+            }, 500);
+        }
         return;
     }
     side.innerHTML = '';
@@ -973,6 +1319,25 @@ function collectFormData(formEl, channel) {
         else if (classes.includes('title')) data.title = val;
         else if (classes.includes('deeplink')) data.deeplink = val;
         else if (classes.includes('webview')) data.webview = val;
+        else if (classes.includes('fa_id')) data.fa_id = val;
+        else if (classes.includes('channel_id')) data.channel_id = val;
+        else if (classes.includes('cb-need_push')) data.need_push = val;
+        else if (classes.includes('c2d_transport')) data.c2d_transport = val;
+        else if (classes.includes('c2d_account')) data.c2d_account = val;
+        else if (classes.includes('ch2d_operator_id')) data.ch2d_operator_id = val;
+        else if (classes.includes('web_url')) data.web_url = val;
+        else if (classes.includes('link_title')) data.link_title = val;
+        else if (classes.includes('action_buttons')) data.action_buttons = val;
+        else if (classes.includes('vk_template_name')) data.vk_template_name = val;
+        else if (classes.includes('ttl')) data.ttl = val;
+        else if (classes.includes('ab_group')) data.ab_group = val;
+        else if (classes.includes('buttons')) data.buttons = val;
+        else if (classes.includes('activity_name')) data.activity_name = val;
+        else if (classes.includes('la_event')) data.la_event = val;
+        else if (classes.includes('la_visualization_attributes')) data.la_visualization_attributes = val;
+        else if (classes.includes('la_visualization')) data.la_visualization = val;
+        else if (classes.includes('la_status')) data.la_status = val;
+        else if (classes.includes('current_step')) data.current_step = val;
         else if (classes.includes('cb-marketplace')) data.marketplace = val;
         else if (classes.includes('cb-dialog')) data.dialog = val;
         else if (classes.includes('cb-loyalty')) data.loyalty = val;
@@ -1023,6 +1388,9 @@ function afterChannelSave() {
 }
 function saveFromChannelForm(channel) {
     var formEl = document.getElementById(channel);
+    // Live Activity: тумблер в форме Push → сохраняем как канал la (live_activity_template)
+    var laCb = formEl && formEl.querySelector('.cb-live-activity');
+    if (channel === 'push' && laCb && laCb.checked) channel = 'la';
     var data = collectFormData(formEl, channel);
     if (!data) return;
 
@@ -1090,34 +1458,52 @@ function viewerSetChannel(ch) {
 
 function viewerFilterChanged() { refreshViewTemplateSelect(); }
 
+var VIEWER_PICK_CAP = 500;     // столько <option> максимум тянем с сервера
+var _viewSelSeq = 0;           // защита от гонки ответов
 function refreshViewTemplateSelect() {
     var sel = document.getElementById('templateSelect');
     if (!sel) return;
     var current = sel.value;
-    var srcQ = (document.getElementById('viewSearchSource') || { value: '' }).value.trim().toLowerCase();
-    var letQ = (document.getElementById('viewSearchLetteros') || { value: '' }).value.trim().toLowerCase();
+    var srcQ = (document.getElementById('viewSearchSource') || { value: '' }).value.trim();
+    var letQ = (document.getElementById('viewSearchLetteros') || { value: '' }).value.trim();
 
-    var items = [];
-    (window.ALL_TEMPLATES || []).forEach(function(t) {
-        var ch = t.channel === 'mobile-push' ? 'push' : t.channel;
-        if (VIEWER_CHANNEL && ch !== VIEWER_CHANNEL) return;
-        // source_type: из данных; если пуст — собираем по правилу source
-        var src = t.source || [t.channel, t.trigger, t.product, t.partner, t.touch].filter(Boolean).join('_');
-        if (srcQ && String(src).toLowerCase().indexOf(srcQ) === -1) return;
-        var lid = t.letteros != null && t.letteros !== '' ? t.letteros : t.code;
-        if (VIEWER_CHANNEL === 'email' && letQ && String(lid == null ? '' : lid).toLowerCase().indexOf(letQ) === -1) return;
-        items.push({ id: t.id, code: t.code, name: t.name || String(t.code), active: t.active });
-    });
+    // Тянем с сервера отфильтрованно (по каналу + поиску), а не перебираем весь справочник в браузере.
+    var params = { limit: VIEWER_PICK_CAP };
+    if (VIEWER_CHANNEL) params.channel = VIEWER_CHANNEL;
+    var q = srcQ || letQ;
+    if (q) params.q = q;
 
     var sfdTT = (typeof sfdT === 'function') ? sfdT : function(s){ return s; };
-    sel.innerHTML = '<option value="">' + sfdTT('— Выберите шаблон') + ' (' + items.length + ')</option>';
-    items.forEach(function(t) {
-        var opt = document.createElement('option');
-        opt.value = t.id;
-        opt.textContent = t.code + ' - ' + t.name + (t.active ? '' : ' ' + sfdTT('(неактивный)'));
-        sel.appendChild(opt);
-    });
-    if (current && items.some(function(t) { return t.id === current; })) sel.value = current;
+    var my = ++_viewSelSeq;
+    CRM.listTemplates(params).then(function(raw) {
+        if (my !== _viewSelSeq) return;                     // устаревший ответ — игнор
+        var items = (raw || []).map(CRM.apiItemToList).filter(function(t) {
+            // для email доп. сужаем по letteros-коду (server q ищет по всем полям)
+            if (VIEWER_CHANNEL === 'email' && letQ) {
+                var lid = (t.letteros != null && t.letteros !== '') ? t.letteros : t.code;
+                return String(lid == null ? '' : lid).toLowerCase().indexOf(letQ.toLowerCase()) !== -1;
+            }
+            return true;
+        });
+        var capped = items.length >= VIEWER_PICK_CAP;
+        sel.innerHTML = '<option value="">' + sfdTT('— Выберите шаблон') + ' (' + items.length + (capped ? ', ' + sfdTT('первые') + ' ' + VIEWER_PICK_CAP + ' — ' + sfdTT('уточните поиск') : '') + ')</option>';
+        items.forEach(function(t) {
+            var opt = document.createElement('option');
+            opt.value = t.id;
+            /* Канал выбран блоком выше — в подписи он лишний. Оставляем его только
+               если канал почему-то не задан: тогда список сборный, а коды между
+               каналами повторяются и без префикса не различить. */
+            var ch = VIEWER_CHANNEL ? '' : ((CH_LABELS[t.channel] || t.channel || '') + ' · ');
+            /* Номер шаблона и source_type: именно по source_type шаблон и ищут (поле
+               поиска рядом). communication_name — запасной вариант: у части записей
+               source_type пуст, и подпись выродилась бы в голый номер. */
+            var подпись = t.source || t.name || String(t.code);
+            opt.textContent = ch + t.code + ' — ' + подпись +
+                              (t.active ? '' : ' ' + sfdTT('(неактивный)'));
+            sel.appendChild(opt);
+        });
+        if (current && items.some(function(t) { return t.id === current; })) sel.value = current;
+    }).catch(function(){});
 }
 
 /* Скачать текущие данные как mock-data.json */

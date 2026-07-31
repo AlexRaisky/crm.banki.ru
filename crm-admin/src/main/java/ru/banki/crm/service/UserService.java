@@ -10,21 +10,23 @@ import ru.banki.crm.domain.AppUser;
 import ru.banki.crm.domain.Role;
 import ru.banki.crm.dto.UserDtos.*;
 import ru.banki.crm.repo.AppUserRepository;
+import ru.banki.crm.repo.RoleRepository;
 
-import java.util.HashSet;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
 
 @Service
 public class UserService {
 
     private final AppUserRepository users;
+    private final RoleRepository roles;
     private final PasswordEncoder encoder;
     private final String emailDomain;
 
-    public UserService(AppUserRepository users, PasswordEncoder encoder,
+    public UserService(AppUserRepository users, RoleRepository roles, PasswordEncoder encoder,
                        @Value("${app.email-domain:}") String emailDomain) {
         this.users = users;
+        this.roles = roles;
         this.encoder = encoder;
         this.emailDomain = emailDomain == null ? "" : emailDomain.trim();
     }
@@ -41,14 +43,13 @@ public class UserService {
         if (users.existsByEmailIgnoreCase(email)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Пользователь уже существует: " + email);
         }
-        Role role = parseRole(req.role());
-        requireSuperAdminForAdminRole(role, Role.READER);   // создать админа может только супер-админ
+        Role role = resolveRole(req.roleId());
+        requireCanAssign(role);
         AppUser u = new AppUser();
         u.setEmail(email);
         u.setDisplayName(req.displayName());
         u.setRole(role);
         u.setPasswordHash(encoder.encode(req.password()));
-        u.setSections(validSections(req.sections()));
         u.setEnabled(true);
         return toView(users.save(u));
     }
@@ -58,14 +59,14 @@ public class UserService {
         AppUser u = get(id);
         requireCanManage(u);
         if (req.displayName() != null) u.setDisplayName(req.displayName());
-        if (req.role() != null) {
-            Role target = parseRole(req.role());
-            // назначать и снимать администраторов может только супер-админ
-            if (target != u.getRole()) requireSuperAdminForAdminRole(target, u.getRole());
-            u.setRole(target);
+        if (req.roleId() != null) {
+            Role target = resolveRole(req.roleId());
+            if (!target.getId().equals(u.getRole().getId())) {
+                requireCanAssign(target);   // назначить админ-роль может только супер-админ
+                u.setRole(target);
+            }
         }
         if (req.enabled() != null) u.setEnabled(req.enabled());
-        if (req.sections() != null) u.setSections(validSections(req.sections()));
         return toView(users.save(u));
     }
 
@@ -104,41 +105,47 @@ public class UserService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Пользователь не найден"));
     }
 
+    private Role resolveRole(Long roleId) {
+        if (roleId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Не указана роль");
+        }
+        return roles.findById(roleId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Некорректная роль"));
+    }
+
     private long countAdmins() {
         return users.findAll().stream().filter(u -> u.getRole().isAdminLevel()).count();
     }
 
-    // ------------------------------------------- правила вокруг роли администратора
-    /** Текущий пользователь — супер-админ? */
+    // ------------------------------------------- правила вокруг админ-ролей
     private boolean currentIsSuperAdmin() {
         return ru.banki.crm.security.CurrentUser.principal()
-                .map(p -> p.user().getRole() == Role.SUPER_ADMIN)
+                .map(p -> p.user().getRole().isSuperAdmin())
                 .orElse(false);
     }
 
     /**
      * Единый текст отказа для всех админ-уровней: по сообщению нельзя понять,
-     * что у конкретной учётки есть расширенные права.
+     * что у конкретной учётки/роли есть расширенные права.
      */
     private static final String NO_RIGHTS = "Недостаточно прав для этой операции";
 
-    /** Назначить или снять роль администратора может только супер-админ. */
-    private void requireSuperAdminForAdminRole(Role target, Role currentRole) {
-        if (target == Role.SUPER_ADMIN) {
+    /** Назначить учётке роль: супер-роль через панель нельзя, админ-роль — только супер-админ. */
+    private void requireCanAssign(Role target) {
+        if (target.isSuperAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, NO_RIGHTS);
         }
-        boolean touchesAdmin = target.isAdminLevel() || currentRole.isAdminLevel();
-        if (touchesAdmin && !currentIsSuperAdmin()) {
+        if (target.isAdminLevel() && !currentIsSuperAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, NO_RIGHTS);
         }
     }
 
     /**
-     * Учётку супер-админа через панель не меняем вовсе; админ-уровень доступен
-     * только супер-админу. Отказ всегда с одинаковым текстом.
+     * Учётку супер-админа через панель не меняем вовсе; учётку с админ-ролью —
+     * только супер-админ. Отказ всегда с одинаковым текстом.
      */
     private void requireCanManage(AppUser u) {
-        boolean superAdminTarget = u.getRole() == Role.SUPER_ADMIN;
+        boolean superAdminTarget = u.getRole().isSuperAdmin();
         boolean adminTarget = u.getRole().isAdminLevel();
         if (superAdminTarget || (adminTarget && !currentIsSuperAdmin())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, NO_RIGHTS);
@@ -156,34 +163,31 @@ public class UserService {
         }
     }
 
-    private static Role parseRole(String role) {
-        try {
-            return Role.valueOf(role.trim().toUpperCase());
-        } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Некорректная роль: " + role);
-        }
-    }
-
-    private static Set<String> validSections(Set<String> sections) {
-        if (sections == null) return new HashSet<>();
-        for (String s : sections) {
-            if (!Sections.isValid(s)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный раздел: " + s);
-            }
-        }
-        return new HashSet<>(sections);
-    }
-
     /**
-     * Наружу супер-админ выглядит обычным администратором: роль маскируется,
-     * а невозможность его править передаётся нейтральным флагом manageable
-     * (он же false для админов, если смотрит не супер-админ).
+     * Наружу супер-админ выглядит обычным администратором: его роль не супер-админу
+     * маскируется под обычную админ-роль, а невозможность его править передаётся
+     * нейтральным флагом manageable.
      */
     private UserView toView(AppUser u) {
-        String role = u.getRole() == Role.SUPER_ADMIN ? Role.ADMIN.name() : u.getRole().name();
-        boolean manageable = u.getRole() != Role.SUPER_ADMIN
+        boolean superTarget = u.getRole().isSuperAdmin();
+        boolean mask = superTarget;   // супер-роль везде показываем как обычного «Админ», даже самому супер-админу
+        String roleName = mask ? coverRoleName() : u.getRole().getName();
+        Long roleId = mask ? null : u.getRole().getId();
+        boolean manageable = !superTarget
                 && (!u.getRole().isAdminLevel() || currentIsSuperAdmin());
         return new UserView(u.getId(), u.getEmail(), u.getDisplayName(),
-                role, u.isEnabled(), u.getSections(), manageable);
+                roleName, roleId, u.isEnabled(), manageable);
+    }
+
+    /** Имя-прикрытие для супер-роли: предпочитаем роль «Админ»; иначе первая обычная
+     *  админ-роль по порядку; если такой нет — «Админ». */
+    private String coverRoleName() {
+        return roles.findByNameIgnoreCase("Админ")
+                .map(Role::getName)
+                .orElseGet(() -> roles.findAll().stream()
+                        .filter(r -> r.isAdmin() && !r.isSuperAdmin())
+                        .min(Comparator.comparingInt(Role::getSortOrder))
+                        .map(Role::getName)
+                        .orElse("Админ"));
     }
 }

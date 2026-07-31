@@ -26,6 +26,7 @@
 <link rel="stylesheet" href="css/section-onelink.css">
 <link rel="stylesheet" href="css/section-srcbuilder.css">
 <link rel="stylesheet" href="css/section-promo.css">
+<link rel="stylesheet" href="css/section-abtests.css">
 <link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-admin.css">
 </head>
@@ -68,10 +69,21 @@
       <a class="iconbtn" href="settings/" id="settingsLink" title="Настройки (настроечная админка)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
       </a>
+      <!-- Кнопки учётки: иконка + подпись. На узком экране подпись скрывается
+           (см. .ub-btn в shell.css) — три текстовые кнопки не помещались в шапку
+           и растягивали страницу горизонтально. data-i18n стоит на <span>, а не на
+           кнопке: translateStatic пишет в textContent и стёр бы иконку. -->
       <div class="user-box" id="userBox">
         <span class="user-email" id="userEmail"></span>
-        <button class="btn" data-i18n="Пароль" onclick="openPwdDialog()" title="Сменить свой пароль">Пароль</button>
-        <button class="btn" data-i18n="Выйти" onclick="CRM.logout()">Выйти</button>
+        <button class="btn ub-btn" onclick="openPrefsDialog()" title="Тема и язык интерфейса — только для вашей учётки">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>
+          <span data-i18n="Вид">Вид</span></button>
+        <button class="btn ub-btn" onclick="openPwdDialog()" title="Сменить свой пароль">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M10.9 12.1 20 3M17 6l2.5 2.5M14.5 8.5 17 11"/></svg>
+          <span data-i18n="Пароль">Пароль</span></button>
+        <button class="btn ub-btn" onclick="CRM.logout()" title="Выйти из панели">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          <span data-i18n="Выйти">Выйти</span></button>
       </div>
 
       <!-- Смена собственного пароля (доступна любому пользователю) -->
@@ -88,6 +100,28 @@
           <div class="pwd-actions">
             <button class="btn" data-i18n="Отмена" onclick="closePwdDialog()">Отмена</button>
             <button class="btn pwd-save" data-i18n="Сохранить" onclick="submitPwdDialog()">Сохранить</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- «Общие параметры» (тема и язык) — доступны любому пользователю, хранятся
+           в браузере под его учёткой (localStorage). Применяются сразу при выборе. -->
+      <div id="prefsDialog" class="pwd-dialog" style="display:none">
+        <div class="pwd-card">
+          <b data-i18n="Общие параметры">Общие параметры</b>
+          <label data-i18n="Тема оформления">Тема оформления</label>
+          <div class="prefs-opts">
+            <label class="prefs-opt"><input type="radio" name="prefTheme" value="system" onchange="prefsThemeChange(this.value)"> <span data-i18n="Системная">Системная</span></label>
+            <label class="prefs-opt"><input type="radio" name="prefTheme" value="dark" onchange="prefsThemeChange(this.value)"> <span data-i18n="Тёмная">Тёмная</span></label>
+            <label class="prefs-opt"><input type="radio" name="prefTheme" value="light" onchange="prefsThemeChange(this.value)"> <span data-i18n="Светлая">Светлая</span></label>
+          </div>
+          <label data-i18n="Язык интерфейса">Язык интерфейса</label>
+          <select id="prefLang" onchange="prefsLangChange(this.value)">
+            <option value="ru">Русский</option>
+            <option value="en">English</option>
+          </select>
+          <div class="pwd-actions">
+            <button class="btn pwd-save" data-i18n="Готово" onclick="closePrefsDialog()">Готово</button>
           </div>
         </div>
       </div>
@@ -162,7 +196,7 @@
           <p data-i18n="Поиск шаблона по каналу, source_type и Letteros ID; аккуратная карточка всех настроек шаблона.">Поиск шаблона по каналу, source_type и Letteros ID; аккуратная карточка всех настроек шаблона.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" data-nav-ref="srcbuilder" data-no-acl="1" onclick="openSection('comms','srcbuilder')">
+        <div class="ov-card" data-nav-ref="srcbuilder" onclick="openSection('comms','srcbuilder')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7h7"/><path d="M14 12h7"/><path d="M14 17h7"/><path d="m3 7 2 2 4-4"/><path d="m3 17 2 2 4-4"/></svg></div>
           <h3 data-i18n="Конструктор source">Конструктор source</h3>
           <p data-i18n="Сборка source по правилам названия кампании: канал, тип, продукт и параметры — в реальном времени.">Сборка source по правилам названия кампании: канал, тип, продукт и параметры — в реальном времени.</p>
@@ -174,7 +208,7 @@
           <p data-i18n="Планирование промо-кампаний: календарь по дням, продуктам, партнёрам, каналам, задачам и ответственным.">Планирование промо-кампаний: календарь по дням, продуктам, партнёрам, каналам, задачам и ответственным.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" id="ovHeatmapCard" data-nav-ref="heatmap" data-no-acl="1" onclick="openSection('comms','heatmap')" style="display:none">
+        <div class="ov-card" id="ovHeatmapCard" data-nav-ref="heatmap" onclick="openSection('comms','heatmap')" style="display:none">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></div>
           <h3 data-i18n="Тепловая карта">Тепловая карта</h3>
           <p data-i18n="Тепловая карта коммуникационной нагрузки по сегментам и каналам. Раздел в разработке.">Тепловая карта коммуникационной нагрузки по сегментам и каналам. Раздел в разработке.</p>
@@ -195,26 +229,36 @@
     <section class="view ov-view" id="view-reports-overview">
       <div class="ov-head"><h1 data-i18n-html="h1_reports_ov">Отчёты <span class="grad">Tableau</span></h1></div>
       <div class="ov-sub" data-i18n="Отчёты компании, встраиваемые из Tableau. Выберите отчёт или воспользуйтесь меню слева.">Отчёты компании, встраиваемые из Tableau. Выберите отчёт или воспользуйтесь меню слева.</div>
+      <!-- data-acl-section="reports" у всех четырёх карточек: rep-* следуют праву на
+           секцию reports (единое право на весь раздел отчётов). applyNavAcl прячет
+           карточку, если у пользователя нет секции reports. В сайдбаре у этих же
+           пунктов стоит aclSection:"reports". -->
       <div class="ov-grid">
-        <div class="ov-card" data-nav-ref="rep-planfact" onclick="openSection('reports','rep-planfact')">
+        <div class="ov-card" data-nav-ref="rep-planfact" data-acl-section="reports" onclick="openSection('reports','rep-planfact')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-6M21 20H3"/></svg></div>
           <h3>Plan-Fact</h3>
           <p data-i18n="Общий финансовый отчёт компании: план и факт по ключевым показателям.">Общий финансовый отчёт компании: план и факт по ключевым показателям.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" data-nav-ref="rep-matrix" onclick="openSection('reports','rep-matrix')">
+        <div class="ov-card" data-nav-ref="rep-matrix" data-acl-section="reports" onclick="openSection('reports','rep-matrix')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
           <h3>CRM Matrix</h3>
           <p data-i18n="Основной отчёт команды CRM: каналы, кампании и показатели в одном разрезе.">Основной отчёт команды CRM: каналы, кампании и показатели в одном разрезе.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" data-nav-ref="rep-leadgen" onclick="openSection('reports','rep-leadgen')">
+        <div class="ov-card" data-nav-ref="rep-leadgen" data-acl-section="reports" onclick="openSection('reports','rep-leadgen')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
           <h3>CRM Leadgen</h3>
           <p data-i18n="Детализация лидогенерации: что именно покупают с каждой кампании.">Детализация лидогенерации: что именно покупают с каждой кампании.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" data-nav-ref="rep-demo" onclick="openSection('reports','rep-demo')">
+        <div class="ov-card" data-nav-ref="rep-smscheck" data-acl-section="reports" onclick="openSection('reports','rep-smscheck')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></div>
+          <h3>ЧЕК СМС траффик</h3>
+          <p data-i18n="Помесячная выгрузка Excel по трафику: отправки, клики, выдачи, выручка и юнит-экономика по источникам и дням.">Помесячная выгрузка Excel по трафику: отправки, клики, выдачи, выручка и юнит-экономика по источникам и дням.</p>
+          <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
+        </div>
+        <div class="ov-card" data-nav-ref="rep-demo" data-acl-section="reports" onclick="openSection('reports','rep-demo')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-4M12 17V8M16 17v-6"/></svg></div>
           <h3 data-i18n="Пример визуализации отчёта">Пример визуализации отчёта</h3>
           <p data-i18n="Демо-макет окна Tableau на плейсхолдер-данных: как отчёт выглядит внутри панели.">Демо-макет окна Tableau на плейсхолдер-данных: как отчёт выглядит внутри панели.</p>
@@ -231,9 +275,18 @@
         <p class="sub" id="rpEmbedDesc"></p>
       </header>
 
-      <!-- подключение: адрес Tableau Server / Cloud и опубликованная книга -->
-      <div class="rp-setup">
-        <div class="rp-setup-head" data-i18n="Подключение к Tableau">Подключение к Tableau</div>
+      <!-- Подключение: адрес Tableau Server / Cloud и опубликованная книга.
+           Настройки общие для всей панели и хранятся на сервере — блок целиком
+           показывается только админам (reports.js: rpEmbedSetupVisible), поэтому
+           по умолчанию он скрыт: иначе не-админ успевал увидеть чужие поля. -->
+      <div class="rp-setup" id="rpSetup" style="display:none">
+        <!-- Когда подключение уже задано, блок свёрнут в одну строку: править его
+             нужно редко, а развёрнутым он отжимал отчёт вниз на ~180px. -->
+        <button type="button" class="rp-setup-head" id="rpSetupHead" onclick="rpSetupToggle()">
+          <span class="rp-setup-chev" aria-hidden="true">▾</span>
+          <span data-i18n="Подключение к Tableau">Подключение к Tableau</span>
+          <span class="rp-setup-sum" id="rpSetupSum"></span>
+        </button>
         <div class="rp-setup-grid">
           <label><span data-i18n="Адрес Tableau Server / Cloud">Адрес Tableau Server / Cloud</span>
             <input id="rpSrv" placeholder="https://tableau.banki.ru" autocomplete="off"></label>
@@ -250,6 +303,44 @@
       </div>
 
       <div class="rp-embed" id="rpEmbedArea"></div>
+    </section>
+
+    <!-- ===== ЧЕК СМС траффик — выгрузка Excel (smscheck.js) ===== -->
+    <section class="view" id="view-report-smscheck">
+      <header class="rp-hero">
+        <div class="eyebrow">CRM · Analytics · Excel</div>
+        <h1 data-i18n-html="h1_smscheck">ЧЕК <span class="grad">СМС траффик</span></h1>
+        <p class="sub" data-i18n="Помесячная выгрузка в Excel: отправки, доставки, клики, заявки, выдачи, косты, выручка и юнит-экономика (CR, EPC/EPL/EPI/EPM) — по источникам и дням. Данные тянутся из DWH по вашему запросу; книга открывается в Excel и досчитывает все листы-представления.">Помесячная выгрузка в Excel: отправки, доставки, клики, заявки, выдачи, косты, выручка и юнит-экономика (CR, EPC/EPL/EPI/EPM) — по источникам и дням. Данные тянутся из DWH по вашему запросу; книга открывается в Excel и досчитывает все листы-представления.</p>
+      </header>
+
+      <!-- Источник данных (DWH) задаёт только админ — как и подключение Tableau.
+           Блок по умолчанию скрыт; smscheck.js покажет его, если canEdit. -->
+      <div class="rp-setup" id="scSetup" style="display:none">
+        <div class="rp-setup-grid">
+          <label><span data-i18n="Источник данных (подключение из «Диагностики»)">Источник данных (подключение из «Диагностики»)</span>
+            <select id="scConn"><option value="" data-i18n="— не выбрано —">— не выбрано —</option></select></label>
+        </div>
+        <div class="rp-setup-actions">
+          <button class="btn accent" onclick="scSaveConn()" data-i18n="Сохранить источник">Сохранить источник</button>
+          <span class="rp-setup-note" id="scConnStatus"></span>
+        </div>
+        <div class="rp-embed-hint" data-i18n="Подключение к DWH заводится в разделе «Диагностика» (/settings). Выбор общий для всех пользователей панели.">Подключение к DWH заводится в разделе «Диагностика» (/settings). Выбор общий для всех пользователей панели.</div>
+      </div>
+
+      <div class="rp-toolbar">
+        <div class="f"><label data-i18n="Месяц">Месяц</label>
+          <input type="month" id="scMonth"></div>
+        <div class="f"><label data-i18n="Канал">Канал</label>
+          <select id="scChannel">
+            <option value="sms">SMS</option>
+            <option value="push">Push</option>
+            <option value="email">Email</option>
+          </select></div>
+        <span class="spacer"></span>
+        <button class="btn accent" id="scDownload" onclick="scDownload()" data-i18n="⭳ Скачать Excel">⭳ Скачать Excel</button>
+      </div>
+
+      <div class="rp-embed" id="scArea"></div>
     </section>
 
     <!-- ===== Отчёты (Tableau) — макет окна встраивания ===== -->
@@ -337,7 +428,7 @@
       <div class="ov-head"><h1 data-i18n-html="h1_mon">Мониторинг <span class="grad">процессов CRM</span></h1></div>
       <div class="ov-sub" data-i18n="Контроль работоспособности кампаний и интеграций. Выберите подраздел.">Контроль работоспособности кампаний и интеграций. Выберите подраздел.</div>
       <div class="ov-grid">
-        <div class="ov-card" data-nav-ref="mon-campaigns" data-no-acl="1" onclick="openSection('monitoring','mon-campaigns')">
+        <div class="ov-card" data-nav-ref="mon-campaigns" data-acl-section="monitoring" onclick="openSection('monitoring','mon-campaigns')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
           <h3 data-i18n="Базовая работа кампаний">Базовая работа кампаний</h3>
           <p data-i18n="Отбор базы, поступление событий, отправки, доставки и дублирование коммуникаций.">Отбор базы, поступление событий, отправки, доставки и дублирование коммуникаций.</p>
@@ -847,7 +938,6 @@
     <span class="spacer"></span>
     <button class="btn accent" onclick="promoNewOpen()" data-i18n="Запланировать промо-рассылку">Запланировать промо-рассылку</button>
     <button class="btn" onclick="promoExportCsv()" data-i18n="Экспорт CSV">Экспорт CSV</button>
-    <button class="btn" onclick="promoReset()" data-i18n="Сбросить данные">Сбросить данные</button>
   </div>
 
   <datalist id="promoPartnerList"></datalist>
@@ -886,6 +976,56 @@
       <li><span class="flag bad">▲</span> <span data-i18n="Если на день запланирован тотал, остальные промо в том же канале подсвечиваются.">Если на день запланирован тотал, остальные промо в том же канале подсвечиваются.</span></li>
     </ul>
     <span data-i18n="Одна запись — один канал: при сохранении нескольких каналов создаётся отдельная запись на каждый. Дату можно переназначить иконкой календаря — запись сама перейдёт в нужный блок дат. «Название коммуникации» собирается автоматически по формату Конструктора source из канала, продукта, партнёра, уникального имени и даты. Записи с прошедшей датой уходят на вкладку «Архивные». Правки сохраняются в браузере.">Одна запись — один канал: при сохранении нескольких каналов создаётся отдельная запись на каждый. Дату можно переназначить иконкой календаря — запись сама перейдёт в нужный блок дат. «Название коммуникации» собирается автоматически по формату Конструктора source из канала, продукта, партнёра, уникального имени и даты. Записи с прошедшей датой уходят на вкладку «Архивные». Правки сохраняются в браузере.</span>
+  </div>
+    </section>
+
+    <!-- ===== А/Б тесты ===== -->
+    <section class="view" id="sec-abtests">
+  <h1 data-i18n-html="h1_abtests">А/Б <span class="grad">тесты</span></h1>
+  <div class="sub" data-i18n="Журнал А/Б тестов: когда шёл тест, кто его инициировал, что проверяли, на каких шаблонах и к чему пришли. Ячейки редактируются по клику, правка подтверждается ✓ (или кликом мимо ячейки).">Журнал А/Б тестов: когда шёл тест, кто его инициировал, что проверяли, на каких шаблонах и к чему пришли. Ячейки редактируются по клику, правка подтверждается ✓ (или кликом мимо ячейки).</div>
+
+  <div class="kpis" id="abKpis"></div>
+
+  <div class="toolbar">
+    <div class="f"><label data-i18n="Год">Год</label>
+      <select id="abYear" onchange="abRender()"></select></div>
+    <div class="f"><label data-i18n="Кто тестировал">Кто тестировал</label>
+      <select id="abTester" onchange="abRender()"></select></div>
+    <div class="f"><label data-i18n="Статус">Статус</label>
+      <select id="abStatus" onchange="abRender()">
+        <option value="" data-i18n="Все тесты">Все тесты</option>
+        <option value="запланировано" data-i18n="Запланированные">Запланированные</option>
+        <option value="идёт" data-i18n="Идут">Идут</option>
+        <option value="завершён" data-i18n="Завершённые">Завершённые</option>
+      </select></div>
+    <div class="f"><label data-i18n="Поиск">Поиск</label>
+      <input id="abSearch" placeholder="Гипотеза, шаблон, результат…" data-i18n-ph="Гипотеза, шаблон, результат…" oninput="abRender()"></div>
+    <span class="spacer"></span>
+    <button class="btn accent" id="abAddBtn" onclick="abNewOpen()" data-i18n="Добавить тест">Добавить тест</button>
+    <button class="btn" onclick="abExportCsv()" data-i18n="Экспорт CSV">Экспорт CSV</button>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th data-i18n="Начало">Начало</th>
+          <th data-i18n="Окончание">Окончание</th>
+          <th data-i18n="Статус">Статус</th>
+          <th data-i18n="Что тестировали">Что тестировали</th>
+          <th data-i18n="Шаблоны">Шаблоны</th>
+          <th data-i18n="Кто инициировал">Кто инициировал</th>
+          <th data-i18n="Кто тестировал">Кто тестировал</th>
+          <th data-i18n="Результаты">Результаты</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="abBody"></tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span data-i18n="Таблица общая: правки видят все, у кого есть доступ к разделу, и подтягиваются раз в полминуты. «Кто тестировал» при заведении подставляется из вашей учётки, но поле обычное — впишите другого человека, если тест вёл не вы. Статус («запланировано» / «идёт» / «завершён») ставится вручную в одноимённой колонке.">Таблица общая: правки видят все, у кого есть доступ к разделу, и подтягиваются раз в полминуты. «Кто тестировал» при заведении подставляется из вашей учётки, но поле обычное — впишите другого человека, если тест вёл не вы. Статус («запланировано» / «идёт» / «завершён») ставится вручную в одноимённой колонке.</span>
   </div>
     </section>
 
@@ -1017,6 +1157,8 @@
         <button type="button" data-ch="cc" onclick="wizardSetChannel('cc')">КЦ</button>
         <button type="button" data-ch="fa" onclick="wizardSetChannel('fa')">FA</button>
         <button type="button" data-ch="vk" onclick="wizardSetChannel('vk')">VK</button>
+        <!-- Live Activity отдельной кнопки не имеет: это разновидность пуша, и заводится
+             тумблером «Это Live Activity» в карточке канала Mobile-push (sfdFieldDefs). -->
     </div>
 </div>
 
@@ -1123,6 +1265,10 @@
 <input type="hidden" class="channel" value="mobile-push">
 <div class="grid">
 
+<div class="form-block form-block-la-toggle">
+<div class="field checkbox"><input type="checkbox" class="cb-live-activity" onchange="toggleLiveActivity(this)"><label>Это Live Activity</label></div>
+</div>
+
 <div class="form-block form-block-required">
 <div class="form-block-title" data-i18n="1. Обязательные параметры">1. Обязательные параметры</div>
 <div class="field full"><label>Message Text</label><textarea></textarea></div>
@@ -1189,6 +1335,18 @@
         </div>
     </div>
 </div>
+</div>
+
+<div class="form-block form-block-la" style="display:none">
+<div class="form-block-title">Live Activity — поля</div>
+<div class="field"><label>Activity Name</label><input class="activity_name"></div>
+<div class="field"><label>LA Event</label><select class="la_event"><option value="start">start</option><option value="update">update</option><option value="end">end</option></select></div>
+<div class="field"><label>LA Visualization</label><input class="la_visualization"></div>
+<div class="field"><label>LA Status</label><input class="la_status"></div>
+<div class="field"><label>Current Step</label><input type="number" class="current_step" min="0" step="1" onkeydown="return !['e','E','+','-','.',','].includes(event.key)"></div>
+<div class="field"><label>AB Group</label><input class="ab_group"></div>
+<div class="field full"><label>Action Buttons (JSON)</label><textarea class="action_buttons" placeholder='[{"title":"...","action":"..."}]'></textarea></div>
+<div class="field full"><label>LA Visualization Attributes (JSON)</label><textarea class="la_visualization_attributes" placeholder='{}'></textarea></div>
 </div>
 
 <div class="form-block form-block-cc">
@@ -1382,6 +1540,99 @@
 <div class="actions"><button type="button" onclick="saveFromChannelForm('cc')">Сохранить КЦ</button></div>
 </div>
 
+<!-- ================= FA (финансовый ассистент) ================= -->
+<div id="fa" class="form">
+<input type="hidden" class="channel" value="fa">
+<div class="grid">
+<div class="form-block form-block-required">
+<div class="form-block-title">1. Обязательные параметры</div>
+<div class="field full"><label>Message Text</label><textarea></textarea></div>
+<div class="field"><label>FA ID</label><input class="fa_id"></div>
+<div class="field"><label>Channel ID</label><input type="number" class="channel_id" min="0" step="1" onkeydown="return !['e','E','+','-','.',','].includes(event.key)"></div>
+<div class="field checkbox"><input type="checkbox" class="cb-need_push"><label>Need Push</label></div>
+<div class="field"><label>C2D Transport</label><input class="c2d_transport"></div>
+<div class="field"><label>C2D Account</label><input class="c2d_account"></div>
+<div class="field"><label>CH2D Operator ID</label><input type="number" class="ch2d_operator_id" min="0" step="1" onkeydown="return !['e','E','+','-','.',','].includes(event.key)"></div>
+<div class="field"><label>Sender Type</label><select class="trigger" onchange="buildSource(this)"><option value="promo">promo</option><option value="trigger">trigger</option></select></div>
+<div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
+<div class="field"><label>Touch Point</label><select class="touch" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Sending Day</label><input type="number" class="day" min="0" step="1" value="0" onkeydown="return !['e','E','+','-','.',','].includes(event.key)" oninput="buildSource(this)"></div>
+<div class="field"><label>Deep Link</label><input class="deeplink"></div>
+<div class="field"><label>Webview link</label><input class="webview"></div>
+<div class="field"><label>Web URL</label><input class="web_url"></div>
+<div class="field"><label>Link Title</label><input class="link_title"></div>
+<div class="field"><label>Communication Name</label><div class="combo"><input type="text" class="combo-input comname" value="NoComName" data-comname-base="NoComName" oninput="onComnameEdited(this)"><div class="combo-pop"></div></div></div>
+<div class="field"><label>Communication Tunnel</label><select class="communication_type"><option value="adv">adv</option><option value="service">service</option></select></div>
+<div class="field"><label>Business Communication Type</label><select class="biz_type"><option value="adv">adv</option><option value="service">service</option><option value="info">info</option></select></div>
+<div class="field"><label>Landing Page</label><input class="aff_sub3"></div>
+<div class="field full"><label>Campaign Name</label><input class="source"></div>
+<div class="field full"><label>Action Buttons (JSON)</label><textarea class="action_buttons" placeholder='[{"title":"...","action":"..."}]'></textarea></div>
+<div class="field checkbox"><input type="checkbox" class="active_flag" checked><label>Active</label></div>
+</div>
+<div class="form-block form-block-flags">
+<div class="form-block-title">2. Флаги горизонталей и настроечные</div>
+<div class="extra-flags field full">
+    <div class="flags-group"><div class="flags-group-label">Горизонтали</div><div class="flags-row">
+        <div class="field checkbox"><input type="checkbox" class="cb-marketplace" onchange="updateComnameFromCheckboxes(this)"><label>Marketplace</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-dialog" onchange="updateComnameFromCheckboxes(this)"><label>Dialog</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-loyalty" onchange="updateComnameFromCheckboxes(this)"><label>loyalty</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-national_rating" onchange="updateComnameFromCheckboxes(this)"><label>National Rating</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-news" onchange="updateComnameFromCheckboxes(this)"><label>News</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-mobile_app" onchange="updateComnameFromCheckboxes(this)"><label>Mobile App</label></div>
+    </div></div>
+    <div class="flags-group"><div class="flags-group-label">Настроечные</div><div class="flags-row">
+        <div class="field checkbox"><input type="checkbox" class="cb-cross" onchange="updateComnameFromCheckboxes(this)"><label>Cross</label></div>
+    </div></div>
+</div>
+</div>
+</div>
+<div class="actions"><button type="button" onclick="saveFromChannelForm('fa')">Сохранить FA</button></div>
+</div>
+
+<!-- ================= VK ================= -->
+<div id="vk" class="form">
+<input type="hidden" class="channel" value="vk">
+<div class="grid">
+<div class="form-block form-block-required">
+<div class="form-block-title">1. Обязательные параметры</div>
+<div class="field"><label>VK Template Name</label><input class="vk_template_name"></div>
+<div class="field full"><label>Message Text</label><textarea></textarea></div>
+<div class="field"><label>TTL</label><input type="number" class="ttl" min="0" step="1" onkeydown="return !['e','E','+','-','.',','].includes(event.key)"></div>
+<div class="field"><label>AB Group</label><input class="ab_group"></div>
+<div class="field"><label>Sender Type</label><select class="trigger" onchange="buildSource(this)"><option value="promo">promo</option><option value="trigger">trigger</option></select></div>
+<div class="field"><label>Product Type</label><select class="product" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Partner Name</label><input class="partner" oninput="buildSource(this)"></div>
+<div class="field"><label>Touch Point</label><select class="touch" onchange="buildSource(this)"></select></div>
+<div class="field"><label>Sending Day</label><input type="number" class="day" min="0" step="1" value="0" onkeydown="return !['e','E','+','-','.',','].includes(event.key)" oninput="buildSource(this)"></div>
+<div class="field"><label>Communication Name</label><div class="combo"><input type="text" class="combo-input comname" value="NoComName" data-comname-base="NoComName" oninput="onComnameEdited(this)"><div class="combo-pop"></div></div></div>
+<div class="field"><label>Communication Tunnel</label><select class="communication_type"><option value="adv">adv</option><option value="service">service</option></select></div>
+<div class="field"><label>Business Communication Type</label><select class="biz_type"><option value="adv">adv</option><option value="service">service</option><option value="info">info</option></select></div>
+<div class="field"><label>Landing Page</label><input class="aff_sub3"></div>
+<div class="field full"><label>Campaign Name</label><input class="source"></div>
+<div class="field full"><label>Buttons (JSON)</label><textarea class="buttons" placeholder='[{"label":"...","link":"..."}]'></textarea></div>
+<div class="field checkbox"><input type="checkbox" class="active_flag" checked><label>Active</label></div>
+</div>
+<div class="form-block form-block-flags">
+<div class="form-block-title">2. Флаги горизонталей и настроечные</div>
+<div class="extra-flags field full">
+    <div class="flags-group"><div class="flags-group-label">Горизонтали</div><div class="flags-row">
+        <div class="field checkbox"><input type="checkbox" class="cb-marketplace" onchange="updateComnameFromCheckboxes(this)"><label>Marketplace</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-dialog" onchange="updateComnameFromCheckboxes(this)"><label>Dialog</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-loyalty" onchange="updateComnameFromCheckboxes(this)"><label>loyalty</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-national_rating" onchange="updateComnameFromCheckboxes(this)"><label>National Rating</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-news" onchange="updateComnameFromCheckboxes(this)"><label>News</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-mobile_app" onchange="updateComnameFromCheckboxes(this)"><label>Mobile App</label></div>
+    </div></div>
+    <div class="flags-group"><div class="flags-group-label">Настроечные</div><div class="flags-row">
+        <div class="field checkbox"><input type="checkbox" class="cb-cross" onchange="updateComnameFromCheckboxes(this)"><label>Cross</label></div>
+    </div></div>
+</div>
+</div>
+</div>
+<div class="actions"><button type="button" onclick="saveFromChannelForm('vk')">Сохранить VK</button></div>
+</div>
+
 <!-- ================= Просмотр настроек ================= -->
 <div id="view" class="form">
   <!-- Донорский picker (main): 1. канал → 2. шаблон (поиск по source_type; Email — ещё и по Letteros ID; Code — универсально) -->
@@ -1393,6 +1644,9 @@
         <button type="button" data-ch="push" onclick="viewerSetChannel('push')">Mobile-push</button>
         <button type="button" data-ch="email" onclick="viewerSetChannel('email')">E-mail</button>
         <button type="button" data-ch="cc" onclick="viewerSetChannel('cc')">КЦ</button>
+        <button type="button" data-ch="fa" onclick="viewerSetChannel('fa')">FA</button>
+        <button type="button" data-ch="vk" onclick="viewerSetChannel('vk')">VK</button>
+        <button type="button" data-ch="la" onclick="viewerSetChannel('la')">Live Activity</button>
       </div>
     </div>
     <div class="viewer-block" id="viewerPickBlock" style="display:none">
@@ -1453,51 +1707,42 @@
     </div>
   </div>
   <div class="filters-row">
+    <!-- Мультиселекты: можно выбрать несколько значений (внутри фильтра ИЛИ, между фильтрами И).
+         Список опций наполняется реальными значениями из базы (populateFilterFacets). -->
     <div class="field" data-filter="channel">
       <label>Канал</label>
-      <select id="filterChannel" onchange="applyFilters()">
-        <option value="">Все каналы</option>
-        <option value="sms">SMS</option>
-        <option value="push">Mobile-push</option>
-        <option value="email">E-mail</option>
-        <option value="cc">КЦ</option>
-        <option value="fa">FA</option>
-        <option value="vk">VK</option>
-      </select>
+      <div class="ms" data-filter="channel">
+        <button type="button" class="ms-btn">Все каналы</button>
+        <div class="ms-panel"></div>
+      </div>
     </div>
     <div class="field" data-filter="product">
       <label>Продукт</label>
-      <select id="filterProduct" onchange="applyFilters()">
-        <option value="">Все продукты</option>
-        <option value="loan">loan</option>
-        <option value="card">card</option>
-        <option value="account">account</option>
-        <option value="subscription">subscription</option>
-        <option value="insurance">insurance</option>
-        <option value="deposit">deposit</option>
-      </select>
+      <div class="ms" data-filter="product">
+        <button type="button" class="ms-btn">Все продукты</button>
+        <div class="ms-panel"></div>
+      </div>
     </div>
     <div class="field" data-filter="touch">
       <label>Touch point</label>
-      <select id="filterTouch" onchange="applyFilters()">
-        <option value="">Все точки</option>
-        <option value="abandoned-view">abandoned-view</option>
-        <option value="abandoned-form">abandoned-form</option>
-        <option value="abandoned-showcase">abandoned-showcase</option>
-        <option value="abandoned-application">abandoned-application</option>
-        <option value="abandoned-approval">abandoned-approval</option>
-        <option value="sign">sign</option>
-        <option value="issue">issue</option>
-        <option value="renewal">renewal</option>
-      </select>
+      <div class="ms" data-filter="touch">
+        <button type="button" class="ms-btn">Все точки</button>
+        <div class="ms-panel"></div>
+      </div>
     </div>
     <div class="field" data-filter="trigger">
       <label>Trigger type</label>
-      <select id="filterTrigger" onchange="applyFilters()">
-        <option value="">Все типы</option>
-        <option value="trigger">trigger</option>
-        <option value="promo">promo</option>
-      </select>
+      <div class="ms" data-filter="trigger">
+        <button type="button" class="ms-btn">Все типы</button>
+        <div class="ms-panel"></div>
+      </div>
+    </div>
+    <div class="field" data-filter="partner">
+      <label>Партнёр</label>
+      <div class="ms" data-filter="partner">
+        <button type="button" class="ms-btn">Все партнёры</button>
+        <div class="ms-panel"></div>
+      </div>
     </div>
     <div class="field" data-filter="active">
       <label>Статус</label>
@@ -1517,6 +1762,8 @@
       <tbody id="templateListBody"></tbody>
     </table>
   </div>
+  <!-- Сентинел бесконечной прокрутки: как долистываем до него — грузим следующие 50 -->
+  <div id="listLoadMore" style="padding:14px 2px;text-align:center;color:var(--faint,#6B8098);font-size:13px"></div>
 </div>
 
 <!-- ================= Дашборд ================= -->
@@ -1562,7 +1809,7 @@
 
   <div id="dashboardContent">
   <div class="dashboard-grid">
-    <div class="stat-card info">
+    <div class="stat-card">
       <div class="stat-label">Отправок сегодня</div>
       <div class="stat-value" id="todaySends">12,847</div>
       <div class="stat-trend up" id="todayTrend">↑ +15% к среднему</div>
@@ -1724,7 +1971,7 @@
   <div class="dashboard-section" id="overlapSection">
     <h3>Пересечение каналов (SMS + Email + Push)</h3>
     <p style="font-size: 12px; color: var(--dim); margin-bottom: 12px;">Пользователи, доступные сразу во всех трёх каналах</p>
-    <div class="stat-card info" style="max-width: 280px;">
+    <div class="stat-card" style="max-width: 280px;">
       <div class="stat-label">Человек</div>
       <div class="stat-value" id="channelOverlapValue">—</div>
     </div>
@@ -1771,7 +2018,7 @@
     <h3>Среднее количество коммуникаций на пользователя</h3>
     <p style="font-size: 12px; color: var(--dim); margin-bottom: 12px;">За 7 и 30 дней</p>
     <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-      <div class="stat-card info" style="max-width: 200px;">
+      <div class="stat-card" style="max-width: 200px;">
         <div class="stat-label">За 7 дней</div>
         <div class="stat-value" id="avgComm7d">—</div>
       </div>
@@ -1972,7 +2219,9 @@
 
 <script src="js/srcbuilder.js"></script>
 <script src="js/promo.js"></script>
+<script src="js/abtests.js"></script>
 <script src="js/reports.js"></script>
+<script src="js/smscheck.js"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->
 <!-- фиксированный попап подсказок полей (showFieldHelp): не обрезается краями карточек -->

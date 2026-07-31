@@ -10,7 +10,11 @@
    и, для админки, adminMode (wizard|list|dashboard).
    id разделов НЕ менять: на них завязан RBAC (me.sections). */
 const NAV = [
-  { id:"home",  label:"Главная", icon:"home", view:"view-home" },
+  /* noAcl: «Главная» — личная страница (задачи, недавнее, быстрые ссылки), как раздел
+     не гейтится. shell.js её из ACL исключал (sectionAllowed/aclAllows), а applyNavAcl
+     в api.js — нет: роль без секции home (например Маркетолог после V23) теряла пункт
+     из сайдбара. Флаг выравнивает оба гейта. */
+  { id:"home",  label:"Главная", icon:"home", view:"view-home", noAcl:true },
   { id:"comms", label:"Управление коммуникациями", icon:"megaphone", overviewView:"view-comms-overview", children:[
       { id:"onelink",   label:"OneLink Builder",     icon:"link", view:"sec-onelink" },
       { id:"admin",     label:"Мастер коммуникаций", icon:"pen",  view:"sec-admin", adminMode:"wizard" },
@@ -18,26 +22,33 @@ const NAV = [
       /* «Просмотр настроек» — тот же раздел admin: ACL следует правам admin (data-acl-section) */
       { id:"viewer",    label:"Просмотр настроек",   icon:"search", view:"sec-admin", adminMode:"view", aclSection:"admin" },
       /* клиентские инструменты без серверной секции — не фильтруются по me.sections (data-no-acl) */
-      { id:"srcbuilder",label:"Конструктор source",  icon:"pulse", view:"sec-srcbuilder", noAcl:true },
+      { id:"srcbuilder",label:"Конструктор source",  icon:"pulse", view:"sec-srcbuilder" },
+      /* promo: пока данные лежат в localStorage — фильтровать по me.sections нечего.
+         Как таблица переедет на сервер (app.promo_plan), noAcl снимаем — секция promo
+         в RBAC уже заведена. */
       { id:"promo",     label:"Планирование промо",  icon:"calendar", view:"sec-promo", noAcl:true },
-      { id:"heatmap",   label:"Тепловая карта",      icon:"grid2", view:"view-heatmap", noAcl:true, appOnly:["Маркетинг"] },
+      /* А/Б тесты: секция abtests в RBAC заведена (V26, права скопированы с promo),
+         поэтому пункт гейтится по me.sections — noAcl тут НЕ ставим. */
+      { id:"abtests",   label:"А/Б тесты",           icon:"beaker", view:"sec-abtests" },
+      { id:"heatmap",   label:"Тепловая карта",      icon:"grid2", view:"view-heatmap", appOnly:["Маркетинг"] },
   ]},
   /* «Отчёты» — встраивание отчётов Tableau: обзор с карточками, у каждого отчёта
      свой блок подключения (адрес сервера + книга); «Пример» — демо-макет окна */
   { id:"reports", label:"Отчёты", icon:"reports", overviewView:"view-reports-overview", children:[
-      { id:"rep-planfact", label:"Plan-Fact",   icon:"chart", view:"view-report-embed", report:"planfact", noAcl:true },
-      { id:"rep-matrix",   label:"CRM Matrix",  icon:"grid2", view:"view-report-embed", report:"matrix",   noAcl:true },
-      { id:"rep-leadgen",  label:"CRM Leadgen", icon:"pulse", view:"view-report-embed", report:"leadgen",  noAcl:true },
-      { id:"rep-demo",     label:"Пример визуализации отчёта", icon:"reports", view:"view-reports", noAcl:true },
+      { id:"rep-planfact", label:"Plan-Fact",   icon:"chart", view:"view-report-embed", report:"planfact", aclSection:"reports" },
+      { id:"rep-matrix",   label:"CRM Matrix",  icon:"grid2", view:"view-report-embed", report:"matrix",   aclSection:"reports" },
+      { id:"rep-leadgen",  label:"CRM Leadgen", icon:"pulse", view:"view-report-embed", report:"leadgen",  aclSection:"reports" },
+      { id:"rep-smscheck", label:"ЧЕК СМС траффик", icon:"download", view:"view-report-smscheck", aclSection:"reports" },
+      { id:"rep-demo",     label:"Пример визуализации отчёта", icon:"reports", view:"view-reports", aclSection:"reports" },
   ]},
   { id:"dash", label:"Дашборд", icon:"gauge", overviewView:"view-dash-overview", children:[
       { id:"dashboard",  label:"Общая статистика",  icon:"chart", view:"sec-admin", adminMode:"dashboard" },
       { id:"deviations", label:"Панель отклонений", icon:"pulse", view:"sec-deviations" },
   ]},
   { id:"monitoring", label:"Мониторинг", icon:"monitor", overviewView:"view-mon-overview", children:[
-      { id:"mon-campaigns", label:"Базовая работа кампаний", icon:"pulse", view:"view-mon-campaigns", noAcl:true },
+      { id:"mon-campaigns", label:"Базовая работа кампаний", icon:"pulse", view:"view-mon-campaigns", aclSection:"monitoring" },
   ]},
-  { id:"uploads",  label:"Загруженные инструменты", icon:"upload", view:"view-uploads", noAcl:true },
+  { id:"uploads",  label:"Загруженные инструменты", icon:"upload", view:"view-uploads" },
   { id:"journeys", label:"Цепочки",             icon:"flow", view:"sec-journeys", adminOnly:true },
   /* «Управление доступом» переехало в настроечную админку (settings/ → pane access) */
 ];
@@ -55,12 +66,14 @@ const ICONS = {
   pen:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
   list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
   chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-6M21 20H3"/></svg>',
+  download:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>',
   pulse:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
   flow:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="6" height="5" rx="1"/><rect x="16" y="4" width="6" height="5" rx="1"/><rect x="9" y="15" width="6" height="5" rx="1"/><path d="M5 9v3a2 2 0 0 0 2 2h2M19 9v3a2 2 0 0 1-2 2h-2"/></svg>',
   gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>',
   doc:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
   search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
   calendar:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+  beaker:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6.5L5 18a2 2 0 0 0 1.7 3h10.6A2 2 0 0 0 19 18l-5-8.5V3"/><path d="M7.5 14h9"/></svg>',
   grid2:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
   monitor:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
   upload:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
@@ -111,6 +124,11 @@ const I18N_EN = {
   "Настроить главную":"Customize home", "Готово":"Done", "Свернуть меню":"Collapse menu",
   "Настройки (настроечная админка)":"Settings (admin settings)",
   "Выбрать приложение":"Choose an app", "Добавить блок":"Add a block", "Выйти":"Log out",
+  /* личные «Общие параметры» (тема/язык) */
+  "Вид":"View", "Тема и язык интерфейса — только для вашей учётки":"Theme and interface language — for your account only",
+  "Общие параметры":"General settings", "Тема оформления":"Theme",
+  "Системная":"System", "Тёмная":"Dark", "Светлая":"Light", "Язык интерфейса":"Interface language",
+  "Название из импорта":"Name from import",
   /* виджеты главной */
   "Сводка по коммуникациям":"Communications summary", "Мои задачи":"My tasks",
   "Недавно использованные инструменты":"Recently used tools", "Быстрые ссылки":"Quick links",
@@ -197,6 +215,9 @@ const I18N_EN = {
   "Контент и ссылки":"Content & links", "Служебные параметры и флаги":"Service parameters & flags",
   "Сегмент":"Segment", "Описание сегмента":"Segment description",
   "Сохранить":"Save", "Отменить":"Cancel", "Редактировать":"Edit",
+  "Добавить значение в справочник":"Add value to the dictionary",
+  "Сначала впишите значение.":"Enter a value first.",
+  "Не удалось добавить в справочник":"Could not add to the dictionary",
   "АКТИВНЫЙ":"ACTIVE", "НЕАКТИВНЫЙ":"INACTIVE", "да":"yes", "нет":"no",
   "Предпросмотр SMS":"SMS preview", "Предпросмотр Push":"Push preview", "Предпросмотр Email":"Email preview",
   "Тема":"Subject",
@@ -361,6 +382,21 @@ Object.assign(I18N_EN, {
   "Токен (JWT / PAT, опционально)":"Token (JWT / PAT, optional)",
   "Сохранить и подключить":"Save and connect", "Сохранено.":"Saved.",
   "Очистить настройки подключения этого отчёта?":"Clear this report's connection settings?",
+  /* общий конфиг подключения: правит только админ, остальные видят готовый отчёт */
+  "Загружаем настройки подключения…":"Loading connection settings…",
+  "Не удалось получить настройки подключения":"Could not load the connection settings",
+  "Обновите страницу; если не помогает — обратитесь к администратору панели.":"Reload the page; if that does not help, contact the panel administrator.",
+  "токен сохранён — оставьте пустым, чтобы не менять":"token saved — leave empty to keep it",
+  "Сохраняем…":"Saving…",
+  "Сохранено для всех пользователей.":"Saved for all users.",
+  "Менять подключение к Tableau может только администратор.":"Only an administrator can change the Tableau connection.",
+  "Не удалось сохранить настройки подключения.":"Could not save the connection settings.",
+  "Очистить настройки подключения этого отчёта? Отчёт перестанет открываться у всех пользователей.":"Clear this report's connection settings? The report will stop opening for every user.",
+  "Подключение очищено.":"Connection cleared.",
+  "Не удалось очистить настройки подключения.":"Could not clear the connection settings.",
+  "Отчёт пока недоступен":"The report is not available yet",
+  "Подключение к Tableau ещё не настроено, обратитесь к администратору.":"The Tableau connection has not been set up yet — please contact an administrator.",
+  "Сервер должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели. Настройки общие для всех пользователей панели.":"The server must be reachable from the browser (VPN/intranet) and allow embedding for the panel's domain. The settings are shared by all panel users.",
   "Отчёт появится здесь":"The report will appear here",
   "Укажите адрес вашего Tableau Server (или Tableau Cloud) и путь к опубликованной книге — например CRMMatrix/Overview — и нажмите «Сохранить и подключить».":"Enter your Tableau Server (or Tableau Cloud) address and the path to the published workbook — e.g. CRMMatrix/Overview — then press “Save and connect”.",
   "Сервер должен быть доступен из браузера (VPN/интранет) и разрешать встраивание для домена панели. Настройки хранятся в этом браузере.":"The server must be reachable from the browser (VPN/intranet) and allow embedding for the panel's domain. Settings are stored in this browser.",
@@ -401,7 +437,9 @@ const I18N_HTML = {
     h1_upform:'Загрузка <span class="grad">HTML-инструмента</span>',
     h1_srcbuilder:'Конструктор <span class="grad">source</span>',
     h1_promo:'Планирование <span class="grad">промо</span>',
+    h1_abtests:'А/Б <span class="grad">тесты</span>',
     h1_reports:'Пример <span class="grad">визуализации отчёта</span>',
+    h1_smscheck:'ЧЕК <span class="grad">СМС траффик</span>',
     h1_reports_ov:'Отчёты <span class="grad">Tableau</span>',
     reports_sub:'Демо-макет того, как отчёт Tableau будет выглядеть в этом окне. Реальные отчёты подключаются на страницах Plan-Fact, CRM&nbsp;Matrix и CRM&nbsp;Leadgen — там задаются адрес сервера и книга. Все числа на макете — демонстрационные.',
   },
@@ -416,6 +454,7 @@ const I18N_HTML = {
     h1_upform:'Upload an <span class="grad">HTML tool</span>',
     h1_srcbuilder:'Source <span class="grad">builder</span>',
     h1_promo:'Promo <span class="grad">planning</span>',
+    h1_abtests:'A/B <span class="grad">tests</span>',
     h1_reports:'Report visualisation <span class="grad">example</span>',
     h1_reports_ov:'Tableau <span class="grad">reports</span>',
     reports_sub:'A demo mock-up of how a Tableau report will look in this window. Real reports are connected on the Plan-Fact, CRM&nbsp;Matrix and CRM&nbsp;Leadgen pages, where the server address and workbook are set. All numbers in the mock-up are illustrative.',
@@ -724,6 +763,25 @@ document.addEventListener("keydown", function(e){
   if (e.key === "Escape" && $("#pwdDialog") && $("#pwdDialog").style.display !== "none") closePwdDialog();
 });
 
+/* «Общие параметры» — личные тема и язык (доступны каждой учётке, хранятся в браузере).
+   Пишем в те же ключи crmpanel:theme / crmpanel:lang и применяем сразу — так же, как
+   настроечная админка, только без прав администратора. */
+function openPrefsDialog(){
+  var theme = store.get("theme", "dark");
+  var lang = store.get("lang", "ru");
+  var r = document.querySelector('input[name="prefTheme"][value="' + theme + '"]') ||
+          document.querySelector('input[name="prefTheme"][value="dark"]');
+  if (r) r.checked = true;
+  var ls = $("#prefLang"); if (ls) ls.value = (lang === "en" ? "en" : "ru");
+  var d = $("#prefsDialog"); if (d) d.style.display = "";
+}
+function closePrefsDialog(){ var d = $("#prefsDialog"); if (d) d.style.display = "none"; }
+function prefsThemeChange(v){ store.set("theme", v); applyTheme(); }
+function prefsLangChange(v){ store.set("lang", v === "en" ? "en" : "ru"); applyLang(true); }
+document.addEventListener("keydown", function(e){
+  if (e.key === "Escape" && $("#prefsDialog") && $("#prefsDialog").style.display !== "none") closePrefsDialog();
+});
+
 function openSection(sid, cid){
   let s = sectionById(sid);
   if (!s){
@@ -764,6 +822,8 @@ function openSection(sid, cid){
   if (target.adminMode && typeof setAdminMode === "function") setAdminMode(target.adminMode);
   /* отчёты Tableau: один view на все отчёты, содержимое задаёт reports.js */
   if (target.report && typeof rpEmbedOpen === "function") rpEmbedOpen(target.report);
+  /* «ЧЕК СМС траффик» — выгрузка Excel (smscheck.js) */
+  if (target.view === "view-report-smscheck" && typeof scInit === "function") scInit();
   if (sid === "journeys" && typeof initJourneysSection === "function") initJourneysSection();
   if (target.view === "sec-deviations") setTimeout(() => {
     /* графики Chart.js, созданные в скрытой секции, имеют нулевой размер —
@@ -1228,6 +1288,34 @@ function timeAgo(ts){
   if (h < 24) return h + t(" ч");
   return Math.round(h / 24) + t(" дн");
 }
+
+/* ---------- CSS-тултипы .info .tip: не даём вылезти за край экрана ----------
+   Тултип шириной 250px висит по центру значка (left:50% + translateX(-50%)) и сам
+   про край экрана не знает: у полей слева он уезжал на сайдбар, у правых — за окно.
+   Считаем нужный сдвиг и кладём его в --tip-dx; CSS двигает на него сам тултип и на
+   столько же в обратную сторону стрелку, чтобы она продолжала указывать на значок.
+   Значки в «Мастере коммуникаций» пользуются другим механизмом — общим попапом
+   #fieldHelpPopup (position:fixed), его позицию считает showFieldHelp. */
+function clampTip(info) {
+  const tip = info.querySelector(":scope > .tip");
+  if (!tip) return;
+  tip.style.setProperty("--tip-dx", "0px");
+  const r = tip.getBoundingClientRect();
+  const pad = 10;
+  let dx = 0;
+  if (r.left < pad) dx = pad - r.left;
+  else if (r.right > window.innerWidth - pad) dx = (window.innerWidth - pad) - r.right;
+  if (dx) tip.style.setProperty("--tip-dx", Math.round(dx) + "px");
+}
+/* mouseenter не всплывает — слушаем mouseover, он же ловит переход между значками */
+document.addEventListener("mouseover", e => {
+  const info = e.target.closest && e.target.closest(".info");
+  if (info) clampTip(info);
+});
+document.addEventListener("focusin", e => {
+  const info = e.target.closest && e.target.closest(".info");
+  if (info) clampTip(info);
+});
 
 /* первичная отрисовка шапки и меню (виджеты и восстановление раздела — в стартовом скрипте в конце документа) */
 renderLauncher();

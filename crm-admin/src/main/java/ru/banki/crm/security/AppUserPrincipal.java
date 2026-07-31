@@ -30,14 +30,24 @@ public class AppUserPrincipal implements UserDetails {
         return user.getSections();
     }
 
+    public boolean hasCapability(String sectionId, ru.banki.crm.domain.Capability cap) {
+        return user.hasCapability(sectionId, cap);
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        // SUPER_ADMIN получает и ROLE_ADMIN — все существующие проверки hasRole('ADMIN') работают
-        if (user.getRole() == ru.banki.crm.domain.Role.SUPER_ADMIN) {
+        // Полномочия выводим из флагов роли, а не из её имени: super-admin → и ROLE_ADMIN
+        // (все проверки hasRole('ADMIN') продолжают работать), admin → ROLE_ADMIN, прочие —
+        // просто аутентифицированы (ROLE_USER, никаких админ-прав).
+        ru.banki.crm.domain.Role r = user.getRole();
+        if (r != null && r.isSuperAdmin()) {
             return List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"),
                            new SimpleGrantedAuthority("ROLE_ADMIN"));
         }
-        return List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
+        if (r != null && r.isAdmin()) {
+            return List.of(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        }
+        return List.of(new SimpleGrantedAuthority("ROLE_USER"));
     }
 
     @Override

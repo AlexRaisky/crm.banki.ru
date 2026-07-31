@@ -43,7 +43,9 @@
       radial-gradient(900px 480px at 5% -5%,rgba(60,250,180,.08),transparent 55%);}
   a{color:var(--blue);text-decoration:none}
 
-  .app{display:flex;flex-direction:column;height:100vh}
+  /* dvh, а не vh: на мобильных vh считается по экрану с раскрытой адресной строкой,
+     из-за чего низ панели уезжает за видимую область. vh оставлен запасным вариантом. */
+  .app{display:flex;flex-direction:column;height:100vh;height:100dvh}
 
   /* ================= ГЛОБАЛЬНАЯ ШАПКА ================= */
   .gheader{display:flex;align-items:center;gap:10px;padding:0 14px;height:56px;flex:0 0 auto;
@@ -61,7 +63,11 @@
   .app-name{font-weight:700;font-size:16px;letter-spacing:-.01em;white-space:nowrap}
 
   /* Название текущего раздела в шапке */
-  .page-crumb{display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden}
+  /* Крошка — единственный блок шапки, которому можно ужиматься: у заголовка есть
+     многоточие. Всё остальное (логотип, вафля, кнопки пользователя) сжиматься не
+     умеет, и раньше при нехватке места ужимался блок действий, а «Выйти» вылезала
+     за правый край и растягивала страницу. */
+  .page-crumb{display:flex;align-items:center;gap:8px;flex:0 1 auto;min-width:0;overflow:hidden}
   .page-crumb .pc-sep,.page-crumb .pc-arrow{color:var(--faint);font-size:14px}
   .page-crumb .pc-parent{color:var(--dim);font-size:13.5px;white-space:nowrap}
   .page-crumb .pc-title{color:var(--ink);font-size:14.5px;font-weight:600;white-space:nowrap;
@@ -70,7 +76,7 @@
   @media (max-width:1000px){.page-crumb .pc-parent,.page-crumb .pc-arrow{display:none}}
   @media (max-width:760px){.page-crumb{display:none}}
 
-  .gheader-actions{display:flex;align-items:center;gap:8px;margin-left:auto;padding-left:12px;min-width:0}
+  .gheader-actions{display:flex;align-items:center;gap:8px;margin-left:auto;padding-left:12px;flex:0 0 auto}
   #homeActions{display:flex;align-items:center;gap:8px}
   .iconbtn{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;
     color:var(--dim);border:1px solid transparent;background:none;cursor:pointer;flex:0 0 auto}
@@ -84,7 +90,7 @@
 
   /* Диалог смены собственного пароля */
   .pwd-dialog{position:fixed;inset:0;z-index:200;background:rgba(4,10,18,.72);
-    display:flex;align-items:center;justify-content:center;padding:20px}
+    display:flex;align-items:flex-start;justify-content:center;padding:10vh 20px 20px}
   .pwd-card{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:20px 22px;
     width:min(380px,94%);display:flex;flex-direction:column;gap:8px;box-shadow:0 24px 80px rgba(0,0,0,.5)}
   .pwd-card b{font-size:15px;margin-bottom:6px}
@@ -96,6 +102,18 @@
   .pwd-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
   .btn.pwd-save{background:var(--grad);color:#08131f;border:none;font-weight:600}
   .user-box .btn{flex:0 0 auto}
+  /* Кнопки учётки (Вид / Пароль / Выйти): иконка + подпись. На узком экране
+     подпись прячется (см. брейкпоинт 700px) — остаётся один значок. */
+  .ub-btn{display:inline-flex;align-items:center;gap:7px}
+  .ub-btn svg{width:15px;height:15px;flex:0 0 auto}
+
+  /* «Общие параметры» (личные тема/язык): строки-радио темы и селект языка */
+  .prefs-opts{display:flex;flex-direction:column;gap:4px;margin-top:2px}
+  .pwd-card .prefs-opt{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink);
+    text-transform:none;letter-spacing:0;margin-top:0;cursor:pointer}
+  .pwd-card .prefs-opt input{width:auto;margin:0;padding:0}
+  #prefLang{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;
+    padding:8px 10px;font-size:14px;width:100%;box-sizing:border-box}
 
   .btn{font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 15px;border-radius:10px;cursor:pointer;
     border:1px solid var(--line);background:var(--card);color:var(--ink)}
@@ -272,6 +290,11 @@
   #jrEditBody textarea{resize:vertical;min-height:64px;font-family:var(--mono);font-size:12.5px}
   .jre-steps{display:flex;flex-direction:column;gap:6px;margin-top:6px}
   .jre-steps-count{max-width:110px}
+  /* заголовок шага: слева «Шаг N — SQL», справа чекбокс активности шага */
+  .jre-step-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .jre-step-act{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;
+    color:var(--dim);text-transform:none;letter-spacing:0;cursor:pointer}
+  .jre-step-act input{margin:0;cursor:pointer}
   .jre-warn{color:var(--coral);font-size:12px;margin-top:4px}
 
   /* меню «стрелка в никуда» и иконка удаления связи */
@@ -388,7 +411,9 @@
   .ov-head h1{font-size:26px;font-weight:700;letter-spacing:-.015em}
   .ov-head h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
   .ov-sub{color:var(--dim);font-size:14px;margin:6px 0 24px;max-width:720px}
-  .ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  /* min(300px,100%) вместо 300px: иначе на экране уже 300px трек не сжимается
+     и обзорная страница (в том числе «Отчёты») даёт горизонтальный скролл. */
+  .ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:16px}
   .ov-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;cursor:pointer;
     transition:.16s;box-shadow:0 10px 30px rgba(4,12,22,.4)}
   .ov-card:hover{border-color:rgba(60,250,180,.45);transform:translateY(-2px)}
@@ -495,7 +520,9 @@
   html.theme-light #sec-onelink .subgroup{background:rgba(20,60,100,.04)}
   html.theme-light #sec-onelink select option,html.theme-light #sec-onelink select optgroup,
   html.theme-light #sec-srcbuilder select option,
-  html.theme-light #sec-admin .sfd-row select.sfd-edit option{background:#FFFFFF;color:#16283E}
+  html.theme-light #sec-admin .sfd-row select.sfd-edit option,
+  /* правка ячейки списка: выпадашка захардкожена тёмной (.sf-cell-edit select option) */
+  html.theme-light #sec-admin .sf-cell-edit select option{background:#FFFFFF;color:#16283E}
   html.theme-light #sec-onelink input[type=date],html.theme-light #sec-srcbuilder input[type=date]{color-scheme:light}
   /* Подсказки (i) мастера и OneLink: тёмный тултип → светлая карточка */
   html.theme-light #sec-onelink .info .tip,html.theme-light #sec-admin .info .tip{
@@ -511,9 +538,28 @@
   @media (max-width:1100px){
     .user-email{display:none}
     #homeActions{display:none !important}   /* «Настроить главную» прячем, экономим место */
+    /* Три текстовые кнопки учётки (Вид/Пароль/Выйти) перестают помещаться раньше,
+       чем кажется: на 768px шапка вылезала на 58px и тянула горизонтальный скролл
+       на всех разделах (название приложения и логотип не сжимаются). Оставляем
+       значки — подпись возвращается на широком экране, смысл держит title. */
+    .ub-btn span{display:none}
+    .ub-btn{padding:7px 9px}
   }
   @media (max-width:760px){
-    .grid,.ov-grid{grid-template-columns:1fr}
+    .grid{grid-template-columns:1fr}
     .sidebar{position:fixed;z-index:120;height:100%}
     .brandname{display:none}
+  }
+  /* Узкий экран: «Пароль» и «Выйти» не сжимаются, и при 375px вылезали за правый
+     край, растягивая страницу до 522px — горизонтальный скролл был на ЛЮБОМ разделе.
+     Освобождаем место, убирая название приложения (его же показывает вафля),
+     и запрещаем бейджу пользователя ужиматься под кнопками. */
+  @media (max-width:700px){
+    .app-name{display:none}
+    .user-box{flex:0 0 auto;padding-left:8px}
+    .gheader{gap:6px;padding:0 8px}
+    .gheader-actions{padding-left:6px;gap:6px}
+    /* «Пароль» и «Выйти» — последнее, что не влезало: на 375px не хватало ~11px */
+    .user-box .btn{padding:7px 10px;font-size:12.5px}
+    .ub-btn{padding:7px 8px}
   }
