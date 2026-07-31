@@ -1019,7 +1019,7 @@ function renderUploads(cid){
       <button class="btn ghost-danger" id="upDelete">${t("Удалить")}</button>
     </div>
     <div class="up-frame-wrap" id="upFrameWrap">
-      <iframe class="up-frame" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups" title="Загруженный инструмент"></iframe>
+      <iframe class="up-frame" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads" title="Загруженный инструмент"></iframe>
     </div>`;
   /* инструмент открывается в исходном оформлении — адаптация под айдентику отключена;
      по умолчанию содержимое масштабируется под ширину доступного окна */
