@@ -34,14 +34,18 @@ public class AbTestService {
             "templates", "templates",
             "owner", "owner_name",
             "tester", "tester",
-            "result", "result");
+            "result", "result",
+            "status", "status");
+
+    /** Статус по умолчанию для новой записи (тест только заводят — он идёт). */
+    private static final String STATUS_RUNNING = "идёт";
 
     /**
      * Порядок колонок для {@link #toDto} — ОДИН на все выборки строк: toDto читает
      * Object[] по индексам, и разошедшиеся списки колонок дают «Index N out of bounds».
      */
     private static final String ROW_COLUMNS =
-            "id, date_start, date_end, subject, templates, owner_name, tester, result, timestamp_upd";
+            "id, date_start, date_end, subject, templates, owner_name, tester, result, status, timestamp_upd";
 
     @PersistenceContext
     private EntityManager em;
@@ -80,7 +84,8 @@ public class AbTestService {
         m.put("owner", str(r[5]));
         m.put("tester", str(r[6]));
         m.put("result", str(r[7]));
-        m.put("ver", instant(r[8]));
+        m.put("status", str(r[8]));
+        m.put("ver", instant(r[9]));
         return m;
     }
 
@@ -96,11 +101,12 @@ public class AbTestService {
         long id = ((Number) em.createNativeQuery("SELECT nextval('app.ab_test_id_seq')")
                 .getSingleResult()).longValue();
         String tester = text(body.get("tester"));
+        String status = text(body.get("status"));
         em.createNativeQuery(
                         "INSERT INTO app.ab_test (id, date_start, date_end, subject, templates," +
-                        " owner_name, tester, result, created_by, updated_by)" +
+                        " owner_name, tester, result, status, created_by, updated_by)" +
                         " VALUES (:id, :d1, CAST(:d2 AS date), :subject, :templates," +
-                        " :owner, :tester, :result, :u, :u)")
+                        " :owner, :tester, :result, :status, :u, :u)")
                 .setParameter("id", id)
                 .setParameter("d1", requireDate(body.get("d1")))
                 .setParameter("d2", optionalDateParam(body.get("d2")))
@@ -109,6 +115,7 @@ public class AbTestService {
                 .setParameter("owner", text(body.get("owner")))
                 .setParameter("tester", tester.isEmpty() ? CurrentUser.email() : tester)
                 .setParameter("result", text(body.get("result")))
+                .setParameter("status", status.isEmpty() ? STATUS_RUNNING : status)
                 .setParameter("u", CurrentUser.email())
                 .executeUpdate();
         writeLog(snapshot(id), "INSERT");

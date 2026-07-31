@@ -16,9 +16,21 @@ var AB_REFRESH_MS = 30000;      /* подтягиваем чужие правк�
 var AB_ROWS = [];
 var AB_EDIT = null;             /* { i, k, v } — v это черновик правки */
 var AB_NEW = null;              /* форма новой записи над таблицей */
-var AB_COLS = 7;                /* колонок до колонки с кнопкой удаления */
+var AB_COLS = 8;                /* колонок до колонки с кнопкой удаления */
 var _abTimer = null;
 var _abLoading = false;
+
+/* Статус теста — проставляется вручную. «идёт» по умолчанию у новой записи;
+   раньше это выводилось из пустой даты окончания, но статус нужнее отдельно:
+   тест могут приостановить, когда дата окончания ещё не наступила. */
+var AB_RUN = 'идёт';
+var AB_STOP = 'не идёт';
+var AB_STATUSES = [AB_RUN, AB_STOP];
+function abRunning(r){ return (r.status || AB_RUN) === AB_RUN; }
+function abStatusBadge(s){
+  var run = (s || AB_RUN) === AB_RUN;
+  return '<span class="st ' + (run ? 'run' : 'done') + '">' + abEsc(s || AB_RUN) + '</span>';
+}
 
 function abT(s){ return (typeof t === 'function') ? t(s) : s; }
 function abEsc(s){
@@ -142,10 +154,10 @@ function abFiltered(){
     var r = x.r;
     if (y && String(r.d1 || '').slice(0, 4) !== y) return false;
     if (who && r.tester !== who) return false;
-    if (st === 'run' && r.d2) return false;
-    if (st === 'done' && !r.d2) return false;
+    if (st === 'run' && !abRunning(r)) return false;
+    if (st === 'done' && abRunning(r)) return false;
     if (q){
-      var hay = [r.subject, r.templates, r.owner, r.tester, r.result].join(' ').toLowerCase();
+      var hay = [r.subject, r.templates, r.owner, r.tester, r.result, r.status].join(' ').toLowerCase();
       if (hay.indexOf(q) === -1) return false;
     }
     return true;
@@ -155,7 +167,7 @@ function abFiltered(){
 function abRenderKpis(rows){
   var host = document.getElementById('abKpis');
   if (!host) return;
-  var running = rows.filter(function(x){ return !x.r.d2; }).length;
+  var running = rows.filter(function(x){ return abRunning(x.r); }).length;
   var withResult = rows.filter(function(x){ return String(x.r.result || '').trim(); }).length;
   host.innerHTML =
     '<div class="kpi"><div class="l">' + abT('Тестов') + '</div><div class="v">' + rows.length + '</div></div>' +
@@ -205,14 +217,20 @@ function abRender(){
       return s ? '<span class="' + (cls || 'multi') + '">' + abEsc(s) + '</span>'
                : '<span class="need">' + abT('не заполнено') + '</span>';
     };
-    html += '<tr' + (r.d2 ? '' : ' class="running"') + '>' +
+    html += '<tr' + (abRunning(r) ? ' class="running"' : '') + '>' +
       abCell(x, 'd1', '<span class="dv">' + abEsc(abFmtDate(r.d1)) + '</span>',
         '<input type="date" class="cell-in" value="' + abEsc(r.d1) + '"' +
         ' oninput="abDraft(this.value)" onkeydown="abKey(event)">') +
       abCell(x, 'd2', r.d2 ? '<span class="dv">' + abEsc(abFmtDate(r.d2)) + '</span>'
-                           : '<span class="st run">' + abT('идёт') + '</span>',
+                           : '<span class="dv none">—</span>',
         '<input type="date" class="cell-in" value="' + abEsc(r.d2) + '"' +
         ' oninput="abDraft(this.value)" onkeydown="abKey(event)">') +
+      abCell(x, 'status', abStatusBadge(r.status),
+        '<select class="cell-in" onchange="abDraft(this.value)">' +
+        AB_STATUSES.map(function(s){
+          return '<option value="' + abEsc(s) + '"' + ((r.status || AB_RUN) === s ? ' selected' : '') +
+                 '>' + abEsc(s) + '</option>';
+        }).join('') + '</select>') +
       abCell(x, 'subject', val(r.subject),
         '<textarea class="cell-in ta" rows="3" oninput="abDraft(this.value)"' +
         ' onkeydown="abKey(event, true)">' + abEsc(r.subject) + '</textarea>') +
@@ -248,6 +266,10 @@ function abNewFormHtml(){
       ' oninput="abNewSet(\'d1\',this.value)"></td>' +
     '<td><input type="date" class="cell-in" value="' + abEsc(n.d2) + '"' +
       ' oninput="abNewSet(\'d2\',this.value)"></td>' +
+    '<td><select class="cell-in" onchange="abNewSet(\'status\',this.value)">' +
+      AB_STATUSES.map(function(s){
+        return '<option value="' + abEsc(s) + '"' + (n.status === s ? ' selected' : '') + '>' + abEsc(s) + '</option>';
+      }).join('') + '</select></td>' +
     '<td><textarea class="cell-in ta" rows="3" placeholder="' + abT('Что тестировали') +
       '" oninput="abNewSet(\'subject\',this.value)">' + abEsc(n.subject) + '</textarea></td>' +
     '<td><textarea class="cell-in ta mono" rows="3" placeholder="' + abT('Шаблоны') +
@@ -262,7 +284,7 @@ function abNewFormHtml(){
   '</tr>' +
   '<tr class="new-foot"><td colspan="' + (AB_COLS + 1) + '">' +
     '<div class="nf">' +
-      '<div class="np">' + abT('Дата окончания необязательна: пока её нет, тест считается идущим.') +
+      '<div class="np">' + abT('Статус ставится вручную (по умолчанию «идёт»). Дата окончания необязательна.') +
         (n.err ? '<div class="np-err">' + abEsc(n.err) + '</div>' : '') + '</div>' +
       '<div class="nf-btns">' +
         '<button class="btn accent" type="button" onclick="abNewSave()">' + abT('Создать') + '</button>' +
@@ -275,7 +297,7 @@ function abNewOpen(){
   if (!abCan('add')){ alert(abT('Нет прав на заведение записей.')); return; }
   AB_EDIT = null;
   /* «Кто тестировал» подставляем из учётки — обычно тест ведёт тот, кто его и заводит */
-  AB_NEW = { d1: abToday(), d2: '', subject: '', templates: '', owner: '', tester: abMe(), result: '', err: '' };
+  AB_NEW = { d1: abToday(), d2: '', status: AB_RUN, subject: '', templates: '', owner: '', tester: abMe(), result: '', err: '' };
   abRender();
 }
 function abNewClose(){ AB_NEW = null; abRender(); }
@@ -285,7 +307,7 @@ function abNewSave(){
   var n = AB_NEW;
   if (!String(n.d1 || '').trim()){ n.err = abT('Укажите дату начала'); abRender(); return; }
   if (n.d2 && n.d2 < n.d1){ n.err = abT('Дата окончания раньше даты начала'); abRender(); return; }
-  abReq('POST', '', { d1: n.d1, d2: n.d2, subject: n.subject, templates: n.templates,
+  abReq('POST', '', { d1: n.d1, d2: n.d2, status: n.status, subject: n.subject, templates: n.templates,
                       owner: n.owner, tester: n.tester, result: n.result })
     .then(function(row){
       AB_NEW = null;
@@ -350,12 +372,12 @@ function abDelRow(i){
 /* ---------- выгрузка ---------- */
 function abExportCsv(){
   var rows = abFiltered();
-  var head = ['Начало', 'Окончание', 'Что тестировали', 'Шаблоны', 'Кто инициировал', 'Кто тестировал', 'Результаты'];
+  var head = ['Начало', 'Окончание', 'Статус', 'Что тестировали', 'Шаблоны', 'Кто инициировал', 'Кто тестировал', 'Результаты'];
   var esc = function(v){ return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
   var lines = [head.map(esc).join(';')];
   rows.forEach(function(x){
     var r = x.r;
-    lines.push([abFmtDate(r.d1), abFmtDate(r.d2), r.subject, r.templates, r.owner, r.tester, r.result]
+    lines.push([abFmtDate(r.d1), abFmtDate(r.d2), (r.status || AB_RUN), r.subject, r.templates, r.owner, r.tester, r.result]
       .map(esc).join(';'));
   });
   var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });

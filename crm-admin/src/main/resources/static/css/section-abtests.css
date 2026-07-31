@@ -72,6 +72,8 @@
   .cell-in.mono{font-family:var(--mono);font-size:11.5px}
   .cell-in.ta{resize:vertical;min-height:56px;line-height:1.45}
   .cell-in.bad{border-color:rgba(255,107,138,.7)}
+  select.cell-in{cursor:pointer}
+  select.cell-in option{background:#0D1826;color:#F2F7FD}
   .cell-act{display:flex;gap:4px;flex:0 0 auto}
   .cell-ok,.cell-no{width:24px;height:24px;border-radius:7px;border:1px solid var(--line);cursor:pointer;
     background:var(--card2);background-image:none;font-size:12px;line-height:1;padding:0;box-sizing:border-box}
