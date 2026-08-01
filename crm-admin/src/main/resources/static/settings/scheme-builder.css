@@ -17,8 +17,8 @@
 .sb-dirty.on{display:inline-flex}
 
 /* ---- раскладка: список · канвас · инспектор ---- */
-.sb-shell{display:grid;grid-template-columns:236px minmax(0,1fr) 340px;gap:12px;
-  height:clamp(460px,calc(100vh - 300px),900px)}
+.sb-shell{display:grid;grid-template-columns:210px minmax(0,1fr) 320px;gap:12px;
+  height:clamp(520px,calc(100vh - 270px),960px)}
 .sb-col{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;
   display:flex;flex-direction:column;min-width:0}
 .sb-col-head{padding:10px 13px;background:var(--card2);border-bottom:1px solid var(--line);
@@ -38,8 +38,11 @@
 .sb-item .cnt{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
 .sb-empty{color:var(--faint);font-size:12.5px;padding:12px 10px;line-height:1.5}
 
-/* ---- канвас ---- */
-.sb-canvas{position:relative;overflow:hidden;background:var(--bg2);
+/* ---- канвас ----
+   flex:1 обязателен: .sb-col — колонка-флекс, а внутри канваса всё лежит
+   абсолютом, поэтому без явной доли высота схлопывалась в 0 и схема была
+   не видна (а fit() упирался в минимальный масштаб). */
+.sb-canvas{position:relative;overflow:hidden;background:var(--bg2);flex:1 1 auto;min-height:0;
   background-image:radial-gradient(var(--line) 1px,transparent 1px);background-size:22px 22px}
 .sb-viewport{position:absolute;inset:0;transform-origin:0 0}
 .sb-edges{position:absolute;inset:0;overflow:visible;pointer-events:none}
