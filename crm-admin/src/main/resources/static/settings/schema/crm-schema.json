@@ -1,0 +1,1664 @@
+{
+    "version":  "2.0",
+    "entities":  [
+                     {
+                         "id":  "record_type",
+                         "label":  "Тип записи",
+                         "plural_label":  "Типы записей",
+                         "table":  "record_type",
+                         "description":  "",
+                         "title_field":  "name",
+                         "fields":  [
+                                        {
+                                            "name":  "id",
+                                            "label":  "ID",
+                                            "db_type":  "bigserial",
+                                            "ui_type":  "number",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "entity_name",
+                                            "label":  "Сущность",
+                                            "db_type":  "varchar(128)",
+                                            "ui_type":  "picklist",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "name",
+                                            "label":  "Название",
+                                            "db_type":  "varchar(128)",
+                                            "ui_type":  "text",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "code",
+                                            "label":  "Код",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "text",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "fields_config",
+                                            "label":  "Конфигурация полей",
+                                            "db_type":  "jsonb",
+                                            "ui_type":  "textarea",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "is_active",
+                                            "label":  "Активен",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  true,
+                                            "options":  [
+
+                                                        ]
+                                        }
+                                    ],
+                         "x":  60,
+                         "y":  60
+                     },
+                     {
+                         "id":  "lead",
+                         "label":  "Лид",
+                         "plural_label":  "Лиды",
+                         "table":  "leads",
+                         "description":  "",
+                         "title_field":  "",
+                         "fields":  [
+                                        {
+                                            "name":  "id",
+                                            "label":  "ID",
+                                            "db_type":  "bigserial",
+                                            "ui_type":  "number",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "myb_id",
+                                            "label":  "ID в трафике",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "number",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "client_id",
+                                            "label":  "Клиент",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "lookup",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "client",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "first_name",
+                                            "label":  "Имя",
+                                            "db_type":  "varchar(60)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "second_name",
+                                            "label":  "Отчество",
+                                            "db_type":  "varchar(60)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "last_name",
+                                            "label":  "Фамилия",
+                                            "db_type":  "varchar(60)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "has_children",
+                                            "label":  "Есть дети",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "has_real_estate",
+                                            "label":  "Есть недвижимость",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "has_pets",
+                                            "label":  "Есть животные",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "has_car",
+                                            "label":  "Есть автомобиль",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "work_ids",
+                                            "label":  "Места работы",
+                                            "db_type":  "relation",
+                                            "ui_type":  "multilookup",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "work",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "contact_info",
+                                            "label":  "Контактные данные",
+                                            "db_type":  "relation",
+                                            "ui_type":  "related_list",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "client_contact_info",
+                                            "relation_kind":  "related_list",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "status",
+                                            "label":  "Статус",
+                                            "db_type":  "varchar(32)",
+                                            "ui_type":  "picklist",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+                                                            "new",
+                                                            "active",
+                                                            "completed",
+                                                            "inactive"
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "create_ts",
+                                            "label":  "Создан",
+                                            "db_type":  "timestamp",
+                                            "ui_type":  "datetime",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "update_ts",
+                                            "label":  "Обновлён",
+                                            "db_type":  "timestamp",
+                                            "ui_type":  "datetime",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "user_create",
+                                            "label":  "Создал",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "lookup",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "user",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "user_update",
+                                            "label":  "Изменил",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "lookup",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "user",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        }
+                                    ],
+                         "x":  450,
+                         "y":  60
+                     },
+                     {
+                         "id":  "client",
+                         "label":  "Клиент",
+                         "plural_label":  "Клиенты",
+                         "table":  "client",
+                         "description":  "",
+                         "title_field":  "",
+                         "fields":  [
+                                        {
+                                            "name":  "id",
+                                            "label":  "ID",
+                                            "db_type":  "bigserial",
+                                            "ui_type":  "number",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "main_myb_id",
+                                            "label":  "Основной ID в трафике",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "number",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "user_id",
+                                            "label":  "ID личного кабинета",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "number",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "person_id",
+                                            "label":  "Person ID",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "first_name",
+                                            "label":  "Имя",
+                                            "db_type":  "varchar(60)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "second_name",
+                                            "label":  "Отчество",
+                                            "db_type":  "varchar(60)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "last_name",
+                                            "label":  "Фамилия",
+                                            "db_type":  "varchar(60)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "has_children",
+                                            "label":  "Есть дети",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "has_real_estate",
+                                            "label":  "Есть недвижимость",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "has_pets",
+                                            "label":  "Есть животные",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "has_car",
+                                            "label":  "Есть автомобиль",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "work_ids",
+                                            "label":  "Места работы",
+                                            "db_type":  "relation",
+                                            "ui_type":  "multilookup",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "work",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "contact_info",
+                                            "label":  "Контактные данные",
+                                            "db_type":  "relation",
+                                            "ui_type":  "related_list",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "client_contact_info",
+                                            "relation_kind":  "related_list",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "passport_series",
+                                            "label":  "Серия паспорта",
+                                            "db_type":  "varchar(4)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "passport_number",
+                                            "label":  "Номер паспорта",
+                                            "db_type":  "varchar(6)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "passport_issued_by",
+                                            "label":  "Кем выдан",
+                                            "db_type":  "text",
+                                            "ui_type":  "textarea",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "passport_issue_date",
+                                            "label":  "Дата выдачи паспорта",
+                                            "db_type":  "date",
+                                            "ui_type":  "date",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "passport_department_code",
+                                            "label":  "Код подразделения",
+                                            "db_type":  "varchar(7)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "registration_address",
+                                            "label":  "Адрес регистрации",
+                                            "db_type":  "text",
+                                            "ui_type":  "textarea",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "actual_address_of_residence",
+                                            "label":  "Фактический адрес",
+                                            "db_type":  "text",
+                                            "ui_type":  "textarea",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "address_is_equal",
+                                            "label":  "Адреса совпадают",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "inn",
+                                            "label":  "ИНН",
+                                            "db_type":  "varchar(12)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "snils",
+                                            "label":  "СНИЛС",
+                                            "db_type":  "varchar(14)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "driver_license_series",
+                                            "label":  "Серия ВУ",
+                                            "db_type":  "varchar(10)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "driver_license_number",
+                                            "label":  "Номер ВУ",
+                                            "db_type":  "varchar(20)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "driver_license_issue_date",
+                                            "label":  "Дата выдачи ВУ",
+                                            "db_type":  "date",
+                                            "ui_type":  "date",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "personal_data",
+                                            "label":  "Согласие на обработку ПД",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "advertisement",
+                                            "label":  "Согласие на рекламу",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "bank_credit_history",
+                                            "label":  "Согласие на запрос БКИ",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "esia",
+                                            "label":  "Согласие на запрос в Госуслугах",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "marketplace",
+                                            "label":  "Согласие маркетплейса",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "blacklist_callcenter",
+                                            "label":  "Не звонить",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "blacklist_sms",
+                                            "label":  "Не отправлять SMS",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "blacklist_email",
+                                            "label":  "Не отправлять Email",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "blacklist_mobile_push",
+                                            "label":  "Не отправлять Push",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "blacklist_vk",
+                                            "label":  "Не отправлять VK",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "blacklist_finassistant",
+                                            "label":  "Не отправлять Финансового помощника",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "monthly_income",
+                                            "label":  "Месячный доход",
+                                            "db_type":  "numeric(15,2)",
+                                            "ui_type":  "currency",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "credit_score_banki",
+                                            "label":  "Кредитный рейтинг Банки.ру",
+                                            "db_type":  "numeric(8,2)",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "mfo_credit_score_banki",
+                                            "label":  "МФО-рейтинг Банки.ру",
+                                            "db_type":  "numeric(8,2)",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "credit_score_okb",
+                                            "label":  "Рейтинг ОКБ",
+                                            "db_type":  "numeric(8,2)",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "mfo_credit_score_okb",
+                                            "label":  "МФО-рейтинг ОКБ",
+                                            "db_type":  "numeric(8,2)",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "credit_score_scoring_bureau",
+                                            "label":  "Рейтинг Скоринг Бюро",
+                                            "db_type":  "numeric(8,2)",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "mfo_credit_score_scoring_bureau",
+                                            "label":  "МФО-рейтинг Скоринг Бюро",
+                                            "db_type":  "numeric(8,2)",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "credit_score_nbki",
+                                            "label":  "Рейтинг НБКИ",
+                                            "db_type":  "numeric(8,2)",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "application_score",
+                                            "label":  "Оценочный балл заявки",
+                                            "db_type":  "numeric(10,4)",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "has_credit_self_ban",
+                                            "label":  "Есть самозапрет",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "credit_self_ban_start_date",
+                                            "label":  "Дата начала самозапрета",
+                                            "db_type":  "date",
+                                            "ui_type":  "date",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "credit_self_ban_condition",
+                                            "label":  "Условие самозапрета",
+                                            "db_type":  "varchar(128)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "create_ts",
+                                            "label":  "Создан",
+                                            "db_type":  "timestamp",
+                                            "ui_type":  "datetime",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "update_ts",
+                                            "label":  "Обновлён",
+                                            "db_type":  "timestamp",
+                                            "ui_type":  "datetime",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "user_create",
+                                            "label":  "Создал",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "lookup",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "user",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "user_update",
+                                            "label":  "Изменил",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "lookup",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "user",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        }
+                                    ],
+                         "x":  840,
+                         "y":  60
+                     },
+                     {
+                         "id":  "client_contact_info",
+                         "label":  "Контактный канал",
+                         "plural_label":  "Контактные каналы",
+                         "table":  "client_contacts_info",
+                         "description":  "",
+                         "title_field":  "",
+                         "fields":  [
+                                        {
+                                            "name":  "id",
+                                            "label":  "ID",
+                                            "db_type":  "bigserial",
+                                            "ui_type":  "number",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "client_id",
+                                            "label":  "Клиент",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "lookup",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "client",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "lead_id",
+                                            "label":  "Лид",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "lookup",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "lead",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "value",
+                                            "label":  "Значение",
+                                            "db_type":  "text",
+                                            "ui_type":  "text",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "type",
+                                            "label":  "Тип",
+                                            "db_type":  "varchar(32)",
+                                            "ui_type":  "picklist",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+                                                            "phone_number",
+                                                            "mobile",
+                                                            "email",
+                                                            "mobile_token"
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "double_opt_in",
+                                            "label":  "Подтверждён",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "status",
+                                            "label":  "Доступность",
+                                            "db_type":  "varchar(32)",
+                                            "ui_type":  "picklist",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+                                                            "unknown",
+                                                            "valid",
+                                                            "temporarily_unavailable",
+                                                            "invalid",
+                                                            "blocked"
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "score",
+                                            "label":  "Оценка доступности",
+                                            "db_type":  "integer",
+                                            "ui_type":  "number",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "create_ts",
+                                            "label":  "Создан",
+                                            "db_type":  "timestamp",
+                                            "ui_type":  "datetime",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "update_ts",
+                                            "label":  "Обновлён",
+                                            "db_type":  "timestamp",
+                                            "ui_type":  "datetime",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "user_create",
+                                            "label":  "Создал",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "lookup",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "user",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "user_update",
+                                            "label":  "Изменил",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "lookup",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "user",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        }
+                                    ],
+                         "x":  60,
+                         "y":  560
+                     },
+                     {
+                         "id":  "work",
+                         "label":  "Место работы",
+                         "plural_label":  "Места работы",
+                         "table":  "work",
+                         "description":  "",
+                         "title_field":  "",
+                         "fields":  [
+                                        {
+                                            "name":  "id",
+                                            "label":  "ID",
+                                            "db_type":  "bigserial",
+                                            "ui_type":  "number",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "record_type_id",
+                                            "label":  "Тип записи",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "lookup",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "record_type",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "organization_name",
+                                            "label":  "Организация",
+                                            "db_type":  "varchar(255)",
+                                            "ui_type":  "text",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "position",
+                                            "label":  "Должность",
+                                            "db_type":  "varchar(255)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "legal_address",
+                                            "label":  "Юридический адрес",
+                                            "db_type":  "text",
+                                            "ui_type":  "textarea",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "actual_address",
+                                            "label":  "Фактический адрес",
+                                            "db_type":  "text",
+                                            "ui_type":  "textarea",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "start_date",
+                                            "label":  "Дата начала работы",
+                                            "db_type":  "date",
+                                            "ui_type":  "date",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "inn",
+                                            "label":  "ИНН",
+                                            "db_type":  "varchar(12)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "ogrn",
+                                            "label":  "ОГРН",
+                                            "db_type":  "varchar(15)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "create_ts",
+                                            "label":  "Создан",
+                                            "db_type":  "timestamp",
+                                            "ui_type":  "datetime",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "update_ts",
+                                            "label":  "Обновлён",
+                                            "db_type":  "timestamp",
+                                            "ui_type":  "datetime",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "user_create",
+                                            "label":  "Создал",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "lookup",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "user",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "user_update",
+                                            "label":  "Изменил",
+                                            "db_type":  "bigint",
+                                            "ui_type":  "lookup",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "",
+                                            "target_entity":  "user",
+                                            "relation_kind":  "lookup",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        }
+                                    ],
+                         "x":  450,
+                         "y":  560
+                     }
+                 ],
+    "relations":  [
+                      {
+                          "id":  "rel_1",
+                          "from_entity":  "lead",
+                          "from_field":  "client_id",
+                          "to_entity":  "client",
+                          "to_field":  "id",
+                          "relation_type":  "many_to_one",
+                          "nullable":  true,
+                          "on_delete":  "RESTRICT",
+                          "through":  "",
+                          "description":  ""
+                      },
+                      {
+                          "id":  "rel_2",
+                          "from_entity":  "client_contact_info",
+                          "from_field":  "client_id",
+                          "to_entity":  "client",
+                          "to_field":  "id",
+                          "relation_type":  "many_to_one",
+                          "nullable":  true,
+                          "on_delete":  "RESTRICT",
+                          "through":  "",
+                          "description":  ""
+                      },
+                      {
+                          "id":  "rel_3",
+                          "from_entity":  "client_contact_info",
+                          "from_field":  "lead_id",
+                          "to_entity":  "lead",
+                          "to_field":  "id",
+                          "relation_type":  "many_to_one",
+                          "nullable":  true,
+                          "on_delete":  "RESTRICT",
+                          "through":  "",
+                          "description":  ""
+                      },
+                      {
+                          "id":  "rel_4",
+                          "from_entity":  "work",
+                          "from_field":  "record_type_id",
+                          "to_entity":  "record_type",
+                          "to_field":  "id",
+                          "relation_type":  "many_to_one",
+                          "nullable":  false,
+                          "on_delete":  "RESTRICT",
+                          "through":  "",
+                          "description":  ""
+                      },
+                      {
+                          "id":  "rel_5",
+                          "from_entity":  "client",
+                          "from_field":  "",
+                          "to_entity":  "work",
+                          "to_field":  "id",
+                          "relation_type":  "many_to_many",
+                          "nullable":  true,
+                          "on_delete":  "RESTRICT",
+                          "through":  "client_work_link",
+                          "description":  ""
+                      },
+                      {
+                          "id":  "rel_6",
+                          "from_entity":  "lead",
+                          "from_field":  "",
+                          "to_entity":  "work",
+                          "to_field":  "id",
+                          "relation_type":  "many_to_many",
+                          "nullable":  true,
+                          "on_delete":  "RESTRICT",
+                          "through":  "lead_work_link",
+                          "description":  ""
+                      }
+                  ]
+}
