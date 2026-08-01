@@ -714,8 +714,14 @@ function fit(){
   });
   if (minX === Infinity) return;
   const c = $("#sbCanvas").getBoundingClientRect(), m = 26;
-  state.scale = Math.max(.25, Math.min(1, Math.min((c.width - m*2) / (maxX - minX), (c.height - m*2) / (maxY - minY))));
-  state.tx = m - minX * state.scale; state.ty = m - minY * state.scale;
+  if (!c.width || !c.height) return;
+  /* нижняя граница 45%: втиснуть всю схему в узкую колонку можно, но читать её
+     будет нельзя — лучше показать крупнее, а остальное досмотреть панорамой */
+  const raw = Math.min((c.width - m*2) / (maxX - minX), (c.height - m*2) / (maxY - minY));
+  state.scale = Math.max(.45, Math.min(1, raw));
+  /* центрируем содержимое в видимой области */
+  state.tx = (c.width - (maxX - minX) * state.scale) / 2 - minX * state.scale;
+  state.ty = Math.max(m, (c.height - (maxY - minY) * state.scale) / 2) - minY * state.scale;
   transform();
 }
 
@@ -799,6 +805,12 @@ async function load(){
   }
 }
 
-/* публичный вход: settings/index.html зовёт при открытии раздела */
-window.SchemeBuilder = { open: boot, render, store: SchemaStore, API_CONTRACT };
+/* публичный вход: settings/index.html зовёт при открытии раздела.
+   Пока раздел скрыт, канвас имеет нулевой размер и подгонка невозможна,
+   поэтому при каждом открытии перерисовываем и вписываем схему заново. */
+function openSection(){
+  if (!booted) return boot();
+  render(); setTimeout(fit, 40);
+}
+window.SchemeBuilder = { open: openSection, render, store: SchemaStore, API_CONTRACT };
 })();

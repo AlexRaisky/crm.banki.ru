@@ -667,7 +667,9 @@ const PANES = [
 ];
 
 const snav = $("#snav");
+let curPane = "over";   /* нужен, чтобы после смены языка вернуться в тот же раздел */
 function openPane(id){
+  curPane = id;
   document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.id === id));
   document.querySelectorAll(".pane").forEach(x => x.classList.remove("active"));
   document.getElementById("pane-" + id).classList.add("active");
@@ -861,6 +863,11 @@ function loadGeneral(){
   r.checked = true;
   $("#langSel").value = lang;
 }
+/* Тему применяем сразу по выбору — иначе непонятно, сработала настройка или нет
+   (кнопка «Сохранить» лишь фиксирует выбор). */
+document.querySelectorAll('input[name="theme"]').forEach(r => r.addEventListener("change", () => {
+  store.set("theme", r.value); applyTheme();
+}));
 $("#saveGeneral").onclick = () => {
   const theme = (document.querySelector('input[name="theme"]:checked') || {}).value || "dark";
   store.set("theme", theme);
@@ -868,7 +875,8 @@ $("#saveGeneral").onclick = () => {
   const langChanged = newLang !== LANG;
   store.set("lang", newLang);
   applyTheme();
-  if (langChanged){ location.reload(); return; }   /* страница перерисуется на выбранном языке */
+  /* после перезагрузки на новом языке возвращаемся в тот же раздел, а не в «Обзор» */
+  if (langChanged){ try { sessionStorage.setItem("crmpanel:settingsPane", curPane); } catch(e){} location.reload(); return; }
   const n = $("#generalSaved"); n.classList.add("show"); setTimeout(() => n.classList.remove("show"), 2500);
 };
 
@@ -1398,6 +1406,17 @@ loadGeneral();
 renderSubOrder();
 translateStatic();
 document.title = LANG === "en" ? "CRM Team · Settings" : "CRM Team · Настройки";
+/* Вернуться в раздел, из которого меняли язык (после location.reload).
+   Ждём load: модули разделов (scheme-builder.js) подключены ниже по документу,
+   до их загрузки openPane не сможет инициализировать раздел. */
+window.addEventListener("load", () => {
+  try {
+    const back = sessionStorage.getItem("crmpanel:settingsPane");
+    if (!back) return;
+    sessionStorage.removeItem("crmpanel:settingsPane");
+    if (document.getElementById("pane-" + back)) openPane(back);
+  } catch(e){}
+});
 </script>
 
 <!-- ===== Управление доступом: мини-CRM (нужные admin-методы) + рендер admin-users.js ===== -->
