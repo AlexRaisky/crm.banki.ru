@@ -687,6 +687,40 @@ function exportSql(){
 }
 
 /* ============================================================
+   Раскладка под размер экрана: рабочая область занимает всё, что
+   осталось от вьюпорта под тулбаром. Считаем в JS, потому что высота
+   шапки раздела и тулбара «плавает» — тулбар переносится на узких
+   экранах, а описание раздела занимает разное число строк.
+   ============================================================ */
+const NARROW = 1180;      /* ниже этой ширины раскладка становится вертикальной */
+function layoutShell(){
+  const shell = $(".sb-shell");
+  if (!shell) return;
+  if (window.innerWidth < NARROW){ shell.style.height = ""; return; }   /* на узких — по контенту */
+  const top = shell.getBoundingClientRect().top;
+  const pad = 26;                                    /* нижний отступ .content настроек */
+  const h = Math.max(420, Math.round(window.innerHeight - top - pad));
+  shell.style.height = h + "px";
+}
+let resizeTimer = null;
+function relayout(){
+  if (!booted) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { layoutShell(); fit(); }, 120);
+}
+window.addEventListener("resize", relayout);
+/* Наблюдаем и за самим контейнером: высота шапки с тулбаром меняется не только
+   при resize окна (перенос кнопок на узком экране, смена языка на длинные
+   подписи), а событие resize в таких случаях не приходит. */
+function watchLayout(){
+  if (typeof ResizeObserver !== "function") return;
+  const ro = new ResizeObserver(relayout);
+  const content = document.querySelector(".content"), bar = $(".sb-toolbar");
+  if (content) ro.observe(content);
+  if (bar) ro.observe(bar);
+}
+
+/* ============================================================
    Канвас: перетаскивание, панорама, зум, авто-раскладка
    ============================================================ */
 function transform(){
@@ -786,6 +820,7 @@ async function boot(){
   document.addEventListener("keydown", ev => {
     if (ev.key === "Escape" && $("#sbModal").classList.contains("open")) closeModal();
   });
+  watchLayout();
 
   await load();
 }
@@ -797,7 +832,7 @@ async function load(){
       if (typeof e.y !== "number") e.y = 40 + Math.floor(i / 3) * 300;
     });
     state.entity = model.entities[0] ? model.entities[0].id : null;
-    render(); transform(); setTimeout(fit, 40);
+    render(); layoutShell(); transform(); setTimeout(fit, 40);
   } catch(err){
     const host = $("#sbInspector");
     if (host) host.innerHTML = `<div class="sb-form"><div class="sb-hint bad">${T("Не удалось загрузить схему")}: ${esc(err.message)}</div></div>`;
@@ -810,7 +845,7 @@ async function load(){
    поэтому при каждом открытии перерисовываем и вписываем схему заново. */
 function openSection(){
   if (!booted) return boot();
-  render(); setTimeout(fit, 40);
+  render(); layoutShell(); setTimeout(fit, 40);
 }
 window.SchemeBuilder = { open: openSection, render, store: SchemaStore, API_CONTRACT };
 })();

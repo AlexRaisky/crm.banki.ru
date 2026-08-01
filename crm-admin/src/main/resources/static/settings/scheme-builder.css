@@ -16,9 +16,16 @@
   background:var(--amber-bg);border:1px solid rgba(255,184,77,.35);border-radius:20px;padding:4px 11px}
 .sb-dirty.on{display:inline-flex}
 
-/* ---- раскладка: список · канвас · инспектор ---- */
-.sb-shell{display:grid;grid-template-columns:210px minmax(0,1fr) 320px;gap:12px;
-  height:clamp(520px,calc(100vh - 270px),960px)}
+/* Остальные разделы настроек читаются в колонку и ограничены .pane{max-width:1060px},
+   схеме же нужна вся ширина — иначе канвас остаётся узким, а справа пустует экран. */
+#pane-scheme{max-width:none}
+
+/* ---- раскладка: список · канвас · инспектор ----
+   Высоту в пикселях проставляет JS (layoutShell) — она равна остатку экрана
+   под тулбаром, поэтому раздел занимает всю доступную высоту без пустот и
+   без прокрутки страницы. clamp ниже — запасной вариант, пока JS не отработал. */
+.sb-shell{display:grid;grid-template-columns:minmax(190px,15%) minmax(0,1fr) minmax(300px,22%);gap:12px;
+  height:clamp(460px,calc(100vh - 270px),1200px)}
 .sb-col{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;
   display:flex;flex-direction:column;min-width:0}
 .sb-col-head{padding:10px 13px;background:var(--card2);border-bottom:1px solid var(--line);
@@ -138,12 +145,18 @@
 .sb-modal-note{font-size:12.5px;color:var(--dim);line-height:1.6;margin-bottom:12px}
 .sb-modal-note code{font-family:var(--mono);font-size:11.5px;color:var(--blue)}
 
+/* Ниже 1180px три колонки не помещаются: у настроек ещё и свой сайдбар,
+   поэтому канвас сжимался до нечитаемых ~230px. Складываем всё в одну
+   колонку — схема получает полную ширину контента. */
 @media(max-width:1180px){
-  .sb-shell{grid-template-columns:200px minmax(0,1fr);height:auto}
-  .sb-col.sb-inspect{grid-column:1 / -1;height:520px}
+  .sb-shell{grid-template-columns:1fr;height:auto !important}
+  .sb-col.sb-list{height:210px}
+  .sb-col.sb-canvas-col{height:min(58vh,480px)}
+  .sb-col.sb-inspect{height:auto}          /* форма по содержимому — без второго скролла */
+  .sb-col.sb-inspect .sb-col-body{overflow:visible}
 }
 @media(max-width:760px){
-  .sb-shell{grid-template-columns:1fr}
-  .sb-col.sb-list{height:220px}
-  .sb-col.sb-canvas-col{height:420px}
+  .sb-toolbar .sb-search{min-width:0;flex:1 1 100%}
+  .sb-col.sb-canvas-col{height:min(62vh,440px)}
+  .sb-grid2{grid-template-columns:1fr}      /* поля формы в одну колонку */
 }
