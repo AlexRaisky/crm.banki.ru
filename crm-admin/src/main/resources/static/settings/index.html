@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="scheme-builder.css">
 <style>
   /* ============================================================
      НАСТРОЕЧНАЯ АДМИНКА (/settings, доступ — только ADMIN)
@@ -283,6 +284,62 @@
         <div id="sec-access"></div>
       </section>
 
+      <!-- ===== Scheme Builder — конструктор схемы данных ===== -->
+      <section class="pane" id="pane-scheme">
+        <h1 data-i18n-html="h_scheme">Scheme <span class="grad">Builder</span></h1>
+        <div class="sub" data-i18n="Конструктор схемы данных CRM: сущности, поля с типами хранения и отображения, связи между объектами. Схема версионируется в Git; когда появятся таблицы, сохранение переключится на прямую запись в БД.">Конструктор схемы данных CRM: сущности, поля с типами хранения и отображения,
+          связи между объектами. Схема версионируется в Git; когда появятся таблицы, сохранение
+          переключится на прямую запись в БД.</div>
+
+        <div class="sb-toolbar">
+          <input class="sb-search" id="sbSearch" placeholder="Поиск сущности или поля…" data-i18n-ph="Поиск сущности или поля…">
+          <button class="btn accent" id="sbAddEntity" data-i18n="+ Сущность">+ Сущность</button>
+          <button class="btn" id="sbAddRelation" data-i18n="+ Связь">+ Связь</button>
+          <button class="btn" id="sbAuto" data-i18n="Авто-раскладка">Авто-раскладка</button>
+          <button class="btn" id="sbFit" data-i18n="Вписать">Вписать</button>
+          <span class="spacer"></span>
+          <span class="sb-dirty" id="sbDirty" data-i18n="● Есть несохранённые правки">● Есть несохранённые правки</span>
+          <button class="btn" id="sbSql">SQL DDL</button>
+          <button class="btn" id="sbReload" data-i18n="Из Git">Из Git</button>
+          <button class="btn accent" id="sbGit" data-i18n="Сохранить в Git">Сохранить в Git</button>
+        </div>
+
+        <div class="sb-shell">
+          <div class="sb-col sb-list">
+            <div class="sb-col-head"><span data-i18n="Сущности">Сущности</span><span class="n" id="sbEntityCount">0</span></div>
+            <div class="sb-col-body" id="sbEntityList"></div>
+            <div class="sb-col-head"><span data-i18n="Связи">Связи</span><span class="n" id="sbRelationCount">0</span></div>
+            <div class="sb-col-body" id="sbRelationList" style="flex:0 0 34%"></div>
+          </div>
+
+          <div class="sb-col sb-canvas-col">
+            <div class="sb-canvas" id="sbCanvas">
+              <div class="sb-viewport" id="sbViewport">
+                <svg class="sb-edges" id="sbEdges"></svg>
+                <div class="sb-nodes" id="sbNodes"></div>
+              </div>
+              <div class="sb-zoom">
+                <button id="sbZin" title="Приблизить">+</button>
+                <button id="sbZout" title="Отдалить">−</button>
+                <button id="sbZreset" title="1:1">⌂</button>
+              </div>
+            </div>
+            <div class="sb-col-head" style="border-bottom:none;border-top:1px solid var(--line)">
+              <span class="sb-status" id="sbStatus"></span>
+            </div>
+          </div>
+
+          <div class="sb-col sb-inspect">
+            <div class="sb-tabs" id="sbTabs">
+              <button class="sb-tab on" data-tab="entity" data-i18n="Сущность">Сущность</button>
+              <button class="sb-tab" data-tab="field" data-i18n="Поле">Поле</button>
+              <button class="sb-tab" data-tab="relation" data-i18n="Связь">Связь</button>
+            </div>
+            <div class="sb-col-body" id="sbInspector" style="padding:0"></div>
+          </div>
+        </div>
+      </section>
+
       <!-- ===== Общие параметры ===== -->
       <section class="pane" id="pane-general">
         <h1 data-i18n-html="h_gen">Общие <span class="grad">параметры</span></h1>
@@ -435,6 +492,62 @@ const S_EN = {
   "Обзор":"Overview", "Приложения и разделы":"Apps & sections", "Мониторинг":"Monitoring",
   "Загруженные инструменты":"Uploaded tools", "Общие параметры":"General settings", "Диагностика":"Diagnostics",
   "Отчёты":"Reports", "Управление доступом":"Access management",
+  /* ---- Scheme Builder ---- */
+  "Конструктор схемы данных CRM: сущности, поля, типы и связи.":"CRM data schema builder: entities, fields, types and relations.",
+  "Конструктор схемы данных CRM: сущности, поля с типами хранения и отображения, связи между объектами. Схема версионируется в Git; когда появятся таблицы, сохранение переключится на прямую запись в БД.":"CRM data schema builder: entities, fields with storage and display types, and relations between objects. The schema is versioned in Git; once the tables exist, saving will switch to writing directly to the database.",
+  "Поиск сущности или поля…":"Search entity or field…",
+  "+ Сущность":"+ Entity", "+ Связь":"+ Relation", "Авто-раскладка":"Auto layout", "Вписать":"Fit",
+  "● Есть несохранённые правки":"● Unsaved changes", "Из Git":"From Git", "Сохранить в Git":"Save to Git",
+  "Сущности":"Entities", "Связи":"Relations", "Сущность":"Entity", "Поле":"Field", "Связь":"Relation",
+  "сущн.":"ent.", "связей":"rel.", "полей":"fields",
+  "Ничего не найдено":"Nothing found", "Связей пока нет":"No relations yet",
+  "Выберите сущность на схеме или создайте новую.":"Pick an entity on the diagram or create a new one.",
+  "Выберите поле внутри сущности на схеме.":"Pick a field inside an entity on the diagram.",
+  "Выберите связь в списке слева или создайте новую.":"Pick a relation in the list on the left or create a new one.",
+  "Системное имя":"System name", "Таблица":"Table", "Название":"Label",
+  "Название во множественном числе":"Plural label", "Поле заголовка записи":"Record title field",
+  "Описание":"Description", "Сохранить":"Save", "Удалить":"Delete", "Добавить":"Add", "Отмена":"Cancel",
+  "Добавить поле":"Add field", "Новое поле":"New field", "Новая сущность":"New entity", "Новая связь":"New relation",
+  "Создать":"Create", "Например, Заявка":"For example, Application", "Введите название":"Enter a label",
+  "Тип в БД":"Database type", "UI-тип (как показывается)":"UI type (how it is displayed)",
+  "Связанная сущность":"Related entity", "Тип связи поля":"Field relation kind",
+  "Значение по умолчанию":"Default value", "Значения списка через запятую":"Picklist values, comma-separated",
+  "Обязательное":"Required", "Только чтение":"Read only", "Как это увидит пользователь":"How the user will see it",
+  "Первичный ключ":"Primary key", "Да/нет":"Yes/no", "добавьте значения списка":"add picklist values",
+  "выберите связанную сущность":"pick a related entity", "запись":"record", "добавить":"add",
+  "Связанные записи":"Related records", "Таблица связанных записей с колонками и действиями.":"A table of related records with columns and actions.",
+  "Из сущности":"From entity", "Поле FK":"FK field", "В сущность":"To entity", "Целевое поле":"Target field",
+  "Тип связи":"Relation type", "FK может быть NULL":"FK can be NULL",
+  "Связующая таблица (для many-to-many)":"Junction table (for many-to-many)",
+  "Укажите связанную сущность — без неё связь не построится.":"Set the related entity — the relation cannot be built without it.",
+  "Для списка добавьте значения через запятую.":"Add comma-separated values for the picklist.",
+  "Тип БД":"Database type", "необычен для этого UI-типа. Обычно берут":"is unusual for this UI type. Normally you use",
+  "применить":"apply",
+  /* подписи UI-типов поля */
+  "Текст (строка)":"Text (single line)", "Многострочный текст":"Multiline text", "Число":"Number",
+  "Деньги (₽)":"Money (₽)", "Процент (%)":"Percent (%)", "E-mail":"E-mail", "Телефон":"Phone",
+  "Ссылка (URL)":"Link (URL)", "Дата":"Date", "Дата и время":"Date and time", "Время":"Time",
+  "Флажок (да/нет)":"Checkbox (yes/no)", "Список значений":"Picklist",
+  "Связь: один объект":"Relation: single record", "Связь: несколько объектов":"Relation: multiple records",
+  "Связанный список":"Related list",
+  "Нужно системное имя":"A system name is required", "Такое системное имя уже есть":"That system name already exists",
+  "Поле с таким именем уже есть":"A field with this name already exists",
+  "Сущность сохранена":"Entity saved", "Сущность создана":"Entity created", "Сущность удалена":"Entity deleted",
+  "Поле сохранено":"Field saved", "Поле добавлено":"Field added", "Поле удалено":"Field deleted",
+  "Связь сохранена":"Relation saved", "Связь добавлена":"Relation added", "Связь удалена":"Relation deleted",
+  "Удалить сущность и все её связи?":"Delete the entity and all its relations?",
+  "Удалить поле?":"Delete the field?", "Удалить связь?":"Delete the relation?",
+  "Сначала выберите сущность":"Pick an entity first", "Нужно хотя бы две сущности":"At least two entities are required",
+  "Не удалось загрузить схему":"Could not load the schema",
+  "Черновик будет потерян. Загрузить версию из Git?":"The draft will be lost. Load the version from Git?",
+  "Загружено из Git":"Loaded from Git", "Скопировано":"Copied", "Отмечено как сохранённое":"Marked as saved",
+  "Схема версионируется в репозитории. Скачайте файл и положите его по пути":"The schema is versioned in the repository. Download the file and put it at",
+  "затем закоммитьте — это и будет новая версия схемы.":"then commit it — that becomes the new schema version.",
+  "Когда появятся таблицы, сохранение переключится на прямую запись в БД без выгрузки файла.":"Once the tables exist, saving will switch to writing directly to the database with no file download.",
+  "Скачать crm-schema.json":"Download crm-schema.json", "Копировать":"Copy",
+  "Файл обновлён — снять пометку":"File updated — clear the flag", "Закрыть":"Close",
+  "Схема в виде SQL: таблицы, внешние ключи и связующие таблицы many-to-many.":"The schema as SQL: tables, foreign keys and many-to-many junction tables.",
+  "Скачать .sql":"Download .sql",
   "Пользователи панели: роли и доступные разделы. Требуется запущенный crm-admin.":"Panel users: roles and available sections. Requires a running crm-admin.",
   "Пользователи панели: роль задаёт уровень возможностей, набор разделов — что видит пользователь. Требуется запущенный crm-admin и роль ADMIN.":"Panel users: the role sets the capability level, the section set defines what the user sees. Requires a running crm-admin and the ADMIN role.",
   "Очерёдность подразделов":"Subsection order",
@@ -508,15 +621,18 @@ const S_HTML = {
   ru: { h_over:'Настроечная <span class="grad">админка</span>', h_apps:'Приложения <span class="grad">и разделы</span>',
         h_mon:'Мониторинг <span class="grad">интеграций</span>', h_up:'Загруженные <span class="grad">инструменты</span>',
         h_gen:'Общие <span class="grad">параметры</span>', h_diag:'Диагностика <span class="grad">хранилища</span>',
-        h_access:'Управление <span class="grad">доступом</span>' },
+        h_access:'Управление <span class="grad">доступом</span>',
+        h_scheme:'Scheme <span class="grad">Builder</span>' },
   en: { h_over:'Admin <span class="grad">settings</span>', h_apps:'Apps <span class="grad">& sections</span>',
         h_mon:'Integration <span class="grad">monitoring</span>', h_up:'Uploaded <span class="grad">tools</span>',
         h_gen:'General <span class="grad">settings</span>', h_diag:'Storage <span class="grad">diagnostics</span>',
-        h_access:'Access <span class="grad">management</span>' }
+        h_access:'Access <span class="grad">management</span>',
+        h_scheme:'Scheme <span class="grad">Builder</span>' }
 };
 function translateStatic(){
   document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t2(el.dataset.i18n); });
   document.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = (S_HTML[LANG] && S_HTML[LANG][el.dataset.i18nHtml]) || S_HTML.ru[el.dataset.i18nHtml]; });
+  document.querySelectorAll("[data-i18n-ph]").forEach(el => { el.placeholder = t2(el.dataset.i18nPh); });
 }
 
 /* Справочники — синхронизированы с пользовательской панелью */
@@ -542,6 +658,8 @@ const PANES = [
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' },
   { id:"access",     label:"Управление доступом", desc:"Пользователи панели: роли и доступные разделы. Требуется запущенный crm-admin.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
+  { id:"scheme",     label:"Scheme Builder", desc:"Конструктор схемы данных CRM: сущности, поля, типы и связи.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><rect x="3" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v6M17.5 15V12H6.5"/></svg>' },
   { id:"general",    label:"Общие параметры", desc:"Тема оформления (светлая, тёмная, системная) и язык интерфейса.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>' },
   { id:"diag",       label:"Диагностика", desc:"Занятость localStorage браузера данными панели.",
@@ -557,6 +675,8 @@ function openPane(id){
   if (id === "diag") renderDiag();
   if (id === "monitoring") monBack();
   if (id === "access" && typeof renderAccessSection === "function") renderAccessSection();
+  /* Scheme Builder инициализируется лениво: схема грузится при первом открытии */
+  if (id === "scheme" && window.SchemeBuilder) window.SchemeBuilder.open();
 }
 PANES.forEach(p => {
   const el = document.createElement("div");
@@ -1318,5 +1438,13 @@ window.CRM = window.CRM || (function(){
 })();
 </script>
 <script src="../admin-users.js"></script>
+
+<!-- Scheme Builder: модалка и всплывающее уведомление раздела -->
+<div class="sb-modal" id="sbModal"><div class="sb-modal-card" id="sbModalCard"></div></div>
+<div id="sbToast" style="position:fixed;right:18px;bottom:18px;z-index:400;background:var(--card2);
+  border:1px solid var(--line);color:var(--ink);padding:11px 15px;border-radius:11px;font-size:13px;
+  box-shadow:0 14px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(8px);transition:.18s;pointer-events:none"></div>
+<style>#sbToast.show{opacity:1;transform:none}</style>
+<script src="scheme-builder.js"></script>
 </body>
 </html>
