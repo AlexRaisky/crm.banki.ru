@@ -31,7 +31,9 @@ public class AdminUserController {
                 .map(s -> Map.<String, Object>of(
                         "id", s,
                         "writable", Sections.isWritable(s),
-                        "adminOnly", Sections.isAdminOnly(s)))
+                        "adminOnly", Sections.isAdminOnly(s),
+                        // группа сайдбара: матрица прав рисует по ней заголовки
+                        "group", Sections.groupOf(s)))
                 .toList();
     }
 

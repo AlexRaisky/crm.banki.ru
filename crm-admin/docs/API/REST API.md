@@ -176,7 +176,7 @@ Query-параметры списка (все опциональны, множе
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
-| `GET /api/reports/connections` | `{canEdit, items}`; **не-админу вместо `token` только `hasToken`** | аутентификация |
+| `GET /api/reports/connections` | `{canEdit, items}`; **не-админу вместо `token` только `hasToken`**, и в `items` попадают лишь отчёты с READ на свою секцию (`rep-*`, V29) — иначе спрятанный в меню отчёт открывался бы прямой ссылкой | аутентификация |
 | `PUT /api/reports/connections/{report}` | сохранить `{server, view, token}` | ADMIN |
 | `DELETE /api/reports/connections/{report}` | сбросить подключение (единственный способ удалить токен) | ADMIN |
 
@@ -199,7 +199,7 @@ Query-параметры списка (все опциональны, множе
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
-| `GET /api/admin/sections` | каталог разделов: `{id, writable, adminOnly}` — для матрицы прав | ADMIN |
+| `GET /api/admin/sections` | каталог разделов: `{id, writable, adminOnly, group}` — для матрицы прав; `group` — подпись группы сайдбара, по ней матрица рисует заголовки | ADMIN |
 | `GET /api/admin/users` | список `UserView` | ADMIN |
 | `POST /api/admin/users` | создать: `{email, displayName, roleId, password}` | ADMIN |
 | `PUT /api/admin/users/{id}` | частичное обновление: `{displayName, roleId, enabled}` | ADMIN |

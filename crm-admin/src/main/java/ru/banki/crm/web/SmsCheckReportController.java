@@ -19,7 +19,9 @@ import java.util.Map;
 /**
  * Отчёт «ЧЕК СМС траффик» — выгрузка в Excel (раздел «Отчёты»).
  * <p>
- * Скачать книгу может любой с правом READ на раздел reports. Источник данных
+ * Скачать книгу может любой с правом READ на раздел rep-smscheck — у каждого отчёта
+ * своя секция (V29), поэтому доступ к этой выгрузке выдаётся отдельно от прочих
+ * отчётов. Источник данных
  * (внешняя БД DWH) задаёт только ADMIN — коннект наружу не отдаётся, в download
  * он берётся из серверной конфигурации, а не из запроса.
  */
@@ -38,14 +40,14 @@ public class SmsCheckReportController {
     /** Текущий источник + список каналов + право правки (для формы админа). */
     @GetMapping("/config")
     public Map<String, Object> config() {
-        access.requireCapability(Capability.READ, Sections.REPORTS);
+        access.requireCapability(Capability.READ, Sections.REP_SMSCHECK);
         return service.configGet();
     }
 
     /** Задать источник-DWH (ADMIN). Тело: {connectionId: <id|null>}. */
     @PutMapping("/config")
     public Map<String, Object> saveConfig(@RequestBody Map<String, Object> body) {
-        access.requireCapability(Capability.READ, Sections.REPORTS);
+        access.requireCapability(Capability.READ, Sections.REP_SMSCHECK);
         Object raw = body == null ? null : body.get("connectionId");
         Long id = null;
         if (raw != null && !String.valueOf(raw).isBlank()) {
@@ -60,7 +62,7 @@ public class SmsCheckReportController {
     @GetMapping("/download")
     public ResponseEntity<byte[]> download(@RequestParam String month,
                                            @RequestParam(defaultValue = "sms") String channel) {
-        access.requireCapability(Capability.READ, Sections.REPORTS);
+        access.requireCapability(Capability.READ, Sections.REP_SMSCHECK);
         YearMonth ym;
         try {
             ym = YearMonth.parse(month);

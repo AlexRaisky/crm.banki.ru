@@ -28,6 +28,7 @@
 <link rel="stylesheet" href="css/section-promo.css">
 <link rel="stylesheet" href="css/section-abtests.css">
 <link rel="stylesheet" href="css/section-reports.css">
+<link rel="stylesheet" href="css/section-entities.css">
 <link rel="stylesheet" href="css/section-admin.css">
 </head>
 <body>
@@ -223,6 +224,21 @@
       <div class="ov-sub" data-i18n="Управление коммуникациями · доступно в приложении «Маркетинг»">Управление коммуникациями · доступно в приложении «Маркетинг»</div>
       <div class="mon-stub"><b data-i18n="Раздел в разработке">Раздел в разработке</b>
         <span data-i18n="Здесь появится тепловая карта коммуникационной нагрузки: пересечения сегментов, каналов и частоты касаний.">Здесь появится тепловая карта коммуникационной нагрузки: пересечения сегментов, каналов и частоты касаний.</span></div>
+    </section>
+
+    <!-- ===== Обзор раздела «Сущности» =====
+         Карточки строит js/entities.js (entRenderOverview) по схеме Scheme Builder:
+         сколько сущностей заведено — столько карточек и подразделов в сайдбаре. -->
+    <section class="view ov-view" id="view-entities-overview">
+      <div class="ov-head"><h1 data-i18n-html="h1_entities_ov">Сущности <span class="grad">CRM</span></h1></div>
+      <div class="ov-sub" data-i18n="Данные CRM по схеме из Scheme Builder. Каждая заведённая сущность становится подразделом: выберите её здесь или в меню слева.">Данные CRM по схеме из Scheme Builder. Каждая заведённая сущность становится подразделом: выберите её здесь или в меню слева.</div>
+      <div class="ov-grid" id="entOvGrid"></div>
+      <div class="ov-sub" style="margin-top:20px" data-i18n="Раздел доступен только администраторам. Сущности и их поля настраиваются в Scheme Builder (настроечная админка).">Раздел доступен только администраторам. Сущности и их поля настраиваются в Scheme Builder (настроечная админка).</div>
+    </section>
+
+    <!-- ===== Карточка записи сущности: разметку целиком рисует js/entities.js ===== -->
+    <section class="view" id="view-entity">
+      <div class="ent-host" id="entHost"></div>
     </section>
 
     <!-- ===== Обзор раздела «Отчёты» ===== -->
@@ -2222,6 +2238,10 @@
 <script src="js/abtests.js"></script>
 <script src="js/reports.js"></script>
 <script src="js/smscheck.js"></script>
+<!-- «Сущности»: подразделы строятся по схеме Scheme Builder. Подключать строго
+     ДО boot.js — тот восстанавливает последний открытый раздел, и entities.js
+     должен успеть запомнить, какой подраздел был открыт. -->
+<script src="js/entities.js"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->
 <!-- фиксированный попап подсказок полей (showFieldHelp): не обрезается краями карточек -->

@@ -1,0 +1,128 @@
+/* ===== Сущности — карточка записи (оформление Salesforce Details), изолировано =====
+   Подразделы раздела строятся по схеме Scheme Builder, поэтому разметка целиком
+   рисуется из js/entities.js — здесь только стили. Классы намеренно повторяют
+   логику .sfd* из «Просмотра настроек»: те же блоки, карандаши и подтверждение ✓. */
+@scope (#view-entity){
+  :scope{color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;padding:24px 22px 80px}
+
+  /* ---- шапка раздела (как .sec-hero оболочки, но со своим бейджем сущности) ---- */
+  .ent-hero{margin-bottom:18px;max-width:1180px}
+  .ent-hero .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:7px}
+  .ent-hero h1{font-size:26px;font-weight:700;letter-spacing:-.015em}
+  .ent-hero h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .ent-hero .sub{color:var(--dim);font-size:13.5px;line-height:1.6;margin-top:7px;max-width:820px}
+  .ent-hero .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}
+  .ent-hero .meta span{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:13px;
+    background:var(--card2);border:1px solid var(--line);color:var(--dim)}
+
+  /* ---- переключатель записей ---- */
+  .ent-recs{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+  .ent-rec{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;padding:9px 14px;cursor:pointer;transition:border-color .15s,transform .15s;max-width:320px}
+  .ent-rec:hover{border-color:rgba(80,195,255,.45);transform:translateY(-1px)}
+  .ent-rec.active{border-color:var(--green);background:var(--card2)}
+  .ent-rec .n{font-family:var(--mono);font-size:11px;color:var(--faint);flex:0 0 auto}
+  .ent-rec.active .n{color:var(--green)}
+  .ent-rec .t{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ent-add{font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 14px;border-radius:12px;cursor:pointer;
+    border:1px dashed rgba(60,250,180,.45);background:none;color:var(--green)}
+  .ent-add:hover{background:var(--green-bg)}
+
+  /* ---- карточка записи ---- */
+  .ent-card{border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden;max-width:1180px}
+  .ent-card-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px;
+    border-bottom:1px solid var(--line);background:var(--card2)}
+  .ent-card-head .ch{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;
+    text-transform:uppercase;padding:4px 10px;border-radius:13px;background:var(--blue-bg);color:var(--blue)}
+  .ent-card-head b{font-size:15.5px}
+  .ent-card-head .id{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .ent-card-head .acts{margin-left:auto;display:flex;gap:8px}
+  .ent-btn{font-family:var(--sans);font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:9px;cursor:pointer;
+    border:1px solid var(--line);background:var(--card);color:var(--ink)}
+  .ent-btn:hover{border-color:var(--blue);color:var(--blue)}
+  .ent-btn.danger:hover{border-color:var(--coral);color:var(--coral)}
+
+  /* ---- блок полей «по смыслу» ---- */
+  .ent-sec{border-bottom:1px solid var(--line)}
+  .ent-sec:last-child{border-bottom:none}
+  /* фон полосы блока берём из переменной, а не фиксированным тёмным цветом:
+     раздел наследует токены темы от body и потому работает и в светлой теме */
+  .ent-sec-title{display:flex;align-items:center;gap:8px;padding:11px 18px;background:var(--card2);
+    font-size:12.5px;font-weight:700;letter-spacing:.02em;color:var(--dim);cursor:pointer;user-select:none}
+  .ent-sec-title::before{content:"▾";color:var(--blue);font-size:11px;transition:transform .15s}
+  .ent-sec.closed .ent-sec-title::before{transform:rotate(-90deg)}
+  .ent-sec.closed .ent-grid{display:none}
+  .ent-sec-title .cnt{margin-left:auto;font-family:var(--mono);font-size:10.5px;font-weight:600;color:var(--faint)}
+  .ent-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:38px;padding:4px 18px 10px}
+
+  .ent-row{padding:9px 0;border-bottom:1px solid var(--line);min-width:0;position:relative;padding-right:30px}
+  .ent-row.wide{grid-column:1 / -1}
+  .ent-row .l{font-size:11.5px;color:var(--faint);margin-bottom:3px;display:flex;align-items:center;gap:6px}
+  .ent-row .l .req{color:var(--coral)}
+  .ent-row .l .api{font-family:var(--mono);font-size:10px;color:var(--faint);opacity:.75}
+  .ent-row .v{font-size:13.5px;color:var(--ink);word-break:break-word;white-space:pre-wrap}
+  .ent-row .v.empty{color:var(--faint)}
+  .ent-row .v .flag-on{color:var(--green);font-weight:600}
+  .ent-row .v .flag-off{color:var(--faint)}
+  .ent-row .v .num{font-variant-numeric:tabular-nums}
+
+  /* карандаш правки — как в «Просмотре настроек» */
+  .ent-pen{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:24px;height:24px;padding:0;
+    display:flex;align-items:center;justify-content:center;border-radius:7px;cursor:pointer;
+    border:1px solid transparent;background:none;color:var(--faint)}
+  .ent-pen svg{width:14px;height:14px;display:block;stroke:currentColor;fill:none}
+  .ent-row:hover .ent-pen{border-color:rgba(80,195,255,.45);color:var(--blue)}
+  .ent-pen:hover{color:#08131f;background:var(--blue);border-color:var(--blue)}
+  .ent-row.editing{padding-right:8px}
+
+  /* ---- режим правки ---- */
+  .ent-edit-wrap{display:flex;align-items:flex-start;gap:6px}
+  .ent-edit-wrap .fld{flex:1;min-width:0}
+  .ent-in{width:100%;background:var(--bg2);border:1px solid rgba(80,195,255,.45);border-radius:8px;
+    color:var(--ink);font-family:var(--sans);font-size:13.5px;padding:6px 9px;outline:none}
+  textarea.ent-in{resize:vertical;min-height:64px}
+  select.ent-in{cursor:pointer}
+  select.ent-in option{background:#0D1826;color:#F2F7FD}
+  .ent-in-check{width:17px;height:17px;accent-color:#3CFAB4;cursor:pointer;margin-top:4px}
+  .ent-ok,.ent-no{flex:0 0 auto;width:26px;height:28px;border-radius:8px;cursor:pointer;font-size:13px;
+    border:1px solid var(--line);background:var(--card2);color:var(--dim);line-height:1}
+  .ent-ok:hover{background:var(--green);border-color:var(--green);color:#06101B}
+  .ent-no:hover{background:var(--coral);border-color:var(--coral);color:#06101B}
+
+  /* набор чекбоксов для «связь: несколько объектов» */
+  .ent-multi{background:var(--bg2);border:1px solid rgba(80,195,255,.45);border-radius:8px;padding:7px 9px;
+    max-height:190px;overflow:auto;display:flex;flex-direction:column;gap:5px}
+  .ent-multi label{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+  .ent-multi input{width:15px;height:15px;accent-color:#3CFAB4;cursor:pointer;flex:0 0 auto}
+  .ent-multi .none{font-size:12px;color:var(--faint)}
+
+  /* ---- значения-связи ---- */
+  .ent-link{display:inline-flex;align-items:center;gap:6px;background:var(--blue-bg);border:1px solid rgba(80,195,255,.28);
+    border-radius:12px;padding:2px 10px;font-size:12.5px;color:var(--blue);cursor:pointer;margin:2px 4px 2px 0}
+  .ent-link:hover{background:var(--blue);color:#06101B;border-color:var(--blue)}
+  .ent-link .k{font-family:var(--mono);font-size:10.5px;opacity:.8}
+  .ent-links{display:flex;flex-wrap:wrap;gap:2px}
+  .ent-rel-note{font-size:11.5px;color:var(--faint);margin-top:4px}
+
+  /* ---- пустые состояния и подвал ---- */
+  .ent-empty{border:1px dashed var(--line);border-radius:14px;padding:26px;color:var(--dim);font-size:13.5px;
+    text-align:center;max-width:1180px}
+  .ent-note{max-width:1180px;margin-top:14px;font-size:12px;color:var(--faint);line-height:1.6}
+  .ent-note b{color:var(--dim)}
+  .ent-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(12px);z-index:400;
+    background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 16px;font-size:13px;
+    color:var(--ink);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
+  .ent-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media(max-width:900px){
+    :scope{padding:16px 14px 60px}
+    .ent-grid{grid-template-columns:1fr}
+    .ent-hero h1{font-size:22px}
+  }
+}
+
+/* Список выпадающего select рисует ОС, переменные темы до него не доходят —
+   цвет задаём явно. Правило вне @scope: :scope — это #view-entity, а класс
+   темы висит на <html>, снаружи области видимости. */
+html.theme-light #view-entity select.ent-in option{background:#FFFFFF;color:#16283E}

@@ -1361,9 +1361,12 @@ const SUBSECTIONS = [
       ["heatmap","Тепловая карта"] ]},
   { sid:"reports", label:"Отчёты", items:[
       ["rep-planfact","Plan-Fact"], ["rep-matrix","CRM Matrix"], ["rep-leadgen","CRM Leadgen"],
+      ["rep-smscheck","ЧЕК СМС траффик"],
       ["rep-demo","Пример визуализации отчёта"] ]},
   { sid:"dash", label:"Дашборд", items:[
       ["dashboard","Общая статистика"], ["deviations","Панель отклонений"] ]},
+  { sid:"monitoring", label:"Мониторинг", items:[
+      ["mon-campaigns","Базовая работа кампаний"] ]},
 ];
 const ORDER_KEY = "crmpanel:subOrder";
 function orderCfg(){ try { return JSON.parse(localStorage.getItem(ORDER_KEY)) || {}; } catch(e){ return {}; } }

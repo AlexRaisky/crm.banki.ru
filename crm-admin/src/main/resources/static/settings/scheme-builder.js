@@ -610,6 +610,10 @@ function openEntityModal(){
       x: 40 + (n % 3) * 330, y: 40 + Math.floor(n / 3) * 300 };
     model.entities.push(e);
     state.entity = id; state.field = null; setTab("entity");
+    /* commit() сохраняет модель черновиком в crmpanel:schemaDraft — по этому же
+       ключу пользовательская панель (js/entities.js) строит подразделы раздела
+       «Сущности»: новая сущность появляется там сама, доступ по умолчанию только
+       у администраторов (реестр crmpanel:entityAccess). */
     closeModal(); commit("create", "entity", id, e); toast(T("Сущность создана"));
   };
 }
