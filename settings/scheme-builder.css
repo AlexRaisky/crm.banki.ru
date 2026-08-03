@@ -72,6 +72,11 @@
   background:var(--card);color:var(--dim);cursor:pointer;font-size:14px;line-height:1;padding:0}
 .sb-node-add:hover{color:var(--green);border-color:var(--green)}
 .sb-node-fields{max-height:270px;overflow:auto}
+/* развёрнутый узел: список полей выше, но не бесконечный — дальше скроллится
+   внутри самого узла, чтобы схема не растягивалась на весь канвас */
+/* max(240px, …) — страховка: если vh почему-то вырожден (встраивание, нулевая
+   высота вьюпорта), список не должен схлопнуться в ноль */
+.sb-node.expanded .sb-node-fields{max-height:max(240px,min(62vh,620px))}
 .sb-field{display:grid;grid-template-columns:1.1fr auto;gap:8px;align-items:center;padding:6px 11px;
   border-top:1px solid var(--line);font-size:12px;cursor:pointer}
 .sb-field:hover{background:var(--card2)}
@@ -85,7 +90,12 @@
   border-radius:4px;padding:1px 4px;flex:0 0 auto}
 .sb-ftype{font-family:var(--mono);font-size:10.5px;color:var(--blue);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;max-width:120px}
-.sb-more{padding:6px 11px;border-top:1px solid var(--line);font-size:11.5px;color:var(--faint)}
+/* строка-переключатель «показать ещё / свернуть»: липнет к низу списка,
+   чтобы оставаться доступной при прокрутке полей внутри узла */
+.sb-more{position:sticky;bottom:0;padding:7px 11px;border-top:1px solid var(--line);
+  font-size:11.5px;font-weight:600;color:var(--blue);background:var(--card2);cursor:pointer;
+  user-select:none;display:flex;align-items:center;gap:6px}
+.sb-more:hover{background:var(--blue-bg)}
 
 /* ---- инспектор справа ---- */
 .sb-tabs{display:flex;gap:4px;padding:9px 9px 0}
