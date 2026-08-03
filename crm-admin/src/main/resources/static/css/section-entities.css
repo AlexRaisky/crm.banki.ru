@@ -16,18 +16,95 @@
   .ent-hero .meta span{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:13px;
     background:var(--card2);border:1px solid var(--line);color:var(--dim)}
 
-  /* ---- переключатель записей ---- */
-  .ent-recs{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
-  .ent-rec{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);
-    border-radius:12px;padding:9px 14px;cursor:pointer;transition:border-color .15s,transform .15s;max-width:320px}
-  .ent-rec:hover{border-color:rgba(80,195,255,.45);transform:translateY(-1px)}
-  .ent-rec.active{border-color:var(--green);background:var(--card2)}
-  .ent-rec .n{font-family:var(--mono);font-size:11px;color:var(--faint);flex:0 0 auto}
-  .ent-rec.active .n{color:var(--green)}
-  .ent-rec .t{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .ent-add{font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 14px;border-radius:12px;cursor:pointer;
-    border:1px dashed rgba(60,250,180,.45);background:none;color:var(--green)}
-  .ent-add:hover{background:var(--green-bg)}
+  /* ============ СПИСОК ЗАПИСЕЙ (list view) ============ */
+  .ent-lv-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+  .ent-lv-obj{display:flex;align-items:center;gap:11px;min-width:0}
+  .ent-lv-obj .ico{width:34px;height:34px;flex:0 0 auto;border-radius:9px;background:var(--blue-bg);color:var(--blue);
+    display:flex;align-items:center;justify-content:center}
+  .ent-lv-obj .ico svg{width:18px;height:18px}
+  .ent-lv-obj .kind{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .ent-lv-obj .title{font-size:17px;font-weight:700;letter-spacing:-.01em}
+  .ent-lv-acts{margin-left:auto;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .ent-lv-search{background:var(--bg2);border:1px solid var(--line);border-radius:9px;color:var(--ink);
+    font-family:var(--sans);font-size:13px;padding:8px 12px;outline:none;min-width:210px}
+  .ent-lv-search:focus{border-color:rgba(80,195,255,.5)}
+
+  .ent-lv-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px}
+  .ent-lv-filters .f{display:flex;flex-direction:column;gap:5px;min-width:0}
+  .ent-lv-filters label{font-size:11.5px;color:var(--faint)}
+  .ent-lv-filters select,.ent-lv-filters input{background:var(--bg2);border:1px solid var(--line);border-radius:9px;
+    color:var(--ink);font-family:var(--sans);font-size:13px;padding:8px 10px;outline:none;width:100%}
+  .ent-lv-filters select:focus,.ent-lv-filters input:focus{border-color:rgba(80,195,255,.5)}
+  .ent-lv-filters select option{background:#0D1826;color:#F2F7FD}
+
+  .ent-lv-count{font-size:12px;color:var(--faint);margin-bottom:8px}
+  .ent-lv-wrap{border:1px solid var(--line);border-radius:14px;overflow:auto;background:var(--card)}
+  .ent-lv{width:100%;border-collapse:collapse;min-width:640px}
+  .ent-lv th{position:sticky;top:0;z-index:1;background:var(--card2);color:var(--dim);text-align:left;
+    font-size:11.5px;font-weight:700;padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer}
+  .ent-lv th:hover{color:var(--blue)}
+  .ent-lv th.on{color:var(--blue)}
+  .ent-lv th .ar{font-size:9px;margin-left:5px}
+  .ent-lv td{padding:10px 14px;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:middle;
+    max-width:340px;overflow:hidden;text-overflow:ellipsis}
+  .ent-lv tbody tr:last-child td{border-bottom:none}
+  .ent-lv tbody tr[data-open]{cursor:pointer}
+  .ent-lv tbody tr[data-open]:hover{background:var(--card2)}
+  .ent-lv .ent-lv-link{color:var(--blue);font-weight:600}
+  .ent-lv tbody tr:hover .ent-lv-link{text-decoration:underline}
+  .ent-lv .empty{color:var(--faint)}
+  .ent-lv-none td{text-align:center;color:var(--dim);padding:26px}
+
+  /* шестерёнка настройки списка */
+  .ent-gear-wrap{position:relative}
+  .ent-gear{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--card2);
+    color:var(--dim);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .ent-gear:hover{border-color:var(--blue);color:var(--blue)}
+  .ent-gear svg{width:16px;height:16px}
+  .ent-gear-panel{display:none;position:absolute;right:0;top:calc(100% + 8px);z-index:60;width:min(420px,86vw);
+    background:var(--card);border:1px solid var(--line);border-radius:13px;padding:14px 16px;
+    box-shadow:0 18px 48px rgba(0,0,0,.42)}
+  .ent-gear-panel.open{display:block}
+  .ent-gear-panel h4{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--dim);
+    margin:0 0 8px}
+  .ent-gear-panel h4:not(:first-child){margin-top:14px}
+  .ent-gear-panel h4 .lim{margin-left:auto;font-family:var(--mono);font-size:10.5px;font-weight:600;color:var(--faint)}
+  .ent-gear-box{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;max-height:190px;overflow:auto}
+  .ent-gear-box label{display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer;min-width:0}
+  .ent-gear-box label.off{opacity:.42;cursor:default}
+  .ent-gear-box label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ent-gear-box input{width:15px;height:15px;accent-color:#3CFAB4;cursor:pointer;flex:0 0 auto}
+  .ent-gear-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:13px;padding-top:11px;
+    border-top:1px solid var(--line)}
+  .ent-gear-note{flex:1 1 190px;font-size:11px;color:var(--faint);line-height:1.5}
+
+  /* ============ ШАПКА ЗАПИСИ И ВКЛАДКИ ============ */
+  .ent-rec-head{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 20px;
+    margin-bottom:0;max-width:1180px}
+  .ent-back{background:none;border:none;color:var(--blue);font-family:var(--sans);font-size:13px;font-weight:600;
+    cursor:pointer;padding:0;margin-bottom:10px}
+  .ent-back:hover{text-decoration:underline}
+  .ent-rec-head .ent-rec-id{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+  .ent-rec-head .ch{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    padding:3px 9px;border-radius:11px;background:var(--blue-bg);color:var(--blue)}
+  .ent-rec-head .mono{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .ent-rec-head h2{font-size:22px;font-weight:700;letter-spacing:-.015em;margin:0}
+  .ent-highlights{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:14px;
+    padding-top:13px;border-top:1px solid var(--line)}
+  .ent-highlights .hi{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .ent-highlights .hi .l{font-size:11px;color:var(--faint)}
+  .ent-highlights .hi .v{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ent-rec-acts{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+
+  .ent-tabs{display:flex;gap:2px;max-width:1180px;margin:14px 0 0;border-bottom:1px solid var(--line)}
+  .ent-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--dim);cursor:pointer;
+    font-family:var(--sans);font-size:13.5px;font-weight:600;padding:10px 16px}
+  .ent-tab:hover{color:var(--ink)}
+  .ent-tab.on{color:var(--blue);border-bottom-color:var(--blue)}
+  .ent-tabs + .ent-card{border-top-left-radius:0;border-top-right-radius:0;border-top:none}
+  .ent-comms-stub{padding:38px 24px;text-align:center;color:var(--dim)}
+  .ent-comms-stub b{display:block;font-size:15px;color:var(--ink);margin-bottom:7px}
+  .ent-comms-stub p{font-size:13.5px;line-height:1.6;max-width:520px;margin:0 auto}
 
   /* ---- карточка записи ---- */
   .ent-card{border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden;max-width:1180px}
@@ -129,6 +206,26 @@
     :scope{padding:16px 14px 60px}
     .ent-grid{grid-template-columns:1fr}
     .ent-hero h1{font-size:22px}
+    .ent-lv-acts{margin-left:0;width:100%}
+    .ent-lv-search{flex:1 1 160px;min-width:0}
+    .ent-gear-box{grid-template-columns:1fr}
+  }
+  /* На узком экране таблица не влезает даже с прокруткой и читается плохо: строки
+     превращаются в карточки, а названия колонок подставляются из data-label. */
+  @media(max-width:640px){
+    .ent-lv-wrap{border:none;background:none;overflow:visible}
+    .ent-lv{min-width:0;display:block}
+    .ent-lv thead{display:none}
+    .ent-lv tbody,.ent-lv tr,.ent-lv td{display:block;width:auto}
+    .ent-lv tbody tr[data-open]{background:var(--card);border:1px solid var(--line);border-radius:13px;
+      padding:6px 4px;margin-bottom:10px}
+    .ent-lv td{border-bottom:1px solid var(--line);max-width:none;white-space:normal;
+      display:flex;gap:12px;align-items:baseline;padding:8px 13px}
+    .ent-lv td::before{content:attr(data-label);flex:0 0 42%;font-size:11px;color:var(--faint)}
+    .ent-lv td:last-child{border-bottom:none}
+    .ent-lv-none td{display:block}
+    .ent-lv-none td::before{content:none}
+    .ent-tab{padding:10px 12px;font-size:13px}
   }
 }
 

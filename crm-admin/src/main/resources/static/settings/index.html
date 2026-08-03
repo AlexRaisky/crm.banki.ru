@@ -10,7 +10,7 @@
 <!-- ?v — метка версии: без неё браузер держит старый файл из HTTP-кеша
      и правки раздела доезжают к пользователю с задержкой. Поднимать при изменениях. -->
 <link rel="stylesheet" href="scheme-builder.css?v=6">
-<link rel="stylesheet" href="object-manager.css?v=1">
+<link rel="stylesheet" href="object-manager.css?v=2">
 <style>
   /* ============================================================
      НАСТРОЕЧНАЯ АДМИНКА (/settings, доступ — только ADMIN)
@@ -1404,7 +1404,9 @@ $("#etlFullBtn").addEventListener('click', function(){
    подхватывает изменение через событие storage. */
 const SUBSECTIONS = [
   { sid:"comms", label:"Управление коммуникациями", items:[
-      ["onelink","OneLink Builder"], ["admin","Мастер коммуникаций"], ["templates","Список шаблонов"],
+      /* «Список шаблонов» переехал в «Сущности» → «Шаблоны и сегменты»: подразделы
+         там строятся по схеме, их очерёдность настраивается не здесь */
+      ["onelink","OneLink Builder"], ["admin","Мастер коммуникаций"],
       ["viewer","Просмотр настроек"], ["srcbuilder","Конструктор source"], ["promo","Планирование промо"],
       ["abtests","А/Б тесты"],
       ["heatmap","Тепловая карта"] ]},
@@ -1536,7 +1538,7 @@ window.CRM = window.CRM || (function(){
 <script src="scheme-builder.js?v=6"></script>
 <!-- «Сущности»: общий с панелью расчёт раскладки + сам раздел. Порядок важен:
      object-manager.js работает с хранилищем схемы из scheme-builder.js. -->
-<script src="../js/entity-layout.js?v=1"></script>
-<script src="object-manager.js?v=1"></script>
+<script src="../js/entity-layout.js?v=2"></script>
+<script src="object-manager.js?v=2"></script>
 </body>
 </html>

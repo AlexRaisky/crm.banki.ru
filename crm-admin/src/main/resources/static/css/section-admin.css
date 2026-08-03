@@ -987,3 +987,41 @@ button:hover{filter:brightness(1.08)}
 .sf-cell-ok:hover{background:var(--green);color:#06202B;filter:none}
 .sf-cell-no{background:var(--card2);color:var(--dim)}
 .sf-cell-no:hover{color:var(--coral);border-color:rgba(255,107,138,.45);filter:none}
+
+/* ---- Настройка списка: счётчик лимита у заголовка и «упёрлись в потолок» ----
+   Лимит — 10 колонок и 10 фильтров (LIST_MAX_COLS / LIST_MAX_FILTERS в
+   js/template-list.js): шире список перестаёт читаться. */
+.sf-panel h4{display:flex;align-items:center;gap:8px}
+.sf-panel h4 .sf-lim{margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:.06em;
+    text-transform:none;color:var(--faint)}
+.sf-panel label.off{opacity:.42;cursor:default}
+.sf-panel label.off:hover{background:none;color:var(--dim)}
+
+/* ---- Адаптация списка шаблонов под ширину экрана ----
+   До 900px строка действий уезжает под заголовок, панель настройки перестаёт
+   вылезать за край, а фильтры становятся сеткой в одну-две колонки. */
+@media(max-width:900px){
+    .sf-actions{margin-left:0;width:100%}
+    .sf-search{flex:1 1 160px;min-width:0}
+    .sf-panel{width:min(330px,88vw)}
+    #list .filters-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+    #list .filters-row .field{min-width:0}
+    .sf-table-wrap{max-height:none}
+}
+/* Ниже 640px таблица не читается даже с прокруткой: строки становятся карточками,
+   названия колонок подставляются из data-label (проставляет renderTemplateList). */
+@media(max-width:640px){
+    .sf-table-wrap{border:none;border-radius:0;overflow:visible}
+    .sf-table,.sf-table tbody,.sf-table tr,.sf-table tbody td{display:block;width:auto}
+    .sf-table thead{display:none}
+    .sf-table tbody tr{background:var(--card);border:1px solid var(--line);border-radius:13px;
+        padding:6px 4px;margin-bottom:10px}
+    .sf-table tbody tr:hover{background:var(--card)}
+    .sf-table tbody td{display:flex;gap:12px;align-items:center;padding:8px 13px;border-right:none;
+        border-bottom:1px solid var(--line)}
+    .sf-table tbody td:last-child{border-bottom:none}
+    .sf-table tbody td:hover{background:none}
+    .sf-table tbody td::before{content:attr(data-label);flex:0 0 42%;font-size:11px;color:var(--faint)}
+    .sf-table tbody td.sf-check-col{display:none}
+    .sf-table tbody td.sf-cell{min-width:0}
+}

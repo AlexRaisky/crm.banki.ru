@@ -6,7 +6,8 @@ renderGrid();
     /* миграция со старой плоской навигации (crmpanel:lastSection был строкой) */
     const map = {
       home:["home",null], onelink:["comms","onelink"], admin:["comms","admin"],
-      templates:["comms","templates"], dashboard:["dash","dashboard"],
+      /* список шаблонов переехал в «Сущности» → «Шаблоны и сегменты» */
+      templates:["entities","ent-template"], dashboard:["dash","dashboard"],
       deviations:["dash","deviations"], journeys:["journeys",null], access:["access",null]
     };
     last = map[last] ? { sid:map[last][0], cid:map[last][1] } : { sid:"home", cid:null };
