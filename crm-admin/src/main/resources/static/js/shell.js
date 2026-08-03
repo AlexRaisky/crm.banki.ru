@@ -18,7 +18,9 @@ const NAV = [
   { id:"comms", label:"Управление коммуникациями", icon:"megaphone", overviewView:"view-comms-overview", children:[
       { id:"onelink",   label:"OneLink Builder",     icon:"link", view:"sec-onelink" },
       { id:"admin",     label:"Мастер коммуникаций", icon:"pen",  view:"sec-admin", adminMode:"wizard" },
-      { id:"templates", label:"Список шаблонов",     icon:"list", view:"sec-admin", adminMode:"list" },
+      /* «Список шаблонов» переехал в раздел «Сущности» как подраздел «Шаблоны и сегменты»
+         (сущность template в схеме, source:"templates"). Пункт здесь не дублируем —
+         id секции RBAC остался прежним (templates), права не менялись. */
       /* «Просмотр настроек» — тот же раздел admin: ACL следует правам admin (data-acl-section) */
       { id:"viewer",    label:"Просмотр настроек",   icon:"search", view:"sec-admin", adminMode:"view", aclSection:"admin" },
       /* клиентские инструменты без серверной секции — не фильтруются по me.sections (data-no-acl) */
@@ -468,6 +470,23 @@ Object.assign(I18N_EN, {
   "Стоп-листы каналов":"Channel stop lists", "Доход и скоринг":"Income & scoring",
   "Самозапрет на кредиты":"Self-imposed credit ban", "Реквизиты":"Company details",
   "Доступность":"Reachability", "Флаги":"Flags", "Показатели":"Metrics",
+  /* список записей и карточка со вкладками */
+  "Шаблоны и сегменты":"Templates & segments",
+  "Реестр всех шаблонов коммуникаций с фильтрами по каналу, продукту, триггеру и статусу активности. Раздел переехал в «Сущности».":"A registry of all communication templates with filters by channel, product, trigger and status. The section has moved to Objects.",
+  "Список записей сущности: колонки и фильтры настраиваются шестерёнкой, запись открывается по клику.":"The object's record list: columns and filters are configured with the gear, and a record opens on click.",
+  "Список записей и карточка: поля по смысловым блокам, переходы по связям.":"A record list and card: fields grouped by meaning, with links to related records.",
+  "Поиск в списке…":"Search this list…", "Сбросить фильтры":"Reset filters",
+  "Нет записей по заданным фильтрам":"No records match the filters",
+  "Настройка полей и фильтров":"Fields and filters settings",
+  "Отображаемые поля":"Displayed fields", "Показывать фильтры":"Visible filters",
+  "Не больше 10 колонок и 10 фильтров одновременно. Настройка личная — хранится в вашем браузере.":"At most 10 columns and 10 filters at a time. The setting is personal — it is stored in your browser.",
+  "Не больше 10 колонок в списке":"At most 10 columns in the list",
+  "Не больше 10 фильтров в списке":"At most 10 filters in the list",
+  "По умолчанию":"Reset to default", "Закрыть":"Close", "Все":"All", "любое":"any", "из":"of",
+  "Отсортировано по":"Sorted by", "К списку":"Back to list", "данные из API":"data from the API",
+  "Детали":"Details", "Коммуникации":"Communications",
+  "Здесь появятся отправленные по этой записи коммуникации: канал, шаблон, дата отправки и статус доставки. Раздел в разработке.":"Communications sent for this record will appear here: channel, template, send date and delivery status. Under development.",
+  "подраздел построен по сущности из Scheme Builder. Список открывается первым: колонки и фильтры настраиваются шестерёнкой (не больше 10 тех и других), запись открывается по клику и возвращает назад кнопкой «К списку». В карточке поля разложены по смысловым блокам, связи показаны ссылками на записи других сущностей. Правка поля подтверждается ✓ (Enter), отменяется ✕ или Esc; клик мимо поля сохраняет значение. Изменения хранятся в браузере.":"the subsection is built from a Scheme Builder object. The list opens first: columns and filters are configured with the gear (at most 10 of each), a record opens on click and the “Back to list” button returns you. In the card, fields are grouped by meaning and relations are shown as links to records of other objects. A field edit is confirmed with ✓ (Enter) and cancelled with ✕ or Esc; clicking outside the field saves the value. Changes are stored in the browser.",
 });
 
 /* HTML-заголовки (с выделением) — токены */
@@ -906,7 +925,8 @@ let CUR_VIEW = "";
 const SEC_HERO = {
   "comms:admin": { eyebrow:"CRM · Templates · Wizard", title:"Мастер коммуникаций",
     sub:"Заведение нового шаблона: канал выбирается настроечным блоком, поля зависят от канала. communication_name и source_type собираются автоматически по правилам нейминга, справа — предпросмотр сообщения перед сохранением." },
-  "comms:templates": { eyebrow:"CRM · Templates · List view", title:"Список шаблонов",
+  /* список шаблонов открывается из раздела «Сущности» (подраздел «Шаблоны и сегменты») */
+  "entities:ent-template": { eyebrow:"CRM · Templates · List view", title:"Шаблоны и сегменты",
     sub:"Витрина всех шаблонов коммуникаций: поиск, сортировка, настройка отображаемых полей и фильтров через шестерёнку. Значения правятся прямо в таблице — карандаш у поля, подтверждение галочкой." },
   "comms:viewer": { eyebrow:"CRM · Templates · Details", title:"Просмотр настроек",
     sub:"Карточка шаблона со всеми параметрами: канал и шаблон выбираются настроечными блоками, каждое поле правится по карандашу, справа — предпросмотр сообщения в канале." },

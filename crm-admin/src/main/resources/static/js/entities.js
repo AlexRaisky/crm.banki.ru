@@ -37,7 +37,10 @@ var ENT_WANT = (function(){
   try { var v = JSON.parse(localStorage.getItem("crmpanel:lastSection"));
         return (v && v.sid === "entities" && v.cid) ? v.cid : null; } catch(e){ return null; }
 })();
-var ENT_CUR = { id:null, rec:null, edit:null, closed:{} };
+/* mode — список записей или карточка одной записи; tab — вкладка карточки;
+   q / fv / sort — состояние списка (поиск, значения фильтров, сортировка по сущностям) */
+var ENT_CUR = { id:null, rec:null, edit:null, closed:{},
+                mode:"list", tab:"details", q:"", fv:{}, sort:{}, gear:false };
 
 var ENT_REL_UI = ["lookup","multilookup","related_list"];
 
@@ -90,6 +93,9 @@ function entAllowed(e){
   /* техническая сущность (флаг ставится в настройках) в панели не показывается
      вообще: это служебный справочник, работать с ним нужно в схеме, а не здесь */
   if (e.technical) return false;
+  /* сущность с готовым серверным экраном («Шаблоны и сегменты») гейтится обычным
+     RBAC по своей секции — applyNavAcl сделает это по aclSection, реестр не при чём */
+  if (e.source) return true;
   var me = window.CRM_ME;
   if (!me) return true;                       /* демо-режим без бэкенда */
   if (me.isAdmin) return true;
@@ -365,9 +371,249 @@ function entRowHtml(e, f, r){
     '" data-f="' + entEsc(f.name) + '">' + label + body + pen + "</div>";
 }
 
-function entCardHtml(e, r){
+/* ============================================================
+   СПИСОК ЗАПИСЕЙ (list view, как «Список шаблонов»)
+   Подраздел открывается списком; запись открывается по клику,
+   из карточки можно вернуться назад.
+
+   Набор колонок и фильтров — личная настройка пользователя: она лежит
+   в его браузере (crmpanel:entityListCols / crmpanel:entityListFilters)
+   и выбирается из полей, которые ему доступны, — сущности, закрытые
+   ролью, в раздел вообще не попадают (entAllowed).
+   ============================================================ */
+var ENT_LIST_MAX  = 10;    /* не больше 10 колонок и 10 фильтров одновременно */
+var ENT_COLS_KEY  = "crmpanel:entityListCols";
+var ENT_FILT_KEY  = "crmpanel:entityListFilters";
+var ENT_DEF_COLS  = 6;
+
+/* related_list — таблица связанных записей, в ячейку списка её не поместить */
+function entListable(f){ return f.ui_type !== "related_list"; }
+/* по чему имеет смысл фильтровать */
+function entFilterable(f){ return ["related_list","multilookup"].indexOf(f.ui_type) < 0; }
+
+/* Колонки по умолчанию. Сначала то, чем запись называется (поле заголовка либо
+   привычные name/value/ФИО — тем же набором пользуется entTitle), затем поля по
+   «опознавательности»: список значений и связи полезнее в списке, чем флажки,
+   а флажки и многострочный текст в узкую колонку не помещаются вовсе.
+   Это только умолчание: набор всё равно правится шестерёнкой. */
+var ENT_COL_PRIORITY = ["picklist","lookup","text","email","phone","url","currency","number","percent","date","datetime"];
+function entDefaultCols(e){
+  var L = entLayout(e), out = [], sys = {};
+  var SYS = window.EntityLayout ? EntityLayout.SYSTEM_BLOCK : "Служебные";
+  L.blocks.forEach(function(b){
+    if (b.title === SYS) b.fields.forEach(function(f){ sys[f.name] = 1; });
+  });
+  var add = function(n){
+    if (!n || out.indexOf(n) >= 0 || out.length >= ENT_DEF_COLS) return;
+    var f = entField(e, n);
+    if (f && entListable(f)) out.push(n);
+  };
+  if (e.title_field) add(e.title_field);
+  if (!out.length) ["name","organization_name","value","label","code"].forEach(add);
+  if (!out.length) ["last_name","first_name","second_name"].forEach(add);
+
+  ENT_COL_PRIORITY.forEach(function(t){
+    e.fields.forEach(function(f){
+      if (sys[f.name] || f.ui_type !== t) return;
+      add(f.name);
+    });
+  });
+  /* если сущность состоит из одних флажков — берём что есть, лишь бы список не был пустым */
+  e.fields.forEach(function(f){ if (!sys[f.name] && entListable(f)) add(f.name); });
+  return out.length ? out : e.fields.slice(0, ENT_DEF_COLS).map(function(f){ return f.name; });
+}
+/* Фильтры по умолчанию — из тех же колонок: сначала списки значений, флажки и
+   связи (по ним фильтруют чаще всего), потом остальное. */
+function entDefaultFilters(e){
+  var cols = entDefaultCols(e), out = [];
+  var take = function(pred){
+    cols.forEach(function(n){
+      var f = entField(e, n);
+      if (f && entFilterable(f) && out.indexOf(n) < 0 && pred(f) && out.length < 4) out.push(n);
+    });
+  };
+  take(function(f){ return ["picklist","checkbox","lookup"].indexOf(f.ui_type) >= 0; });
+  take(function(){ return true; });
+  return out;
+}
+function entCols(e){
+  var cfg = entRead(ENT_COLS_KEY, {}) || {};
+  var ids = Array.isArray(cfg[e.id]) && cfg[e.id].length ? cfg[e.id] : entDefaultCols(e);
+  return ids.map(function(n){ return entField(e, n); })
+            .filter(function(f){ return f && entListable(f); })
+            .slice(0, ENT_LIST_MAX);
+}
+function entFilterCols(e){
+  var cfg = entRead(ENT_FILT_KEY, {}) || {};
+  var ids = Array.isArray(cfg[e.id]) ? cfg[e.id] : entDefaultFilters(e);
+  return ids.map(function(n){ return entField(e, n); })
+            .filter(function(f){ return f && entFilterable(f); })
+            .slice(0, ENT_LIST_MAX);
+}
+function entSetCfg(key, entityId, ids){
+  var cfg = entRead(key, {}) || {};
+  cfg[entityId] = ids;
+  entWrite(key, cfg);
+}
+
+/* значение поля в виде строки — для поиска, сортировки и ячейки списка */
+function entPlain(e, f, r){
+  var v = r[f.name];
+  if (v === undefined || v === null || v === "") return "";
+  if (f.ui_type === "checkbox") return (v === true || v === "true") ? entT("да") : entT("нет");
+  if (f.ui_type === "lookup"){
+    var te = entEntity(f.target_entity), tr = te ? entRecById(te.id, v) : null;
+    return tr ? entTitle(te, tr) : String(v);
+  }
+  if (f.ui_type === "multilookup"){
+    var me = entEntity(f.target_entity), arr = Array.isArray(v) ? v : [v];
+    return arr.map(function(id){
+      var x = me ? entRecById(me.id, id) : null; return x ? entTitle(me, x) : id;
+    }).join(", ");
+  }
+  if (f.ui_type === "date") return entFmtDate(v);
+  if (f.ui_type === "datetime") return entFmtDateTime(v);
+  return String(v);
+}
+function entListRows(e){
+  var rows = entRows(e.id).slice();
+  var q = (ENT_CUR.q || "").trim().toLowerCase();
+  var cols = entCols(e), fv = ENT_CUR.fv[e.id] || {};
+
+  rows = rows.filter(function(r){
+    if (q){
+      var hay = cols.map(function(f){ return entPlain(e, f, r); }).join(" ").toLowerCase() + " " + r.id;
+      if (hay.indexOf(q) < 0) return false;
+    }
+    for (var name in fv){
+      var val = fv[name];
+      if (val === "" || val === undefined) continue;
+      var f = entField(e, name);
+      if (!f) continue;
+      if (f.ui_type === "checkbox"){
+        if (String(r[name] === true || r[name] === "true") !== val) return false;
+      } else if (f.ui_type === "picklist" || f.ui_type === "lookup"){
+        if (String(r[name] == null ? "" : r[name]) !== val) return false;
+      } else {
+        if (entPlain(e, f, r).toLowerCase().indexOf(String(val).toLowerCase()) < 0) return false;
+      }
+    }
+    return true;
+  });
+
+  var s = ENT_CUR.sort[e.id];
+  if (s){
+    var sf = entField(e, s.k);
+    if (sf) rows.sort(function(a, b){
+      var x = entPlain(e, sf, a), y = entPlain(e, sf, b);
+      var nx = Number(a[s.k]), ny = Number(b[s.k]);
+      var c = (isFinite(nx) && isFinite(ny) && x !== "" && y !== "")
+        ? nx - ny : x.localeCompare(y, entEn() ? "en" : "ru");
+      return s.dir < 0 ? -c : c;
+    });
+  }
+  return rows;
+}
+
+function entFilterCtlHtml(e, f, val){
+  if (f.ui_type === "checkbox")
+    return '<select data-fv="' + entEsc(f.name) + '"><option value="">' + entT("Все") + "</option>" +
+      '<option value="true"' + (val === "true" ? " selected" : "") + ">" + entT("да") + "</option>" +
+      '<option value="false"' + (val === "false" ? " selected" : "") + ">" + entT("нет") + "</option></select>";
+  if (f.ui_type === "picklist")
+    return '<select data-fv="' + entEsc(f.name) + '"><option value="">' + entT("Все") + "</option>" +
+      (f.options || []).map(function(o){
+        return '<option value="' + entEsc(o) + '"' + (String(val) === String(o) ? " selected" : "") + ">" + entEsc(o) + "</option>";
+      }).join("") + "</select>";
+  if (f.ui_type === "lookup"){
+    var te = entEntity(f.target_entity);
+    if (te) return '<select data-fv="' + entEsc(f.name) + '"><option value="">' + entT("Все") + "</option>" +
+      (ENT_DATA[te.id] || []).map(function(x){
+        return '<option value="' + entEsc(x.id) + '"' + (String(val) === String(x.id) ? " selected" : "") +
+          ">" + entEsc(entTitle(te, x)) + "</option>";
+      }).join("") + "</select>";
+  }
+  return '<input type="text" data-fv="' + entEsc(f.name) + '" value="' + entEsc(val || "") + '" placeholder="' + entT("любое") + '">';
+}
+
+function entGearHtml(e){
+  var cols = entCols(e).map(function(f){ return f.name; });
+  var filt = entFilterCols(e).map(function(f){ return f.name; });
+  function box(list, attr, chosen){
+    return list.map(function(f){
+      var on = chosen.indexOf(f.name) >= 0;
+      var full = !on && chosen.length >= ENT_LIST_MAX;
+      return '<label' + (full ? ' class="off"' : "") + '><input type="checkbox" data-' + attr + '="' + entEsc(f.name) + '"' +
+        (on ? " checked" : "") + (full ? " disabled" : "") + "><span>" + entEsc(f.label || f.name) + "</span></label>";
+    }).join("");
+  }
+  return '<div class="ent-gear-panel' + (ENT_CUR.gear ? " open" : "") + '">' +
+    "<h4>" + entT("Отображаемые поля") + '<span class="lim">' + cols.length + " / " + ENT_LIST_MAX + "</span></h4>" +
+    '<div class="ent-gear-box">' + box(e.fields.filter(entListable), "col", cols) + "</div>" +
+    "<h4>" + entT("Показывать фильтры") + '<span class="lim">' + filt.length + " / " + ENT_LIST_MAX + "</span></h4>" +
+    '<div class="ent-gear-box">' + box(e.fields.filter(entFilterable), "filt", filt) + "</div>" +
+    '<div class="ent-gear-foot"><span class="ent-gear-note">' +
+      entT("Не больше 10 колонок и 10 фильтров одновременно. Настройка личная — хранится в вашем браузере.") + "</span>" +
+      '<button type="button" class="ent-btn" data-gear-reset="1">' + entT("По умолчанию") + "</button>" +
+      '<button type="button" class="ent-btn" data-gear-close="1">' + entT("Закрыть") + "</button></div></div>";
+}
+
+var ENT_GEAR_ICO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>';
+
+function entListHtml(e){
+  var cols = entCols(e), filters = entFilterCols(e), rows = entListRows(e);
+  var total = entRows(e.id).length, s = ENT_CUR.sort[e.id], fv = ENT_CUR.fv[e.id] || {};
+
+  var head = '<div class="ent-lv-head">' +
+    '<div class="ent-lv-obj"><span class="ico">' + (ICONS.table || "") + "</span>" +
+      "<div><div class=\"kind\">" + entEsc(e.label) + "</div>" +
+      '<div class="title">' + entEsc(e.plural_label || e.label) + "</div></div></div>" +
+    '<div class="ent-lv-acts">' +
+      '<input class="ent-lv-search" id="entSearch" placeholder="' + entT("Поиск в списке…") + '" value="' + entEsc(ENT_CUR.q || "") + '">' +
+      '<button type="button" class="ent-btn" data-lv-reset="1">' + entT("Сбросить фильтры") + "</button>" +
+      '<button type="button" class="ent-btn accent" data-new="1">＋ ' + entT("Новая запись") + "</button>" +
+      '<span class="ent-gear-wrap"><button type="button" class="ent-gear" data-gear="1" title="' +
+        entT("Настройка полей и фильтров") + '">' + ENT_GEAR_ICO + "</button>" + entGearHtml(e) + "</span>" +
+    "</div></div>";
+
+  var filterRow = filters.length ? '<div class="ent-lv-filters">' + filters.map(function(f){
+    return '<div class="f"><label>' + entEsc(f.label || f.name) + "</label>" +
+      entFilterCtlHtml(e, f, fv[f.name]) + "</div>";
+  }).join("") + "</div>" : "";
+
+  var body = rows.length
+    ? rows.map(function(r){
+        return '<tr data-open="' + entEsc(r.id) + '">' + cols.map(function(f, i){
+          var val = entPlain(e, f, r);
+          var cell = i === 0
+            ? '<a class="ent-lv-link">' + entEsc(val || ("#" + r.id)) + "</a>"
+            : (f.ui_type === "checkbox"
+                ? '<span class="' + (r[f.name] === true ? "flag-on" : "flag-off") + '">' + entEsc(val) + "</span>"
+                : entEsc(val) || '<span class="empty">—</span>');
+          return '<td data-label="' + entEsc(f.label || f.name) + '">' + cell + "</td>";
+        }).join("") + "</tr>";
+      }).join("")
+    : '<tr class="ent-lv-none"><td colspan="' + cols.length + '">' + entT("Нет записей по заданным фильтрам") + "</td></tr>";
+
+  return head + filterRow +
+    '<div class="ent-lv-count">' + entPlural(rows.length, "record") +
+      (rows.length !== total ? " " + entT("из") + " " + total : "") +
+      (s ? " · " + entT("Отсортировано по") + " " + entEsc((entField(e, s.k) || {}).label || s.k) : "") + "</div>" +
+    '<div class="ent-lv-wrap"><table class="ent-lv"><thead><tr>' +
+      cols.map(function(f){
+        var on = s && s.k === f.name;
+        return '<th data-sort="' + entEsc(f.name) + '"' + (on ? ' class="on"' : "") + ">" +
+          entEsc(f.label || f.name) + (on ? '<span class="ar">' + (s.dir > 0 ? "▲" : "▼") + "</span>" : "") + "</th>";
+      }).join("") +
+    "</tr></thead><tbody>" + body + "</tbody></table></div>";
+}
+
+/* ============================================================
+   КАРТОЧКА ЗАПИСИ: шапка + вкладки «Детали» / «Коммуникации»
+   ============================================================ */
+function entDetailsHtml(e, r){
   var L = entLayout(e);
-  var secs = L.blocks.map(function(g){
+  return L.blocks.map(function(g){
     var rows = g.fields.map(function(f){ return entRowHtml(e, f, r); }).join("");
     if (!rows) return "";                       /* весь блок скрыт зависимостями */
     var shown = g.fields.filter(function(f){ return !entFieldState(e, f, r).hidden; }).length;
@@ -377,19 +623,40 @@ function entCardHtml(e, r){
       '<span class="cnt">' + shown + "</span></div>" +
       '<div class="ent-grid">' + rows + "</div></div>";
   }).join("");
-  /* верхняя строка карточки: поля настраиваются в админке («Сущности» → В шапке) */
-  var head = L.header.map(function(f){
-    var v = r[f.name];
-    if (v === undefined || v === null || v === "") return "";
-    return '<span class="hf"><i>' + entEsc(f.label || f.name) + "</i>" + entEsc(v) + "</span>";
+}
+
+function entCardHtml(e, r){
+  var L = entLayout(e);
+  /* шапка записи отдельным блоком, как в Salesforce: тип объекта, название
+     и «подсвеченные» поля — их набор настраивается в админке («В шапке») */
+  var hi = L.header.map(function(f){
+    return '<div class="hi"><span class="l">' + entEsc(f.label || f.name) + "</span>" +
+      '<span class="v">' + (entPlain(e, f, r) ? entEsc(entPlain(e, f, r)) : "—") + "</span></div>";
   }).join("");
-  return '<div class="ent-card">' +
-    '<div class="ent-card-head"><span class="ch">' + entEsc(e.label) + "</span>" +
-      "<b>" + entEsc(entTitle(e, r)) + "</b>" + head +
-      '<span class="id">' + entEsc(e.table || e.id) + " · id " + entEsc(r.id) + "</span>" +
-      '<span class="acts">' +
+
+  var tab = ENT_CUR.tab === "comms" ? "comms" : "details";
+  var pane = tab === "details"
+    ? '<div class="ent-card">' + entDetailsHtml(e, r) + "</div>"
+    : '<div class="ent-card"><div class="ent-comms-stub">' +
+        "<b>" + entT("Коммуникации") + "</b>" +
+        "<p>" + entT("Здесь появятся отправленные по этой записи коммуникации: канал, шаблон, дата отправки и статус доставки. Раздел в разработке.") + "</p>" +
+      "</div></div>";
+
+  return '<div class="ent-rec-head">' +
+      '<button type="button" class="ent-back" data-back="1">← ' + entT("К списку") + "</button>" +
+      '<div class="ent-rec-id"><span class="ch">' + entEsc(e.label) + "</span>" +
+        '<span class="mono">' + entEsc(e.table || e.id) + " · id " + entEsc(r.id) + "</span></div>" +
+      "<h2>" + entEsc(entTitle(e, r)) + "</h2>" +
+      (hi ? '<div class="ent-highlights">' + hi + "</div>" : "") +
+      '<div class="ent-rec-acts">' +
+        '<button type="button" class="ent-btn" data-new="1">＋ ' + entT("Новая запись") + "</button>" +
         '<button type="button" class="ent-btn danger" data-del="1">' + entT("Удалить запись") + "</button>" +
-      "</span></div>" + secs + "</div>";
+      "</div>" +
+    "</div>" +
+    '<div class="ent-tabs">' +
+      '<button type="button" class="ent-tab' + (tab === "details" ? " on" : "") + '" data-tab="details">' + entT("Детали") + "</button>" +
+      '<button type="button" class="ent-tab' + (tab === "comms" ? " on" : "") + '" data-tab="comms">' + entT("Коммуникации") + "</button>" +
+    "</div>" + pane;
 }
 
 function entHeroHtml(e){
@@ -398,7 +665,7 @@ function entHeroHtml(e){
   return '<header class="ent-hero">' +
     '<div class="eyebrow">CRM · ' + entT("Данные") + " · " + entEsc(e.table || e.id) + "</div>" +
     "<h1>" + entEsc(e.plural_label || e.label) + "</h1>" +
-    '<p class="sub">' + entEsc(e.description || entT("Карточка записи по схеме Scheme Builder: поля разложены по смысловым блокам, каждое правится по карандашу. Правки сохраняются сразу.")) + "</p>" +
+    '<p class="sub">' + entEsc(e.description || entT("Список записей сущности: колонки и фильтры настраиваются шестерёнкой, запись открывается по клику.")) + "</p>" +
     '<div class="meta"><span>' + entPlural(e.fields.length, "field") + "</span>" +
       "<span>" + entPlural(rows, "record") + "</span>" +
       "<span>" + entPlural(rels, "rel") + "</span>" +
@@ -413,31 +680,28 @@ function entRender(){
     host.innerHTML = '<div class="ent-empty">' + entT("Сущность не найдена в схеме. Проверьте Scheme Builder в настроечной админке.") + "</div>";
     return;
   }
+  var toast = '<div class="ent-toast" id="entToast"></div>';
   var list = entRows(e.id);
+
+  if (ENT_CUR.mode === "card" && entRecById(e.id, ENT_CUR.rec)){
+    host.innerHTML = entCardHtml(e, entRecById(e.id, ENT_CUR.rec)) + toast;
+    entWire(host, e, entRecById(e.id, ENT_CUR.rec));
+    return;
+  }
+  ENT_CUR.mode = "list";
   if (!list.length){
     host.innerHTML = entHeroHtml(e) +
-      '<div class="ent-recs"><button type="button" class="ent-add" data-new="1">＋ ' + entT("Новая запись") + "</button></div>" +
-      '<div class="ent-empty">' + entT("Записей пока нет — заведите первую.") + "</div>" +
-      '<div class="ent-toast" id="entToast"></div>';
+      '<div class="ent-lv-head"><div class="ent-lv-acts">' +
+        '<button type="button" class="ent-btn accent" data-new="1">＋ ' + entT("Новая запись") + "</button></div></div>" +
+      '<div class="ent-empty">' + entT("Записей пока нет — заведите первую.") + "</div>" + toast;
     entWire(host, e, null);
     return;
   }
-  if (!entRecById(e.id, ENT_CUR.rec)) ENT_CUR.rec = list[0].id;
-  var r = entRecById(e.id, ENT_CUR.rec);
-
-  var chips = list.map(function(x){
-    return '<div class="ent-rec' + (String(x.id) === String(r.id) ? " active" : "") + '" data-rec="' + entEsc(x.id) + '">' +
-      '<span class="n">#' + entEsc(x.id) + '</span><span class="t">' + entEsc(entTitle(e, x)) + "</span></div>";
-  }).join("");
-
-  host.innerHTML = entHeroHtml(e) +
-    '<div class="ent-recs">' + chips +
-      '<button type="button" class="ent-add" data-new="1">＋ ' + entT("Новая запись") + "</button></div>" +
-    entCardHtml(e, r) +
+  host.innerHTML = entHeroHtml(e) + entListHtml(e) +
     '<div class="ent-note"><b>' + entT("Как это работает:") + "</b> " +
-      entT("подраздел построен по сущности из Scheme Builder: блоки полей собраны по смыслу, связи показаны ссылками на записи других сущностей — по ним можно перейти. Правка поля подтверждается ✓ (Enter), отменяется ✕ или Esc; клик мимо поля сохраняет значение. Изменения хранятся в браузере.") +
-    "</div><div class=\"ent-toast\" id=\"entToast\"></div>";
-  entWire(host, e, r);
+      entT("подраздел построен по сущности из Scheme Builder. Список открывается первым: колонки и фильтры настраиваются шестерёнкой (не больше 10 тех и других), запись открывается по клику и возвращает назад кнопкой «К списку». В карточке поля разложены по смысловым блокам, связи показаны ссылками на записи других сущностей. Правка поля подтверждается ✓ (Enter), отменяется ✕ или Esc; клик мимо поля сохраняет значение. Изменения хранятся в браузере.") +
+    "</div>" + toast;
+  entWire(host, e, null);
 }
 
 function entToast(msg){
@@ -449,8 +713,85 @@ function entToast(msg){
 
 /* ---------- обработчики ---------- */
 function entWire(host, e, r){
-  host.querySelectorAll(".ent-rec").forEach(function(el){
-    el.onclick = function(){ ENT_CUR.rec = el.dataset.rec; ENT_CUR.edit = null; entRender(); };
+  /* --- список --- */
+  host.querySelectorAll("tr[data-open]").forEach(function(tr){
+    tr.onclick = function(){
+      ENT_CUR.rec = tr.dataset.open; ENT_CUR.mode = "card"; ENT_CUR.tab = "details"; ENT_CUR.edit = null;
+      entRender();
+      var v = document.getElementById("view-entity"); if (v) v.scrollTop = 0;
+    };
+  });
+  host.querySelectorAll("th[data-sort]").forEach(function(th){
+    th.onclick = function(){
+      var k = th.dataset.sort, s = ENT_CUR.sort[e.id];
+      ENT_CUR.sort[e.id] = (s && s.k === k) ? { k:k, dir: -s.dir } : { k:k, dir: 1 };
+      entRender();
+    };
+  });
+  var search = host.querySelector("#entSearch");
+  if (search) search.oninput = function(){
+    ENT_CUR.q = search.value;
+    var pos = search.selectionStart;
+    entRender();
+    var n = document.getElementById("entSearch");
+    if (n){ n.focus(); try { n.setSelectionRange(pos, pos); } catch(e2){} }
+  };
+  host.querySelectorAll("[data-fv]").forEach(function(el){
+    var apply = function(){
+      if (!ENT_CUR.fv[e.id]) ENT_CUR.fv[e.id] = {};
+      ENT_CUR.fv[e.id][el.dataset.fv] = el.value;
+      var name = el.dataset.fv, isText = el.tagName === "INPUT", pos = isText ? el.selectionStart : 0;
+      entRender();
+      if (isText){
+        var n = document.querySelector('#entHost [data-fv="' + name + '"]');
+        if (n){ n.focus(); try { n.setSelectionRange(pos, pos); } catch(e2){} }
+      }
+    };
+    if (el.tagName === "SELECT") el.onchange = apply; else el.oninput = apply;
+  });
+  host.querySelectorAll("[data-lv-reset]").forEach(function(el){
+    el.onclick = function(){ ENT_CUR.fv[e.id] = {}; ENT_CUR.q = ""; entRender(); };
+  });
+  /* --- шестерёнка: колонки и фильтры --- */
+  host.querySelectorAll("[data-gear]").forEach(function(el){
+    el.onclick = function(ev){ ev.stopPropagation(); ENT_CUR.gear = !ENT_CUR.gear; entRender(); };
+  });
+  host.querySelectorAll("[data-gear-close]").forEach(function(el){
+    el.onclick = function(ev){ ev.stopPropagation(); ENT_CUR.gear = false; entRender(); };
+  });
+  host.querySelectorAll("[data-gear-reset]").forEach(function(el){
+    el.onclick = function(ev){
+      ev.stopPropagation();
+      entSetCfg(ENT_COLS_KEY, e.id, entDefaultCols(e));
+      entSetCfg(ENT_FILT_KEY, e.id, entDefaultFilters(e));
+      ENT_CUR.fv[e.id] = {};
+      entRender();
+    };
+  });
+  var pick = function(attr, key, limitMsg){
+    host.querySelectorAll("[data-" + attr + "]").forEach(function(ch){
+      ch.onchange = function(ev){
+        ev.stopPropagation();
+        var ids = [];
+        host.querySelectorAll("[data-" + attr + "]").forEach(function(x){
+          if (x.checked) ids.push(x.dataset[attr]);
+        });
+        if (attr === "col" && !ids.length){ ch.checked = true; return; }   /* хотя бы одна колонка */
+        if (ids.length > ENT_LIST_MAX){ ch.checked = false; entToast(limitMsg); return; }
+        entSetCfg(key, e.id, ids);
+        entRender();
+      };
+    });
+  };
+  pick("col", ENT_COLS_KEY, entT("Не больше 10 колонок в списке"));
+  pick("filt", ENT_FILT_KEY, entT("Не больше 10 фильтров в списке"));
+
+  /* --- карточка --- */
+  host.querySelectorAll("[data-back]").forEach(function(el){
+    el.onclick = function(){ ENT_CUR.mode = "list"; ENT_CUR.edit = null; entRender(); };
+  });
+  host.querySelectorAll("[data-tab]").forEach(function(el){
+    el.onclick = function(){ ENT_CUR.tab = el.dataset.tab; ENT_CUR.edit = null; entRender(); };
   });
   host.querySelectorAll("[data-new]").forEach(function(el){ el.onclick = function(){ entNewRecord(e); }; });
   host.querySelectorAll("[data-del]").forEach(function(el){ el.onclick = function(){ entDeleteRecord(e, r); }; });
@@ -548,31 +889,40 @@ function entNewRecord(e){
   if (entField(e, "user_create")) r.user_create = (me && me.email) || "panel";
   if (entField(e, "user_update")) r.user_update = (me && me.email) || "panel";
   list.push(r);
-  ENT_CUR.rec = r.id; ENT_CUR.edit = null;
+  /* новая запись сразу открывается карточкой — заполнять её всё равно в ней */
+  ENT_CUR.rec = r.id; ENT_CUR.edit = null; ENT_CUR.mode = "card"; ENT_CUR.tab = "details";
   entStore(); entRender();
   entToast(entT("Запись создана"));
 }
 function entDeleteRecord(e, r){
   if (!r || !confirm(entT("Удалить запись?") + " #" + r.id)) return;
   ENT_DATA[e.id] = entRows(e.id).filter(function(x){ return String(x.id) !== String(r.id); });
-  ENT_CUR.rec = null; ENT_CUR.edit = null;
+  ENT_CUR.rec = null; ENT_CUR.edit = null; ENT_CUR.mode = "list";
   entStore(); entRender();
   entToast(entT("Запись удалена"));
 }
 /* переход по связи: открыть другую сущность на нужной записи */
 function entGo(entityId, recId){
   if (!entEntity(entityId)) return;
-  ENT_CUR.rec = recId; ENT_CUR.edit = null;
   if (typeof openSection === "function") openSection("entities", "ent-" + entityId);
-  ENT_CUR.rec = recId;
+  ENT_CUR.rec = recId; ENT_CUR.edit = null; ENT_CUR.mode = "card"; ENT_CUR.tab = "details";
   entRender();
+  var v = document.getElementById("view-entity"); if (v) v.scrollTop = 0;
 }
 /* вызывается из openSection при открытии подраздела */
 function entOpen(entityId){
-  if (ENT_CUR.id !== entityId) { ENT_CUR.rec = null; }
-  ENT_CUR.id = entityId; ENT_CUR.edit = null;
+  /* другая сущность — начинаем со списка и со своим поиском */
+  if (ENT_CUR.id !== entityId){ ENT_CUR.rec = null; ENT_CUR.mode = "list"; ENT_CUR.q = ""; }
+  ENT_CUR.id = entityId; ENT_CUR.edit = null; ENT_CUR.gear = false;
   entRender();
 }
+/* клик мимо панели шестерёнки — закрываем её */
+document.addEventListener("mousedown", function(ev){
+  if (!ENT_CUR.gear) return;
+  if (ev.target.closest && ev.target.closest(".ent-gear-wrap")) return;
+  ENT_CUR.gear = false;
+  if (ENT_CUR.id) entRender();
+});
 
 /* ---------- обзорная страница раздела ---------- */
 function entRenderOverview(){
@@ -586,12 +936,14 @@ function entRenderOverview(){
   }
   grid.innerHTML = items.map(function(e){
     var rows = (ENT_DATA[e.id] || []).length;
-    return '<div class="ov-card" data-nav-ref="ent-' + entEsc(e.id) + '" data-no-acl="1" data-ent="' + entEsc(e.id) + '">' +
-      '<div class="ov-ico">' + (ICONS.table || ICONS.doc) + "</div>" +
+    var api = e.source === "templates";
+    return '<div class="ov-card" data-nav-ref="ent-' + entEsc(e.id) + '"' +
+      (api ? ' data-acl-section="templates"' : ' data-no-acl="1"') + ' data-ent="' + entEsc(e.id) + '">' +
+      '<div class="ov-ico">' + (api ? (ICONS.list || ICONS.doc) : (ICONS.table || ICONS.doc)) + "</div>" +
       "<h3>" + entEsc(e.plural_label || e.label) + "</h3>" +
       '<div class="ov-meta">' + entEsc(e.table || e.id) + " · " + entPlural(e.fields.length, "field") +
-        " · " + entPlural(rows, "record") + "</div>" +
-      "<p>" + entEsc(e.description || entT("Карточка записи с полями по смысловым блокам и переходами по связям.")) + "</p>" +
+        (api ? " · " + entT("данные из API") : " · " + entPlural(rows, "record")) + "</div>" +
+      "<p>" + entEsc(e.description || entT("Список записей и карточка: поля по смысловым блокам, переходы по связям.")) + "</p>" +
       '<span class="ov-go">' + entT("Открыть →") + "</span></div>";
   }).join("");
   grid.querySelectorAll("[data-ent]").forEach(function(card){
@@ -604,6 +956,14 @@ function entSyncNav(){
   var grp = (typeof NAV !== "undefined") && NAV.filter(function(n){ return n.id === "entities"; })[0];
   if (!grp) return;
   grp.children = ENT_MODEL.entities.filter(entAllowed).map(function(e){
+    /* Сущность с source живёт не в браузере, а в БД приложения, и у неё есть свой
+       готовый экран. «Шаблоны и сегменты» (source:"templates") — это список шаблонов
+       из раздела «Управление коммуникациями»: подраздел ведёт на него, а доступ
+       следует серверной секции templates, а не клиентскому реестру. */
+    if (e.source === "templates") return {
+      id: "ent-" + e.id, label: e.plural_label || e.label, icon: "list",
+      view: "sec-admin", adminMode: "list", aclSection: "templates"
+    };
     return {
       id: "ent-" + e.id, label: e.plural_label || e.label, icon: "table",
       view: "view-entity", entity: e.id,

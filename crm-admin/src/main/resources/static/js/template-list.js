@@ -24,12 +24,24 @@ var LIST_COLUMNS = [
        своё можно — партнёр в работе появляется раньше, чем его заводят в справочник */
     { k:'partner',  label:'Партнёр',     edit:'combo', dict:'partner' },
     { k:'active',   label:'Статус',      edit:'bool' },
+    /* Остальные поля списка, которые отдаёт бэкенд (CRM.apiItemToList). Правка source_type
+       и Letteros ID — в карточке шаблона: оба участвуют в неймингe и в поиске, менять их
+       по одной ячейке, не видя остальных полей, опасно. */
+    { k:'source',   label:'Source type', ro:true },
+    { k:'letteros', label:'Letteros ID', ro:true },
 ];
+/* Фильтры — только те, что умеет бэкенд (TemplateController.list): фильтрация и подсчёт
+   идут по всей базе, клиентский фильтр поверх страницы в 50 строк врал бы. Новый фильтр
+   = новый @RequestParam и условие в запросе. */
 var LIST_FILTERS = [
     { k:'channel', label:'Канал' }, { k:'product', label:'Продукт' }, { k:'touch', label:'Touch point' },
     { k:'trigger', label:'Trigger type' }, { k:'partner', label:'Партнёр' }, { k:'active', label:'Статус' },
 ];
-var DEFAULT_LIST_COLS = LIST_COLUMNS.map(function(c){ return c.k; });
+/* Не больше 10 колонок и 10 фильтров одновременно — иначе список перестаёт читаться. */
+var LIST_MAX_COLS = 10;
+var LIST_MAX_FILTERS = 10;
+/* по умолчанию — первые LIST_MAX_COLS колонок; Letteros ID включается вручную */
+var DEFAULT_LIST_COLS = LIST_COLUMNS.map(function(c){ return c.k; }).slice(0, LIST_MAX_COLS);
 var DEFAULT_LIST_FILTERS = LIST_FILTERS.map(function(f){ return f.k; });
 
 function lsGet(key, def){
@@ -62,11 +74,12 @@ function listMigrateCols(saved){
 function listVisibleCols(){
     var saved = lsGet('listCols', null);
     var ids = (Array.isArray(saved) && saved.length) ? listMigrateCols(saved) : DEFAULT_LIST_COLS;
-    return LIST_COLUMNS.filter(function(c){ return ids.indexOf(c.k) !== -1; });
+    /* лимит применяем и к уже сохранённым наборам: они могли скопиться до его появления */
+    return LIST_COLUMNS.filter(function(c){ return ids.indexOf(c.k) !== -1; }).slice(0, LIST_MAX_COLS);
 }
 function listVisibleFilters(){
     var saved = lsGet('listFilters', null);
-    return Array.isArray(saved) ? saved : DEFAULT_LIST_FILTERS;
+    return (Array.isArray(saved) ? saved : DEFAULT_LIST_FILTERS).slice(0, LIST_MAX_FILTERS);
 }
 function toggleListPanel(e){
     if (e) e.stopPropagation();
@@ -86,18 +99,35 @@ function renderListPanel(){
     if (!colsBox || !filtBox) return;
     var visCols = listVisibleCols().map(function(c){ return c.k; });
     var visFilt = listVisibleFilters();
+    /* лимит показываем счётчиком у заголовка и гасим лишние чекбоксы,
+       чтобы упереться в него было видно заранее, а не по факту отказа */
+    var setLim = function(box, n, max){
+        var h = box.previousElementSibling;
+        if (!h) return;
+        var lim = h.querySelector('.sf-lim');
+        if (!lim){ lim = document.createElement('span'); lim.className = 'sf-lim'; h.appendChild(lim); }
+        lim.textContent = n + ' / ' + max;
+    };
     colsBox.innerHTML = LIST_COLUMNS.map(function(c){
-        return '<label><input type="checkbox" data-col="' + c.k + '"' + (visCols.indexOf(c.k) !== -1 ? ' checked' : '') + '>' + sfdT(c.label) + '</label>';
+        var on = visCols.indexOf(c.k) !== -1, full = !on && visCols.length >= LIST_MAX_COLS;
+        return '<label' + (full ? ' class="off"' : '') + '><input type="checkbox" data-col="' + c.k + '"' +
+            (on ? ' checked' : '') + (full ? ' disabled' : '') + '>' + sfdT(c.label) + '</label>';
     }).join('');
     filtBox.innerHTML = LIST_FILTERS.map(function(f){
-        return '<label><input type="checkbox" data-filt="' + f.k + '"' + (visFilt.indexOf(f.k) !== -1 ? ' checked' : '') + '>' + sfdT(f.label) + '</label>';
+        var on = visFilt.indexOf(f.k) !== -1, full = !on && visFilt.length >= LIST_MAX_FILTERS;
+        return '<label' + (full ? ' class="off"' : '') + '><input type="checkbox" data-filt="' + f.k + '"' +
+            (on ? ' checked' : '') + (full ? ' disabled' : '') + '>' + sfdT(f.label) + '</label>';
     }).join('');
+    setLim(colsBox, visCols.length, LIST_MAX_COLS);
+    setLim(filtBox, visFilt.length, LIST_MAX_FILTERS);
     colsBox.querySelectorAll('input[data-col]').forEach(function(ch){
         ch.onchange = function(){
             var ids = [];
             colsBox.querySelectorAll('input[data-col]').forEach(function(x){ if (x.checked) ids.push(x.dataset.col); });
             if (!ids.length){ ch.checked = true; return; }   /* хотя бы одна колонка */
+            if (ids.length > LIST_MAX_COLS){ ch.checked = false; return; }
             lsSet('listCols', ids);
+            renderListPanel();   /* перерисовываем панель: лимит мог включиться/отпустить */
             // колонки — дело отрисовки, за новой страницей на сервер не идём
             renderTemplateList(ALL_TEMPLATES);
         };
@@ -106,7 +136,9 @@ function renderListPanel(){
         ch.onchange = function(){
             var ids = [];
             filtBox.querySelectorAll('input[data-filt]').forEach(function(x){ if (x.checked) ids.push(x.dataset.filt); });
+            if (ids.length > LIST_MAX_FILTERS){ ch.checked = false; return; }
             lsSet('listFilters', ids);
+            renderListPanel();
             applyListFilterVisibility();
             applyFilters();   // скрытый фильтр перестаёт применяться — выборка меняется
         };
@@ -556,7 +588,9 @@ function renderTemplateList(templates) {
            без него ячейка остаётся на просмотр, сервер правку всё равно отбил бы */
         const canEdit = !c.ro && !!(window.CRM && CRM.can && CRM.can('edit', 'templates', 'admin'));
         const pen = canEdit ? `<button class="sf-cell-pen" title="${sfdT('Редактировать')}" onclick="listCellEdit('${tpl.id}','${c.k}')"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>` : '';
-        return `<td class="sf-cell">${view}${pen}</td>`;
+        /* data-label: на узком экране шапка таблицы скрыта, и название колонки
+           подставляется в ячейку через ::before (см. section-admin.css) */
+        return `<td class="sf-cell" data-label="${sfdEsc(sfdT(c.label))}">${view}${pen}</td>`;
     }
 
     tbody.innerHTML = sorted.map(tpl => `

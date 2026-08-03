@@ -1590,6 +1590,837 @@
                          "x":  450,
                          "y":  560,
                          "technical":  false
+                     },
+                     {
+                         "id":  "template",
+                         "label":  "Шаблон / сегмент",
+                         "plural_label":  "Шаблоны и сегменты",
+                         "table":  "communication_template",
+                         "description":  "Шаблоны коммуникаций и сегменты КЦ. Данные живут в БД приложения и приходят через /api/templates, поэтому подраздел обслуживается списком шаблонов, а не универсальной карточкой.",
+                         "title_field":  "communication_name",
+                         "technical":  false,
+                         "source":  "templates",
+                         "x":  840,
+                         "y":  560,
+                         "fields":  [
+                                        {
+                                            "name":  "code",
+                                            "label":  "Code / ID",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "text",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "Первичный ключ шаблона внутри канала",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "channel",
+                                            "label":  "Канал",
+                                            "db_type":  "varchar(16)",
+                                            "ui_type":  "picklist",
+                                            "required":  true,
+                                            "read_only":  true,
+                                            "description":  "Канал определяет таблицу хранения и набор полей",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+                                                            "sms",
+                                                            "mobile-push",
+                                                            "email",
+                                                            "cc",
+                                                            "fa",
+                                                            "vk",
+                                                            "la"
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "communication_name",
+                                            "label":  "Название коммуникации",
+                                            "db_type":  "varchar(255)",
+                                            "ui_type":  "text",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "Собирается по правилам Конструктора source",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "source_type",
+                                            "label":  "Source type",
+                                            "db_type":  "varchar(255)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Название кампании по правилам нейминга",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "letteros_id",
+                                            "label":  "Letteros ID",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Идентификатор вёрстки письма в Letteros (канал e-mail)",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "product_type",
+                                            "label":  "Продукт",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "picklist",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "partner_name",
+                                            "label":  "Партнёр",
+                                            "db_type":  "varchar(128)",
+                                            "ui_type":  "picklist",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Справочник dictionary.d_partner",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "touch_point",
+                                            "label":  "Touch point",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "picklist",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "trigger_type",
+                                            "label":  "Trigger type",
+                                            "db_type":  "varchar(32)",
+                                            "ui_type":  "picklist",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+                                                            "trigger",
+                                                            "promo"
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "communication_type",
+                                            "label":  "Тип коммуникации",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "business_communication_type",
+                                            "label":  "Бизнес-тип коммуникации",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "active",
+                                            "label":  "Активен",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  true,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "sending_day",
+                                            "label":  "День отправки",
+                                            "db_type":  "varchar(16)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "День цепочки (напр. 3day)",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "aff_sub3",
+                                            "label":  "aff_sub3",
+                                            "db_type":  "varchar(128)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "source_system",
+                                            "label":  "Система-источник",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "picklist",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "segment",
+                                            "label":  "Сегмент (code)",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Для канала КЦ совпадает с code",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "segment_descr",
+                                            "label":  "Описание сегмента",
+                                            "db_type":  "text",
+                                            "ui_type":  "textarea",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "host_id",
+                                            "label":  "Host ID",
+                                            "db_type":  "integer",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "kvint_campaign_id",
+                                            "label":  "Kvint campaign ID",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Идентификатор кампании в Kvint (канал КЦ)",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "title",
+                                            "label":  "Заголовок",
+                                            "db_type":  "varchar(255)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "msg_text",
+                                            "label":  "Текст сообщения",
+                                            "db_type":  "text",
+                                            "ui_type":  "textarea",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "subject",
+                                            "label":  "Тема письма",
+                                            "db_type":  "varchar(255)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "sender_name",
+                                            "label":  "Имя отправителя",
+                                            "db_type":  "varchar(128)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "email_from",
+                                            "label":  "Адрес отправителя",
+                                            "db_type":  "varchar(255)",
+                                            "ui_type":  "email",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "deep_link",
+                                            "label":  "Deep link",
+                                            "db_type":  "varchar(512)",
+                                            "ui_type":  "url",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "webview_url",
+                                            "label":  "Webview URL",
+                                            "db_type":  "varchar(512)",
+                                            "ui_type":  "url",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "service_flag",
+                                            "label":  "Сервисная",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "info_flag",
+                                            "label":  "Информационная",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "marketplace",
+                                            "label":  "Маркетплейс",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "dialog",
+                                            "label":  "Диалог",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "loyalty",
+                                            "label":  "Лояльность",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "national_rating",
+                                            "label":  "Народный рейтинг",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "news",
+                                            "label":  "Новости",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "mobile_app",
+                                            "label":  "Мобильное приложение",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "night_send",
+                                            "label":  "Ночная отправка",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "fa_id",
+                                            "label":  "FA ID",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Финансовый ассистент",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "channel_id",
+                                            "label":  "Channel ID",
+                                            "db_type":  "integer",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Финансовый ассистент",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "need_push",
+                                            "label":  "Need push",
+                                            "db_type":  "boolean",
+                                            "ui_type":  "checkbox",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Финансовый ассистент",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "c2d_transport",
+                                            "label":  "C2D transport",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Финансовый ассистент",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "c2d_account",
+                                            "label":  "C2D account",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Финансовый ассистент",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "ch2d_operator_id",
+                                            "label":  "Ch2D operator ID",
+                                            "db_type":  "integer",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Финансовый ассистент",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "web_url",
+                                            "label":  "Web URL",
+                                            "db_type":  "varchar(512)",
+                                            "ui_type":  "url",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Финансовый ассистент",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "link_title",
+                                            "label":  "Название ссылки",
+                                            "db_type":  "varchar(255)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Финансовый ассистент",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "action_buttons",
+                                            "label":  "Action buttons",
+                                            "db_type":  "text",
+                                            "ui_type":  "textarea",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Финансовый ассистент",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "vk_template_name",
+                                            "label":  "VK template name",
+                                            "db_type":  "varchar(255)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Канал VK",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "ttl",
+                                            "label":  "TTL",
+                                            "db_type":  "integer",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Канал VK",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "ab_group",
+                                            "label":  "AB group",
+                                            "db_type":  "varchar(32)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Канал VK",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "buttons",
+                                            "label":  "Кнопки",
+                                            "db_type":  "text",
+                                            "ui_type":  "textarea",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Канал VK",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "activity_name",
+                                            "label":  "Activity name",
+                                            "db_type":  "varchar(128)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Live Activity",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "la_event",
+                                            "label":  "LA event",
+                                            "db_type":  "varchar(64)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Live Activity",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "la_visualization",
+                                            "label":  "LA visualization",
+                                            "db_type":  "varchar(128)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Live Activity",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "la_visualization_attributes",
+                                            "label":  "LA visualization attributes",
+                                            "db_type":  "text",
+                                            "ui_type":  "textarea",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Live Activity",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "la_status",
+                                            "label":  "LA status",
+                                            "db_type":  "varchar(32)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Live Activity",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "current_step",
+                                            "label":  "Текущий шаг",
+                                            "db_type":  "integer",
+                                            "ui_type":  "number",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Live Activity",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        }
+                                    ]
                      }
                  ],
     "relations":  [

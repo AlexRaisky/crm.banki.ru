@@ -38,7 +38,9 @@
 var BLOCKS = [
   "Основное", "Персональные данные", "Профиль клиента", "Документы", "Адреса",
   "Согласия", "Стоп-листы каналов", "Доход и скоринг", "Самозапрет на кредиты",
-  "Реквизиты", "Доступность", "Конфигурация", "Связи", "Флаги", "Показатели", "Служебные"
+  "Реквизиты", "Доступность", "Конфигурация", "Источник и сегментация",
+  "Контент и ссылки", "Финансовый ассистент", "VK", "Live Activity",
+  "Связи", "Флаги", "Показатели", "Служебные"
 ];
 var SYSTEM_BLOCK = "Служебные";
 
@@ -87,6 +89,24 @@ var DEFAULTS = {
     ["Реквизиты", ["inn","ogrn"]],
     ["Адреса",    ["legal_address","actual_address"]],
     ["Служебные", ["id","create_ts","update_ts","user_create","user_update"]]
+  ],
+  /* «Шаблоны и сегменты» показываются готовым экраном (список шаблонов), поэтому
+     раскладка нужна не для карточки, а чтобы объект читался в настройках */
+  template: [
+    ["Основное",          ["communication_name","channel","code","active","trigger_type",
+                           "product_type","partner_name","touch_point"]],
+    ["Источник и сегментация", ["source_type","letteros_id","communication_type",
+                           "business_communication_type","source_system","aff_sub3",
+                           "segment","segment_descr","sending_day","host_id","kvint_campaign_id"]],
+    ["Контент и ссылки",  ["title","msg_text","subject","sender_name","email_from",
+                           "deep_link","webview_url"]],
+    ["Флаги",             ["service_flag","info_flag","marketplace","dialog","loyalty",
+                           "national_rating","news","mobile_app","night_send"]],
+    ["Финансовый ассистент", ["fa_id","channel_id","need_push","c2d_transport","c2d_account",
+                           "ch2d_operator_id","web_url","link_title","action_buttons"]],
+    ["VK",                ["vk_template_name","ttl","ab_group","buttons"]],
+    ["Live Activity",     ["activity_name","la_event","la_visualization",
+                           "la_visualization_attributes","la_status","current_step"]]
   ]
 };
 /* поля верхней строки карточки по умолчанию */
