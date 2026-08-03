@@ -619,52 +619,145 @@ function entListHtml(e){
 /* ============================================================
    КАРТОЧКА ЗАПИСИ: шапка + вкладки «Детали» / «Коммуникации»
    ============================================================ */
-function entDetailsHtml(e, r){
-  var L = entLayout(e);
+/* Связанные списки уезжают в правую колонку (как в Salesforce), поэтому из
+   блоков «Деталей» их убираем — иначе одно и то же показывалось бы дважды. */
+function entRelatedFields(e){
+  return e.fields.filter(function(f){ return f.ui_type === "related_list"; });
+}
+function entCard(e){
+  return (window.EntityLayout && EntityLayout.cardConfig)
+    ? EntityLayout.cardConfig(e)
+    : { columns:2, rail:true, railItems:null, tabs:[{id:"details",label:"Детали"},{id:"comms",label:"Коммуникации"}], blocks:{} };
+}
+function entBlockCfg(e, title){
+  return (window.EntityLayout && EntityLayout.blockConfig)
+    ? EntityLayout.blockConfig(e, title) : { hidden:false, tab:"details", collapsed:false };
+}
+/* Блоки полей вкладки: что показывать и на какой вкладке — задаётся в
+   настроечной админке («Настройки отображения карточки»). */
+function entDetailsHtml(e, r, tabId){
+  var L = entLayout(e), cfg = entCard(e), rail = entRailFields(e).length > 0;
   return L.blocks.map(function(g){
-    var rows = g.fields.map(function(f){ return entRowHtml(e, f, r); }).join("");
+    var bc = entBlockCfg(e, g.title);
+    if (bc.hidden || bc.tab !== tabId) return "";
+    var fields = rail ? g.fields.filter(function(f){ return f.ui_type !== "related_list"; }) : g.fields;
+    var rows = fields.map(function(f){ return entRowHtml(e, f, r); }).join("");
     if (!rows) return "";                       /* весь блок скрыт зависимостями */
-    var shown = g.fields.filter(function(f){ return !entFieldState(e, f, r).hidden; }).length;
-    var closed = ENT_CUR.closed[e.id + ":" + g.title] ? " closed" : "";
+    var shown = fields.filter(function(f){ return !entFieldState(e, f, r).hidden; }).length;
+    var key = e.id + ":" + g.title;
+    var closed = (ENT_CUR.closed[key] === undefined ? bc.collapsed : ENT_CUR.closed[key]) ? " closed" : "";
     return '<div class="ent-sec' + closed + '" data-sec="' + entEsc(g.title) + '">' +
       '<div class="ent-sec-title">' + entEsc(entT(g.title)) +
       '<span class="cnt">' + shown + "</span></div>" +
-      '<div class="ent-grid">' + rows + "</div></div>";
+      '<div class="ent-grid cols-' + cfg.columns + '">' + rows + "</div></div>";
   }).join("");
+}
+
+/* какие связанные объекты выводить справа — настраивается в админке */
+function entRailFields(e){
+  var cfg = entCard(e);
+  if (!cfg.rail) return [];
+  var all = entRelatedFields(e);
+  if (!cfg.railItems) return all;
+  return all.filter(function(f){ return cfg.railItems.indexOf(f.name) >= 0; });
+}
+
+/* Правая колонка: блоки связанных объектов. Считаются по обратной ссылке из
+   схемы — тот же расчёт, что раньше рисовал related_list внутри «Деталей». */
+function entRailHtml(e, r){
+  var rel = entRailFields(e);
+  if (!rel.length) return "";
+  return rel.map(function(f){
+    var back = entBackRefs(e, f);
+    var body, cnt = 0;
+    if (!back.entity || !back.field){
+      body = '<div class="ent-rl-empty">' + entT("нет обратной ссылки в схеме") + "</div>";
+    } else {
+      var kids = back.rows.filter(function(x){ return String(x[back.field.name]) === String(r.id); });
+      cnt = kids.length;
+      body = kids.length
+        ? '<div class="ent-rl-body">' + kids.map(function(k){
+            var sub = entRailSubtitle(back.entity, k);
+            return '<div class="ent-rl-item" data-goe="' + entEsc(back.entity.id) + '" data-gor="' + entEsc(k.id) + '">' +
+              '<div class="t">' + entEsc(entTitle(back.entity, k)) + "</div>" +
+              (sub ? '<div class="s">' + entEsc(sub) + "</div>" : "") +
+              '<div class="n">#' + entEsc(k.id) + "</div></div>";
+          }).join("") + "</div>"
+        : '<div class="ent-rl-empty">' + entT("связанных записей нет") + "</div>";
+    }
+    return '<section class="ent-rl">' +
+      '<header class="ent-rl-head"><span class="ico">' + (ICONS.table || "") + "</span>" +
+        "<b>" + entEsc(f.label || f.name) + '</b><span class="cnt">' + cnt + "</span></header>" +
+      body +
+      (back.entity && back.field
+        ? '<div class="ent-rl-foot">' + entEsc(back.entity.table || back.entity.id) + "." +
+          entEsc(back.field.name) + " → " + entEsc(e.table || e.id) + ".id</div>"
+        : "") +
+    "</section>";
+  }).join("");
+}
+/* вторая строка в элементе связанного списка — что-то отличительное, кроме названия */
+function entRailSubtitle(e, r){
+  var pick = ["type","status","channel","position","code"];
+  for (var i = 0; i < pick.length; i++){
+    var f = entField(e, pick[i]);
+    if (f && r[f.name]) return entPlain(e, f, r);
+  }
+  return "";
 }
 
 function entCardHtml(e, r){
   var L = entLayout(e);
-  /* шапка записи отдельным блоком, как в Salesforce: тип объекта, название
-     и «подсвеченные» поля — их набор настраивается в админке («В шапке») */
+  /* «подсвеченные» поля — сразу под названием записи; их набор настраивается
+     в админке («Сущности» → В шапке) */
   var hi = L.header.map(function(f){
     return '<div class="hi"><span class="l">' + entEsc(f.label || f.name) + "</span>" +
       '<span class="v">' + (entPlain(e, f, r) ? entEsc(entPlain(e, f, r)) : "—") + "</span></div>";
   }).join("");
 
-  var tab = ENT_CUR.tab === "comms" ? "comms" : "details";
-  var pane = tab === "details"
-    ? '<div class="ent-card">' + entDetailsHtml(e, r) + "</div>"
-    : '<div class="ent-card"><div class="ent-comms-stub">' +
-        "<b>" + entT("Коммуникации") + "</b>" +
-        "<p>" + entT("Здесь появятся отправленные по этой записи коммуникации: канал, шаблон, дата отправки и статус доставки. Раздел в разработке.") + "</p>" +
-      "</div></div>";
+  var cfg = entCard(e);
+  var tab = cfg.tabs.some(function(t){ return t.id === ENT_CUR.tab; }) ? ENT_CUR.tab : "details";
+  var blocks = entDetailsHtml(e, r, tab);
+  /* «Коммуникации» пока заглушка; своих блоков у неё нет, поэтому если на неё
+     ничего не назначено — показываем пояснение, а не пустую карточку */
+  var pane = blocks
+    ? '<div class="ent-card">' + blocks + "</div>"
+    : (tab === "comms"
+        ? '<div class="ent-card"><div class="ent-comms-stub">' +
+            "<b>" + entT("Коммуникации") + "</b>" +
+            "<p>" + entT("Здесь появятся отправленные по этой записи коммуникации: канал, шаблон, дата отправки и статус доставки. Раздел в разработке.") + "</p>" +
+          "</div></div>"
+        : '<div class="ent-card"><div class="ent-comms-stub"><b>' + entT("Блоки не назначены") + "</b>" +
+            "<p>" + entT("На эту вкладку не выведен ни один блок полей. Настроить можно в админке: «Сущности» → «Настройки отображения карточки».") + "</p></div></div>");
+
+  /* колонка связанных объектов держится на всех вкладках: это контекст записи,
+     а не содержимое конкретной вкладки (так же ведёт себя Salesforce) */
+  var rail = entRailHtml(e, r);
 
   return '<div class="ent-rec-head">' +
       '<button type="button" class="ent-back" data-back="1">← ' + entT("К списку") + "</button>" +
-      '<div class="ent-rec-id"><span class="ch">' + entEsc(e.label) + "</span>" +
-        '<span class="mono">' + entEsc(e.table || e.id) + " · id " + entEsc(r.id) + "</span></div>" +
-      "<h2>" + entEsc(entTitle(e, r)) + "</h2>" +
-      (hi ? '<div class="ent-highlights">' + hi + "</div>" : "") +
-      '<div class="ent-rec-acts">' +
-        '<button type="button" class="ent-btn" data-new="1">＋ ' + entT("Новая запись") + "</button>" +
-        '<button type="button" class="ent-btn danger" data-del="1">' + entT("Удалить запись") + "</button>" +
+      '<div class="ent-rec-top">' +
+        '<div class="ent-rec-ident">' +
+          '<div class="ent-rec-id"><span class="ch">' + entEsc(e.label) + "</span>" +
+            '<span class="mono">' + entEsc(e.table || e.id) + " · id " + entEsc(r.id) + "</span></div>" +
+          "<h2>" + entEsc(entTitle(e, r)) + "</h2>" +
+        "</div>" +
+        /* действия — отдельным блоком справа от названия, а не под ним */
+        '<div class="ent-rec-acts">' +
+          '<button type="button" class="ent-btn accent" data-new="1">＋ ' + entT("Новая запись") + "</button>" +
+          '<button type="button" class="ent-btn danger" data-del="1">' + entT("Удалить запись") + "</button>" +
+        "</div>" +
       "</div>" +
+      (hi ? '<div class="ent-highlights">' + hi + "</div>" : "") +
     "</div>" +
-    '<div class="ent-tabs">' +
-      '<button type="button" class="ent-tab' + (tab === "details" ? " on" : "") + '" data-tab="details">' + entT("Детали") + "</button>" +
-      '<button type="button" class="ent-tab' + (tab === "comms" ? " on" : "") + '" data-tab="comms">' + entT("Коммуникации") + "</button>" +
-    "</div>" + pane;
+    '<div class="ent-tabs">' + cfg.tabs.map(function(t){
+      return '<button type="button" class="ent-tab' + (tab === t.id ? " on" : "") +
+        '" data-tab="' + entEsc(t.id) + '">' + entEsc(entT(t.label)) + "</button>";
+    }).join("") + "</div>" +
+    '<div class="ent-body' + (rail ? "" : " no-rail") + '">' +
+      '<div class="ent-main">' + pane + "</div>" +
+      (rail ? '<aside class="ent-rail">' + rail + "</aside>" : "") +
+    "</div>";
 }
 
 function entHeroHtml(e){
@@ -820,7 +913,8 @@ function entWire(host, e, r){
       if (inp) { inp.focus(); if (inp.select) try { inp.select(); } catch(e2){} }
     };
   });
-  host.querySelectorAll(".ent-link[data-goe]").forEach(function(el){
+  /* переходы по связи: и чипы в полях, и элементы блоков справа */
+  host.querySelectorAll("[data-goe]").forEach(function(el){
     el.onclick = function(ev){ ev.stopPropagation(); entGo(el.dataset.goe, el.dataset.gor); };
   });
   var row = host.querySelector(".ent-row.editing");
@@ -878,35 +972,201 @@ function entNextId(list){
   list.forEach(function(x){ var n = Number(x.id); if (isFinite(n) && n > max) max = n; });
   return max + 1;
 }
-function entNewRecord(e){
-  var list = entRows(e.id), r = { id: entNextId(list) };
-  e.fields.forEach(function(f){
-    if (f.name === "id") return;
-    if (f.ui_type === "checkbox") r[f.name] = false;
-    else if (f.ui_type === "multilookup") r[f.name] = [];
-    else if (f.ui_type === "related_list") return;
-    else if (f.default_value) r[f.name] = f.default_value;
-    else r[f.name] = "";
-  });
+function entStamp(){
   var now = new Date(), p = function(n){ return String(n).padStart(2, "0"); };
-  var stamp = now.getFullYear() + "-" + p(now.getMonth() + 1) + "-" + p(now.getDate()) +
+  return now.getFullYear() + "-" + p(now.getMonth() + 1) + "-" + p(now.getDate()) +
     " " + p(now.getHours()) + ":" + p(now.getMinutes());
-  var me = window.CRM_ME;
+}
+/* заготовка записи: значения по умолчанию из схемы + служебные поля */
+function entBlankRecord(e){
+  var r = { id: entNextId(entRows(e.id)) }, me = window.CRM_ME, stamp = entStamp();
+  e.fields.forEach(function(f){
+    if (f.name === "id" || f.ui_type === "related_list") return;
+    if (f.ui_type === "checkbox") r[f.name] = f.default_value === "true" || f.default_value === true;
+    else if (f.ui_type === "multilookup") r[f.name] = [];
+    else r[f.name] = f.default_value || "";
+  });
   if (entField(e, "create_ts")) r.create_ts = stamp;
   if (entField(e, "update_ts")) r.update_ts = stamp;
   if (entField(e, "user_create")) r.user_create = (me && me.email) || "panel";
   if (entField(e, "user_update")) r.user_update = (me && me.email) || "panel";
-  list.push(r);
-  /* новая запись сразу открывается карточкой — заполнять её всё равно в ней */
+  return r;
+}
+
+/* ============================================================
+   МОДАЛЬНЫЕ ОКНА: заведение записи и подтверждение удаления.
+   Запись создаётся только по «Сохранить» — раньше пустая строка
+   появлялась в списке сразу по клику и оставалась там, если
+   заполнять её передумали.
+   ============================================================ */
+var ENT_MODAL = null;   /* { kind:'create'|'delete', entity, draft, rec, err } */
+
+function entModalFieldHtml(e, f, draft){
+  /* редактор тот же, что в карточке, но всегда открытый: карточка правит по
+     одному полю, а здесь заполняется вся запись сразу */
+  var v = draft[f.name], html;
+  if (f.ui_type === "checkbox"){
+    return '<label class="ent-m-check"><input type="checkbox" data-mf="' + entEsc(f.name) + '"' +
+      (v === true ? " checked" : "") + "><span>" + entEsc(f.label || f.name) + "</span></label>";
+  }
+  if (f.ui_type === "picklist"){
+    html = '<select class="ent-in" data-mf="' + entEsc(f.name) + '"><option value="">—</option>' +
+      (f.options || []).map(function(o){
+        return '<option value="' + entEsc(o) + '"' + (String(v) === String(o) ? " selected" : "") + ">" + entEsc(o) + "</option>";
+      }).join("") + "</select>";
+  } else if (f.ui_type === "lookup"){
+    var te = entEntity(f.target_entity);
+    html = te
+      ? '<select class="ent-in" data-mf="' + entEsc(f.name) + '"><option value="">—</option>' +
+        (ENT_DATA[te.id] || []).map(function(x){
+          return '<option value="' + entEsc(x.id) + '"' + (String(v) === String(x.id) ? " selected" : "") +
+            ">#" + entEsc(x.id) + " · " + entEsc(entTitle(te, x)) + "</option>";
+        }).join("") + "</select>"
+      : '<input type="text" class="ent-in" data-mf="' + entEsc(f.name) + '" value="' + entEsc(v || "") + '">';
+  } else if (f.ui_type === "multilookup"){
+    var me2 = entEntity(f.target_entity), cur = Array.isArray(v) ? v.map(String) : [];
+    var rows = me2 ? (ENT_DATA[me2.id] || []) : [];
+    html = '<div class="ent-multi" data-mf="' + entEsc(f.name) + '">' + (rows.length ? rows.map(function(x){
+      return '<label><input type="checkbox" value="' + entEsc(x.id) + '"' +
+        (cur.indexOf(String(x.id)) >= 0 ? " checked" : "") + "><span>#" + entEsc(x.id) + " · " +
+        entEsc(entTitle(me2, x)) + "</span></label>";
+    }).join("") : '<span class="none">' + entT("записей нет") + "</span>") + "</div>";
+  } else if (f.ui_type === "textarea"){
+    html = '<textarea class="ent-in" data-mf="' + entEsc(f.name) + '">' + entEsc(v || "") + "</textarea>";
+  } else if (f.ui_type === "date" || f.ui_type === "time"){
+    html = '<input type="' + f.ui_type + '" class="ent-in" data-mf="' + entEsc(f.name) + '" value="' + entEsc(v || "") + '">';
+  } else if (f.ui_type === "datetime"){
+    html = '<input type="datetime-local" class="ent-in" data-mf="' + entEsc(f.name) + '" value="' + entEsc(entToInput(f, v)) + '">';
+  } else if (f.ui_type === "number" || f.ui_type === "currency" || f.ui_type === "percent"){
+    html = '<input type="text" inputmode="decimal" class="ent-in" data-mf="' + entEsc(f.name) + '" value="' + entEsc(v === "" ? "" : v) + '">';
+  } else {
+    html = '<input type="text" class="ent-in" data-mf="' + entEsc(f.name) + '" value="' + entEsc(v || "") + '">';
+  }
+  var wide = ["textarea","multilookup"].indexOf(f.ui_type) >= 0;
+  return '<div class="ent-m-fg' + (wide ? " wide" : "") + '"><label>' + entEsc(f.label || f.name) +
+    (f.required ? '<span class="req">*</span>' : "") + "</label>" + html + "</div>";
+}
+
+function entModalHtml(){
+  if (!ENT_MODAL) return "";
+  var e = ENT_MODAL.entity;
+  if (ENT_MODAL.kind === "delete"){
+    var r = ENT_MODAL.rec;
+    return '<div class="ent-modal open"><div class="ent-modal-card sm" role="dialog" aria-modal="true">' +
+      '<div class="ent-modal-head"><h3>' + entT("Удалить запись?") + "</h3></div>" +
+      '<div class="ent-modal-body"><p class="ent-m-ask">' +
+        entT("Запись будет удалена без возможности отменить.") + "</p>" +
+        '<div class="ent-m-target"><span class="ch">' + entEsc(e.label) + "</span>" +
+          "<b>" + entEsc(entTitle(e, r)) + '</b><span class="mono">id ' + entEsc(r.id) + "</span></div></div>" +
+      '<div class="ent-modal-foot">' +
+        '<button type="button" class="ent-btn" data-m-cancel="1">' + entT("Отмена") + "</button>" +
+        '<button type="button" class="ent-btn danger solid" data-m-del="1">' + entT("Удалить") + "</button>" +
+      "</div></div></div>";
+  }
+  /* создание: поля разложены теми же смысловыми блоками, что и карточка */
+  var L = entLayout(e), draft = ENT_MODAL.draft;
+  var blocks = L.blocks.map(function(g){
+    var fields = g.fields.filter(function(f){ return entEditable(f); });
+    if (!fields.length) return "";
+    return '<div class="ent-m-sec"><div class="ent-m-sec-t">' + entEsc(entT(g.title)) + "</div>" +
+      '<div class="ent-m-grid">' + fields.map(function(f){ return entModalFieldHtml(e, f, draft); }).join("") + "</div></div>";
+  }).join("");
+  return '<div class="ent-modal open"><div class="ent-modal-card" role="dialog" aria-modal="true">' +
+    '<div class="ent-modal-head"><h3>' + entT("Новая запись") + ": " + entEsc(e.label) + "</h3>" +
+      '<button type="button" class="ent-modal-x" data-m-cancel="1" title="' + entT("Отмена") + '">✕</button></div>' +
+    '<div class="ent-modal-body">' + blocks + "</div>" +
+    '<div class="ent-modal-foot">' +
+      (ENT_MODAL.err ? '<span class="ent-m-err">' + entEsc(ENT_MODAL.err) + "</span>" : "") +
+      '<button type="button" class="ent-btn" data-m-cancel="1">' + entT("Отмена") + "</button>" +
+      '<button type="button" class="ent-btn accent" data-m-save="1">' + entT("Сохранить") + "</button>" +
+    "</div></div></div>";
+}
+
+function entModalRender(){
+  var host = document.getElementById("entModalHost");
+  if (!host) return;
+  host.innerHTML = entModalHtml();
+  if (!ENT_MODAL) return;
+  var e = ENT_MODAL.entity;
+  host.querySelectorAll("[data-m-cancel]").forEach(function(b){ b.onclick = entModalClose; });
+  var overlay = host.querySelector(".ent-modal");
+  if (overlay) overlay.onmousedown = function(ev){ if (ev.target === overlay) entModalClose(); };
+  var del = host.querySelector("[data-m-del]");
+  if (del) del.onclick = function(){ entDeleteConfirmed(e, ENT_MODAL.rec); };
+  var save = host.querySelector("[data-m-save]");
+  if (save) save.onclick = function(){ entCreateSave(e); };
+  /* черновик держим в состоянии, а не только в DOM: перерисовка по ошибке
+     не должна терять уже введённое */
+  host.querySelectorAll("[data-mf]").forEach(function(el){
+    if (el.classList.contains("ent-multi")){
+      el.querySelectorAll("input").forEach(function(cb){
+        cb.onchange = function(){
+          ENT_MODAL.draft[el.dataset.mf] = [].slice.call(el.querySelectorAll("input:checked")).map(function(c){
+            var n = Number(c.value); return isFinite(n) && String(n) === c.value ? n : c.value;
+          });
+        };
+      });
+      return;
+    }
+    var read = function(){
+      var f = entField(e, el.dataset.mf);
+      if (!f) return;
+      if (f.ui_type === "checkbox") ENT_MODAL.draft[f.name] = !!el.checked;
+      else if (f.ui_type === "datetime") ENT_MODAL.draft[f.name] = el.value ? el.value.replace("T", " ") : "";
+      else if (["number","currency","percent"].indexOf(f.ui_type) >= 0){
+        var n = Number(String(el.value).replace(",", ".").replace(/\s/g, ""));
+        ENT_MODAL.draft[f.name] = el.value === "" ? "" : (isFinite(n) ? n : el.value);
+      } else if (f.ui_type === "lookup"){
+        var v = el.value; var n2 = Number(v);
+        ENT_MODAL.draft[f.name] = v === "" ? null : (isFinite(n2) && String(n2) === v ? n2 : v);
+      } else ENT_MODAL.draft[f.name] = el.value;
+    };
+    if (el.tagName === "SELECT" || el.type === "checkbox") el.onchange = read; else el.oninput = read;
+  });
+  var first = host.querySelector(".ent-modal-body .ent-in, .ent-modal-body input");
+  if (first) setTimeout(function(){ try { first.focus(); } catch(err){} }, 30);
+}
+function entModalOpen(state){ ENT_MODAL = state; entModalRender(); }
+function entModalClose(){ ENT_MODAL = null; entModalRender(); }
+document.addEventListener("keydown", function(ev){
+  if (ev.key === "Escape" && ENT_MODAL) { ev.stopPropagation(); entModalClose(); }
+});
+
+/* «＋ Новая запись» — форма, а не сразу пустая строка в списке */
+function entNewRecord(e){
+  entModalOpen({ kind:"create", entity:e, draft: entBlankRecord(e), err:"" });
+}
+function entCreateSave(e){
+  var r = ENT_MODAL.draft;
+  entApplyMirror(e, r);
+  /* обязательные поля: флажок и ноль — законные значения, поэтому проверяем
+     только пустую строку/отсутствие */
+  var miss = e.fields.filter(function(f){
+    if (!f.required || !entEditable(f)) return false;
+    var v = r[f.name];
+    return v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length);
+  }).map(function(f){ return f.label || f.name; });
+  if (miss.length){
+    ENT_MODAL.err = entT("Заполните") + ": " + miss.join(", ");
+    entModalRender();
+    return;
+  }
+  r.id = entNextId(entRows(e.id));
+  entRows(e.id).push(r);
   ENT_CUR.rec = r.id; ENT_CUR.edit = null; ENT_CUR.mode = "card"; ENT_CUR.tab = "details";
-  entStore(); entRender();
+  entStore(); entModalClose(); entRender();
   entToast(entT("Запись создана"));
 }
+
+/* удаление — только через подтверждение */
 function entDeleteRecord(e, r){
-  if (!r || !confirm(entT("Удалить запись?") + " #" + r.id)) return;
+  if (!r) return;
+  entModalOpen({ kind:"delete", entity:e, rec:r });
+}
+function entDeleteConfirmed(e, r){
   ENT_DATA[e.id] = entRows(e.id).filter(function(x){ return String(x.id) !== String(r.id); });
   ENT_CUR.rec = null; ENT_CUR.edit = null; ENT_CUR.mode = "list";
-  entStore(); entRender();
+  entStore(); entModalClose(); entRender();
   entToast(entT("Запись удалена"));
 }
 /* переход по связи: открыть другую сущность на нужной записи */
