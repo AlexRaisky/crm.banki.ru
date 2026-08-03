@@ -6,7 +6,7 @@ tags: [architecture, security, rbac, auth]
 
 Единственная каноническая заметка про доступ: вход, роли, матрица прав, разделы, супер-админ, серверные проверки. Все остальные заметки ссылаются сюда, а не пересказывают.
 
-Проверено по `security/SecurityConfig.java`, `security/CustomUserDetailsService.java`, `security/AppUserPrincipal.java`, `security/CurrentUser.java`, `security/AccessGuard.java`, `domain/Role.java`, `domain/SectionAccess.java`, `domain/Capability.java`, `domain/AppUser.java`, `service/Sections.java`, `service/RoleService.java`, `service/UserService.java`, `config/AdminBootstrap.java`, `web/AuthController.java`, `web/AdminUserController.java`, `web/RoleController.java`, `web/TemplateController.java`, `web/PromoPlanController.java`, `web/SmsCheckReportController.java`, `web/JourneyController.java`, `web/FlowController.java`, `web/PanelSettingsController.java`, `web/ReportConnectionController.java` и миграциям `V2`, `V20`–`V23`.
+Проверено по `security/SecurityConfig.java`, `security/CustomUserDetailsService.java`, `security/AppUserPrincipal.java`, `security/CurrentUser.java`, `security/AccessGuard.java`, `domain/Role.java`, `domain/SectionAccess.java`, `domain/Capability.java`, `domain/AppUser.java`, `service/Sections.java`, `service/RoleService.java`, `service/UserService.java`, `config/AdminBootstrap.java`, `web/AuthController.java`, `web/AdminUserController.java`, `web/RoleController.java`, `web/TemplateController.java`, `web/PromoPlanController.java`, `web/SmsCheckReportController.java`, `web/JourneyController.java`, `web/FlowController.java`, `web/PanelSettingsController.java`, `web/ReportConnectionController.java` и миграциям `V2`, `V20`–`V23`, `V29`.
 
 ## Главное изменение: роли — это данные
 
@@ -62,20 +62,20 @@ flowchart LR
 | Роль | `is_admin` | Порядок | Доступ |
 |---|---|---|---|
 | **Супер админ** | супер | 10 | всё; роль скрыта из UI, привязана к `ADMIN_EMAIL` |
-| **Админ** | да | 15 | все 15 разделов полностью; роль-«прикрытие» для супер-админа |
-| **Проджект-менеджер** | да | 20 | все 15 разделов полностью |
+| **Админ** | да | 15 | все разделы полностью; роль-«прикрытие» для супер-админа |
+| **Проджект-менеджер** | да | 20 | все разделы полностью |
 | **Тимлид аналитики** | нет | 30 | просмотр всех разделов; add/edit (без delete) в `admin`, `templates`, `promo` |
 | **Аналитик** | нет | 40 | то же, что тимлид |
 | **Маркетолог** | нет | 50 | **только 5 разделов и только просмотр** (V23) |
 | **СЕО** | нет | 60 | просмотр всех не-админских разделов |
 
-**Маркетолог (V23 от 30.07.2026)** — сужен: прежний набор секций роли удаляется целиком и заменяется на `promo`, `srcbuilder`, `templates`, `admin`, `reports` с `can_read = true` и без add/edit/delete. Раздел `admin` здесь означает «Просмотр настроек» — та же секция, что и мастер, правка всё равно закрыта.
+**Маркетолог (V23 от 30.07.2026)** — сужен: прежний набор секций роли удаляется целиком и заменяется на `promo`, `srcbuilder`, `templates`, `admin`, `reports` с `can_read = true` и без add/edit/delete. Раздел `admin` здесь означает «Просмотр настроек» — та же секция, что и мастер, правка всё равно закрыта. Секция `reports` из этого набора в V29 развёрнута в пять отчётов.
 
 Админ-роли обходят матрицу на сервере; строки в `role_section` им проставляются полностью только ради корректного показа в UI (`RoleService.buildAccess`).
 
 ## Разделы (`service/Sections`)
 
-`Sections.ALL` — 15 канонических id; список обязан совпадать с id пунктов NAV (`js/shell.js`, массив `NAV` — см. [[Оболочка панели (shell)]]).
+`Sections.ALL` — 19 канонических id; список обязан совпадать с id пунктов NAV (`js/shell.js`, массив `NAV` — см. [[Оболочка панели (shell)]]).
 
 | id | Раздел UI | Writable | Только админ |
 |---|---|---|---|
@@ -90,14 +90,28 @@ flowchart LR
 | `promo` | Планирование промо | ✔ | |
 | `abtests` | А/Б тесты | ✔ | |
 | `srcbuilder` | Конструктор source | | |
-| `reports` | Отчёты | | |
 | `heatmap` | Тепловая карта | | |
-| `monitoring` | Мониторинг | | |
+| `rep-planfact` | Plan-Fact | | |
+| `rep-matrix` | CRM Matrix | | |
+| `rep-leadgen` | CRM Leadgen | | |
+| `rep-smscheck` | ЧЕК СМС траффик | | |
+| `rep-demo` | Пример визуализации отчёта | | |
+| `mon-campaigns` | Базовая работа кампаний | | |
 | `uploads` | Загруженные инструменты | | |
+
+### Секция — на пункт меню, а не на группу (V29 от 03.08.2026)
+
+Отчёты раньше делили одну секцию `reports`, а мониторинг — секцию `monitoring`. Выдать доступ к **одному** отчёту было нельзя: галка открывала сразу все пять. Теперь секция заведена на каждый лист меню, а зонтичных `reports` / `monitoring` больше нет — группа сайдбара не является секцией и скрывается сама, когда скрыты все её дети (`applyNavAcl`).
+
+Права **перенесены, а не розданы заново**: у кого был доступ к «Отчётам», тот получил все пять отчётов с теми же галками, дальше админ сужает вручную. Роль без `monitoring` (Маркетолог) `mon-campaigns` не получила.
+
+Фильтровать надо не только меню: `GET /api/reports/connections` отдаёт конфиги подключений, и без фильтра по правам спрятанный в меню отчёт открывался бы прямой ссылкой. Поэтому ответ собирается только из тех отчётов, где у роли есть READ (`AccessGuard.can` — проверка ответом, а не исключением).
+
+Тогда же с «Планирования промо» снят флаг `noAcl`: раздел висел в меню мимо матрицы с тех времён, когда таблица лежала в localStorage. Чтобы снятие никого не выбросило, миграция выдала `promo` read всем ролям, у которых его не было.
 
 - **`Sections.WRITABLE`** (`admin`, `templates`, `promo`, `abtests`) — единственные разделы, где у не-админа осмысленны add/edit/delete: у остальных нет серверных ручек записи. В матрице роли у не-writable разделов показывается только чекбокс «Просмотр», а `RoleService.buildAccess` гасит лишние флаги при сохранении.
 - **`Sections.ADMIN_ONLY`** (`journeys`, `access`) — доступ к ним даёт роль администратора, а не матрица; в матрице не-админа они не показываются.
-- `Sections.isValid(id)` — валидация; `GET /api/admin/sections` отдаёт `{id, writable, adminOnly}` для построения матрицы в UI.
+- `Sections.isValid(id)` — валидация; `GET /api/admin/sections` отдаёт `{id, writable, adminOnly, group}` для построения матрицы в UI. `group` — подпись группы сайдбара: строк стало больше двадцати, и матрица рисует их с заголовками групп и переключателем «выдать всю группу».
 
 ## Проверки на сервере
 
@@ -114,7 +128,7 @@ flowchart LR
 |---|---|
 | `TemplateController` | чтение — READ в `templates`/`admin`; `POST` — ADD; `PUT` — EDIT; `DELETE` — DELETE (в любом из двух разделов) |
 | `PromoPlanController` | READ / ADD / EDIT / DELETE в `promo` |
-| `SmsCheckReportController` | READ в `reports` |
+| `SmsCheckReportController` | READ в `rep-smscheck` |
 | `JourneyController`, `FlowController` | `@PreAuthorize("hasRole('ADMIN')")` на классе + `requireAnySection(JOURNEYS)` в каждом методе |
 | `AdminUserController`, `RoleController`, `ProdSyncController`, `EtlController`, `DbConnectionController` | без аннотаций — весь префикс `/api/admin/**` закрыт правилом URL |
 | `PanelSettingsController` | `GET` — любой аутентифицированный (оболочке нужен конфиг приложений), `PUT` — `hasRole('ADMIN')`; ключи с секретами внутри значения обслуживать отказывается |

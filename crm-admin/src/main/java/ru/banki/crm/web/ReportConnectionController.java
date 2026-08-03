@@ -60,10 +60,21 @@ public class ReportConnectionController {
 
     private final AdminLogService adminLog;
     private final ObjectMapper json;
+    private final ru.banki.crm.security.AccessGuard access;
 
-    public ReportConnectionController(AdminLogService adminLog, ObjectMapper json) {
+    public ReportConnectionController(AdminLogService adminLog, ObjectMapper json,
+                                      ru.banki.crm.security.AccessGuard access) {
         this.adminLog = adminLog;
         this.json = json;
+        this.access = access;
+    }
+
+    /**
+     * Секция RBAC отчёта: ключ конфига (planfact/matrix/…) — это id пункта меню без префикса.
+     * Держим соответствие в одном месте, чтобы фильтр и охрана расходились только вместе.
+     */
+    private static String sectionOf(String report) {
+        return "rep-" + report;
     }
 
     /**
@@ -78,6 +89,9 @@ public class ReportConnectionController {
         all.fieldNames().forEachRemaining(report -> {
             JsonNode e = all.get(report);
             if (e == null || !e.isObject()) return;
+            // Каждый отчёт — своя секция (V29). Конфиг недоступного отчёта в браузер не отдаём:
+            // иначе спрятанный в меню пункт всё равно открывался бы прямой ссылкой.
+            if (!access.can(ru.banki.crm.domain.Capability.READ, sectionOf(report))) return;
             String token = text(e, "token");
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("server", text(e, "server"));

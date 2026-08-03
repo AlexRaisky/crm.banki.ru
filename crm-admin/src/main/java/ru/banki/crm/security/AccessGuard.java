@@ -23,6 +23,18 @@ public class AccessGuard {
      * данные бывают за двумя разделами (шаблоны: admin — мастер, templates — список), и
      * право на операцию достаточно иметь в любом из них. 403 при отсутствии.
      */
+    /**
+     * То же право, но ответом, а не исключением: нужно там, где по правам не запрещают
+     * запрос целиком, а фильтруют его результат. Пример — список подключений отчётов:
+     * каждый отчёт стал своей секцией, и отдавать в браузер конфиги тех, которых
+     * пользователю не видно, нельзя (прямая ссылка осталась бы рабочей).
+     */
+    public boolean can(Capability cap, String sectionId) {
+        return CurrentUser.principal()
+                .map(p -> p.user().getRole().isAdminLevel() || p.hasCapability(sectionId, cap))
+                .orElse(false);
+    }
+
     public void requireCapability(Capability cap, String... sectionIds) {
         AppUserPrincipal p = CurrentUser.principal()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Не авторизован"));

@@ -19,17 +19,57 @@ public final class Sections {
     public static final String PROMO = "promo";         // Планирование промо (общая таблица)
     public static final String ABTESTS = "abtests";     // А/Б тесты (общая таблица)
     public static final String SRCBUILDER = "srcbuilder"; // Конструктор source (только просмотр)
-    public static final String REPORTS = "reports";       // Отчёты (только просмотр)
     public static final String HEATMAP = "heatmap";       // Тепловая карта (только просмотр)
-    public static final String MONITORING = "monitoring"; // Мониторинг (только просмотр)
     public static final String UPLOADS = "uploads";       // Загруженные инструменты (только просмотр)
+
+    /* Отчёты и мониторинг — не одна секция, а по секции на пункт меню (миграция V29).
+       Иначе доступ выдавался всё-или-ничего: галка «Отчёты» открывала сразу все пять.
+       Зонтичных секций reports/monitoring больше нет — группа сайдбара сама скрывается,
+       когда скрыты все её дети (applyNavAcl). */
+    public static final String REP_PLANFACT = "rep-planfact";
+    public static final String REP_MATRIX = "rep-matrix";
+    public static final String REP_LEADGEN = "rep-leadgen";
+    public static final String REP_SMSCHECK = "rep-smscheck";
+    public static final String REP_DEMO = "rep-demo";
+    public static final String MON_CAMPAIGNS = "mon-campaigns";
 
     /* Клиентские инструменты (конструктор source, отчёты, тепловая карта, мониторинг,
        загруженные инструменты) заводим в RBAC только ради видимости в NAV: серверной
-       записи у них нет, поэтому они не входят в WRITABLE — значима лишь галка read. */
+       записи у них нет, поэтому они не входят в WRITABLE — значима лишь галка read.
+       Порядок совпадает с порядком в меню: матрица прав рисуется в нём же. */
     public static final List<String> ALL = List.of(
-            HOME, DEVIATIONS, ONELINK, ADMIN, TEMPLATES, DASHBOARD, JOURNEYS, ACCESS, PROMO, ABTESTS,
-            SRCBUILDER, REPORTS, HEATMAP, MONITORING, UPLOADS);
+            HOME,
+            ONELINK, ADMIN, TEMPLATES, SRCBUILDER, PROMO, ABTESTS, HEATMAP,
+            REP_PLANFACT, REP_MATRIX, REP_LEADGEN, REP_SMSCHECK, REP_DEMO,
+            DASHBOARD, DEVIATIONS,
+            MON_CAMPAIGNS,
+            UPLOADS, JOURNEYS, ACCESS);
+
+    /**
+     * Группа сайдбара, в которой живёт раздел. Нужна матрице прав: строк стало больше двадцати,
+     * и без заголовков групп таблица читается плохо. Ключ — id секции, значение — подпись группы;
+     * разделы верхнего уровня группы не имеют (пустая строка).
+     */
+    public static final java.util.Map<String, String> GROUP_OF = java.util.Map.ofEntries(
+            java.util.Map.entry(ONELINK, "Управление коммуникациями"),
+            java.util.Map.entry(ADMIN, "Управление коммуникациями"),
+            java.util.Map.entry(TEMPLATES, "Управление коммуникациями"),
+            java.util.Map.entry(SRCBUILDER, "Управление коммуникациями"),
+            java.util.Map.entry(PROMO, "Управление коммуникациями"),
+            java.util.Map.entry(ABTESTS, "Управление коммуникациями"),
+            java.util.Map.entry(HEATMAP, "Управление коммуникациями"),
+            java.util.Map.entry(REP_PLANFACT, "Отчёты"),
+            java.util.Map.entry(REP_MATRIX, "Отчёты"),
+            java.util.Map.entry(REP_LEADGEN, "Отчёты"),
+            java.util.Map.entry(REP_SMSCHECK, "Отчёты"),
+            java.util.Map.entry(REP_DEMO, "Отчёты"),
+            java.util.Map.entry(DASHBOARD, "Дашборд"),
+            java.util.Map.entry(DEVIATIONS, "Дашборд"),
+            java.util.Map.entry(MON_CAMPAIGNS, "Мониторинг"));
+
+    public static String groupOf(String id) {
+        return GROUP_OF.getOrDefault(id, "");
+    }
 
     public static final Set<String> VALID = Set.copyOf(ALL);
 

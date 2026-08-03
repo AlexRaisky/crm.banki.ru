@@ -23,10 +23,10 @@ const NAV = [
       { id:"viewer",    label:"Просмотр настроек",   icon:"search", view:"sec-admin", adminMode:"view", aclSection:"admin" },
       /* клиентские инструменты без серверной секции — не фильтруются по me.sections (data-no-acl) */
       { id:"srcbuilder",label:"Конструктор source",  icon:"pulse", view:"sec-srcbuilder" },
-      /* promo: пока данные лежат в localStorage — фильтровать по me.sections нечего.
-         Как таблица переедет на сервер (app.promo_plan), noAcl снимаем — секция promo
-         в RBAC уже заведена. */
-      { id:"promo",     label:"Планирование промо",  icon:"calendar", view:"sec-promo", noAcl:true },
+      /* promo: таблица давно переехала на сервер (app.promo_plan), noAcl снят в V29 —
+         раздел гейтится матрицей, как все остальные. Чтобы снятие никого не выбросило,
+         миграция выдала read всем ролям, у кого его не было. */
+      { id:"promo",     label:"Планирование промо",  icon:"calendar", view:"sec-promo" },
       /* А/Б тесты: секция abtests в RBAC заведена (V26, права скопированы с promo),
          поэтому пункт гейтится по me.sections — noAcl тут НЕ ставим. */
       { id:"abtests",   label:"А/Б тесты",           icon:"beaker", view:"sec-abtests" },
@@ -35,18 +35,21 @@ const NAV = [
   /* «Отчёты» — встраивание отчётов Tableau: обзор с карточками, у каждого отчёта
      свой блок подключения (адрес сервера + книга); «Пример» — демо-макет окна */
   { id:"reports", label:"Отчёты", icon:"reports", overviewView:"view-reports-overview", children:[
-      { id:"rep-planfact", label:"Plan-Fact",   icon:"chart", view:"view-report-embed", report:"planfact", aclSection:"reports" },
-      { id:"rep-matrix",   label:"CRM Matrix",  icon:"grid2", view:"view-report-embed", report:"matrix",   aclSection:"reports" },
-      { id:"rep-leadgen",  label:"CRM Leadgen", icon:"pulse", view:"view-report-embed", report:"leadgen",  aclSection:"reports" },
-      { id:"rep-smscheck", label:"ЧЕК СМС траффик", icon:"download", view:"view-report-smscheck", aclSection:"reports" },
-      { id:"rep-demo",     label:"Пример визуализации отчёта", icon:"reports", view:"view-reports", aclSection:"reports" },
+      /* aclSection у детей больше нет: id пункта И ЕСТЬ секция RBAC (V29), поэтому доступ
+         выдаётся по каждому отчёту отдельно. Сама группа секцией не является — она
+         скрывается, когда скрыты все её дети (applyNavAcl). */
+      { id:"rep-planfact", label:"Plan-Fact",   icon:"chart", view:"view-report-embed", report:"planfact" },
+      { id:"rep-matrix",   label:"CRM Matrix",  icon:"grid2", view:"view-report-embed", report:"matrix" },
+      { id:"rep-leadgen",  label:"CRM Leadgen", icon:"pulse", view:"view-report-embed", report:"leadgen" },
+      { id:"rep-smscheck", label:"ЧЕК СМС траффик", icon:"download", view:"view-report-smscheck" },
+      { id:"rep-demo",     label:"Пример визуализации отчёта", icon:"reports", view:"view-reports" },
   ]},
   { id:"dash", label:"Дашборд", icon:"gauge", overviewView:"view-dash-overview", children:[
       { id:"dashboard",  label:"Общая статистика",  icon:"chart", view:"sec-admin", adminMode:"dashboard" },
       { id:"deviations", label:"Панель отклонений", icon:"pulse", view:"sec-deviations" },
   ]},
   { id:"monitoring", label:"Мониторинг", icon:"monitor", overviewView:"view-mon-overview", children:[
-      { id:"mon-campaigns", label:"Базовая работа кампаний", icon:"pulse", view:"view-mon-campaigns", aclSection:"monitoring" },
+      { id:"mon-campaigns", label:"Базовая работа кампаний", icon:"pulse", view:"view-mon-campaigns" },
   ]},
   { id:"uploads",  label:"Загруженные инструменты", icon:"upload", view:"view-uploads" },
   { id:"journeys", label:"Цепочки",             icon:"flow", view:"sec-journeys", adminOnly:true },
