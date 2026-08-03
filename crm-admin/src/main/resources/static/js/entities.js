@@ -121,12 +121,20 @@ function entField(e, name){
   return null;
 }
 function entLoadSchema(){
-  /* черновик Scheme Builder перекрывает файл — ровно как в SchemaStore.load */
+  /* Черновик Scheme Builder накладывается НА файл, а не подменяет его: иначе
+     сущность, добавленная в файл позже, не появилась бы ни у кого, кто хоть раз
+     открывал конструктор. Правило общее с настроечной админкой — EntityLayout.mergeDraft. */
   var draft = entRead(ENT_DRAFT_KEY, null);
-  if (draft && draft.entities) return Promise.resolve(draft);
   return fetch(ENT_FILE + "?v=" + Date.now(), { cache:"no-store" })
     .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-    .catch(function(){ return { version:"0", entities:[], relations:[] }; });
+    .then(function(base){
+      return (window.EntityLayout && EntityLayout.mergeDraft)
+        ? EntityLayout.mergeDraft(base, draft) : (draft && draft.entities ? draft : base);
+    })
+    .catch(function(){
+      /* файл недоступен (нет сети) — работаем хотя бы по черновику */
+      return (draft && draft.entities) ? draft : { version:"0", entities:[], relations:[] };
+    });
 }
 
 /* ---------- блоки полей «по смыслу» ----------
