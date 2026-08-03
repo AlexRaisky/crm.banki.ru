@@ -28,7 +28,9 @@ var $ = function(s, r){ return (r || document).querySelector(s); };
 var $$ = function(s, r){ return [].slice.call((r || document).querySelectorAll(s)); };
 
 var model = null;          /* вся схема; источник — SchemaStore из scheme-builder.js */
-var view = { entity: null, q: "" };
+/* sub — подраздел: «Настройки объектов» (объект, поля, блоки) либо
+   «Настройки отображения карточки» (вкладки, колонки, связанные объекты) */
+var view = { entity: null, q: "", sub: "objects" };
 
 function store(){ return window.SchemeBuilder && window.SchemeBuilder.store; }
 function layout(){ return window.EntityLayout; }
@@ -136,6 +138,10 @@ function renderEntity(){
       T("Данные этой сущности живут в БД приложения и приходят через API, а подраздел панели открывается готовым экраном — списком шаблонов со своей настройкой колонок. Свойства и блоки полей здесь описывают объект (их видно в Scheme Builder), но на вид подраздела не влияют.") +
       "</div>" : "") +
 
+    subTabsHtml() +
+    (view.sub === "card" ? cardPaneHtml(e) : "") +
+    (view.sub === "card" ? "" :
+
     /* --- свойства объекта --- */
     '<div class="card"><h2>' + T("Свойства объекта") + "</h2>" +
       '<div class="om-grid2">' +
@@ -198,9 +204,203 @@ function renderEntity(){
           "</span></td></tr>";
       }).join("") +
       "</tbody></table></div>" +
-    "</div>";
+    "</div>");
 
-  wireEntity(e);
+  wireSubTabs();
+  if (view.sub === "card") wireCardPane(e); else wireEntity(e);
+}
+
+/* ============================================================
+   «Настройки отображения карточки»: вкладки, распределение блоков,
+   число колонок и колонка связанных объектов справа.
+   ============================================================ */
+function ensureCard(e){
+  var L = ensureLayout(e);
+  if (!L.card) L.card = {};
+  var c = L.card, def = layout().cardConfig(e);
+  if (c.columns === undefined) c.columns = def.columns;
+  if (c.rail === undefined) c.rail = def.rail;
+  if (!Array.isArray(c.tabs)) c.tabs = def.tabs.map(function(t){ return { id:t.id, label:t.label }; });
+  if (!c.blocks) c.blocks = {};
+  return c;
+}
+function cardPaneHtml(e){
+  var cfg = layout().cardConfig(e), L = layout().resolve(e);
+  var titles = L.blocks.map(function(b){ return b.title; });
+  (L.titles || []).forEach(function(t){ if (titles.indexOf(t) < 0) titles.push(t); });
+  var counts = {};
+  L.blocks.forEach(function(b){ counts[b.title] = b.fields.length; });
+  var related = e.fields.filter(function(f){ return f.ui_type === "related_list"; });
+
+  return (
+    /* --- шапка: включена всегда --- */
+    '<div class="card"><h2>' + T("Шапка карточки") + "</h2>" +
+      '<label class="om-check"><input type="checkbox" checked disabled>' +
+        "<span><b>" + T("Показывать шапку записи") + "</b>" +
+        '<span class="hint">' + T("Тип объекта, название записи и «подсвеченные» поля показываются на всех карточках и выключить их нельзя: без шапки запись невозможно опознать. Какие поля выводить под названием — задаётся в «Настройках объектов», колонка «В шапке».") + "</span></span></label>" +
+    "</div>" +
+
+    /* --- раскладка --- */
+    '<div class="card"><h2>' + T("Раскладка полей") + "</h2>" +
+      '<div class="om-fg"><label>' + T("Колонок в блоке полей") + "</label>" +
+        '<div class="om-radios">' + [1,2,3].map(function(n){
+          return '<label class="om-radio"><input type="radio" name="omCols" value="' + n + '"' +
+            (cfg.columns === n ? " checked" : "") + "><span>" + n + "</span></label>";
+        }).join("") + "</div></div>" +
+      '<div class="om-note">' + T("На узком экране карточка всё равно перестраивается в одну колонку — настройка задаёт максимум.") + "</div>" +
+    "</div>" +
+
+    /* --- вкладки --- */
+    '<div class="card"><h2>' + T("Вкладки карточки") + "</h2>" +
+      '<div class="om-note" style="margin-bottom:12px">' +
+        T("Вкладка «Детали» есть всегда: на неё попадают блоки, которым вкладка не назначена. Остальные можно переименовать, добавить или удалить — блоки удалённой вкладки вернутся в «Детали».") + "</div>" +
+      '<div class="om-blocks" id="omTabs">' + cfg.tabs.map(function(t, i){
+        var fixed = t.id === "details";
+        return '<div class="om-block" data-tab="' + esc(t.id) + '">' +
+          '<span class="n">' + esc(t.id) + "</span>" +
+          '<input type="text" class="om-tab-label" data-tab-label="' + esc(t.id) + '" value="' + esc(t.label) + '">' +
+          '<button type="button" data-tab-up="' + i + '"' + (i === 0 ? " disabled" : "") + ' title="' + T("Выше") + '">↑</button>' +
+          '<button type="button" data-tab-down="' + i + '"' + (i === cfg.tabs.length - 1 ? " disabled" : "") + ' title="' + T("Ниже") + '">↓</button>' +
+          '<button type="button" data-tab-del="' + esc(t.id) + '"' + (fixed ? " disabled" : "") + ' title="' + T("Удалить") + '">✕</button>' +
+        "</div>";
+      }).join("") + "</div>" +
+      '<div class="om-acts"><button class="btn" id="omAddTab">+ ' + T("Вкладка") + "</button></div>" +
+    "</div>" +
+
+    /* --- блоки --- */
+    '<div class="card"><h2>' + T("Блоки на карточке") + "</h2>" +
+      '<div class="om-note" style="margin-bottom:12px">' +
+        T("Что показывать на карточке, на какой вкладке и в каком виде открывать. Скрытый блок не рисуется вовсе; свёрнутый открывается по клику на заголовок.") + "</div>" +
+      '<div class="om-tbl-wrap"><table class="om-tbl om-fields"><thead><tr>' +
+        "<th>" + T("Блок") + '</th><th class="num">' + T("Полей") + "</th>" +
+        "<th>" + T("Вкладка") + '</th><th class="c">' + T("Показывать") + '</th><th class="c">' + T("Свёрнут") + "</th>" +
+      "</tr></thead><tbody>" + titles.map(function(t){
+        var b = layout().blockConfig(e, t);
+        return '<tr' + (b.hidden ? ' class="hidden-row"' : "") + ">" +
+          "<td><b>" + esc(T(t)) + "</b></td>" +
+          '<td class="num">' + (counts[t] || 0) + "</td>" +
+          '<td><select data-btab="' + esc(t) + '">' + cfg.tabs.map(function(x){
+            return '<option value="' + esc(x.id) + '"' + (b.tab === x.id ? " selected" : "") + ">" + esc(x.label) + "</option>";
+          }).join("") + "</select></td>" +
+          '<td class="c"><input type="checkbox" data-bshow="' + esc(t) + '"' + (b.hidden ? "" : " checked") + "></td>" +
+          '<td class="c"><input type="checkbox" data-bcol="' + esc(t) + '"' + (b.collapsed ? " checked" : "") + "></td>" +
+        "</tr>";
+      }).join("") + "</tbody></table></div>" +
+    "</div>" +
+
+    /* --- связанные объекты --- */
+    '<div class="card"><h2>' + T("Связанные объекты справа") + "</h2>" +
+      '<label class="om-check"><input type="checkbox" id="omRail"' + (cfg.rail ? " checked" : "") + ">" +
+        "<span><b>" + T("Показывать колонку связанных объектов") + "</b>" +
+        '<span class="hint">' + T("Колонка справа от полей, как в Salesforce. На узком экране она уходит под карточку. Если выключить, связанные записи снова показываются полем внутри блоков.") + "</span></span></label>" +
+      (related.length
+        ? '<div class="om-note" style="margin:10px 0 8px">' + T("Какие связанные объекты выводить:") + "</div>" +
+          '<div class="om-rail-list">' + related.map(function(f){
+            var on = !cfg.railItems || cfg.railItems.indexOf(f.name) >= 0;
+            var tgt = model.entities.filter(function(x){ return x.id === f.target_entity; })[0];
+            return '<label class="om-check"><input type="checkbox" data-rail="' + esc(f.name) + '"' + (on ? " checked" : "") + ">" +
+              "<span>" + esc(f.label || f.name) +
+              '<span class="hint">' + esc(tgt ? (tgt.plural_label || tgt.label) : f.target_entity) + "</span></span></label>";
+          }).join("") + "</div>"
+        : '<div class="om-note" style="margin-top:10px">' +
+            T("У этой сущности нет полей типа «Связанный список» — выводить справа нечего. Такое поле добавляется в Scheme Builder.") + "</div>") +
+    "</div>" +
+
+    '<div class="om-acts"><button class="btn" id="omCardReset">' + T("Сбросить отображение карточки") + "</button></div>"
+  );
+}
+
+function wireCardPane(e){
+  $("#omBack").onclick = function(){ view.entity = null; render(); };
+
+  $$("#omHost input[name=omCols]").forEach(function(rb){
+    rb.onchange = function(){ ensureCard(e).columns = Number(rb.value); save("card:" + e.id); render(); };
+  });
+  var rail = $("#omRail");
+  if (rail) rail.onchange = function(){ ensureCard(e).rail = rail.checked; save("card:" + e.id); render(); };
+  $$("#omHost [data-rail]").forEach(function(cb){
+    cb.onchange = function(){
+      var c = ensureCard(e);
+      c.railItems = $$("#omHost [data-rail]").filter(function(x){ return x.checked; })
+        .map(function(x){ return x.dataset.rail; });
+      save("rail:" + e.id); render();
+    };
+  });
+
+  /* вкладки */
+  $$("#omHost [data-tab-label]").forEach(function(inp){
+    inp.onchange = function(){
+      var c = ensureCard(e), t = c.tabs.filter(function(x){ return x.id === inp.dataset.tabLabel; })[0];
+      if (t) t.label = inp.value || t.id;
+      save("tabs:" + e.id); toast(T("Сохранено"));
+    };
+  });
+  $$("#omHost [data-tab-up], #omHost [data-tab-down]").forEach(function(b){
+    b.onclick = function(){
+      var c = ensureCard(e);
+      var i = Number(b.dataset.tabUp !== undefined ? b.dataset.tabUp : b.dataset.tabDown);
+      var j = b.dataset.tabUp !== undefined ? i - 1 : i + 1;
+      if (j < 0 || j >= c.tabs.length) return;
+      var tmp = c.tabs[i]; c.tabs[i] = c.tabs[j]; c.tabs[j] = tmp;
+      save("tabs:" + e.id); render();
+    };
+  });
+  $$("#omHost [data-tab-del]").forEach(function(b){
+    b.onclick = function(){
+      var id = b.dataset.tabDel;
+      if (id === "details") return;
+      if (!confirm(T("Удалить вкладку? Её блоки вернутся в «Детали»."))) return;
+      var c = ensureCard(e);
+      c.tabs = c.tabs.filter(function(t){ return t.id !== id; });
+      Object.keys(c.blocks).forEach(function(k){ if (c.blocks[k].tab === id) c.blocks[k].tab = "details"; });
+      save("tabs:" + e.id); render();
+    };
+  });
+  var addTab = $("#omAddTab");
+  if (addTab) addTab.onclick = function(){
+    var label = (prompt(T("Название вкладки")) || "").trim();
+    if (!label) return;
+    var c = ensureCard(e);
+    var id = "tab" + (c.tabs.length + 1);
+    while (c.tabs.some(function(t){ return t.id === id; })) id += "x";
+    c.tabs.push({ id:id, label:label });
+    save("tabs:" + e.id); render();
+  };
+
+  /* блоки */
+  var blockCfg = function(c, title){
+    if (!c.blocks[title]) c.blocks[title] = {};
+    return c.blocks[title];
+  };
+  $$("#omHost [data-btab]").forEach(function(sel){
+    sel.onchange = function(){
+      var c = ensureCard(e);
+      blockCfg(c, sel.dataset.btab).tab = sel.value;
+      save("block-tab:" + e.id); render();
+    };
+  });
+  $$("#omHost [data-bshow]").forEach(function(cb){
+    cb.onchange = function(){
+      var c = ensureCard(e);
+      blockCfg(c, cb.dataset.bshow).hidden = !cb.checked;
+      save("block-show:" + e.id); render();
+    };
+  });
+  $$("#omHost [data-bcol]").forEach(function(cb){
+    cb.onchange = function(){
+      var c = ensureCard(e);
+      blockCfg(c, cb.dataset.bcol).collapsed = cb.checked;
+      save("block-collapsed:" + e.id); render();
+    };
+  });
+
+  var reset = $("#omCardReset");
+  if (reset) reset.onclick = function(){
+    if (!confirm(T("Вернуть отображение карточки к умолчанию?"))) return;
+    if (e.layout) delete e.layout.card;
+    save("card-reset:" + e.id); render();
+    toast(T("Отображение сброшено"));
+  };
 }
 
 function ensureLayout(e){
@@ -307,6 +507,19 @@ function render(){
   if (!host) return;
   if (!model){ host.innerHTML = '<div class="om-err">' + T("Не удалось загрузить схему") + "</div>"; return; }
   if (view.entity) renderEntity(); else renderList();
+}
+/* переключатель подразделов — рисуется в карточке объекта */
+function subTabsHtml(){
+  var t = [["objects", "Настройки объектов"], ["card", "Настройки отображения карточки"]];
+  return '<div class="om-subtabs">' + t.map(function(x){
+    return '<button type="button" class="om-subtab' + (view.sub === x[0] ? " on" : "") +
+      '" data-sub="' + x[0] + '">' + T(x[1]) + "</button>";
+  }).join("") + "</div>";
+}
+function wireSubTabs(){
+  $$("#omHost [data-sub]").forEach(function(b){
+    b.onclick = function(){ view.sub = b.dataset.sub; render(); };
+  });
 }
 
 /* Модель перечитываем при каждом открытии: её мог поменять Scheme Builder

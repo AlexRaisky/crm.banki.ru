@@ -74,6 +74,24 @@
   .om-fields .ord button:disabled{opacity:.3;cursor:default}
   .om-fields .ord button:disabled:hover{border-color:var(--line);color:var(--dim)}
 
+  /* подразделы: «Настройки объектов» / «Настройки отображения карточки» */
+  .om-subtabs{display:flex;gap:2px;margin:0 0 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .om-subtab{background:none;border:none;border-bottom:2px solid transparent;color:var(--dim);cursor:pointer;
+    font-family:var(--sans);font-size:13.5px;font-weight:600;padding:10px 16px}
+  .om-subtab:hover{color:var(--ink)}
+  .om-subtab.on{color:var(--blue);border-bottom-color:var(--blue)}
+
+  .om-radios{display:flex;gap:8px;flex-wrap:wrap}
+  .om-radio{display:flex;align-items:center;gap:7px;background:var(--card2);border:1px solid var(--line);
+    border-radius:10px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600}
+  .om-radio:hover{border-color:var(--blue)}
+  .om-radio input{accent-color:#3CFAB4;cursor:pointer;width:15px;height:15px}
+  .om-radio:has(input:checked){border-color:var(--green);color:var(--green)}
+  .om-tab-label{flex:1;min-width:0;background:var(--bg2);border:1px solid var(--line);border-radius:8px;
+    color:var(--ink);font-family:var(--sans);font-size:13px;padding:5px 9px;outline:none}
+  .om-tab-label:focus{border-color:rgba(80,195,255,.5)}
+  .om-rail-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:4px 16px}
+
   .om-warn{border:1px solid rgba(255,184,77,.35);background:var(--amber-bg);color:var(--amber);
     border-radius:12px;padding:12px 15px;font-size:12.5px;line-height:1.55;margin-bottom:16px}
   .om-empty{padding:26px;text-align:center;color:var(--dim);font-size:13.5px}
