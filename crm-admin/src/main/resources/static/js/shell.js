@@ -32,6 +32,16 @@ const NAV = [
       { id:"abtests",   label:"А/Б тесты",           icon:"beaker", view:"sec-abtests" },
       { id:"heatmap",   label:"Тепловая карта",      icon:"grid2", view:"view-heatmap", appOnly:["Маркетинг"] },
   ]},
+  /* «Сущности» — данные CRM по схеме Scheme Builder. Подразделы НЕ задаются здесь:
+     children заполняет js/entities.js (entSyncNav) по сущностям схемы, поэтому
+     заведённая в Scheme Builder сущность появляется в панели сама.
+     adminOnly:true — стартовое (безопасное) состояние: до ответа /api/me и загрузки
+     схемы раздел считается админским. Дальше entSyncNav пересчитывает флаг: он
+     снимается, только если пользователю доступна хотя бы одна сущность. По
+     умолчанию не-админам не доступна ни одна — доступ выдаётся явно, через
+     реестр crmpanel:entityAccess (entAccessSet). */
+  { id:"entities", label:"Сущности", icon:"db", overviewView:"view-entities-overview",
+    adminOnly:true, children:[] },
   /* «Отчёты» — встраивание отчётов Tableau: обзор с карточками, у каждого отчёта
      свой блок подключения (адрес сервера + книга); «Пример» — демо-макет окна */
   { id:"reports", label:"Отчёты", icon:"reports", overviewView:"view-reports-overview", children:[
@@ -83,6 +93,9 @@ const ICONS = {
   plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
   reports:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-4M12 17V8M16 17v-6"/></svg>',
+  /* «Сущности»: db — группа раздела, table — подраздел отдельной сущности */
+  db:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/><path d="M4 11.5v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></svg>',
+  table:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.5h18M9 9.5V20"/></svg>',
 };
 
 /* =========================================================
@@ -427,6 +440,36 @@ Object.assign(I18N_EN, {
   "Кампания":"Campaign", "Конв.":"Conv.",
 });
 
+/* ---- раздел «Сущности» (данные по схеме Scheme Builder) ----
+   Переводится только «обвязка» раздела: названия сущностей, полей и блоков
+   приходят из схемы и показываются так, как их завели в Scheme Builder. */
+Object.assign(I18N_EN, {
+  "Сущности":"Objects",
+  "Данные":"Data",
+  "Данные CRM по схеме из Scheme Builder. Каждая заведённая сущность становится подразделом: выберите её здесь или в меню слева.":"CRM data based on the Scheme Builder schema. Every object defined there becomes a subsection: pick one here or in the left menu.",
+  "Карточка записи по схеме Scheme Builder: поля разложены по смысловым блокам, каждое правится по карандашу. Правки сохраняются сразу.":"A record card built from the Scheme Builder schema: fields are grouped by meaning and each one is edited via its pencil. Changes are saved immediately.",
+  "Карточка записи с полями по смысловым блокам и переходами по связям.":"A record card with fields grouped by meaning and links to related records.",
+  "Раздел доступен только администраторам. Сущности и их поля настраиваются в Scheme Builder (настроечная админка).":"The section is available to administrators only. Objects and their fields are configured in Scheme Builder (settings admin).",
+  "полей":"fields", "записей":"records", "связей":"relations", "доступ":"access",
+  "Новая запись":"New record", "Запись создана":"Record created", "Запись удалена":"Record deleted",
+  "Удалить запись":"Delete record", "Удалить запись?":"Delete this record?",
+  "Записей пока нет — заведите первую.":"No records yet — create the first one.",
+  "Сущность не найдена в схеме. Проверьте Scheme Builder в настроечной админке.":"The object was not found in the schema. Check Scheme Builder in the settings admin.",
+  "В схеме пока нет сущностей. Заведите первую в Scheme Builder (настроечная админка).":"The schema has no objects yet. Create the first one in Scheme Builder (settings admin).",
+  "связанных записей нет":"no related records", "нет обратной ссылки в схеме":"no back-reference in the schema",
+  "запись не найдена":"record not found", "записей нет":"no records",
+  "Обязательное поле":"Required field", "Сохранено":"Saved",
+  "Как это работает:":"How it works:",
+  "подраздел построен по сущности из Scheme Builder: блоки полей собраны по смыслу, связи показаны ссылками на записи других сущностей — по ним можно перейти. Правка поля подтверждается ✓ (Enter), отменяется ✕ или Esc; клик мимо поля сохраняет значение. Изменения хранятся в браузере.":"the subsection is built from a Scheme Builder object: field blocks are grouped by meaning and relations are shown as links to records of other objects, which you can follow. A field edit is confirmed with ✓ (Enter) and cancelled with ✕ or Esc; clicking outside the field saves the value. Changes are stored in the browser.",
+  /* названия смысловых блоков карточки */
+  "Основное":"General", "Конфигурация":"Configuration", "Служебные":"System fields",
+  "Персональные данные":"Personal details", "Профиль клиента":"Client profile", "Связи":"Relations",
+  "Документы":"Documents", "Адреса":"Addresses", "Согласия":"Consents",
+  "Стоп-листы каналов":"Channel stop lists", "Доход и скоринг":"Income & scoring",
+  "Самозапрет на кредиты":"Self-imposed credit ban", "Реквизиты":"Company details",
+  "Доступность":"Reachability", "Флаги":"Flags", "Показатели":"Metrics",
+});
+
 /* HTML-заголовки (с выделением) — токены */
 const I18N_HTML = {
   ru: {
@@ -444,6 +487,7 @@ const I18N_HTML = {
     h1_reports:'Пример <span class="grad">визуализации отчёта</span>',
     h1_smscheck:'ЧЕК <span class="grad">СМС траффик</span>',
     h1_reports_ov:'Отчёты <span class="grad">Tableau</span>',
+    h1_entities_ov:'Сущности <span class="grad">CRM</span>',
     reports_sub:'Демо-макет того, как отчёт Tableau будет выглядеть в этом окне. Реальные отчёты подключаются на страницах Plan-Fact, CRM&nbsp;Matrix и CRM&nbsp;Leadgen — там задаются адрес сервера и книга. Все числа на макете — демонстрационные.',
   },
   en: {
@@ -460,6 +504,7 @@ const I18N_HTML = {
     h1_abtests:'A/B <span class="grad">tests</span>',
     h1_reports:'Report visualisation <span class="grad">example</span>',
     h1_reports_ov:'Tableau <span class="grad">reports</span>',
+    h1_entities_ov:'CRM <span class="grad">objects</span>',
     reports_sub:'A demo mock-up of how a Tableau report will look in this window. Real reports are connected on the Plan-Fact, CRM&nbsp;Matrix and CRM&nbsp;Leadgen pages, where the server address and workbook are set. All numbers in the mock-up are illustrative.',
   }
 };
@@ -498,6 +543,8 @@ function applyLang(rerender){
     if (typeof translateAdminChrome === "function") translateAdminChrome();
     if (typeof promoRender === "function") promoRender();
     if (typeof rpRender === "function") rpRender();
+    if (typeof entRenderOverview === "function") entRenderOverview();
+    if (typeof entRender === "function" && cur.sid === "entities" && cur.cid) entRender();
     renderSectionHero(CUR_VIEW, cur.sid, cur.cid);
     /* заголовок раздела в шапке — на выбранном языке */
     const s0 = NAV.find(n => n.id === cur.sid);
@@ -825,6 +872,9 @@ function openSection(sid, cid){
   if (target.adminMode && typeof setAdminMode === "function") setAdminMode(target.adminMode);
   /* отчёты Tableau: один view на все отчёты, содержимое задаёт reports.js */
   if (target.report && typeof rpEmbedOpen === "function") rpEmbedOpen(target.report);
+  /* сущности: один view на все подразделы, карточку рисует entities.js */
+  if (target.entity && typeof entOpen === "function") entOpen(target.entity);
+  if (target.view === "view-entities-overview" && typeof entRenderOverview === "function") entRenderOverview();
   /* «ЧЕК СМС траффик» — выгрузка Excel (smscheck.js) */
   if (target.view === "view-report-smscheck" && typeof scInit === "function") scInit();
   if (sid === "journeys" && typeof initJourneysSection === "function") initJourneysSection();
