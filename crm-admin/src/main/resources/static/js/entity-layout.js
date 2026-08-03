@@ -109,8 +109,16 @@ var DEFAULTS = {
                            "la_visualization_attributes","la_status","current_step"]]
   ]
 };
-/* поля верхней строки карточки по умолчанию */
-var HEADER = { client: ["user_id"] };
+/* Поля, которые показываются под названием записи («подсвеченные», как highlights
+   panel в Salesforce). Набор настраивается в админке; здесь — умолчания, чтобы
+   блок не пустовал у сущностей, которых ещё не настраивали. */
+var HEADER = {
+  client:              ["user_id"],
+  lead:                ["status", "client_id"],
+  client_contact_info: ["type", "status"],
+  work:                ["record_type_id", "start_date"],
+  record_type:         ["entity_name", "is_active"]
+};
 
 var REL_UI = ["lookup","multilookup","related_list"];
 function isRelation(f){ return REL_UI.indexOf(f.ui_type) >= 0; }
@@ -180,6 +188,44 @@ function resolve(e){
   };
 }
 
+/* ============================================================
+   Отображение карточки записи: вкладки, распределение блоков по ним,
+   число колонок и правая колонка связанных объектов.
+
+   Хранится там же, в сущности: entity.layout.card = {
+     columns: 1 | 2 | 3,                   — колонок в блоке полей
+     rail: true | false,                   — показывать колонку связанных объектов
+     railItems: [<поле related_list>, …],  — какие именно (отсутствует = все)
+     tabs: [ {id, label} … ],              — вкладки карточки
+     blocks: { "<блок>": { hidden, tab, collapsed } }
+   }
+
+   Шапка записи (тип объекта, название, «подсвеченные» поля) настройке не
+   подлежит: без неё карточка теряет опознавательность, поэтому она есть
+   всегда и выключателя у неё нет.
+   ============================================================ */
+var CARD_TABS = [ { id:"details", label:"Детали" }, { id:"comms", label:"Коммуникации" } ];
+function cardConfig(e){
+  var c = ((e && e.layout) || {}).card || {};
+  var cols = Number(c.columns);
+  var tabs = (Array.isArray(c.tabs) && c.tabs.length) ? c.tabs.slice() : CARD_TABS.map(function(t){ return { id:t.id, label:t.label }; });
+  /* «Детали» — вкладка по умолчанию: на неё падают блоки без явной привязки,
+     поэтому убрать её из списка нельзя */
+  if (!tabs.some(function(t){ return t.id === "details"; })) tabs.unshift({ id:"details", label:"Детали" });
+  return {
+    columns: (cols === 1 || cols === 2 || cols === 3) ? cols : 2,
+    rail: c.rail === undefined ? true : !!c.rail,
+    railItems: Array.isArray(c.railItems) ? c.railItems.slice() : null,   /* null = все */
+    tabs: tabs,
+    blocks: c.blocks || {}
+  };
+}
+/* настройки конкретного блока карточки */
+function blockConfig(e, title){
+  var b = cardConfig(e).blocks[title] || {};
+  return { hidden: !!b.hidden, tab: b.tab || "details", collapsed: !!b.collapsed };
+}
+
 /* список блоков для выпадающего списка в настройке: стандартные + уже использованные */
 function blockChoices(e){
   var r = resolve(e), out = BLOCKS.slice();
@@ -240,6 +286,7 @@ global.EntityLayout = {
   BLOCKS: BLOCKS, SYSTEM_BLOCK: SYSTEM_BLOCK,
   defaults: defaults, resolve: resolve, autoBlock: autoBlock,
   blockChoices: blockChoices, isIdField: isIdField, isRelation: isRelation,
-  mergeDraft: mergeDraft
+  mergeDraft: mergeDraft, cardConfig: cardConfig, blockConfig: blockConfig,
+  CARD_TABS: CARD_TABS
 };
 })(window);

@@ -485,6 +485,11 @@ Object.assign(I18N_EN, {
   "По умолчанию":"Reset to default", "Закрыть":"Close", "Все":"All", "любое":"any", "из":"of",
   "Отсортировано по":"Sorted by", "К списку":"Back to list", "данные из API":"data from the API",
   "Детали":"Details", "Коммуникации":"Communications",
+  "Сохранить":"Save", "Отмена":"Cancel", "Удалить":"Delete",
+  "Запись будет удалена без возможности отменить.":"The record will be deleted permanently.",
+  "Заполните":"Fill in", "записей нет":"no records",
+  "Блоки не назначены":"No blocks assigned",
+  "На эту вкладку не выведен ни один блок полей. Настроить можно в админке: «Сущности» → «Настройки отображения карточки».":"No field block is assigned to this tab. Configure it in the admin: Objects → Card display settings.",
   "Здесь появятся отправленные по этой записи коммуникации: канал, шаблон, дата отправки и статус доставки. Раздел в разработке.":"Communications sent for this record will appear here: channel, template, send date and delivery status. Under development.",
   "подраздел построен по сущности из Scheme Builder. Список открывается первым: колонки и фильтры настраиваются шестерёнкой (не больше 10 тех и других), запись открывается по клику и возвращает назад кнопкой «К списку». В карточке поля разложены по смысловым блокам, связи показаны ссылками на записи других сущностей. Правка поля подтверждается ✓ (Enter), отменяется ✕ или Esc; клик мимо поля сохраняет значение. Изменения хранятся в браузере.":"the subsection is built from a Scheme Builder object. The list opens first: columns and filters are configured with the gear (at most 10 of each), a record opens on click and the “Back to list” button returns you. In the card, fields are grouped by meaning and relations are shown as links to records of other objects. A field edit is confirmed with ✓ (Enter) and cancelled with ✕ or Esc; clicking outside the field saves the value. Changes are stored in the browser.",
 });

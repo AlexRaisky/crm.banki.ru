@@ -10,7 +10,7 @@
 <!-- ?v — метка версии: без неё браузер держит старый файл из HTTP-кеша
      и правки раздела доезжают к пользователю с задержкой. Поднимать при изменениях. -->
 <link rel="stylesheet" href="scheme-builder.css?v=6">
-<link rel="stylesheet" href="object-manager.css?v=2">
+<link rel="stylesheet" href="object-manager.css?v=4">
 <style>
   /* ============================================================
      НАСТРОЕЧНАЯ АДМИНКА (/settings, доступ — только ADMIN)
@@ -668,6 +668,28 @@ const S_EN = {
   "«В шапке» — поле выводится в верхней строке карточки рядом с названием записи. «Скрыть» — поле не показывается в карточке (в схеме и в БД оно остаётся). Стрелки меняют порядок полей внутри блока.":"“In header” shows the field in the card's top row next to the record title. “Hide” removes the field from the card (it stays in the schema and the database). The arrows change field order inside a block.",
   "Тип":"Type", "В шапке":"In header", "Скрыть":"Hide", "Порядок":"Order",
   "Scheme Builder не загружен":"Scheme Builder is not loaded",
+  /* подразделы раздела «Сущности» */
+  "Настройки объектов":"Object settings",
+  "Настройки отображения карточки":"Card display settings",
+  "Шапка карточки":"Card header", "Показывать шапку записи":"Show the record header",
+  "Тип объекта, название записи и «подсвеченные» поля показываются на всех карточках и выключить их нельзя: без шапки запись невозможно опознать. Какие поля выводить под названием — задаётся в «Настройках объектов», колонка «В шапке».":"The object type, record title and highlighted fields are shown on every card and cannot be turned off — without the header a record cannot be identified. Which fields appear under the title is set in Object settings, the “In header” column.",
+  "Раскладка полей":"Field layout", "Колонок в блоке полей":"Columns in a field block",
+  "На узком экране карточка всё равно перестраивается в одну колонку — настройка задаёт максимум.":"On a narrow screen the card collapses to a single column anyway — the setting defines the maximum.",
+  "Вкладки карточки":"Card tabs",
+  "Вкладка «Детали» есть всегда: на неё попадают блоки, которым вкладка не назначена. Остальные можно переименовать, добавить или удалить — блоки удалённой вкладки вернутся в «Детали».":"The Details tab always exists: blocks with no tab assigned land there. The rest can be renamed, added or removed — blocks of a removed tab return to Details.",
+  "Вкладка":"Tab", "Название вкладки":"Tab name",
+  "Удалить вкладку? Её блоки вернутся в «Детали».":"Remove the tab? Its blocks will return to Details.",
+  "Блоки на карточке":"Blocks on the card",
+  "Что показывать на карточке, на какой вкладке и в каком виде открывать. Скрытый блок не рисуется вовсе; свёрнутый открывается по клику на заголовок.":"What to show on the card, on which tab and in what state. A hidden block is not rendered at all; a collapsed one opens on a click on its title.",
+  "Показывать":"Show", "Свёрнут":"Collapsed",
+  "Связанные объекты справа":"Related objects on the right",
+  "Показывать колонку связанных объектов":"Show the related objects column",
+  "Колонка справа от полей, как в Salesforce. На узком экране она уходит под карточку. Если выключить, связанные записи снова показываются полем внутри блоков.":"A column to the right of the fields, as in Salesforce. On a narrow screen it moves below the card. If turned off, related records are shown as a field inside the blocks again.",
+  "Какие связанные объекты выводить:":"Which related objects to show:",
+  "У этой сущности нет полей типа «Связанный список» — выводить справа нечего. Такое поле добавляется в Scheme Builder.":"This object has no Related list fields — there is nothing to show on the right. Such a field is added in Scheme Builder.",
+  "Сбросить отображение карточки":"Reset card display",
+  "Вернуть отображение карточки к умолчанию?":"Reset the card display to the default?",
+  "Отображение сброшено":"Card display reset",
   /* блоки карточки — те же названия показывает панель */
   "Основное":"General", "Персональные данные":"Personal details", "Профиль клиента":"Client profile",
   "Документы":"Documents", "Адреса":"Addresses", "Согласия":"Consents",
@@ -1538,7 +1560,7 @@ window.CRM = window.CRM || (function(){
 <script src="scheme-builder.js?v=7"></script>
 <!-- «Сущности»: общий с панелью расчёт раскладки + сам раздел. Порядок важен:
      object-manager.js работает с хранилищем схемы из scheme-builder.js. -->
-<script src="../js/entity-layout.js?v=3"></script>
-<script src="object-manager.js?v=3"></script>
+<script src="../js/entity-layout.js?v=4"></script>
+<script src="object-manager.js?v=4"></script>
 </body>
 </html>
