@@ -24,13 +24,35 @@ public class TemplateService {
     private final AuditContext audit;
     private final AdminLogService adminLog;
     private final UnifiedTemplateService unified;
+    private final ru.banki.crm.service.prod.ProdDbService prodDb;
 
     public TemplateService(TemplateStore store, AuditContext audit,
-                           AdminLogService adminLog, UnifiedTemplateService unified) {
+                           AdminLogService adminLog, UnifiedTemplateService unified,
+                           ru.banki.crm.service.prod.ProdDbService prodDb) {
         this.store = store;
         this.audit = audit;
         this.adminLog = adminLog;
         this.unified = unified;
+        this.prodDb = prodDb;
+    }
+
+    /**
+     * Пре-флайт перед постановкой в очередь: сверяем payload с колонками прод-таблицы,
+     * которые NOT NULL и без DEFAULT.
+     *
+     * Зачем: доставка в прод асинхронная (очередь разгребается раз в 20 с), и отказ прода
+     * всплывал уже после того, как пользователь увидел «шаблон создан» и ушёл — шаблон
+     * оставался только у нас, а запись висела в ERROR. Бросаем 400 ДО коммита: методы
+     * транзакционные, поэтому локальная строка не остаётся, а карточка в мастере не чистится
+     * (она чистится только по успеху) и набранное не теряется.
+     *
+     * Прод не настроен или недоступен → список пуст, поведение прежнее.
+     */
+    private void requireProdAccepts(String channel, String payload) {
+        List<String> missing = prodDb.missingRequired(channel, payload);
+        if (missing.isEmpty()) return;
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Прод не примет шаблон: не заполнены обязательные поля — " + String.join(", ", missing));
     }
 
     // ------------------------------------------------------------------- LIST
@@ -194,8 +216,10 @@ public class TemplateService {
         store.insert(channel, code, dto);
 
         String codeStr = String.valueOf(code);
+        String payload = store.prodPayload(channel, codeStr);
+        requireProdAccepts(channel, payload);
         adminLog.logTable("template.d_template", "INSERT", store.rowJson(channel, codeStr));
-        unified.enqueueProdSync(channel, "INSERT", code, store.prodPayload(channel, codeStr));
+        unified.enqueueProdSync(channel, "INSERT", code, payload);
         return codeStr;
     }
 
@@ -230,7 +254,10 @@ public class TemplateService {
         adminLog.logTable("template.d_template", "UPDATE", store.rowJson(ch, code));
         dto.setChannel(ch);
         store.update(ch, code, dto);
-        unified.enqueueProdSync(ch, "UPDATE", Long.parseLong(code.trim()), store.prodPayload(ch, code));
+        // UPDATE, не нашедший строки в проде, превращается в INSERT — те же обязательные поля
+        String payload = store.prodPayload(ch, code);
+        requireProdAccepts(ch, payload);
+        unified.enqueueProdSync(ch, "UPDATE", Long.parseLong(code.trim()), payload);
     }
 
     // ----------------------------------------------------------------- DELETE

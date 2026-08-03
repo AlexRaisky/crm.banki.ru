@@ -176,6 +176,12 @@ var SFD_DICT_ADD = {
     partner: function(name){ return CRM.dictAddPartner(name); }
 };
 
+/* Исходные системы КЦ. Список закрытый: в проде source_system у d_segment_properties
+   NOT NULL без дефолта, и произвольное значение там никому не нужно. Появится новая
+   система — добавить сюда (или завести справочник, как у партнёров). */
+var SFD_SOURCE_SYSTEMS = ['', 'CALLTRACKING', 'KASKO', 'INVEST', 'INSMORTGAGE',
+                          'CPA', 'MPK', 'OSAGO', 'RKO'];
+
 /* Занести введённое в поле значение в справочник и подставить обратно то,
    что вернул сервер (он может вернуть уже существующее написание). */
 function sfdDictAdd(key, btn){
@@ -293,7 +299,7 @@ function sfdFieldDefs(d){
     if (isCC){
         segRows.push({ k:'segment', label:sfdT('Сегмент'), ro:true });
         segRows.push({ k:'segment_desc', label:sfdT('Описание сегмента') });
-        segRows.push({ k:'source_system', label:'Source system' });
+        segRows.push({ k:'source_system', label:'Source system', type:'select', opts: SFD_SOURCE_SYSTEMS });
         segRows.push({ k:'host_id', label:'Host Id' });
         segRows.push({ k:'kvint', label:'Kvint campaign Id' });
     }
@@ -714,6 +720,9 @@ function sfdCreateMissing(d){
     if (d.channel === 'cc' && !chainOn && !String(d.code == null ? '' : d.code).trim()) {
         miss.push(sfdCodeLabel(d.channel));
     }
+    /* В проде source_system у d_segment_properties NOT NULL без дефолта: пустое поле
+       заводило шаблон у нас, а в прод не уезжало (см. пре-флайт в TemplateService). */
+    if (d.channel === 'cc' && !String(d.source_system || '').trim()) miss.push('Source system');
     if (!String(d.product || '').trim()) miss.push('Product type');
     if (!String(d.touch || '').trim()) miss.push('Touch point');
     /* NoComName — полноценное значение справочника, но им же заводится пустая карточка
