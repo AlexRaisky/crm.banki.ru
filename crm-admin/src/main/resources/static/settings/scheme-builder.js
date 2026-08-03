@@ -151,7 +151,10 @@ const SchemaStore = {
 
 /* ---- состояние раздела ---- */
 let model = { version:"2.0", entities:[], relations:[] };
-const state = { scale:1, tx:20, ty:20, entity:null, field:null, relation:null, tab:"entity", drag:null, pan:null, q:"" };
+/* expanded — какие сущности показывают все поля; это состояние интерфейса,
+   в модель (и, значит, в Git) оно не попадает */
+const state = { scale:1, tx:20, ty:20, entity:null, field:null, relation:null, tab:"entity",
+                drag:null, pan:null, q:"", expanded:{} };
 let booted = false;
 
 const entityById = id => model.entities.find(e => e.id === id);
@@ -212,12 +215,44 @@ function renderLists(){
   $("#sbRelationCount").textContent = model.relations.length;
 }
 
-const MAX_ROWS = 12;   /* в узле показываем первые поля, остальное — счётчиком */
+/* В свёрнутом узле показываем первые поля — иначе крупные сущности
+   (у «Клиента» их 53) занимают весь экран. Остальные раскрываются по клику. */
+const MAX_ROWS = 12;
+/* «41 поле / 42 поля / 45 полей» — без склонения счётчик выглядит неряшливо */
+function pluralField(n){
+  if (UI_LANG_EN()) return n + (n === 1 ? " field" : " fields");
+  const d10 = n % 10, d100 = n % 100;
+  if (d10 === 1 && d100 !== 11) return n + " поле";
+  if (d10 >= 2 && d10 <= 4 && (d100 < 12 || d100 > 14)) return n + " поля";
+  return n + " полей";
+}
+function UI_LANG_EN(){ try { return JSON.parse(localStorage.getItem("crmpanel:lang")) === "en"; } catch(e){ return false; } }
+
+function toggleFields(id){
+  state.expanded[id] = !state.expanded[id];
+  renderNodes(); renderEdges();      /* высота узла изменилась — пересчитываем связи */
+}
+/* переключатель «развернуть/свернуть все» в тулбаре */
+function toggleAllFields(){
+  const anyCollapsed = model.entities.some(e => e.fields.length > MAX_ROWS && !state.expanded[e.id]);
+  model.entities.forEach(e => { state.expanded[e.id] = anyCollapsed; });
+  renderNodes(); renderEdges(); syncExpandBtn();
+}
+function syncExpandBtn(){
+  const btn = $("#sbExpand");
+  if (!btn) return;
+  const anyCollapsed = model.entities.some(e => e.fields.length > MAX_ROWS && !state.expanded[e.id]);
+  btn.textContent = anyCollapsed ? T("Развернуть все") : T("Свернуть все");
+}
+
 function renderNodes(){
   const host = $("#sbNodes");
   if (!host) return;
   host.innerHTML = model.entities.map(e => {
-    const rows = e.fields.slice(0, MAX_ROWS).map((f, i) => {
+    const expanded = !!state.expanded[e.id];
+    const shown = expanded ? e.fields : e.fields.slice(0, MAX_ROWS);
+    const rest = e.fields.length - shown.length;
+    const rows = shown.map((f, i) => {
       const isPk = f.name === "id";
       const type = f.target_entity ? `${f.ui_type} → ${f.target_entity}` : (f.ui_type || f.db_type);
       return `<div class="sb-field ${state.entity === e.id && state.field === i ? "active" : ""}" data-i="${i}">
@@ -225,20 +260,23 @@ function renderNodes(){
           ${isPk ? '<span class="sb-pk">PK</span>' : ""}<code>${esc(f.name)}</code></div>
         <div class="sb-ftype">${esc(type)}</div></div>`;
     }).join("");
-    const rest = e.fields.length - MAX_ROWS;
-    return `<div class="sb-node ${state.entity === e.id ? "selected" : ""}" data-id="${esc(e.id)}"
-        style="left:${e.x|0}px;top:${e.y|0}px">
+    let toggle = "";
+    if (rest > 0) toggle = `<div class="sb-more" data-toggle="1">▾ ${T("Показать ещё")} ${pluralField(rest)}</div>`;
+    else if (expanded && e.fields.length > MAX_ROWS) toggle = `<div class="sb-more" data-toggle="1">▴ ${T("Свернуть")}</div>`;
+    return `<div class="sb-node ${state.entity === e.id ? "selected" : ""} ${expanded ? "expanded" : ""}"
+        data-id="${esc(e.id)}" style="left:${e.x|0}px;top:${e.y|0}px">
       <div class="sb-node-head">
-        <div><div class="sb-node-title">${esc(e.label)}</div><div class="sb-node-sub">${esc(e.table)}</div></div>
+        <div><div class="sb-node-title">${esc(e.label)}</div>
+          <div class="sb-node-sub">${esc(e.table)} · ${pluralField(e.fields.length)}</div></div>
         <button class="sb-node-add" title="${T("Добавить поле")}">+</button>
       </div>
-      <div class="sb-node-fields">${rows}${rest > 0 ? `<div class="sb-more">+ ${rest} ${T("полей")}</div>` : ""}</div>
+      <div class="sb-node-fields">${rows}${toggle}</div>
     </div>`;
   }).join("");
 
   $$(".sb-node").forEach(n => {
     const id = n.dataset.id;
-    n.onclick = ev => { if (ev.target.closest(".sb-field") || ev.target.closest("button")) return;
+    n.onclick = ev => { if (ev.target.closest(".sb-field") || ev.target.closest("button") || ev.target.closest("[data-toggle]")) return;
       state.entity = id; state.field = null; setTab("entity"); render(); };
     n.querySelector(".sb-node-head").onmousedown = ev => {
       if (ev.target.closest("button")) return;
@@ -246,10 +284,13 @@ function renderNodes(){
       state.drag = { id, dx: p.x - e.x, dy: p.y - e.y }; ev.preventDefault();
     };
     n.querySelector(".sb-node-add").onclick = ev => { ev.stopPropagation(); state.entity = id; openFieldModal(); };
+    const tg = n.querySelector("[data-toggle]");
+    if (tg) tg.onclick = ev => { ev.stopPropagation(); toggleFields(id); syncExpandBtn(); };
     $$(".sb-field", n).forEach(row => row.onclick = ev => {
       ev.stopPropagation(); state.entity = id; state.field = Number(row.dataset.i); setTab("field"); render();
     });
   });
+  syncExpandBtn();
 }
 
 function nodeRect(id){
@@ -773,6 +814,7 @@ async function boot(){
   $("#sbAddRelation").onclick = openRelationModal;
   $("#sbAuto").onclick = autoLayout;
   $("#sbFit").onclick = fit;
+  $("#sbExpand").onclick = toggleAllFields;
   $("#sbSql").onclick = exportSql;
   $("#sbGit").onclick = saveToGit;
   $("#sbReload").onclick = async () => {

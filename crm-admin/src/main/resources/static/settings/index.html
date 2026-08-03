@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- ?v — метка версии: без неё браузер держит старый файл из HTTP-кеша
      и правки раздела доезжают к пользователю с задержкой. Поднимать при изменениях. -->
-<link rel="stylesheet" href="scheme-builder.css?v=3">
+<link rel="stylesheet" href="scheme-builder.css?v=4">
 <style>
   /* ============================================================
      НАСТРОЕЧНАЯ АДМИНКА (/settings, доступ — только ADMIN)
@@ -311,6 +311,7 @@
           <button class="btn" id="sbAddRelation" data-i18n="+ Связь">+ Связь</button>
           <button class="btn" id="sbAuto" data-i18n="Авто-раскладка">Авто-раскладка</button>
           <button class="btn" id="sbFit" data-i18n="Вписать">Вписать</button>
+          <button class="btn" id="sbExpand" data-i18n="Развернуть все">Развернуть все</button>
           <span class="spacer"></span>
           <span class="sb-dirty" id="sbDirty" data-i18n="● Есть несохранённые правки">● Есть несохранённые правки</span>
           <button class="btn" id="sbSql">SQL DDL</button>
@@ -513,6 +514,8 @@ const S_EN = {
   "+ Сущность":"+ Entity", "+ Связь":"+ Relation", "Авто-раскладка":"Auto layout", "Вписать":"Fit",
   "● Есть несохранённые правки":"● Unsaved changes", "Из Git":"From Git", "Сохранить в Git":"Save to Git",
   "Сущности":"Entities", "Связи":"Relations", "Сущность":"Entity", "Поле":"Field", "Связь":"Relation",
+  "Развернуть все":"Expand all", "Свернуть все":"Collapse all",
+  "Показать ещё":"Show", "Свернуть":"Collapse",
   "сущн.":"ent.", "связей":"rel.", "полей":"fields",
   "Ничего не найдено":"Nothing found", "Связей пока нет":"No relations yet",
   "Выберите сущность на схеме или создайте новую.":"Pick an entity on the diagram or create a new one.",
@@ -1478,6 +1481,6 @@ window.CRM = window.CRM || (function(){
   border:1px solid var(--line);color:var(--ink);padding:11px 15px;border-radius:11px;font-size:13px;
   box-shadow:0 14px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(8px);transition:.18s;pointer-events:none"></div>
 <style>#sbToast.show{opacity:1;transform:none}</style>
-<script src="scheme-builder.js?v=3"></script>
+<script src="scheme-builder.js?v=4"></script>
 </body>
 </html>
