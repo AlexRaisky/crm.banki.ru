@@ -716,7 +716,13 @@ function sfdCreateMissing(d){
     }
     if (!String(d.product || '').trim()) miss.push('Product type');
     if (!String(d.touch || '').trim()) miss.push('Touch point');
-    if (!d.comname || d.comname === 'NoComName') miss.push('communication_name');
+    /* NoComName — полноценное значение справочника, но им же заводится пустая карточка
+       (sfdBlank) и его же подставляет sfdComputeComname при пустой базе. По значению
+       «не трогали поле» и «выбрали NoComName осознанно» не различить — различаем по
+       флагу, который ставится при первой правке поля. */
+    if (!d.comname || (d.comname === 'NoComName' && !(SFD_STATE && SFD_STATE.comnameTouched))) {
+        miss.push('communication_name');
+    }
     /* У e-mail контент живёт в Letteros, а тему проставляет отправка — требуем не текст,
        а Letteros ID: он же становится кодом шаблона, и без него за шаблоном не стоит
        никакого письма. При цепочке ID задаётся по дням в таблице. */
@@ -899,6 +905,9 @@ function sfdRender(){
                 }
             }
             st.work[k] = inp.type === 'checkbox' ? inp.checked : inp.value;
+            /* поле тронули руками — дальше NoComName в нём считается осознанным выбором,
+               а не значением по умолчанию (см. sfdCreateMissing) */
+            if (k === 'comname') st.comnameTouched = true;
             /* тумблер Live Activity — не поле шаблона, а переключатель канала:
                набранное (текст, ссылки, сегментация) остаётся, меняется только
                набор канальных полей и таблица, в которую шаблон уедет */
