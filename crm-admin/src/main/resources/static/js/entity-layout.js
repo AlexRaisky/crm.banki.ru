@@ -1,0 +1,176 @@
+/* =========================================================
+   РАСКЛАДКА КАРТОЧКИ СУЩНОСТИ — общий модуль.
+
+   Один и тот же расчёт нужен в двух местах: пользовательская панель
+   рисует по нему карточку записи (js/entities.js), настроечная админка
+   по нему же строит редактор («Сущности» → настройка полей,
+   settings/object-manager.js). Поэтому логика вынесена сюда, а не
+   продублирована — иначе настройка и отображение разъезжаются.
+
+   ЧТО ХРАНИТСЯ В СХЕМЕ. Пользовательские настройки лежат внутри самой
+   сущности (schema/crm-schema.json → entity.layout) и потому едут вместе
+   со схемой в Git, а позже — в БД:
+
+     entity.technical = true            — служебная сущность, в панели не показывается
+     entity.layout = {
+       blocks: ["Основное", …],         — порядок и состав блоков карточки
+       block:  { <поле>: "<блок>" },    — в каком блоке показывать поле
+       header: [ <поле>, … ],           — поля в верхней строке карточки
+       hidden: [ <поле>, … ]            — поля, скрытые из карточки
+     }
+
+   Всё, что не настроено явно, раскладывается по умолчанию (DEFAULTS для
+   известных сущностей плюс автоправило autoBlock) — поэтому сущность,
+   заведённая в Scheme Builder, сразу выглядит осмысленно, а поле,
+   добавленное позже, не теряется.
+   ========================================================= */
+(function(global){
+"use strict";
+
+/* Списки полей ниже задают ТОЛЬКО принадлежность блоку. Порядок полей внутри
+   блока берётся из самой сущности (entity.fields) — так его можно менять
+   стрелками в настройке и в Scheme Builder, не правя этот файл. Пример, где
+   порядок значим: у клиента «Адреса совпадают» стоит в схеме перед фактическим
+   адресом, потому что фактический адрес показывается по результату галочки. */
+
+/* Полный список блоков — из него собирается выпадающий список в настройке.
+   Порядок важен: в этом же порядке блоки идут в карточке. */
+var BLOCKS = [
+  "Основное", "Персональные данные", "Профиль клиента", "Документы", "Адреса",
+  "Согласия", "Стоп-листы каналов", "Доход и скоринг", "Самозапрет на кредиты",
+  "Реквизиты", "Доступность", "Конфигурация", "Связи", "Флаги", "Показатели", "Служебные"
+];
+var SYSTEM_BLOCK = "Служебные";
+
+/* Раскладка по умолчанию для сущностей исходной схемы. Идентификаторы
+   намеренно уведены в «Служебные»: в шапке карточки достаточно одного
+   рабочего ID (у клиента — ID личного кабинета, см. HEADER). */
+var DEFAULTS = {
+  record_type: [
+    ["Основное",     ["name","code","entity_name","is_active"]],
+    ["Конфигурация", ["fields_config"]],
+    ["Служебные",    ["id"]]
+  ],
+  lead: [
+    ["Основное",            ["status"]],
+    ["Персональные данные", ["first_name","second_name","last_name"]],
+    ["Профиль клиента",     ["has_children","has_real_estate","has_pets","has_car"]],
+    ["Связи",               ["client_id","work_ids","contact_info"]],
+    ["Служебные",           ["id","myb_id","create_ts","update_ts","user_create","user_update"]]
+  ],
+  client: [
+    ["Персональные данные", ["first_name","second_name","last_name"]],
+    ["Профиль клиента",     ["has_children","has_real_estate","has_pets","has_car"]],
+    ["Документы",           ["passport_series","passport_number","passport_issued_by","passport_issue_date",
+                             "passport_department_code","inn","snils","driver_license_series",
+                             "driver_license_number","driver_license_issue_date"]],
+    ["Адреса",              ["registration_address","address_is_equal","actual_address_of_residence"]],
+    ["Согласия",            ["personal_data","advertisement","bank_credit_history","esia","marketplace"]],
+    ["Стоп-листы каналов",  ["blacklist_callcenter","blacklist_sms","blacklist_email",
+                             "blacklist_mobile_push","blacklist_vk","blacklist_finassistant"]],
+    ["Доход и скоринг",     ["monthly_income","credit_score_banki","mfo_credit_score_banki","credit_score_okb",
+                             "mfo_credit_score_okb","credit_score_scoring_bureau",
+                             "mfo_credit_score_scoring_bureau","credit_score_nbki","application_score"]],
+    ["Самозапрет на кредиты",["has_credit_self_ban","credit_self_ban_start_date","credit_self_ban_condition"]],
+    ["Связи",               ["work_ids","contact_info"]],
+    ["Служебные",           ["id","main_myb_id","user_id","person_id",
+                             "create_ts","update_ts","user_create","user_update"]]
+  ],
+  client_contact_info: [
+    ["Основное",    ["type","value"]],
+    ["Доступность", ["status","double_opt_in","score"]],
+    ["Связи",       ["client_id","lead_id"]],
+    ["Служебные",   ["id","create_ts","update_ts","user_create","user_update"]]
+  ],
+  work: [
+    ["Основное",  ["record_type_id","organization_name","position","start_date"]],
+    ["Реквизиты", ["inn","ogrn"]],
+    ["Адреса",    ["legal_address","actual_address"]],
+    ["Служебные", ["id","create_ts","update_ts","user_create","user_update"]]
+  ]
+};
+/* поля верхней строки карточки по умолчанию */
+var HEADER = { client: ["user_id"] };
+
+var REL_UI = ["lookup","multilookup","related_list"];
+function isRelation(f){ return REL_UI.indexOf(f.ui_type) >= 0; }
+/* идентификатор — «id» или «*_id», который НЕ является связью (иначе это lookup) */
+function isIdField(f){ return f.name === "id" || (/_id$/.test(f.name) && !isRelation(f)); }
+
+/* куда положить поле, про которое настройки нет */
+function autoBlock(f){
+  if (isIdField(f) || /_ts$/.test(f.name) || f.name === "user_create" || f.name === "user_update") return SYSTEM_BLOCK;
+  if (isRelation(f)) return "Связи";
+  if (f.ui_type === "checkbox") return "Флаги";
+  if (f.ui_type === "currency" || f.ui_type === "percent") return "Показатели";
+  return "Основное";
+}
+
+/* раскладка по умолчанию: { blocks:[…], block:{поле:блок}, header:[…], hidden:[] } */
+function defaults(e){
+  var spec = DEFAULTS[e.id] || [], blocks = [], block = {}, known = {};
+  (e.fields || []).forEach(function(f){ known[f.name] = 1; });
+  spec.forEach(function(g){
+    var used = g[1].filter(function(n){ return known[n]; });
+    if (!used.length) return;
+    if (blocks.indexOf(g[0]) < 0) blocks.push(g[0]);
+    used.forEach(function(n){ block[n] = g[0]; });
+  });
+  (e.fields || []).forEach(function(f){
+    if (block[f.name]) return;
+    var t = autoBlock(f);
+    block[f.name] = t;
+    if (blocks.indexOf(t) < 0) blocks.push(t);
+  });
+  return { blocks: blocks, block: block, header: (HEADER[e.id] || []).filter(function(n){ return known[n]; }), hidden: [] };
+}
+
+/* Итоговая раскладка: настройки сущности поверх умолчаний.
+   Возвращает готовые к отрисовке блоки (пустые отброшены), поля шапки
+   и служебную часть — её использует редактор в настройках. */
+function resolve(e){
+  var d = defaults(e), L = (e && e.layout) || {};
+  var block  = Object.assign({}, d.block, L.block || {});
+  var titles = (Array.isArray(L.blocks) && L.blocks.length) ? L.blocks.slice() : d.blocks.slice();
+  var hidden = Array.isArray(L.hidden) ? L.hidden.slice() : d.hidden.slice();
+  var header = Array.isArray(L.header) ? L.header.slice() : d.header.slice();
+
+  var bag = {};
+  titles.forEach(function(t){ bag[t] = []; });
+  (e.fields || []).forEach(function(f){
+    if (hidden.indexOf(f.name) >= 0) return;
+    var t = block[f.name] || autoBlock(f);
+    if (!bag[t]) { bag[t] = []; titles.push(t); }
+    bag[t].push(f);
+  });
+  var blocks = titles.map(function(t){ return { title:t, fields: bag[t] || [] }; })
+                     .filter(function(b){ return b.fields.length; });
+  /* «Служебные» — всегда последним блоком, как ни настраивай порядок */
+  blocks = blocks.filter(function(b){ return b.title !== SYSTEM_BLOCK; })
+          .concat(blocks.filter(function(b){ return b.title === SYSTEM_BLOCK; }));
+
+  var byName = {};
+  (e.fields || []).forEach(function(f){ byName[f.name] = f; });
+  return {
+    blocks: blocks,
+    header: header.map(function(n){ return byName[n]; }).filter(Boolean),
+    hidden: hidden,
+    block: block,
+    titles: titles
+  };
+}
+
+/* список блоков для выпадающего списка в настройке: стандартные + уже использованные */
+function blockChoices(e){
+  var r = resolve(e), out = BLOCKS.slice();
+  r.titles.concat(Object.keys(r.block).map(function(k){ return r.block[k]; }))
+    .forEach(function(t){ if (t && out.indexOf(t) < 0) out.push(t); });
+  return out;
+}
+
+global.EntityLayout = {
+  BLOCKS: BLOCKS, SYSTEM_BLOCK: SYSTEM_BLOCK,
+  defaults: defaults, resolve: resolve, autoBlock: autoBlock,
+  blockChoices: blockChoices, isIdField: isIdField, isRelation: isRelation
+};
+})(window);

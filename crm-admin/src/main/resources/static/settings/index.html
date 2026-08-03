@@ -9,7 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- ?v — метка версии: без неё браузер держит старый файл из HTTP-кеша
      и правки раздела доезжают к пользователю с задержкой. Поднимать при изменениях. -->
-<link rel="stylesheet" href="scheme-builder.css?v=5">
+<link rel="stylesheet" href="scheme-builder.css?v=6">
+<link rel="stylesheet" href="object-manager.css?v=1">
 <style>
   /* ============================================================
      НАСТРОЕЧНАЯ АДМИНКА (/settings, доступ — только ADMIN)
@@ -296,6 +297,17 @@
           пользователь. Требуется запущенный crm-admin и роль ADMIN.</div>
         <!-- admin-users.js рендерит сюда (контейнер по историческому id) -->
         <div id="sec-access"></div>
+      </section>
+
+      <!-- ===== Сущности (Object Manager) — список объектов и настройка их полей =====
+           Содержимое целиком рисует object-manager.js по той же схеме, с которой
+           работает Scheme Builder. -->
+      <section class="pane" id="pane-objects">
+        <h1 data-i18n-html="h_objects">Сущности <span class="grad">CRM</span></h1>
+        <div class="sub" data-i18n="Список объектов CRM, как в Salesforce. Здесь настраивается, как объект выглядит в пользовательской панели: блоки карточки записи, порядок полей, какие поля выводить в верхней строке и что скрыть. Флаг «Техническая» убирает служебную сущность из панели совсем.">Список объектов CRM, как в Salesforce. Здесь настраивается, как объект выглядит
+          в пользовательской панели: блоки карточки записи, порядок полей, какие поля выводить
+          в верхней строке и что скрыть. Флаг «Техническая» убирает служебную сущность из панели совсем.</div>
+        <div id="omHost"></div>
       </section>
 
       <!-- ===== Scheme Builder — конструктор схемы данных ===== -->
@@ -632,6 +644,37 @@ const S_EN = {
   "Доступно только администраторам":"Available to administrators only",
   "Не удалось загрузить настройки с сервера":"Failed to load settings from the server",
   "Не удалось сохранить":"Failed to save",
+  /* ---- «Сущности» (Object Manager) ---- */
+  "Сущности":"Objects",
+  "Список объектов CRM: блоки карточки, порядок полей, поля в шапке и флаг «Техническая».":"CRM object list: record card blocks, field order, header fields and the Technical flag.",
+  "Список объектов CRM, как в Salesforce. Здесь настраивается, как объект выглядит в пользовательской панели: блоки карточки записи, порядок полей, какие поля выводить в верхней строке и что скрыть. Флаг «Техническая» убирает служебную сущность из панели совсем.":"A Salesforce-style list of CRM objects. Here you configure how an object looks in the user panel: record card blocks, field order, which fields appear in the header row and what to hide. The Technical flag removes a service object from the panel entirely.",
+  "Поиск сущности…":"Search objects…",
+  "Название":"Name", "Множественное":"Plural", "API-имя":"API name", "Таблица":"Table",
+  "Полей":"Fields", "Показ":"Visibility", "Настроить →":"Set up →", "К списку сущностей":"Back to objects",
+  "Техническая":"Technical", "В панели":"In the panel", "Ничего не найдено":"Nothing found",
+  "Сущности, поля, типы и связи заводятся в разделе «Scheme Builder». Здесь настраивается то, как объект показывается в пользовательской панели: блоки карточки, порядок полей, поля верхней строки и что скрыть.":"Objects, fields, types and relations are created in Scheme Builder. Here you configure how an object is shown in the user panel: card blocks, field order, header fields and what to hide.",
+  "Свойства объекта":"Object properties",
+  "Название во множественном числе":"Plural label", "Поле заголовка записи":"Record title field",
+  "Описание":"Description",
+  "Служебный справочник: раздел «Сущности» в пользовательской панели такую сущность не показывает — работать с ней нужно в схеме.":"A service dictionary: the Objects section of the user panel does not show such an object — work with it in the schema instead.",
+  "служебная сущность: в пользовательской панели не показывается":"service object: not shown in the user panel",
+  "Блоки карточки":"Card blocks",
+  "Порядок блоков в карточке записи. Блок «Служебные» всегда показывается последним, пустые блоки не выводятся.":"The order of blocks in the record card. The System fields block always comes last and empty blocks are not rendered.",
+  "Выше":"Move up", "Ниже":"Move down", "Блок":"Block", "Название блока":"Block name",
+  "Блок добавлен":"Block added", "Сбросить раскладку":"Reset layout",
+  "Вернуть раскладку карточки к умолчанию?":"Reset the card layout to the default?",
+  "Раскладка сброшена":"Layout reset",
+  "Поля и их отображение":"Fields and their display",
+  "«В шапке» — поле выводится в верхней строке карточки рядом с названием записи. «Скрыть» — поле не показывается в карточке (в схеме и в БД оно остаётся). Стрелки меняют порядок полей внутри блока.":"“In header” shows the field in the card's top row next to the record title. “Hide” removes the field from the card (it stays in the schema and the database). The arrows change field order inside a block.",
+  "Тип":"Type", "В шапке":"In header", "Скрыть":"Hide", "Порядок":"Order",
+  "Scheme Builder не загружен":"Scheme Builder is not loaded",
+  /* блоки карточки — те же названия показывает панель */
+  "Основное":"General", "Персональные данные":"Personal details", "Профиль клиента":"Client profile",
+  "Документы":"Documents", "Адреса":"Addresses", "Согласия":"Consents",
+  "Стоп-листы каналов":"Channel stop lists", "Доход и скоринг":"Income & scoring",
+  "Самозапрет на кредиты":"Self-imposed credit ban", "Реквизиты":"Company details",
+  "Доступность":"Reachability", "Конфигурация":"Configuration", "Связи":"Relations",
+  "Флаги":"Flags", "Показатели":"Metrics", "Служебные":"System fields",
 };
 function t2(s){ return (LANG === "en" && S_EN[s]) ? S_EN[s] : s; }
 const S_HTML = {
@@ -639,11 +682,13 @@ const S_HTML = {
         h_mon:'Мониторинг <span class="grad">интеграций</span>', h_up:'Загруженные <span class="grad">инструменты</span>',
         h_gen:'Общие <span class="grad">параметры</span>', h_diag:'Диагностика <span class="grad">хранилища</span>',
         h_access:'Управление <span class="grad">доступом</span>',
+        h_objects:'Сущности <span class="grad">CRM</span>',
         h_scheme:'Scheme <span class="grad">Builder</span>' },
   en: { h_over:'Admin <span class="grad">settings</span>', h_apps:'Apps <span class="grad">& sections</span>',
         h_mon:'Integration <span class="grad">monitoring</span>', h_up:'Uploaded <span class="grad">tools</span>',
         h_gen:'General <span class="grad">settings</span>', h_diag:'Storage <span class="grad">diagnostics</span>',
         h_access:'Access <span class="grad">management</span>',
+        h_objects:'CRM <span class="grad">objects</span>',
         h_scheme:'Scheme <span class="grad">Builder</span>' }
 };
 function translateStatic(){
@@ -675,6 +720,8 @@ const PANES = [
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' },
   { id:"access",     label:"Управление доступом", desc:"Пользователи панели: роли и доступные разделы. Требуется запущенный crm-admin.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
+  { id:"objects",    label:"Сущности", desc:"Список объектов CRM: блоки карточки, порядок полей, поля в шапке и флаг «Техническая».",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.5h18M9 9.5V20"/></svg>' },
   { id:"scheme",     label:"Scheme Builder", desc:"Конструктор схемы данных CRM: сущности, поля, типы и связи.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><rect x="3" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v6M17.5 15V12H6.5"/></svg>' },
   { id:"general",    label:"Общие параметры", desc:"Тема оформления (светлая, тёмная, системная) и язык интерфейса.",
@@ -696,6 +743,8 @@ function openPane(id){
   if (id === "access" && typeof renderAccessSection === "function") renderAccessSection();
   /* Scheme Builder инициализируется лениво: схема грузится при первом открытии */
   if (id === "scheme" && window.SchemeBuilder) window.SchemeBuilder.open();
+  /* «Сущности» работают с той же схемой — перечитываем её при каждом открытии */
+  if (id === "objects" && window.ObjectManager) window.ObjectManager.open();
 }
 PANES.forEach(p => {
   const el = document.createElement("div");
@@ -1484,6 +1533,10 @@ window.CRM = window.CRM || (function(){
   border:1px solid var(--line);color:var(--ink);padding:11px 15px;border-radius:11px;font-size:13px;
   box-shadow:0 14px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(8px);transition:.18s;pointer-events:none"></div>
 <style>#sbToast.show{opacity:1;transform:none}</style>
-<script src="scheme-builder.js?v=5"></script>
+<script src="scheme-builder.js?v=6"></script>
+<!-- «Сущности»: общий с панелью расчёт раскладки + сам раздел. Порядок важен:
+     object-manager.js работает с хранилищем схемы из scheme-builder.js. -->
+<script src="../js/entity-layout.js?v=1"></script>
+<script src="object-manager.js?v=1"></script>
 </body>
 </html>
