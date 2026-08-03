@@ -6,13 +6,21 @@
 (function () {
   "use strict";
 
+  /* Подписи ВСЕХ разделов из Sections.ALL: раздел без подписи показывался бы сырым id
+     (так до V29 выглядели «А/Б тесты»). Отчёты и мониторинг с V29 — по секции на пункт
+     меню, поэтому здесь их пункты, а не зонтичные reports/monitoring. */
   var SECTION_LABELS = {
     home: "Главная", deviations: "Панель отклонений", onelink: "OneLink Builder",
     admin: "Мастер коммуникаций", templates: "Список шаблонов",
-    dashboard: "Дашборд", promo: "Планирование промо",
+    dashboard: "Общая статистика", promo: "Планирование промо",
+    abtests: "А/Б тесты",
     journeys: "Цепочки", access: "Управление доступом",
-    srcbuilder: "Конструктор source", reports: "Отчёты",
-    heatmap: "Тепловая карта", monitoring: "Мониторинг",
+    srcbuilder: "Конструктор source",
+    heatmap: "Тепловая карта",
+    "rep-planfact": "Plan-Fact", "rep-matrix": "CRM Matrix",
+    "rep-leadgen": "CRM Leadgen", "rep-smscheck": "ЧЕК СМС траффик",
+    "rep-demo": "Пример визуализации отчёта",
+    "mon-campaigns": "Базовая работа кампаний",
     uploads: "Загруженные инструменты"
   };
   function tr(s) { return (typeof window.t === "function") ? window.t(s) : s; }
@@ -24,7 +32,7 @@
     { k: "delete", t: "Удаление" }
   ];
 
-  var matrixSections = [];   // [{id, writable, adminOnly}] — не-adminOnly, для матрицы роли
+  var matrixSections = [];   // [{id, writable, adminOnly, group}] — не-adminOnly, для матрицы роли
   var allRoles = [];         // [{id, name, isAdmin, isSuperAdmin, isSystem, access, manageable, users}]
   var rendered = false;
 
@@ -93,7 +101,50 @@
       })));
     var body = [head];
 
+    /* Разделов стало больше двадцати (у каждого отчёта своя секция), поэтому строки
+       разбиты заголовками групп сайдбара, а у заголовка — свой переключатель столбца:
+       «выдать всю группу» частая операция, кликать пять отчётов подряд незачем.
+       Переключатель читает rows лениво, в момент клика: к тому времени строки построены. */
+    var groupMembers = {};
     matrixSections.forEach(function (sec) {
+      var g = sec.group || "";
+      if (!g) return;
+      (groupMembers[g] = groupMembers[g] || []).push(sec);
+    });
+    function toggleGroup(group, capKey) {
+      var cells = (groupMembers[group] || []).map(function (sec) {
+        var r = rows[sec.id];
+        return r && r[capKey];
+      }).filter(function (cb) { return cb && !cb.disabled; });
+      if (!cells.length) return;
+      var turnOn = cells.some(function (cb) { return !cb.checked; });
+      cells.forEach(function (cb) {
+        cb.checked = turnOn;
+        if (capKey === "read") cb.dispatchEvent(new Event("change"));
+      });
+    }
+    var lastGroup = null;
+
+    matrixSections.forEach(function (sec) {
+      var group = sec.group || "";
+      if (group !== lastGroup) {
+        lastGroup = group;
+        if (group) {
+          var gh = "padding:7px 8px;border-bottom:1px solid var(--line);background:var(--card2);" +
+                   "color:var(--dim);font-size:11.5px;font-weight:600";
+          var gcells = [h("td", { style: gh }, [tr(group)])];
+          CAPS.forEach(function (c) {
+            gcells.push(h("td", {
+              style: gh + ";text-align:center;cursor:pointer",
+              title: tr("Выбрать/снять всю группу"),
+              onclick: (function (g, capKey) {
+                return function () { toggleGroup(g, capKey); };
+              })(group, c.k)
+            }, ["·"]));
+          });
+          body.push(h("tr", null, gcells));
+        }
+      }
       var cur = byId[sec.id] || {};
       var checks = {};
       CAPS.forEach(function (c) {
@@ -115,7 +166,10 @@
         });
       });
       rows[sec.id] = checks;
-      var cells = [h("td", { style: td.replace("center", "left") + ";color:var(--ink)" }, [sectionLabel(sec.id)])];
+      var cells = [h("td", {
+        style: td.replace("center", "left") + ";color:var(--ink)" +
+               (sec.group ? ";padding-left:22px" : "")   // вложенность в группу — отступом
+      }, [sectionLabel(sec.id)])];
       CAPS.forEach(function (c) {
         var cell = h("td", { style: td });
         if (c.k === "read" || sec.writable) cell.appendChild(checks[c.k]);
