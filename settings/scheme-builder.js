@@ -120,7 +120,13 @@ const SchemaStore = {
     const base = await r.json();
     this.baseline = JSON.parse(JSON.stringify(base));
     const draft = this.readDraft();
-    return draft || base;
+    /* Черновик накладываем НА файл, а не подменяем им файл: иначе сущность,
+       добавленная в схему позже, не появилась бы ни у кого с готовым черновиком
+       (так пропадали «Шаблоны и сегменты»). Удалённые вручную не возвращаются —
+       их id лежат в model.deleted. Правило общее с панелью: ../js/entity-layout.js. */
+    if (!draft) return base;
+    return (window.EntityLayout && EntityLayout.mergeDraft)
+      ? EntityLayout.mergeDraft(base, draft) : draft;
   },
   async save(model){
     if (this.mode === "api"){
@@ -378,6 +384,10 @@ function renderEntityForm(out){
     if (!confirm(T("Удалить сущность и все её связи?"))) return;
     model.entities = model.entities.filter(x => x.id !== e.id);
     model.relations = model.relations.filter(r => r.from_entity !== e.id && r.to_entity !== e.id);
+    /* помечаем удаление: иначе наложение черновика на файл (EntityLayout.mergeDraft)
+       вернуло бы сущность обратно при следующей загрузке */
+    if (!Array.isArray(model.deleted)) model.deleted = [];
+    if (model.deleted.indexOf(e.id) < 0) model.deleted.push(e.id);
     state.entity = null; state.field = null;
     commit("delete", "entity", e.id, null); toast(T("Сущность удалена"));
   };
@@ -612,6 +622,9 @@ function openEntityModal(){
         description:T("Первичный ключ"), target_entity:"", relation_kind:"", default_value:"", options:[] }],
       x: 40 + (n % 3) * 330, y: 40 + Math.floor(n / 3) * 300 };
     model.entities.push(e);
+    /* сущность с таким id могли раньше удалить — снимаем пометку, иначе наложение
+       черновика на файл считало бы её удалённой */
+    if (Array.isArray(model.deleted)) model.deleted = model.deleted.filter(x => x !== id);
     state.entity = id; state.field = null; setTab("entity");
     /* commit() сохраняет модель черновиком в crmpanel:schemaDraft — по этому же
        ключу пользовательская панель (js/entities.js) строит подразделы раздела
@@ -665,7 +678,11 @@ function download(name, content, type){
   setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 30000);
 }
 function saveToGit(){
-  const json = JSON.stringify(model, null, 2);
+  /* deleted — служебная пометка черновика (что не возвращать при наложении на файл).
+     В сам файл она не едет: там сущности просто нет, и это уже вся правда. */
+  const forFile = JSON.parse(JSON.stringify(model));
+  delete forFile.deleted;
+  const json = JSON.stringify(forFile, null, 2);
   openModal(`<h3>${T("Сохранить в Git")}</h3>
     <div class="sb-modal-note">${T("Схема версионируется в репозитории. Скачайте файл и положите его по пути")}
       <code>crm-admin/src/main/resources/static/settings/schema/crm-schema.json</code>,

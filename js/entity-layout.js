@@ -188,9 +188,58 @@ function blockChoices(e){
   return out;
 }
 
+/* ============================================================
+   Черновик поверх файла схемы.
+
+   Правки Scheme Builder копятся черновиком в localStorage, а сама схема
+   едет в репозитории. Если черновик просто подменять файлом, сущность,
+   добавленная в файл позже, не увидит никто, кто хоть раз открывал
+   конструктор: его черновик снят раньше и про неё не знает. Именно так
+   пропали «Шаблоны и сегменты».
+
+   Поэтому черновик накладывается НА файл: всё, что пользователь правил,
+   выигрывает, а сущности и связи, появившиеся в файле после снятия
+   черновика, доливаются. Удалённые вручную не возвращаются — Scheme
+   Builder помечает их в model.deleted.
+
+   Правило должно быть одинаковым в панели и в админке, иначе они
+   разойдутся в том, какие сущности вообще существуют, — поэтому оно
+   лежит здесь, в общем модуле, а не продублировано в двух местах.
+   ============================================================ */
+function clone(x){ return JSON.parse(JSON.stringify(x)); }
+function mergeDraft(base, draft){
+  if (!draft || !Array.isArray(draft.entities)) return base || draft || null;
+  if (!base  || !Array.isArray(base.entities))  return draft;
+
+  var out = clone(draft);
+  if (!Array.isArray(out.relations)) out.relations = [];
+  var dropped = Array.isArray(out.deleted) ? out.deleted : [];
+  var have = {};
+  out.entities.forEach(function(e){ have[e.id] = 1; });
+
+  base.entities.forEach(function(e){
+    if (have[e.id] || dropped.indexOf(e.id) >= 0) return;
+    out.entities.push(clone(e));
+    have[e.id] = 1;
+  });
+
+  /* связи новой сущности: добавляем только те, у которых оба конца на месте */
+  var relHave = {};
+  out.relations.forEach(function(r){ relHave[r.id] = 1; });
+  base.relations && base.relations.forEach(function(r){
+    if (relHave[r.id]) return;
+    if (!have[r.from_entity] || !have[r.to_entity]) return;
+    out.relations.push(clone(r));
+  });
+
+  out.version = base.version || out.version;
+  return out;
+}
+
 global.EntityLayout = {
   BLOCKS: BLOCKS, SYSTEM_BLOCK: SYSTEM_BLOCK,
   defaults: defaults, resolve: resolve, autoBlock: autoBlock,
-  blockChoices: blockChoices, isIdField: isIdField, isRelation: isRelation
+  blockChoices: blockChoices, isIdField: isIdField, isRelation: isRelation,
+  mergeDraft: mergeDraft
 };
 })(window);
