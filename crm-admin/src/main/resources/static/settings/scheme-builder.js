@@ -270,7 +270,7 @@ function renderNodes(){
           <div class="sb-node-sub">${esc(e.table)} · ${pluralField(e.fields.length)}</div></div>
         <button class="sb-node-add" title="${T("Добавить поле")}">+</button>
       </div>
-      <div class="sb-node-fields">${rows}${toggle}</div>
+      <div class="sb-node-fields">${rows}</div>${toggle}
     </div>`;
   }).join("");
 
