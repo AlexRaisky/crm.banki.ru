@@ -1,0 +1,90 @@
+/* ===== «Сущности» — список объектов и настройка их полей (Object Manager) ===== */
+@scope (#pane-objects){
+  .om-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .om-search{flex:1 1 260px;min-width:200px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;
+    color:var(--ink);font-family:var(--sans);font-size:13px;padding:9px 12px;outline:none}
+  .om-search:focus{border-color:rgba(80,195,255,.5)}
+  .om-bar .spacer{margin-left:auto}
+  .om-count{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+
+  /* ---- список объектов ---- */
+  .om-tbl-wrap{border:1px solid var(--line);border-radius:14px;overflow:auto;background:var(--card)}
+  .om-tbl{width:100%;border-collapse:collapse;min-width:760px}
+  .om-tbl th{position:sticky;top:0;z-index:1;background:var(--card2);color:var(--dim);text-align:left;
+    font-size:11.5px;font-weight:700;letter-spacing:.02em;padding:10px 14px;border-bottom:1px solid var(--line);
+    white-space:nowrap}
+  .om-tbl td{padding:10px 14px;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:middle}
+  .om-tbl tbody tr:last-child td{border-bottom:none}
+  .om-tbl tbody tr.clickable{cursor:pointer}
+  .om-tbl tbody tr.clickable:hover{background:var(--card2)}
+  .om-tbl .mono{font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .om-tbl .num{font-variant-numeric:tabular-nums;text-align:right}
+  .om-go{color:var(--blue);font-size:12.5px;font-weight:600;white-space:nowrap}
+
+  .om-tag{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.04em;
+    padding:3px 9px;border-radius:11px;background:var(--green-bg);color:var(--green);white-space:nowrap}
+  .om-tag.tech{background:var(--amber-bg);color:var(--amber)}
+
+  /* ---- карточка объекта ---- */
+  .om-back{background:none;border:none;color:var(--blue);font-family:var(--sans);font-size:13px;font-weight:600;
+    cursor:pointer;padding:0;margin-bottom:12px}
+  .om-back:hover{text-decoration:underline}
+  .om-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .om-head h2{font-size:20px;font-weight:700;margin:0}
+  .om-head .mono{font-family:var(--mono);font-size:12px;color:var(--faint)}
+
+  .om-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .om-fg{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+  .om-fg label{font-size:11.5px;color:var(--faint)}
+  .om-fg input,.om-fg select,.om-fg textarea{background:var(--bg2);border:1px solid var(--line);border-radius:9px;
+    color:var(--ink);font-family:var(--sans);font-size:13px;padding:8px 10px;outline:none;width:100%}
+  .om-fg textarea{resize:vertical;min-height:58px}
+  .om-fg input:focus,.om-fg select:focus,.om-fg textarea:focus{border-color:rgba(80,195,255,.5)}
+  .om-fg input.mono{font-family:var(--mono)}
+  .om-check{display:flex;align-items:flex-start;gap:9px;font-size:13px;cursor:pointer;margin-bottom:10px}
+  .om-check input{width:16px;height:16px;accent-color:#3CFAB4;cursor:pointer;flex:0 0 auto;margin-top:2px}
+  .om-check .hint{display:block;font-size:11.5px;color:var(--faint);margin-top:2px}
+  .om-acts{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px}
+  .om-note{font-size:11.5px;color:var(--faint);line-height:1.6}
+
+  /* ---- порядок блоков ---- */
+  .om-blocks{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
+  .om-block{display:flex;align-items:center;gap:8px;background:var(--card2);border:1px solid var(--line);
+    border-radius:10px;padding:7px 11px}
+  .om-block .t{flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .om-block .n{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+  .om-block button{width:26px;height:26px;padding:0;border-radius:7px;border:1px solid var(--line);
+    background:var(--card);color:var(--dim);cursor:pointer;font-size:12px;line-height:1}
+  .om-block button:hover{border-color:var(--blue);color:var(--blue)}
+  .om-block button:disabled{opacity:.35;cursor:default}
+  .om-block button:disabled:hover{border-color:var(--line);color:var(--dim)}
+
+  /* ---- таблица полей ---- */
+  .om-fields th.c,.om-fields td.c{text-align:center;width:1%;white-space:nowrap}
+  .om-fields select{background:var(--bg2);border:1px solid var(--line);border-radius:8px;color:var(--ink);
+    font-family:var(--sans);font-size:12.5px;padding:5px 8px;outline:none;max-width:190px}
+  .om-fields input[type=text]{background:var(--bg2);border:1px solid var(--line);border-radius:8px;color:var(--ink);
+    font-family:var(--sans);font-size:13px;padding:5px 8px;outline:none;width:100%;min-width:130px}
+  .om-fields input[type=checkbox]{width:16px;height:16px;accent-color:#3CFAB4;cursor:pointer}
+  .om-fields tr.hidden-row td:not(.c){opacity:.5}
+  .om-fields .ord{display:flex;gap:4px;justify-content:center}
+  .om-fields .ord button{width:24px;height:24px;padding:0;border-radius:6px;border:1px solid var(--line);
+    background:var(--card2);color:var(--dim);cursor:pointer;font-size:11px;line-height:1}
+  .om-fields .ord button:hover{border-color:var(--blue);color:var(--blue)}
+  .om-fields .ord button:disabled{opacity:.3;cursor:default}
+  .om-fields .ord button:disabled:hover{border-color:var(--line);color:var(--dim)}
+
+  .om-empty{padding:26px;text-align:center;color:var(--dim);font-size:13.5px}
+  .om-err{border:1px solid rgba(255,107,138,.4);background:var(--coral-bg);color:var(--coral);
+    border-radius:12px;padding:14px 16px;font-size:13px}
+
+  @media(max-width:900px){ .om-grid2{grid-template-columns:1fr} }
+}
+
+/* Раздел шире остальных: в таблице полей семь колонок, и ограничение
+   .pane{max-width:1060px} из index.html режет её впустую. Селектор по id —
+   иначе правило не перебьёт .pane (инлайновый <style> идёт после этого файла). */
+#pane-objects{max-width:none}
+
+/* список select рисует ОС — переменные темы до него не доходят */
+html.theme-light #pane-objects select option{background:#FFFFFF;color:#16283E}

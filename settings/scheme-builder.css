@@ -116,6 +116,10 @@
 .sb-fg input.bad{border-color:rgba(255,107,138,.65)}
 .sb-check{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink);margin:9px 0;cursor:pointer}
 .sb-check input{accent-color:#3CFAB4;width:16px;height:16px;cursor:pointer}
+/* пояснение под названием флага (напр. «Техническая») */
+.sb-check span{display:flex;flex-direction:column;gap:1px}
+.sb-check span i{font-style:normal;font-size:11.5px;color:var(--faint);line-height:1.45}
+.sb-check:has(span i){align-items:flex-start}
 .sb-hint{font-size:11.5px;color:var(--faint);line-height:1.5;margin-top:-4px;margin-bottom:10px}
 .sb-hint.bad{color:var(--coral)}
 .sb-hint a{color:var(--blue)}

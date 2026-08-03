@@ -351,6 +351,8 @@ function renderEntityForm(out){
     <div class="sb-fg"><label>${T("Поле заголовка записи")}</label><select id="sbE_title">
       <option value="">—</option>${e.fields.map(f => `<option value="${esc(f.name)}" ${e.title_field===f.name?"selected":""}>${esc(f.name)}</option>`).join("")}</select></div>
     <div class="sb-fg"><label>${T("Описание")}</label><textarea id="sbE_desc">${esc(e.description||"")}</textarea></div>
+    <label class="sb-check"><input type="checkbox" id="sbE_tech" ${e.technical ? "checked" : ""}>
+      <span>${T("Техническая")}<i>${T("служебная сущность: в пользовательской панели не показывается")}</i></span></label>
     <div class="sb-acts">
       <button class="btn accent" id="sbE_save">${T("Сохранить")}</button>
       <button class="btn" id="sbE_addField">+ ${T("Поле")}</button>
@@ -363,6 +365,7 @@ function renderEntityForm(out){
     e.id = id; e.table = slug($("#sbE_table").value) || id;
     e.label = $("#sbE_label").value || id; e.plural_label = $("#sbE_plural").value;
     e.title_field = $("#sbE_title").value; e.description = $("#sbE_desc").value;
+    e.technical = $("#sbE_tech").checked;
     if (id !== old) model.relations.forEach(r => {
       if (r.from_entity === old) r.from_entity = id;
       if (r.to_entity === old) r.to_entity = id;
@@ -891,7 +894,19 @@ async function load(){
    поэтому при каждом открытии перерисовываем и вписываем схему заново. */
 function openSection(){
   if (!booted) return boot();
+  /* Схему правит не только этот раздел: «Сущности» (object-manager.js) пишет в
+     то же хранилище настройки отображения. Если черновик разошёлся с моделью в
+     памяти — перечитываем, иначе следующий commit() затрёт чужие правки. */
+  const draft = SchemaStore.readDraft();
+  if (draft && JSON.stringify(draft) !== JSON.stringify(model)) return load();
   render(); layoutShell(); setTimeout(fit, 40);
 }
-window.SchemeBuilder = { open: openSection, render, store: SchemaStore, API_CONTRACT };
+/* принять модель, сохранённую соседним разделом настроек (без перезагрузки схемы) */
+function adopt(m){
+  if (!booted || !m) return;
+  model = m;
+  if (state.entity && !entityById(state.entity)) state.entity = null;
+  render();
+}
+window.SchemeBuilder = { open: openSection, render, adopt, store: SchemaStore, API_CONTRACT, UI_TYPES };
 })();

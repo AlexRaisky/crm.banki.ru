@@ -87,6 +87,9 @@ function entAclSeed(){
   if (changed) entWrite(ENT_ACL_KEY, acl);
 }
 function entAllowed(e){
+  /* техническая сущность (флаг ставится в настройках) в панели не показывается
+     вообще: это служебный справочник, работать с ним нужно в схеме, а не здесь */
+  if (e.technical) return false;
   var me = window.CRM_ME;
   if (!me) return true;                       /* демо-режим без бэкенда */
   if (me.isAdmin) return true;
@@ -121,75 +124,46 @@ function entLoadSchema(){
 }
 
 /* ---------- блоки полей «по смыслу» ----------
-   Для известных сущностей порядок блоков задан явно; поля, которых в списке
-   нет (в том числе добавленные позже в Scheme Builder), раскладываются
-   автоматически — сущность не «теряет» новые поля. */
-var ENT_GROUPS = {
-  record_type: [
-    ["Основное",       ["name","code","entity_name","is_active"]],
-    ["Конфигурация",   ["fields_config"]],
-    ["Служебные",      ["id"]]
-  ],
-  lead: [
-    ["Основное",            ["myb_id","status"]],
-    ["Персональные данные", ["first_name","second_name","last_name"]],
-    ["Профиль клиента",     ["has_children","has_real_estate","has_pets","has_car"]],
-    ["Связи",               ["client_id","work_ids","contact_info"]],
-    ["Служебные",           ["id","create_ts","update_ts","user_create","user_update"]]
-  ],
-  client: [
-    ["Основное",            ["main_myb_id","user_id","person_id"]],
-    ["Персональные данные", ["first_name","second_name","last_name"]],
-    ["Профиль клиента",     ["has_children","has_real_estate","has_pets","has_car"]],
-    ["Документы",           ["passport_series","passport_number","passport_issued_by","passport_issue_date",
-                             "passport_department_code","inn","snils","driver_license_series",
-                             "driver_license_number","driver_license_issue_date"]],
-    ["Адреса",              ["registration_address","actual_address_of_residence","address_is_equal"]],
-    ["Согласия",            ["personal_data","advertisement","bank_credit_history","esia","marketplace"]],
-    ["Стоп-листы каналов",  ["blacklist_callcenter","blacklist_sms","blacklist_email",
-                             "blacklist_mobile_push","blacklist_vk","blacklist_finassistant"]],
-    ["Доход и скоринг",     ["monthly_income","credit_score_banki","mfo_credit_score_banki","credit_score_okb",
-                             "mfo_credit_score_okb","credit_score_scoring_bureau",
-                             "mfo_credit_score_scoring_bureau","credit_score_nbki","application_score"]],
-    ["Самозапрет на кредиты",["has_credit_self_ban","credit_self_ban_start_date","credit_self_ban_condition"]],
-    ["Связи",               ["work_ids","contact_info"]],
-    ["Служебные",           ["id","create_ts","update_ts","user_create","user_update"]]
-  ],
-  client_contact_info: [
-    ["Основное",    ["type","value"]],
-    ["Доступность", ["status","double_opt_in","score"]],
-    ["Связи",       ["client_id","lead_id"]],
-    ["Служебные",   ["id","create_ts","update_ts","user_create","user_update"]]
-  ],
-  work: [
-    ["Основное",  ["record_type_id","organization_name","position","start_date"]],
-    ["Реквизиты", ["inn","ogrn"]],
-    ["Адреса",    ["legal_address","actual_address"]],
-    ["Служебные", ["id","create_ts","update_ts","user_create","user_update"]]
-  ]
-};
-function entAutoGroup(f){
-  if (f.name === "id" || /_ts$/.test(f.name) || f.name === "user_create" || f.name === "user_update") return "Служебные";
-  if (ENT_REL_UI.indexOf(f.ui_type) >= 0) return "Связи";
-  if (f.ui_type === "checkbox") return "Флаги";
-  if (f.ui_type === "currency" || f.ui_type === "percent") return "Показатели";
-  return "Основное";
+   Раскладка (какие блоки, что в них, что в шапке, что скрыто) считается
+   общим модулем js/entity-layout.js: по нему же строится редактор в
+   настроечной админке («Сущности»), поэтому настройка и отображение
+   не могут разъехаться. Поля, для которых настройки нет (в том числе
+   добавленные позже в Scheme Builder), раскладываются автоматически —
+   сущность не «теряет» новые поля. */
+function entLayout(e){
+  return (window.EntityLayout ? EntityLayout.resolve(e)
+    : { blocks:[{ title:"Основное", fields:e.fields }], header:[], hidden:[], block:{}, titles:["Основное"] });
 }
-function entGroups(e){
-  var spec = ENT_GROUPS[e.id] || [], order = [], bag = {}, used = {}, byName = {};
-  e.fields.forEach(function(f){ byName[f.name] = f; });
-  function push(title, f){
-    if (!bag[title]) { bag[title] = []; order.push(title); }
-    bag[title].push(f);
-  }
-  spec.forEach(function(g){
-    g[1].forEach(function(n){ var f = byName[n]; if (f && !used[n]) { used[n] = 1; push(g[0], f); } });
+
+/* ---------- зависимые поля ----------
+   Фактический адрес показываем только после того, как заполнен адрес
+   регистрации: до этого поле бессмысленно. Если стоит «Адреса совпадают»,
+   значение подтягивается из адреса регистрации и не редактируется —
+   иначе поле обычное. */
+var ENT_MIRROR = {
+  client: { actual_address_of_residence: { flag:"address_is_equal", from:"registration_address" } }
+};
+function entMirrorRule(e, name){ return (ENT_MIRROR[e.id] || {})[name] || null; }
+/* состояние зависимого поля для текущей записи */
+function entFieldState(e, f, r){
+  var rule = entMirrorRule(e, f.name);
+  if (!rule) return { hidden:false, mirrored:false };
+  var src = r[rule.from];
+  if (src === undefined || src === null || src === "") return { hidden:true, mirrored:false };
+  return { hidden:false, mirrored: r[rule.flag] === true || r[rule.flag] === "true", rule:rule };
+}
+/* синхронизация значения: зовём после каждой правки и при заведении записи */
+function entApplyMirror(e, r){
+  var rules = ENT_MIRROR[e.id];
+  if (!rules) return false;
+  var changed = false;
+  Object.keys(rules).forEach(function(name){
+    var rule = rules[name];
+    if (r[rule.flag] === true || r[rule.flag] === "true"){
+      if (r[name] !== r[rule.from]) { r[name] = r[rule.from]; changed = true; }
+    }
   });
-  e.fields.forEach(function(f){ if (!used[f.name]) push(entAutoGroup(f), f); });
-  /* служебные — всегда последним блоком */
-  order = order.filter(function(x){ return x !== "Служебные"; });
-  if (bag["Служебные"]) order.push("Служебные");
-  return order.map(function(x){ return { title:x, fields:bag[x] }; });
+  return changed;
 }
 
 /* ---------- отображение значений ---------- */
@@ -368,11 +342,21 @@ var ENT_PEN = '<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" 
   '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
 
 function entRowHtml(e, f, r){
+  var st = entFieldState(e, f, r);
+  if (st.hidden) return "";
   var editing = ENT_CUR.edit === f.name;
   var wide = ["textarea","related_list","multilookup"].indexOf(f.ui_type) >= 0;
   var label = '<div class="l"><span>' + entEsc(f.label || f.name) + "</span>" +
     (f.required ? '<span class="req" title="' + entT("Обязательное поле") + '">*</span>' : "") +
     '<span class="api">' + entEsc(f.name) + "</span></div>";
+  /* поле-зеркало: значение подтягивается из источника и не правится вручную */
+  if (st.mirrored){
+    var src = entField(e, st.rule.from);
+    return '<div class="ent-row' + (wide ? " wide" : "") + ' mirrored" data-f="' + entEsc(f.name) + '">' + label +
+      entValueHtml(e, f, r) +
+      '<div class="ent-mirror-note">' + entT("подтягивается из поля") + " «" +
+      entEsc(src ? (src.label || src.name) : st.rule.from) + "»</div></div>";
+  }
   var body = editing ? entEditorHtml(e, f, r) : entValueHtml(e, f, r);
   var pen = (!editing && entEditable(f))
     ? '<button type="button" class="ent-pen" data-edit="' + entEsc(f.name) + '" title="' + entT("Редактировать") + '">' + ENT_PEN + "</button>"
@@ -382,17 +366,26 @@ function entRowHtml(e, f, r){
 }
 
 function entCardHtml(e, r){
-  var groups = entGroups(e);
-  var secs = groups.map(function(g){
+  var L = entLayout(e);
+  var secs = L.blocks.map(function(g){
+    var rows = g.fields.map(function(f){ return entRowHtml(e, f, r); }).join("");
+    if (!rows) return "";                       /* весь блок скрыт зависимостями */
+    var shown = g.fields.filter(function(f){ return !entFieldState(e, f, r).hidden; }).length;
     var closed = ENT_CUR.closed[e.id + ":" + g.title] ? " closed" : "";
     return '<div class="ent-sec' + closed + '" data-sec="' + entEsc(g.title) + '">' +
       '<div class="ent-sec-title">' + entEsc(entT(g.title)) +
-      '<span class="cnt">' + g.fields.length + "</span></div>" +
-      '<div class="ent-grid">' + g.fields.map(function(f){ return entRowHtml(e, f, r); }).join("") + "</div></div>";
+      '<span class="cnt">' + shown + "</span></div>" +
+      '<div class="ent-grid">' + rows + "</div></div>";
+  }).join("");
+  /* верхняя строка карточки: поля настраиваются в админке («Сущности» → В шапке) */
+  var head = L.header.map(function(f){
+    var v = r[f.name];
+    if (v === undefined || v === null || v === "") return "";
+    return '<span class="hf"><i>' + entEsc(f.label || f.name) + "</i>" + entEsc(v) + "</span>";
   }).join("");
   return '<div class="ent-card">' +
     '<div class="ent-card-head"><span class="ch">' + entEsc(e.label) + "</span>" +
-      "<b>" + entEsc(entTitle(e, r)) + "</b>" +
+      "<b>" + entEsc(entTitle(e, r)) + "</b>" + head +
       '<span class="id">' + entEsc(e.table || e.id) + " · id " + entEsc(r.id) + "</span>" +
       '<span class="acts">' +
         '<button type="button" class="ent-btn danger" data-del="1">' + entT("Удалить запись") + "</button>" +
@@ -514,6 +507,9 @@ function entCommit(e, r){
   var prev = r[f.name];
   if (JSON.stringify(prev === undefined ? null : prev) === JSON.stringify(next === undefined ? null : next)) return;
   r[f.name] = next;
+  /* правка могла включить «Адреса совпадают» или изменить адрес-источник —
+     подтягиваем зависимые поля до сохранения */
+  entApplyMirror(e, r);
   entTouch(e, r);
   entStore();
   entToast(entT("Сохранено") + ": " + (f.label || f.name));
@@ -775,6 +771,13 @@ function entBoot(){
     ENT_DATA = entRead(ENT_DATA_KEY, {}) || {};
     entAclSeed();
     entSeed();
+    /* приводим зависимые поля в согласованное состояние: данные могли быть
+       записаны до появления правила либо изменены в другой вкладке */
+    var fixed = false;
+    ENT_MODEL.entities.forEach(function(e){
+      (ENT_DATA[e.id] || []).forEach(function(r){ if (entApplyMirror(e, r)) fixed = true; });
+    });
+    if (fixed) entStore();
     entSyncNav();
     if (ENT_WANT && ENT_MODEL.entities.some(function(e){ return "ent-" + e.id === ENT_WANT; })){
       if (typeof cur !== "undefined" && cur.sid === "entities" && !cur.cid) openSection("entities", ENT_WANT);
