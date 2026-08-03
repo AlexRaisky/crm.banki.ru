@@ -74,6 +74,8 @@
   .om-fields .ord button:disabled{opacity:.3;cursor:default}
   .om-fields .ord button:disabled:hover{border-color:var(--line);color:var(--dim)}
 
+  .om-warn{border:1px solid rgba(255,184,77,.35);background:var(--amber-bg);color:var(--amber);
+    border-radius:12px;padding:12px 15px;font-size:12.5px;line-height:1.55;margin-bottom:16px}
   .om-empty{padding:26px;text-align:center;color:var(--dim);font-size:13.5px}
   .om-err{border:1px solid rgba(255,107,138,.4);background:var(--coral-bg);color:var(--coral);
     border-radius:12px;padding:14px 16px;font-size:13px}

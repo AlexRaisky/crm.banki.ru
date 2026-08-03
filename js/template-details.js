@@ -853,7 +853,8 @@ function sfdRender(){
         /* в мастере верхней кнопки нет: цепочка — секцией в самой карточке */
         (isCreate
             ? ''
-            : '<div class="sfd-top"><button type="button" class="sf-btn" onclick="openSection(\'comms\',\'templates\')">' +
+            /* список переехал в «Сущности» → «Шаблоны и сегменты» */
+            : '<div class="sfd-top"><button type="button" class="sf-btn" onclick="openSection(\'entities\',\'ent-template\')">' +
                 sfdT('← К списку шаблонов') + '</button></div>') +
         '<div class="sfd-layout"><div class="sfd">' +
         '<div class="sfd-head">' +
