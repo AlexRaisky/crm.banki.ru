@@ -711,6 +711,16 @@ function sfdChainHtml(d){
     return '<div class="sfd-sec"><div class="sfd-sec-title" onclick="this.parentElement.classList.toggle(\'closed\')">' +
         sfdT('Цепочка') + '</div><div class="sfd-chain">' + body + '</div></div>';
 }
+/* Поля, без которых шаблон не заводится.
+   Список общий для всех каналов, но спрашиваются только те, что есть в карточке
+   ЭТОГО канала: набор полей у sms, e-mail, КЦ и пушей разный (sfdFieldDefs), и
+   требовать «Sender name» у письма было бы не с чего. Поэтому список сверяется
+   с реально нарисованными полями, а не перечисляется по каналам руками —
+   иначе новый канал молча остался бы без проверок.
+   comname здесь нет: у него своё правило (см. ниже, NoComName). */
+var SFD_REQUIRED = ['trigger', 'product', 'partner', 'touch', 'day', 'message',
+                    'sender_name', 'communication_type', 'biz_type', 'aff_sub3'];
+
 /* обязательные поля нового шаблона; при цепочке code и контент задаются по дням */
 function sfdCreateMissing(d){
     var miss = [];
@@ -723,8 +733,20 @@ function sfdCreateMissing(d){
     /* В проде source_system у d_segment_properties NOT NULL без дефолта: пустое поле
        заводило шаблон у нас, а в прод не уезжало (см. пре-флайт в TemplateService). */
     if (d.channel === 'cc' && !String(d.source_system || '').trim()) miss.push('Source system');
-    if (!String(d.product || '').trim()) miss.push('Product type');
-    if (!String(d.touch || '').trim()) miss.push('Touch point');
+    /* Подписи берём из самой карточки: в сообщении человек читает ровно то,
+       что видит над полем. */
+    var shown = {};
+    sfdFieldDefs(d).forEach(function(s){
+        (s.rows || []).forEach(function(f){ if (f && !f.ro) shown[f.k] = f.label; });
+    });
+    SFD_REQUIRED.forEach(function(k){
+        if (!(k in shown)) return;                       /* у этого канала поля нет */
+        /* Sending day при цепочке берётся из строк таблицы (sfdCreate подставляет
+           день каждому шаблону), в карточке он пустой и требовать его нечего. */
+        if (chainOn && k === 'day') return;
+        var v = d[k];
+        if (v == null || !String(v).trim()) miss.push(shown[k]);
+    });
     /* NoComName — полноценное значение справочника, но им же заводится пустая карточка
        (sfdBlank) и его же подставляет sfdComputeComname при пустой базе. По значению
        «не трогали поле» и «выбрали NoComName осознанно» не различить — различаем по
@@ -735,11 +757,10 @@ function sfdCreateMissing(d){
     /* У e-mail контент живёт в Letteros, а тему проставляет отправка — требуем не текст,
        а Letteros ID: он же становится кодом шаблона, и без него за шаблоном не стоит
        никакого письма. При цепочке ID задаётся по дням в таблице. */
-    if (d.channel === 'email'){
-        if (!chainOn && !String(d.letteros_id == null ? '' : d.letteros_id).trim()) miss.push('Letteros ID');
-    } else if (d.channel !== 'cc' && !chainOn){
-        if (!String(d.message || '').trim()) miss.push('Message text');
-    }
+    if (d.channel === 'email' && !chainOn
+        && !String(d.letteros_id == null ? '' : d.letteros_id).trim()) miss.push('Letteros ID');
+    /* Message text отдельной строкой здесь больше нет: он в SFD_REQUIRED, а карточка
+       при включённой цепочке сама убирает по-дневные поля — проверка идёт по ним. */
     return miss;
 }
 function sfdCreate(){
