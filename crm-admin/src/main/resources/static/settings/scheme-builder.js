@@ -194,6 +194,45 @@ let booted = false;
 const entityById = id => model.entities.find(e => e.id === id);
 const relationById = id => model.relations.find(r => r.id === id);
 
+/* ============================================================
+   Уровень схемы. Сущность это схема, её таблицы лежат внутри.
+   Хранение нормализованное: schemas[] — сами схемы, а у таблицы
+   поле schema указывает, в какой она живёт. Вложенным деревом
+   не делаем: плоский entities[] читают раздел «Сущности» и
+   Object Manager, вложенность сломала бы обоих.
+   ============================================================ */
+/* Схема таблицы; пусто (старая модель) — таблица сама себе схема. */
+function schemaOf(e){ return (e && e.schema) || (e && e.id) || ""; }
+
+/* Все схемы: описанные явно плюс те, что упомянуты таблицами. */
+function allSchemas(){
+  if (!Array.isArray(model.schemas)) model.schemas = [];
+  const seen = new Set(model.schemas.map(s => s.id));
+  model.entities.forEach(e => {
+    const id = schemaOf(e);
+    if (id && !seen.has(id)){ seen.add(id); model.schemas.push({ id, label:id, description:"" }); }
+  });
+  return model.schemas;
+}
+
+/* Завести схему, если её ещё нет. Отдельной кнопки «создать схему» нет намеренно:
+   вписал имя в поле «Схема» — схема появилась, это короче на два клика. */
+function ensureSchema(id){
+  if (!id) return null;
+  if (!Array.isArray(model.schemas)) model.schemas = [];
+  let s = model.schemas.find(x => x.id === id);
+  if (!s){ s = { id, label:id, description:"" }; model.schemas.push(s); }
+  return s;
+}
+
+/* Схема без единой таблицы смысла не имеет и в SQL не попадёт — убираем из списка,
+   чтобы он не зарастал следами переименований. */
+function pruneSchemas(){
+  if (!Array.isArray(model.schemas)) return;
+  const used = new Set(model.entities.map(schemaOf));
+  model.schemas = model.schemas.filter(s => used.has(s.id));
+}
+
 /* любая правка модели идёт сюда: сохранение + журнал + перерисовка */
 function commit(op, target, id, payload){
   SchemaStore.log(op, target, id, payload);
@@ -228,13 +267,30 @@ function matches(e){
 function renderLists(){
   const el = $("#sbEntityList");
   if (!el) return;
+  /* Список группируем по схемам: сущность это схема, её таблицы лежат внутри,
+     и в списке это должно быть видно так же, как будет в базе. */
   const list = model.entities.filter(matches);
-  el.innerHTML = list.length ? list.map(e =>
-    `<div class="sb-item ${state.entity === e.id ? "active" : ""}" data-e="${esc(e.id)}">
-      <span class="dot"></span><span class="lbl">${esc(e.label)}</span><span class="cnt">${e.fields.length}</span></div>`).join("")
-    : `<div class="sb-empty">${T("Ничего не найдено")}</div>`;
+  const groups = allSchemas().filter(s => list.some(e => schemaOf(e) === s.id));
+  el.innerHTML = groups.length ? groups.map(s => {
+    const tables = list.filter(e => schemaOf(e) === s.id);
+    return `<div class="sb-sgroup">
+      <div class="sb-shead">
+        <span class="lbl mono">${esc(s.id)}</span>
+        <span class="cnt">${tables.length}</span>
+        <button class="sb-sadd" data-s="${esc(s.id)}" title="${T("Добавить таблицу в эту схему")}">+</button>
+      </div>` +
+      tables.map(e => `<div class="sb-item ${state.entity === e.id ? "active" : ""}" data-e="${esc(e.id)}">
+        <span class="dot"></span><span class="lbl">${esc(e.label)}</span>
+        <span class="cnt">${e.fields.length}</span></div>`).join("") +
+      `</div>`;
+  }).join("") : `<div class="sb-empty">${T("Ничего не найдено")}</div>`;
   $$("#sbEntityList .sb-item").forEach(x => x.onclick = () => {
     state.entity = x.dataset.e; state.field = null; setTab("entity"); render();
+  });
+  /* «+» у схемы: заводим таблицу сразу в ней — не заставляя потом искать поле «Схема» */
+  $$("#sbEntityList .sb-sadd").forEach(b => b.onclick = ev => {
+    ev.stopPropagation();
+    openEntityModal(b.dataset.s);
   });
   $("#sbEntityCount").textContent = model.entities.length;
 
@@ -380,6 +436,14 @@ function renderEntityForm(out){
       <div class="sb-fg"><label>${T("Системное имя")}</label><input class="mono" id="sbE_id" value="${esc(e.id)}"></div>
       <div class="sb-fg"><label>${T("Таблица")}</label><input class="mono" id="sbE_table" value="${esc(e.table)}"></div>
     </div>
+    <!-- Схема: сущность это схема, таблицы лежат внутри неё. Список подсказывает
+         существующие, но поле открытое — вписал новое имя, схема заводится сама. -->
+    <div class="sb-fg"><label>${T("Схема")}</label>
+      <input class="mono" id="sbE_schema" list="sbSchemaList" value="${esc(schemaOf(e))}">
+      <datalist id="sbSchemaList">${allSchemas().map(s =>
+        `<option value="${esc(s.id)}">${esc(s.label || s.id)}</option>`).join("")}</datalist>
+      <i class="sb-hint">${T("В базе получится")} <b class="mono">${esc(schemaOf(e))}.${esc(e.table || e.id)}</b></i>
+    </div>
     <div class="sb-fg"><label>${T("Название")}</label><input id="sbE_label" value="${esc(e.label)}"></div>
     <div class="sb-fg"><label>${T("Название во множественном числе")}</label><input id="sbE_plural" value="${esc(e.plural_label||"")}"></div>
     <div class="sb-fg"><label>${T("Поле заголовка записи")}</label><select id="sbE_title">
@@ -397,6 +461,10 @@ function renderEntityForm(out){
     if (!id) return toast(T("Нужно системное имя"));
     if (id !== old && entityById(id)) return toast(T("Такое системное имя уже есть"));
     e.id = id; e.table = slug($("#sbE_table").value) || id;
+    /* Схема: пусто — таблица становится сама себе схемой (прежнее поведение).
+       Имени нет в списке — заводим схему на лету, отдельной кнопки для этого не нужно. */
+    e.schema = slug($("#sbE_schema").value) || id;
+    ensureSchema(e.schema);
     e.label = $("#sbE_label").value || id; e.plural_label = $("#sbE_plural").value;
     e.title_field = $("#sbE_title").value; e.description = $("#sbE_desc").value;
     e.technical = $("#sbE_tech").checked;
@@ -412,6 +480,7 @@ function renderEntityForm(out){
     if (!confirm(T("Удалить сущность и все её связи?"))) return;
     model.entities = model.entities.filter(x => x.id !== e.id);
     model.relations = model.relations.filter(r => r.from_entity !== e.id && r.to_entity !== e.id);
+    pruneSchemas();
     /* помечаем удаление: иначе наложение черновика на файл (EntityLayout.mergeDraft)
        вернуло бы сущность обратно при следующей загрузке */
     if (!Array.isArray(model.deleted)) model.deleted = [];
@@ -544,11 +613,6 @@ function renderFieldForm(out){
     const name = f.name;
     e.fields.splice(state.field, 1);
     model.relations = model.relations.filter(r => !(r.from_entity === e.id && r.from_field === name));
-    /* помечаем удаление: иначе наложение черновика на файл (EntityLayout.mergeDraft)
-       вернуло бы поле обратно при следующей загрузке */
-    if (!Array.isArray(model.deletedFields)) model.deletedFields = [];
-    const key = `${e.id}.${name}`;
-    if (model.deletedFields.indexOf(key) < 0) model.deletedFields.push(key);
     state.field = null;
     commit("delete", "field", `${e.id}.${name}`, null); toast(T("Поле удалено"));
   };
@@ -627,13 +691,20 @@ function openModal(html){
 }
 function closeModal(){ $("#sbModal").classList.remove("open"); }
 
-function openEntityModal(){
+/* preset — схема, в которую сразу кладём таблицу (кнопка «+» у группы схемы). */
+function openEntityModal(preset){
   openModal(`<h3>${T("Новая сущность")}</h3><div class="sb-form" style="padding:0">
     <div class="sb-grid2">
       <div class="sb-fg"><label>${T("Название")}</label><input id="sbNE_label" placeholder="${T("Например, Заявка")}"></div>
       <div class="sb-fg"><label>${T("Системное имя")}</label><input class="mono" id="sbNE_id" placeholder="application"></div>
     </div>
-    <div class="sb-fg"><label>${T("Таблица")}</label><input class="mono" id="sbNE_table" placeholder="applications"></div>
+    <div class="sb-grid2">
+      <div class="sb-fg"><label>${T("Таблица")}</label><input class="mono" id="sbNE_table" placeholder="applications"></div>
+      <div class="sb-fg"><label>${T("Схема")}</label>
+        <input class="mono" id="sbNE_schema" list="sbSchemaListNew" value="${esc(preset || "")}" placeholder="${T("новая или существующая")}">
+        <datalist id="sbSchemaListNew">${allSchemas().map(x =>
+          `<option value="${esc(x.id)}">${esc(x.label || x.id)}</option>`).join("")}</datalist></div>
+    </div>
     <div class="sb-fg"><label>${T("Описание")}</label><textarea id="sbNE_desc"></textarea></div>
     <div class="sb-acts"><button class="btn accent" id="sbNE_create">${T("Создать")}</button>
       <button class="btn" id="sbNE_cancel">${T("Отмена")}</button></div></div>`);
@@ -648,9 +719,11 @@ function openEntityModal(){
     const id = slug($("#sbNE_id").value || $("#sbNE_label").value);
     if (!id) return toast(T("Введите название"));
     if (entityById(id)) return toast(T("Такое системное имя уже есть"));
+    ensureSchema(slug($("#sbNE_schema").value) || id);
     const n = model.entities.length;
     const e = { id, label: $("#sbNE_label").value || id, plural_label: $("#sbNE_label").value || id,
-      table: slug($("#sbNE_table").value) || id, description: $("#sbNE_desc").value, title_field:"",
+      table: slug($("#sbNE_table").value) || id, schema: slug($("#sbNE_schema").value) || id,
+      description: $("#sbNE_desc").value, title_field:"",
       fields:[{ name:"id", label:"ID", db_type:"bigserial", ui_type:"number", required:true, read_only:true,
         description:T("Первичный ключ"), target_entity:"", relation_kind:"", default_value:"", options:[] }],
       x: 40 + (n % 3) * 330, y: 40 + Math.floor(n / 3) * 300 };
@@ -679,9 +752,6 @@ function openFieldModal(){
     if (!v.name) return toast(T("Нужно системное имя"));
     if (e.fields.some(x => x.name === v.name)) return toast(T("Поле с таким именем уже есть"));
     e.fields.push(v);
-    /* поле с таким именем могли раньше удалить — снимаем пометку */
-    if (Array.isArray(model.deletedFields))
-      model.deletedFields = model.deletedFields.filter(x => x !== `${e.id}.${v.name}`);
     state.field = e.fields.length - 1; setTab("field");
     closeModal(); commit("create", "field", `${e.id}.${v.name}`, v); toast(T("Поле добавлено"));
   };
@@ -714,12 +784,10 @@ function download(name, content, type){
   setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 30000);
 }
 function saveToGit(){
-  /* deleted / deletedFields — служебные пометки черновика (что не возвращать при
-     наложении на файл). В сам файл они не едут: там сущности или поля просто нет,
-     и это уже вся правда. */
+  /* deleted — служебная пометка черновика (что не возвращать при наложении на файл).
+     В сам файл она не едет: там сущности просто нет, и это уже вся правда. */
   const forFile = JSON.parse(JSON.stringify(model));
   delete forFile.deleted;
-  delete forFile.deletedFields;
   const json = JSON.stringify(forFile, null, 2);
   openModal(`<h3>${T("Сохранить в Git")}</h3>
     <div class="sb-modal-note">${T("Схема версионируется в репозитории. Скачайте файл и положите его по пути")}

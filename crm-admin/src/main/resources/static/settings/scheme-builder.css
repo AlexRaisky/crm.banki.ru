@@ -174,3 +174,22 @@
   .sb-col.sb-canvas-col{height:min(62vh,440px)}
   .sb-grid2{grid-template-columns:1fr}      /* поля формы в одну колонку */
 }
+
+/* ---- Уровень схемы: список таблиц сгруппирован по схемам ----
+   Сущность это схема, её таблицы лежат внутри — в списке это должно читаться
+   так же, как потом будет в базе. */
+#sbEntityList .sb-sgroup{ margin-bottom:6px }
+#sbEntityList .sb-shead{
+  display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:7px;
+  background:var(--card2); color:var(--dim); font-size:11.5px; font-weight:600;
+}
+#sbEntityList .sb-shead .lbl{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+#sbEntityList .sb-shead .cnt{ color:var(--faint); font-weight:400 }
+#sbEntityList .sb-sadd{
+  width:20px; height:20px; line-height:1; padding:0; border-radius:6px; cursor:pointer;
+  border:1px solid var(--line); background:var(--card); color:var(--dim); font-size:13px;
+}
+#sbEntityList .sb-sadd:hover{ color:var(--blue); border-color:var(--blue) }
+#sbEntityList .sb-sgroup .sb-item{ margin-left:10px }
+/* подсказка «в базе получится schema.table» под полем «Схема» */
+.sb-form .sb-fg .sb-hint{ display:block; margin-top:4px; color:var(--faint); font-size:11.5px; font-style:normal }
