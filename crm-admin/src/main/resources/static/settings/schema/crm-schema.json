@@ -1276,7 +1276,7 @@
                                             "ui_type":  "picklist",
                                             "required":  false,
                                             "read_only":  false,
-                                            "description":  "Служба доставки push: зависит от магазина приложений и прошивки устройства. wns — исторические записи с Windows-устройств.",
+                                            "description":  "Чем выдан токен и куда его отправлять. fcm/apns/hms/rustore — транспорт напрямую; appmetrica — токен от AppMetrica Push SDK, доставка идёт через её платформу поверх этих транспортов; wns — исторические записи с Windows-устройств.",
                                             "target_entity":  "",
                                             "relation_kind":  "",
                                             "default_value":  "",
@@ -1285,6 +1285,7 @@
                                                             "apns",
                                                             "hms",
                                                             "rustore",
+                                                            "appmetrica",
                                                             "wns"
                                                         ]
                                         },
