@@ -126,34 +126,51 @@ function sfdRecalcNames(){
 var SFD_DICT = { touch: null, comm: null, product: null, partner: null };
 var SFD_DICT_REQ = {};                      /* что уже запрошено, чтобы не дёргать API повторно */
 
+/**
+ * Перерисовать карточку — но не из-под рук.
+ * <p>
+ * Справочники приезжают четырьмя запросами, каждый по готовности перерисовывал карточку.
+ * Если человек в этот момент печатает или выбирает значение, перерисовка заменяет input
+ * новым: фокус и каретка теряются, а набранное на экране откатывается к тому, что было
+ * в состоянии на момент отрисовки. Со стороны это выглядит как «поле не меняется».
+ * Откладываем: в мастере карточка всё равно перерисуется по уходу из поля (change),
+ * и список к тому времени будет готов.
+ */
+function sfdRenderUnlessTyping(){
+    var a = document.activeElement;
+    if (a && a.classList &&
+        (a.classList.contains('sfd-edit') || a.classList.contains('sfd-edit-check'))) return;
+    sfdRender();
+}
+
 function sfdEnsureDicts(channel){
     if (!window.CRM) return;
     if (SFD_DICT.partner === null && !SFD_DICT_REQ.partner && CRM.dictPartners){
         SFD_DICT_REQ.partner = true;
         CRM.dictPartners().then(function(list){
             SFD_DICT.partner = list || [];
-            sfdRender();
+            sfdRenderUnlessTyping();
         }).catch(function(){ SFD_DICT.partner = []; });
     }
     if (SFD_DICT.touch === null && !SFD_DICT_REQ.touch && CRM.dictTouchPoints){
         SFD_DICT_REQ.touch = true;
         CRM.dictTouchPoints().then(function(list){
             SFD_DICT.touch = list || [];
-            sfdRender();      /* справочник приехал — перерисовываем с готовым списком */
+            sfdRenderUnlessTyping();      /* справочник приехал — перерисовываем с готовым списком */
         }).catch(function(){ SFD_DICT.touch = []; });
     }
     if (SFD_DICT.product === null && !SFD_DICT_REQ.product && CRM.dictProductTypes){
         SFD_DICT_REQ.product = true;
         CRM.dictProductTypes().then(function(list){
             SFD_DICT.product = list || [];
-            sfdRender();
+            sfdRenderUnlessTyping();
         }).catch(function(){ SFD_DICT.product = []; });
     }
     if (SFD_DICT.comm === null && !SFD_DICT_REQ.comm && CRM.dictCommNames){
         SFD_DICT_REQ.comm = true;
         CRM.dictCommNames(channel || '').then(function(list){
             SFD_DICT.comm = list || [];
-            sfdRender();
+            sfdRenderUnlessTyping();
         }).catch(function(){ SFD_DICT.comm = []; });
     }
 }
