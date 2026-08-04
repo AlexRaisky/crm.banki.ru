@@ -157,29 +157,42 @@ function entLayout(e){
 var ENT_MIRROR = {
   client: { actual_address_of_residence: { flag:"address_is_equal", from:"registration_address" } }
 };
-/* Поля, осмысленные только при определённом значении другого поля. Пустой блок
-   не рисуется вовсе, поэтому «Тип токена» появляется целиком и только у токенов
-   мобильного приложения. */
+/* Поля, осмысленные только при определённом значении другого поля. Условий может
+   быть несколько — тогда они проверяются по И. Пустой блок не рисуется вовсе,
+   поэтому «Тип токена» появляется целиком и только у токенов приложения, а
+   «Токен платформы доставки» — ещё и только когда доставка идёт через платформу. */
 var ENT_SHOW_IF = {
   client_contact_info: {
-    token_type:  { field:"type", values:["mobile_token"] },
-    os:          { field:"type", values:["mobile_token"] },
-    app_version: { field:"type", values:["mobile_token"] }
+    token_type:        { field:"type", values:["mobile_token"] },
+    delivery_platform: { field:"type", values:["mobile_token"] },
+    platform_token:   [{ field:"type", values:["mobile_token"] },
+                       { field:"delivery_platform", values:["appmetrica"] }],
+    os:                { field:"type", values:["mobile_token"] },
+    app_version:       { field:"type", values:["mobile_token"] }
   }
 };
 function entMirrorRule(e, name){ return (ENT_MIRROR[e.id] || {})[name] || null; }
-function entShowIf(e, name){ return (ENT_SHOW_IF[e.id] || {})[name] || null; }
+function entShowIf(e, name){
+  var v = (ENT_SHOW_IF[e.id] || {})[name];
+  if (!v) return null;
+  return Array.isArray(v) ? v : [v];
+}
 /* управляет ли поле показом других — от этого зависит перерисовка формы заведения */
 function entControls(e, name){
   var rules = ENT_SHOW_IF[e.id] || {}, mir = ENT_MIRROR[e.id] || {};
-  var hit = Object.keys(rules).some(function(k){ return rules[k].field === name; });
+  var hit = Object.keys(rules).some(function(k){
+    var v = rules[k], list = Array.isArray(v) ? v : [v];
+    return list.some(function(c){ return c.field === name; });
+  });
   if (hit) return true;
   return Object.keys(mir).some(function(k){ return mir[k].flag === name || mir[k].from === name; });
 }
 /* состояние зависимого поля для текущей записи */
 function entFieldState(e, f, r){
   var show = entShowIf(e, f.name);
-  if (show && show.values.indexOf(String(r[show.field] == null ? "" : r[show.field])) < 0)
+  if (show && !show.every(function(c){
+        return c.values.indexOf(String(r[c.field] == null ? "" : r[c.field])) >= 0;
+      }))
     return { hidden:true, mirrored:false };
   var rule = entMirrorRule(e, f.name);
   if (!rule) return { hidden:false, mirrored:false };
@@ -1399,7 +1412,11 @@ function entSeedData(){
         double_opt_in:false, status:"unknown", score:35,
         create_ts:"2026-07-14 12:05", update_ts:"2026-07-14 12:05", user_create:"system", user_update:"system" },
       { id:3, client_id:2, lead_id:3, value:"fcm:APA91bH7q2Zx…", type:"mobile_token",
-        token_type:"fcm", os:"android", app_version:"5.24.1",
+        /* демонстрирует пару «платформа + транспорт»: токен выдан AppMetrica,
+           физически уходит через FCM на Android */
+        token_type:"fcm", delivery_platform:"appmetrica",
+        platform_token:"am:9f3c1d2e-77b4-4a10-8ce1-5b2d0f6a1c33",
+        os:"android", app_version:"5.24.1",
         double_opt_in:true, status:"temporarily_unavailable", score:58,
         create_ts:"2026-02-04 15:31", update_ts:"2026-06-02 10:05", user_create:"system", user_update:"a.korobskii" }
     ]

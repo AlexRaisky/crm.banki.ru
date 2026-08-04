@@ -82,7 +82,7 @@ var DEFAULTS = {
     ["Основное",    ["type","value"]],
     /* блок показывается только у токенов мобильного приложения — правило в
        ENT_SHOW_IF (js/entities.js); для остальных типов контакта он не имеет смысла */
-    ["Тип токена",  ["token_type","os","app_version"]],
+    ["Тип токена",  ["token_type","delivery_platform","platform_token","os","app_version"]],
     ["Доступность", ["status","double_opt_in","score"]],
     ["Связи",       ["client_id","lead_id"]],
     ["Служебные",   ["id","create_ts","update_ts","user_create","user_update"]]
