@@ -1276,7 +1276,7 @@
                                             "ui_type":  "picklist",
                                             "required":  false,
                                             "read_only":  false,
-                                            "description":  "Чем выдан токен и куда его отправлять. fcm/apns/hms/rustore — транспорт напрямую; appmetrica — токен от AppMetrica Push SDK, доставка идёт через её платформу поверх этих транспортов; wns — исторические записи с Windows-устройств.",
+                                            "description":  "Транспорт, которым доставляется push, и вид строки в поле «Значение». wns — исторические записи с Windows-устройств.",
                                             "target_entity":  "",
                                             "relation_kind":  "",
                                             "default_value":  "",
@@ -1285,8 +1285,38 @@
                                                             "apns",
                                                             "hms",
                                                             "rustore",
-                                                            "appmetrica",
                                                             "wns"
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "delivery_platform",
+                                            "label":  "Платформа доставки",
+                                            "db_type":  "varchar(32)",
+                                            "ui_type":  "picklist",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "direct — шлём в транспорт напрямую; appmetrica — доставка идёт через AppMetrica Push поверх того же транспорта.",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "direct",
+                                            "options":  [
+                                                            "direct",
+                                                            "appmetrica"
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "platform_token",
+                                            "label":  "Токен платформы доставки",
+                                            "db_type":  "varchar(255)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Токен, выданный платформой доставки (напр. AppMetrica): по нему платформа находит устройство. Показывается, когда платформа доставки не «напрямую».",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
                                                         ]
                                         },
                                         {
