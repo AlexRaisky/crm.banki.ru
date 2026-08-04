@@ -112,7 +112,10 @@ public class SchemaInspectService {
     private Map<String, Map<String, Object>> modelDescriptions() {
         Map<String, Map<String, Object>> out = new LinkedHashMap<>();
         try {
-            JsonNode model = models.currentAsNode();
+            /* Именно stored-, а не current-: current засевает модель из файла, то есть
+               делает INSERT, а мы внутри read-only транзакции — Postgres такое отклонит
+               и уронит весь запрос. Подписи схем — приятное дополнение, не условие работы. */
+            JsonNode model = models.storedAsNode();
             if (model == null) return out;
             /* Подписи самих схем — из списка schemas: там их задаёт человек, и это
                точнее, чем брать описание у одноимённой таблицы. */
