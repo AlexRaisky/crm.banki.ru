@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.banki.crm.security.CurrentUser;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -171,12 +170,23 @@ public class SchemaModelService {
         return rows.isEmpty() ? null : (String) rows.get(0);
     }
 
+    /**
+     * Файл-засев. Читаем ПОТОКОМ через Jackson, а не строкой.
+     * <p>
+     * У crm-schema.json в начале стоит BOM — невидимая метка UTF-8. При чтении в строку
+     * она остаётся первым символом, и Postgres отказывается считать такое значение json
+     * («invalid input syntax for type json»), роняя первый же засев. Jackson определяет
+     * кодировку сам и метку съедает, а повторная сериализация заодно гарантирует, что
+     * в базу уедет валидный JSON, а не то, что лежало в файле.
+     * <p>
+     * Файла нет или он битый — возвращаем null: пустая модель лучше падения.
+     */
     private String readSeed() {
-        try {
-            return new String(new ClassPathResource(SEED_RESOURCE).getInputStream().readAllBytes(),
-                    StandardCharsets.UTF_8);
+        try (var in = new ClassPathResource(SEED_RESOURCE).getInputStream()) {
+            JsonNode parsed = json.readTree(in);
+            return (parsed == null || parsed.isNull() || parsed.isMissingNode()) ? null : parsed.toString();
         } catch (Exception e) {
-            return null;   // файла нет — не повод падать, отдадим пустую модель
+            return null;
         }
     }
 
