@@ -157,9 +157,30 @@ function entLayout(e){
 var ENT_MIRROR = {
   client: { actual_address_of_residence: { flag:"address_is_equal", from:"registration_address" } }
 };
+/* Поля, осмысленные только при определённом значении другого поля. Пустой блок
+   не рисуется вовсе, поэтому «Тип токена» появляется целиком и только у токенов
+   мобильного приложения. */
+var ENT_SHOW_IF = {
+  client_contact_info: {
+    token_type:  { field:"type", values:["mobile_token"] },
+    os:          { field:"type", values:["mobile_token"] },
+    app_version: { field:"type", values:["mobile_token"] }
+  }
+};
 function entMirrorRule(e, name){ return (ENT_MIRROR[e.id] || {})[name] || null; }
+function entShowIf(e, name){ return (ENT_SHOW_IF[e.id] || {})[name] || null; }
+/* управляет ли поле показом других — от этого зависит перерисовка формы заведения */
+function entControls(e, name){
+  var rules = ENT_SHOW_IF[e.id] || {}, mir = ENT_MIRROR[e.id] || {};
+  var hit = Object.keys(rules).some(function(k){ return rules[k].field === name; });
+  if (hit) return true;
+  return Object.keys(mir).some(function(k){ return mir[k].flag === name || mir[k].from === name; });
+}
 /* состояние зависимого поля для текущей записи */
 function entFieldState(e, f, r){
+  var show = entShowIf(e, f.name);
+  if (show && show.values.indexOf(String(r[show.field] == null ? "" : r[show.field])) < 0)
+    return { hidden:true, mirrored:false };
   var rule = entMirrorRule(e, f.name);
   if (!rule) return { hidden:false, mirrored:false };
   var src = r[rule.from];
@@ -1066,7 +1087,11 @@ function entModalHtml(){
   /* создание: поля разложены теми же смысловыми блоками, что и карточка */
   var L = entLayout(e), draft = ENT_MODAL.draft;
   var blocks = L.blocks.map(function(g){
-    var fields = g.fields.filter(function(f){ return entEditable(f); });
+    /* зависимые поля прячем и в форме: при смене управляющего поля форма
+       перерисовывается, и блок появляется сразу (см. entModalRender) */
+    var fields = g.fields.filter(function(f){
+      return entEditable(f) && !entFieldState(e, f, draft).hidden;
+    });
     if (!fields.length) return "";
     return '<div class="ent-m-sec"><div class="ent-m-sec-t">' + entEsc(entT(g.title)) + "</div>" +
       '<div class="ent-m-grid">' + fields.map(function(f){ return entModalFieldHtml(e, f, draft); }).join("") + "</div></div>";
@@ -1120,6 +1145,9 @@ function entModalRender(){
         var v = el.value; var n2 = Number(v);
         ENT_MODAL.draft[f.name] = v === "" ? null : (isFinite(n2) && String(n2) === v ? n2 : v);
       } else ENT_MODAL.draft[f.name] = el.value;
+      /* поле управляет показом других — перерисовываем форму, чтобы зависимый
+         блок появился (или исчез) сразу, а не после сохранения */
+      if (entControls(e, f.name)) entModalRender();
     };
     if (el.tagName === "SELECT" || el.type === "checkbox") el.onchange = read; else el.oninput = read;
   });
@@ -1371,6 +1399,7 @@ function entSeedData(){
         double_opt_in:false, status:"unknown", score:35,
         create_ts:"2026-07-14 12:05", update_ts:"2026-07-14 12:05", user_create:"system", user_update:"system" },
       { id:3, client_id:2, lead_id:3, value:"fcm:APA91bH7q2Zx…", type:"mobile_token",
+        token_type:"fcm", os:"android", app_version:"5.24.1",
         double_opt_in:true, status:"temporarily_unavailable", score:58,
         create_ts:"2026-02-04 15:31", update_ts:"2026-06-02 10:05", user_create:"system", user_update:"a.korobskii" }
     ]
