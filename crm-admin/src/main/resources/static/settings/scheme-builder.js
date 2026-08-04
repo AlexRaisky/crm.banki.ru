@@ -101,19 +101,32 @@ const API_CONTRACT = {
   history: "/api/schema/versions"
 };
 const SchemaStore = {
-  mode: "git",                 /* переключить на 'api', когда появятся таблицы */
+  /* 'api' — модель хранится на сервере (app.schema_model), это основной режим.
+     'git' — прежнее поведение: файл в репозитории + черновик в localStorage.
+     Режим НЕ жёсткий: если сервер недоступен или отказал, load() сам откатывается
+     на 'git', и редактор продолжает работать. Молча ломаться он не должен. */
+  mode: "api",
   file: "schema/crm-schema.json",
   draftKey: "crmpanel:schemaDraft",
-  baseline: null,              /* версия из Git — с ней сравниваем «есть правки» */
-  journal: [],                 /* дельты для будущей отправки на бэкенд */
+  baseline: null,              /* сохранённая версия — с ней сравниваем «есть правки» */
+  journal: [],                 /* дельты, уезжают на сервер вместе с сохранением */
+  offline: false,              /* true — сервер отвалился, работаем от файла */
 
   async load(){
     if (this.mode === "api"){
-      const r = await fetch(API_CONTRACT.load, { credentials:"same-origin" });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      const m = await r.json();
-      this.baseline = JSON.parse(JSON.stringify(m));
-      return m;
+      try {
+        const r = await fetch(API_CONTRACT.load, { credentials:"same-origin" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const m = await r.json();
+        this.baseline = JSON.parse(JSON.stringify(m));
+        this.offline = false;
+        return m;
+      } catch (e){
+        /* Откат к файлу: лучше редактор в режиме черновика, чем пустой экран. */
+        this.mode = "git";
+        this.offline = true;
+        if (typeof console !== "undefined") console.warn("Scheme Builder: сервер недоступен, работаем от файла —", e);
+      }
     }
     const r = await fetch(this.file + "?v=" + Date.now(), { cache:"no-store" });
     if (!r.ok) throw new Error("HTTP " + r.status + " · " + this.file);
@@ -128,15 +141,30 @@ const SchemaStore = {
     return (window.EntityLayout && EntityLayout.mergeDraft)
       ? EntityLayout.mergeDraft(base, draft) : draft;
   },
+  /* Никогда не бросает: save() зовут из commit() без await, и необработанное
+     отклонение промиса пользователь бы не увидел, а правку потерял. */
   async save(model){
     if (this.mode === "api"){
-      const r = await fetch(API_CONTRACT.save, {
-        method:"PUT", credentials:"same-origin",
-        headers:{ "Content-Type":"application/json" }, body: JSON.stringify(model) });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      this.baseline = JSON.parse(JSON.stringify(model));
-      this.journal = [];
-      return true;
+      try {
+        const r = await fetch(API_CONTRACT.save, {
+          method:"PUT", credentials:"same-origin",
+          headers:{ "Content-Type":"application/json" },
+          /* модель и дельты одним запросом: сервер и сохранит, и запишет в журнал,
+             кто что сделал — иначе журнал разъехался бы с состоянием */
+          body: JSON.stringify({ model: model, changes: this.journal }) });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        this.baseline = JSON.parse(JSON.stringify(model));
+        this.journal = [];
+        this.offline = false;
+        return true;
+      } catch (e){
+        /* Страховка: правку кладём в черновик браузера, журнал НЕ чистим —
+           уедет со следующим удачным сохранением. */
+        this.offline = true;
+        this.writeDraft(model);
+        toast(T("Не удалось сохранить на сервер — правка сохранена локально"));
+        return false;
+      }
     }
     this.writeDraft(model);      /* режим Git: черновик в браузере, файл — кнопкой */
     return true;
