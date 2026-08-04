@@ -618,10 +618,16 @@ function sfdRowHtml(f){
 }
 
 /* ---------- Мастер коммуникаций: та же карточка в режиме создания ---------- */
+/* Пустая карточка — действительно пустая.
+   Trigger type, Sending day и Sender name раньше приходили с готовыми значениями
+   (promo, 0, Banki.ru). Раз эти поля обязательные, подставленное значение — обман:
+   в подсказке «заполните» они не появлялись и уезжали в прод такими, какими их
+   никто не выбирал. Пусть человек выберет сам; значения никуда не делись — они
+   первые в своих списках. */
 function sfdBlank(channel){
     return { channel: channel, code:'', active:true, comname:'NoComName', source:'',
-             trigger:'promo', product:'', partner:'', touch:'', day:'0',
-             message:'', title:'', sender_name: channel === 'sms' ? 'Banki.ru' : '',
+             trigger:'', product:'', partner:'', touch:'', day:'',
+             message:'', title:'', sender_name:'',
              deeplink:'', webview:'', subject:'', email_from:'', letteros_id:'',
              segment:'', segment_desc:'', source_system:'', host_id:'', kvint:'',
              communication_type:'', biz_type:'', aff_sub3:'',
@@ -764,21 +770,25 @@ function sfdCreateMissing(d){
     sfdFieldDefs(d).forEach(function(s){
         (s.rows || []).forEach(function(f){ if (f && !f.ro) shown[f.k] = f.label; });
     });
-    SFD_REQUIRED.forEach(function(k){
-        if (!(k in shown)) return;                       /* у этого канала поля нет */
+    /* Идём по полям в порядке карточки, а не по списку обязательных: тогда подсказка
+       читается сверху вниз ровно так, как человек будет их заполнять. */
+    Object.keys(shown).forEach(function(k){
+        if (k === 'comname'){
+            /* NoComName — полноценное значение справочника, но им же заводится пустая
+               карточка (sfdBlank) и его же подставляет sfdComputeComname при пустой базе.
+               По значению «не трогали поле» и «выбрали NoComName осознанно» не различить —
+               различаем по флагу, который ставится при первой правке поля. */
+            if (!d.comname || (d.comname === 'NoComName'
+                && !(SFD_STATE && SFD_STATE.comnameTouched))) miss.push('communication_name');
+            return;
+        }
+        if (SFD_REQUIRED.indexOf(k) < 0) return;          /* поле не обязательное */
         /* Sending day при цепочке берётся из строк таблицы (sfdCreate подставляет
            день каждому шаблону), в карточке он пустой и требовать его нечего. */
         if (chainOn && k === 'day') return;
         var v = d[k];
         if (v == null || !String(v).trim()) miss.push(shown[k]);
     });
-    /* NoComName — полноценное значение справочника, но им же заводится пустая карточка
-       (sfdBlank) и его же подставляет sfdComputeComname при пустой базе. По значению
-       «не трогали поле» и «выбрали NoComName осознанно» не различить — различаем по
-       флагу, который ставится при первой правке поля. */
-    if (!d.comname || (d.comname === 'NoComName' && !(SFD_STATE && SFD_STATE.comnameTouched))) {
-        miss.push('communication_name');
-    }
     /* У e-mail контент живёт в Letteros, а тему проставляет отправка — требуем не текст,
        а Letteros ID: он же становится кодом шаблона, и без него за шаблоном не стоит
        никакого письма. При цепочке ID задаётся по дням в таблице. */
