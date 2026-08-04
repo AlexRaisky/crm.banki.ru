@@ -193,3 +193,11 @@
 #sbEntityList .sb-sgroup .sb-item{ margin-left:10px }
 /* подсказка «в базе получится schema.table» под полем «Схема» */
 .sb-form .sb-fg .sb-hint{ display:block; margin-top:4px; color:var(--faint); font-size:11.5px; font-style:normal }
+
+/* ---- Применение к базе: предпросмотр операций ---- */
+.sb-modal-note.bad{ color:var(--coral) }
+.sb-ddl{ width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:12px }
+.sb-ddl th{ text-align:left; color:var(--dim); font-size:11px; font-weight:600;
+  padding:5px 8px; border-bottom:1px solid var(--line) }
+.sb-ddl td{ padding:5px 8px; border-bottom:1px solid var(--line) }
+.sb-ddl .mono{ font-family:var(--mono) }

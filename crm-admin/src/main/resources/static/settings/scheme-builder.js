@@ -684,6 +684,82 @@ function readRelationForm(){
 /* ============================================================
    Модалки: новая сущность / поле / связь / экспорт
    ============================================================ */
+/* ============================================================
+   ПРИМЕНЕНИЕ К БАЗЕ. Схемы и таблицы создаёт сервер: только он знает,
+   что уже есть, что защищено и что заведено не нами.
+
+   Предпросмотр обязателен и отдельной кнопкой — не на сохранении:
+   сохранение идёт при любой правке, и лить DDL на каждый чих нельзя.
+   Показываем ровно то, что уйдёт в базу, и только потом применяем.
+   ============================================================ */
+function ddlRow(st){
+  const where = st.table ? `${st.schema}.${st.table}` : st.schema;
+  return `<tr><td class="mono">${esc(st.kind)}</td><td class="mono">${esc(where)}</td></tr>`;
+}
+
+async function applyToDb(){
+  openModal(`<h3>${T("Применить к базе")}</h3>
+    <div class="sb-modal-note">${T("Считаем, что нужно сделать в базе…")}</div>`);
+  let plan;
+  try {
+    const r = await fetch("/api/schema/ddl/preview", {
+      method:"POST", credentials:"same-origin",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ model }) });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    plan = await r.json();
+  } catch (e){
+    openModal(`<h3>${T("Применить к базе")}</h3>
+      <div class="sb-modal-note">${T("Не удалось получить план изменений")}: ${esc(e.message)}</div>
+      <div class="sb-acts"><button class="btn" id="sbAp_close">${T("Закрыть")}</button></div>`);
+    $("#sbAp_close").onclick = closeModal;
+    return;
+  }
+
+  const blocked = plan.blocked || [], problems = plan.problems || [];
+  const stmts = plan.statements || [];
+  const warn = (list, cls) => list.length
+    ? `<div class="sb-modal-note ${cls}">${list.map(x => "• " + esc(x)).join("<br>")}</div>` : "";
+  /* Расхождение с сохранённым видно сразу: применяем то, что на экране. */
+  const dirty = SchemaStore.isDirty(model)
+    ? `<div class="sb-modal-note">${T("Внимание: в модели есть несохранённые правки — применится то, что на экране.")}</div>` : "";
+
+  openModal(`<h3>${T("Применить к базе")}</h3>
+    ${warn(blocked, "bad")}
+    ${warn(problems, "")}
+    ${dirty}
+    <div class="sb-modal-note">${T("Операций")}: <b>${stmts.length}</b> · ${T("схем")}: <b>${(plan.schemas||[]).length}</b>.
+      ${T("Только создание: DROP, RENAME и смена типа не выполняются.")}</div>
+    <div class="sb-acts" style="margin:0 0 12px">
+      <button class="btn accent" id="sbAp_go" ${plan.canApply ? "" : "disabled"}>${T("Применить")}</button>
+      <button class="btn" id="sbAp_close">${T("Закрыть")}</button></div>
+    ${stmts.length ? `<table class="sb-ddl"><thead><tr><th>${T("Операция")}</th><th>${T("Объект")}</th></tr></thead>
+      <tbody>${stmts.map(ddlRow).join("")}</tbody></table>` : ""}
+    <pre>${esc(plan.sql || "")}</pre>`);
+  $("#sbAp_close").onclick = closeModal;
+  const go = $("#sbAp_go");
+  if (go) go.onclick = async () => {
+    go.disabled = true; go.textContent = T("Применяем…");
+    try {
+      const r = await fetch("/api/schema/ddl/apply", {
+        method:"POST", credentials:"same-origin",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ model }) });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.message || body.error || ("HTTP " + r.status));
+      closeModal();
+      toast(T("Применено к базе") + ": " + (body.applied || 0) + " " + T("операц."));
+    } catch (e){
+      go.disabled = false; go.textContent = T("Применить");
+      openModal(`<h3>${T("Применить к базе")}</h3>
+        <div class="sb-modal-note bad">${T("Не применилось")}: ${esc(e.message)}</div>
+        <div class="sb-modal-note">${T("База осталась в прежнем состоянии: применение идёт одной транзакцией. Отказ записан в журнал.")}</div>
+        <div class="sb-acts"><button class="btn" id="sbAp_close2">${T("Закрыть")}</button></div>`);
+      $("#sbAp_close2").onclick = closeModal;
+    }
+  };
+}
+
 function openModal(html){
   const m = $("#sbModal");
   $("#sbModalCard").innerHTML = html;
@@ -946,6 +1022,7 @@ async function boot(){
   $("#sbFit").onclick = fit;
   $("#sbExpand").onclick = toggleAllFields;
   $("#sbSql").onclick = exportSql;
+  $("#sbApply").onclick = applyToDb;
   $("#sbGit").onclick = saveToGit;
   $("#sbReload").onclick = async () => {
     if (SchemaStore.isDirty(model) && !confirm(T("Черновик будет потерян. Загрузить версию из Git?"))) return;
