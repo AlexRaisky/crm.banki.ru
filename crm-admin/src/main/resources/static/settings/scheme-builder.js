@@ -332,57 +332,137 @@ function syncExpandBtn(){
   btn.textContent = anyCollapsed ? T("Развернуть все") : T("Свернуть все");
 }
 
+/* ============================================================
+   Холст. Узел = СУЩНОСТЬ, внутри плашки её таблиц с колонками.
+
+   Координаты живут у сущности: двигается узел целиком, таблицы внутри
+   не позиционируются, а идут потоком. Связи при этом соединяют не узлы,
+   а конкретные таблицы, поэтому якорь считается от плашки — иначе стрелка
+   от user.car к lead.leads упиралась бы в общий угол сущности и врала.
+   ============================================================ */
+
+/* Координаты сущности. Старая модель хранила их у таблиц — переносим с первой,
+   чтобы схема не схлопнулась в угол при первом открытии после обновления. */
+function schemaXY(s){
+  if (s.x == null || s.y == null){
+    const first = model.entities.find(e => schemaOf(e) === s.id);
+    s.x = first && first.x != null ? first.x : 40;
+    s.y = first && first.y != null ? first.y : 40;
+  }
+  return s;
+}
+
+/* Настройки вида — в localStorage, а не в модели: модель общая для всех,
+   а «что мне показывать на холсте» дело каждого. */
+const SB_VIEW_KEY = "crmpanel:schemeView";
+const SB_VIEW_DEF = { external:true, internal:false, columns:true, types:true };
+let sbView = (function(){
+  try { return Object.assign({}, SB_VIEW_DEF, JSON.parse(localStorage.getItem(SB_VIEW_KEY)) || {}); }
+  catch(e){ return Object.assign({}, SB_VIEW_DEF); }
+})();
+function saveView(){ try { localStorage.setItem(SB_VIEW_KEY, JSON.stringify(sbView)); } catch(e){} }
+
 function renderNodes(){
   const host = $("#sbNodes");
   if (!host) return;
-  host.innerHTML = model.entities.map(e => {
-    const expanded = !!state.expanded[e.id];
-    const shown = expanded ? e.fields : e.fields.slice(0, MAX_ROWS);
-    const rest = e.fields.length - shown.length;
-    const rows = shown.map((f, i) => {
-      const isPk = f.name === "id";
-      const type = f.target_entity ? `${f.ui_type} → ${f.target_entity}` : (f.ui_type || f.db_type);
-      return `<div class="sb-field ${state.entity === e.id && state.field === i ? "active" : ""}" data-i="${i}">
-        <div class="sb-fname"><span class="sb-req ${f.required ? "" : "no"}"></span>
-          ${isPk ? '<span class="sb-pk">PK</span>' : ""}<code>${esc(f.name)}</code></div>
-        <div class="sb-ftype">${esc(type)}</div></div>`;
+  host.innerHTML = allSchemas().map(s => {
+    schemaXY(s);
+    const tables = model.entities.filter(e => schemaOf(e) === s.id);
+    const cols = tables.reduce((n, e) => n + e.fields.length, 0);
+    const plates = tables.map(e => {
+      const expanded = !!state.expanded[e.id];
+      const shown = (!sbView.columns) ? [] : (expanded ? e.fields : e.fields.slice(0, MAX_ROWS));
+      const rest = e.fields.length - shown.length;
+      const rows = shown.map((f, i) => {
+        const isPk = f.name === "id";
+        const type = f.target_entity ? `${f.ui_type} → ${f.target_entity}` : (f.ui_type || f.db_type);
+        return `<div class="sb-field ${state.entity === e.id && state.field === i ? "active" : ""}" data-e="${esc(e.id)}" data-i="${i}">
+          <div class="sb-fname"><span class="sb-req ${f.required ? "" : "no"}"></span>
+            ${isPk ? '<span class="sb-pk">PK</span>' : ""}<code>${esc(f.name)}</code></div>
+          ${sbView.types ? `<div class="sb-ftype">${esc(type)}</div>` : ""}</div>`;
+      }).join("");
+      let toggle = "";
+      if (sbView.columns && rest > 0)
+        toggle = `<div class="sb-more" data-toggle="${esc(e.id)}">▾ ${T("Показать ещё")} ${pluralField(rest)}</div>`;
+      else if (sbView.columns && expanded && e.fields.length > MAX_ROWS)
+        toggle = `<div class="sb-more" data-toggle="${esc(e.id)}">▴ ${T("Свернуть")}</div>`;
+      return `<div class="sb-plate ${state.entity === e.id ? "selected" : ""}" data-e="${esc(e.id)}">
+        <div class="sb-plate-head">
+          <span class="sb-plate-name mono">${esc(e.table || e.id)}</span>
+          <span class="sb-plate-cnt">${pluralField(e.fields.length)}</span>
+          <button class="sb-plate-add" data-e="${esc(e.id)}" title="${T("Добавить колонку")}">+</button>
+        </div>
+        <div class="sb-node-fields">${rows}</div>${toggle}
+      </div>`;
     }).join("");
-    let toggle = "";
-    if (rest > 0) toggle = `<div class="sb-more" data-toggle="1">▾ ${T("Показать ещё")} ${pluralField(rest)}</div>`;
-    else if (expanded && e.fields.length > MAX_ROWS) toggle = `<div class="sb-more" data-toggle="1">▴ ${T("Свернуть")}</div>`;
-    return `<div class="sb-node ${state.entity === e.id ? "selected" : ""} ${expanded ? "expanded" : ""}"
-        data-id="${esc(e.id)}" style="left:${e.x|0}px;top:${e.y|0}px">
+    return `<div class="sb-node ${state.schema === s.id ? "selected" : ""}"
+        data-s="${esc(s.id)}" style="left:${s.x|0}px;top:${s.y|0}px">
       <div class="sb-node-head">
-        <div><div class="sb-node-title">${esc(e.label)}</div>
-          <div class="sb-node-sub">${esc(e.table)} · ${pluralField(e.fields.length)}</div></div>
-        <button class="sb-node-add" title="${T("Добавить поле")}">+</button>
+        <div><div class="sb-node-title">${esc(s.label || s.id)}</div>
+          <div class="sb-node-sub mono">${esc(s.id)} · ${tables.length} ${T("табл.")} · ${cols}</div></div>
+        <button class="sb-node-add" title="${T("Добавить таблицу")}">+</button>
       </div>
-      <div class="sb-node-fields">${rows}</div>${toggle}
+      <div class="sb-node-body">${plates || `<div class="sb-plate-empty">${T("нет таблиц")}</div>`}</div>
     </div>`;
   }).join("");
 
   $$(".sb-node").forEach(n => {
-    const id = n.dataset.id;
-    n.onclick = ev => { if (ev.target.closest(".sb-field") || ev.target.closest("button") || ev.target.closest("[data-toggle]")) return;
-      state.entity = id; state.field = null; setTab("entity"); render(); };
+    const sid = n.dataset.s;
+    n.onclick = ev => {
+      if (ev.target.closest(".sb-field") || ev.target.closest("button") || ev.target.closest("[data-toggle]")) return;
+      const plate = ev.target.closest(".sb-plate");
+      state.schema = sid;
+      state.entity = plate ? plate.dataset.e : null;
+      state.field = null; setTab("entity"); render();
+    };
+    /* Тянем за шапку сущности: плашки внутри не двигаются самостоятельно,
+       иначе таблицы одной сущности расползлись бы по холсту. */
     n.querySelector(".sb-node-head").onmousedown = ev => {
       if (ev.target.closest("button")) return;
-      const p = toWorld(ev), e = entityById(id);
-      state.drag = { id, dx: p.x - e.x, dy: p.y - e.y }; ev.preventDefault();
+      const p = toWorld(ev), s = model.schemas.find(x => x.id === sid);
+      if (!s) return;
+      schemaXY(s);
+      state.drag = { id: sid, dx: p.x - s.x, dy: p.y - s.y }; ev.preventDefault();
     };
-    n.querySelector(".sb-node-add").onclick = ev => { ev.stopPropagation(); state.entity = id; openFieldModal(); };
-    const tg = n.querySelector("[data-toggle]");
-    if (tg) tg.onclick = ev => { ev.stopPropagation(); toggleFields(id); syncExpandBtn(); };
+    n.querySelector(".sb-node-add").onclick = ev => { ev.stopPropagation(); openEntityModal(sid); };
+    $$(".sb-plate-add", n).forEach(b => b.onclick = ev => {
+      ev.stopPropagation(); state.schema = sid; state.entity = b.dataset.e; openFieldModal();
+    });
+    $$("[data-toggle]", n).forEach(tg => tg.onclick = ev => {
+      ev.stopPropagation(); toggleFields(tg.dataset.toggle); syncExpandBtn();
+    });
     $$(".sb-field", n).forEach(row => row.onclick = ev => {
-      ev.stopPropagation(); state.entity = id; state.field = Number(row.dataset.i); setTab("field"); render();
+      ev.stopPropagation();
+      state.schema = sid; state.entity = row.dataset.e; state.field = Number(row.dataset.i);
+      setTab("field"); render();
     });
   });
   syncExpandBtn();
 }
 
-function nodeRect(id){
-  const n = document.querySelector(`.sb-node[data-id="${CSS.escape(id)}"]`), e = entityById(id);
-  return n && e ? { x:e.x|0, y:e.y|0, w:n.offsetWidth, h:n.offsetHeight } : null;
+/* Прямоугольник ПЛАШКИ таблицы в координатах холста. Меряем по факту, а не
+   по вёрстке: высота плашки зависит от числа колонок и того, свёрнута ли она,
+   а масштаб холста надо снять, иначе связи поедут при зуме. */
+function tableRect(tableId){
+  const plate = document.querySelector(`.sb-plate[data-e="${CSS.escape(tableId)}"]`);
+  if (!plate) return null;
+  const node = plate.closest(".sb-node");
+  const e = entityById(tableId);
+  const s = e && model.schemas.find(x => x.id === schemaOf(e));
+  if (!node || !s) return null;
+  schemaXY(s);
+  const nr = node.getBoundingClientRect(), pr = plate.getBoundingClientRect();
+  const k = state.scale || 1;
+  return { x: (s.x|0) + (pr.left - nr.left) / k, y: (s.y|0) + (pr.top - nr.top) / k,
+           w: pr.width / k, h: pr.height / k };
+}
+function nodeRect(schemaId){
+  const n = document.querySelector(`.sb-node[data-s="${CSS.escape(schemaId)}"]`);
+  const s = model.schemas && model.schemas.find(x => x.id === schemaId);
+  if (!n || !s) return null;
+  schemaXY(s);
+  const k = state.scale || 1;
+  return { x: s.x|0, y: s.y|0, w: n.getBoundingClientRect().width / k, h: n.getBoundingClientRect().height / k };
 }
 function edgePath(a, b){
   const ax = a.x + a.w, ay = a.y + a.h/2, bx = b.x, by = b.y + b.h/2;
@@ -390,21 +470,39 @@ function edgePath(a, b){
   if (bx >= ax) return `M${ax},${ay} C${ax+dx},${ay} ${bx-dx},${by} ${bx},${by}`;
   return `M${a.x + a.w/2},${a.y + a.h} C${a.x + a.w/2},${a.y + a.h + 80} ${b.x + b.w/2},${b.y - 80} ${b.x + b.w/2},${b.y}`;
 }
+/* Связь внутри одной сущности: обе плашки в одном узле, обычная кривая слева
+   направо выродилась бы в петлю. Ведём дугу сбоку от узла. */
+function innerPath(a, b){
+  const x = Math.min(a.x, b.x) - 16;
+  const ay = a.y + a.h/2, by = b.y + b.h/2;
+  return `M${a.x},${ay} C${x - 26},${ay} ${x - 26},${by} ${b.x},${by}`;
+}
 function renderEdges(){
   const svg = $("#sbEdges");
   if (!svg) return;
   const css = getComputedStyle(document.documentElement);
   const blue = (css.getPropertyValue("--blue") || "#50C3FF").trim();
   const violet = "#9aa6ff";
+  const grey = (css.getPropertyValue("--faint") || "#8b97a8").trim();
   let out = `<defs>
     <marker id="sbArr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="${blue}"/></marker>
-    <marker id="sbArrM" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="${violet}"/></marker></defs>`;
+    <marker id="sbArrM" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="${violet}"/></marker>
+    <marker id="sbArrI" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="${grey}"/></marker></defs>`;
   model.relations.forEach(r => {
-    const a = nodeRect(r.from_entity), b = nodeRect(r.to_entity);
+    const fe = entityById(r.from_entity), te = entityById(r.to_entity);
+    if (!fe || !te) return;
+    const inner = schemaOf(fe) === schemaOf(te);
+    /* Видимость — только про глаза: связь есть в модели, значит внешний ключ
+       создастся, показана она на холсте или нет. */
+    if (inner && !sbView.internal) return;
+    if (!inner && !sbView.external) return;
+    const a = tableRect(r.from_entity), b = tableRect(r.to_entity);
     if (!a || !b) return;
     const many = r.relation_type === "many_to_many";
-    out += `<path d="${edgePath(a,b)}" fill="none" stroke="${many ? violet : blue}" stroke-width="2.2"
-      stroke-dasharray="${many ? "8 5" : "none"}" marker-end="url(#${many ? "sbArrM" : "sbArr"})" opacity=".85"/>`;
+    const color = inner ? grey : (many ? violet : blue);
+    const marker = inner ? "sbArrI" : (many ? "sbArrM" : "sbArr");
+    out += `<path d="${inner ? innerPath(a,b) : edgePath(a,b)}" fill="none" stroke="${color}" stroke-width="${inner ? 1.6 : 2.2}"
+      stroke-dasharray="${many ? "8 5" : (inner ? "4 4" : "none")}" marker-end="url(#${marker})" opacity="${inner ? ".7" : ".85"}"/>`;
   });
   svg.innerHTML = out;
 }
@@ -859,6 +957,27 @@ async function applyToDb(){
   };
 }
 
+/* Настройки вида холста. Живут в localStorage у каждого свои — модель общая,
+   и подменять коллеге картинку своим выбором нельзя. На базу не влияют вовсе:
+   скрытая связь всё равно превращается во внешний ключ при применении. */
+function openViewModal(){
+  const row = (k, title, note) => `<label class="sb-check"><input type="checkbox" data-v="${k}" ${sbView[k] ? "checked" : ""}>
+    <span>${title}<i>${note}</i></span></label>`;
+  openModal(`<h3>${T("Вид схемы")}</h3>
+    <div class="sb-modal-note">${T("Только отображение. На то, что уедет в базу, эти настройки не влияют.")}</div>
+    <div class="sb-form" style="padding:0">
+      ${row("external", T("Связи между сущностями"), T("внешние ключи между разными схемами"))}
+      ${row("internal", T("Связи внутри сущности"), T("между таблицами одной схемы; по умолчанию скрыты, чтобы не засорять холст"))}
+      ${row("columns",  T("Показывать колонки"), T("иначе только плашки таблиц — так крупная схема читается целиком"))}
+      ${row("types",    T("Показывать типы"), T("тип колонки справа от имени"))}
+      <div class="sb-acts"><button class="btn" id="sbView_close">${T("Готово")}</button></div>
+    </div>`);
+  $$("#sbModalCard input[data-v]").forEach(i => i.onchange = () => {
+    sbView[i.dataset.v] = i.checked; saveView(); render();
+  });
+  $("#sbView_close").onclick = closeModal;
+}
+
 function openModal(html){
   const m = $("#sbModal");
   $("#sbModalCard").innerHTML = html;
@@ -1041,6 +1160,9 @@ function saveToGit(){
 function exportSql(){
   const skip = ["relation"];
   const parts = ["-- CRM Schema Builder · " + new Date().toISOString().slice(0, 10), ""];
+  /* Сущность = схема: без CREATE SCHEMA выгрузку нельзя применить как есть. */
+  allSchemas().forEach(s => parts.push(`CREATE SCHEMA IF NOT EXISTS ${s.id};`));
+  parts.push("");
   model.entities.forEach(e => {
     const cols = e.fields.filter(f => !skip.includes(f.db_type)).map(f => {
       const pk = f.name === "id" && /serial/.test(f.db_type || "") ? " PRIMARY KEY" : "";
@@ -1048,21 +1170,21 @@ function exportSql(){
       const def = f.default_value !== "" && f.default_value != null ? ` DEFAULT ${f.default_value}` : "";
       return `    ${f.name} ${f.db_type || "text"}${pk}${nn}${def}`;
     });
-    parts.push(`CREATE TABLE ${e.table} (`, cols.join(",\n"), ");", "");
+    parts.push(`CREATE TABLE ${schemaOf(e)}.${e.table} (`, cols.join(",\n"), ");", "");
   });
   model.relations.filter(r => r.relation_type !== "many_to_many").forEach(r => {
     const fe = entityById(r.from_entity), te = entityById(r.to_entity);
     if (fe && te && r.from_field) parts.push(
-      `ALTER TABLE ${fe.table} ADD CONSTRAINT fk_${fe.table}_${r.from_field} ` +
-      `FOREIGN KEY (${r.from_field}) REFERENCES ${te.table} (${r.to_field}) ON DELETE ${r.on_delete};`);
+      `ALTER TABLE ${schemaOf(fe)}.${fe.table} ADD CONSTRAINT fk_${schemaOf(fe)}_${fe.table}_${r.from_field} ` +
+      `FOREIGN KEY (${r.from_field}) REFERENCES ${schemaOf(te)}.${te.table} (${r.to_field}) ON DELETE ${r.on_delete};`);
   });
   model.relations.filter(r => r.relation_type === "many_to_many").forEach(r => {
     const fe = entityById(r.from_entity), te = entityById(r.to_entity);
     if (!fe || !te) return;
     const tn = r.through || `${fe.table}_${te.table}_link`;
-    parts.push("", `CREATE TABLE ${tn} (`,
-      `    ${r.from_entity}_id bigint NOT NULL REFERENCES ${fe.table}(id) ON DELETE CASCADE,`,
-      `    ${r.to_entity}_id bigint NOT NULL REFERENCES ${te.table}(id) ON DELETE CASCADE,`,
+    parts.push("", `CREATE TABLE ${schemaOf(fe)}.${tn} (`,
+      `    ${r.from_entity}_id bigint NOT NULL REFERENCES ${schemaOf(fe)}.${fe.table}(id) ON DELETE CASCADE,`,
+      `    ${r.to_entity}_id bigint NOT NULL REFERENCES ${schemaOf(te)}.${te.table}(id) ON DELETE CASCADE,`,
       `    PRIMARY KEY (${r.from_entity}_id, ${r.to_entity}_id)`, ");");
   });
   const sql = parts.join("\n");
@@ -1123,16 +1245,19 @@ function toWorld(ev){
   return { x:(ev.clientX - r.left - state.tx) / state.scale, y:(ev.clientY - r.top - state.ty) / state.scale };
 }
 function autoLayout(){
-  const cols = Math.max(1, Math.ceil(Math.sqrt(model.entities.length)));
-  model.entities.forEach((e, i) => { e.x = 30 + (i % cols) * 330; e.y = 30 + Math.floor(i / cols) * 320; });
+  /* Раскладываем СУЩНОСТИ: таблицы внутри идут потоком и своих координат не имеют.
+     Шаг по вертикали крупнее — узел сущности выше, чем была одиночная таблица. */
+  const list = allSchemas();
+  const cols = Math.max(1, Math.ceil(Math.sqrt(list.length)));
+  list.forEach((s, i) => { s.x = 30 + (i % cols) * 380; s.y = 30 + Math.floor(i / cols) * 420; });
   commit("layout", "schema", null, null);
   setTimeout(fit, 30);
 }
 function fit(){
   if (!model.entities.length) return;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  model.entities.forEach(e => {
-    const r = nodeRect(e.id); if (!r) return;
+  allSchemas().forEach(s => {
+    const r = nodeRect(s.id); if (!r) return;
     minX = Math.min(minX, r.x); minY = Math.min(minY, r.y);
     maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h);
   });
@@ -1166,6 +1291,7 @@ async function boot(){
   $("#sbExpand").onclick = toggleAllFields;
   $("#sbSql").onclick = exportSql;
   $("#sbApply").onclick = applyToDb;
+  $("#sbView").onclick = openViewModal;
   $("#sbGit").onclick = saveToGit;
   $("#sbReload").onclick = async () => {
     if (SchemaStore.isDirty(model) && !confirm(T("Черновик будет потерян. Загрузить версию из Git?"))) return;
@@ -1193,7 +1319,7 @@ async function boot(){
   };
   document.addEventListener("mousemove", ev => {
     if (state.drag){
-      const p = toWorld(ev), e = entityById(state.drag.id);
+      const p = toWorld(ev), e = model.schemas.find(x => x.id === state.drag.id);
       if (!e) return;
       e.x = Math.round(p.x - state.drag.dx); e.y = Math.round(p.y - state.drag.dy);
       const n = document.querySelector(`.sb-node[data-id="${CSS.escape(e.id)}"]`);
@@ -1206,7 +1332,7 @@ async function boot(){
     }
   });
   document.addEventListener("mouseup", () => {
-    if (state.drag){ const id = state.drag.id; state.drag = null; commit("move", "entity", id, null); }
+    if (state.drag){ const id = state.drag.id; state.drag = null; commit("move", "schema", id, null); }
     state.pan = null;
   });
   document.addEventListener("keydown", ev => {
