@@ -30,9 +30,12 @@ import java.util.Map;
 public class SchemaController {
 
     private final SchemaModelService service;
+    private final ru.banki.crm.service.schema.SchemaDdlService ddl;
 
-    public SchemaController(SchemaModelService service) {
+    public SchemaController(SchemaModelService service,
+                            ru.banki.crm.service.schema.SchemaDdlService ddl) {
         this.service = service;
+        this.ddl = ddl;
     }
 
     /** Текущая модель. Первое обращение засевает её из файла в classpath. */
@@ -73,5 +76,34 @@ public class SchemaController {
     @GetMapping("/audit")
     public List<Map<String, Object>> audit(@RequestParam(defaultValue = "200") int limit) {
         return service.auditLog(Math.max(1, Math.min(limit, 1000)));
+    }
+
+    /**
+     * Что будет выполнено в базе — без выполнения. Тело: модель либо {@code {model}}.
+     * Модель не передали — берём сохранённую, чтобы можно было посмотреть план по текущей.
+     */
+    @PostMapping("/ddl/preview")
+    public Map<String, Object> ddlPreview(@RequestBody(required = false) JsonNode body) {
+        return ddl.preview(modelOf(body));
+    }
+
+    /** Применить модель к базе: схемы, таблицы, колонки, внешние ключи. Только аддитивно. */
+    @PostMapping("/ddl/apply")
+    public Map<String, Object> ddlApply(@RequestBody(required = false) JsonNode body) {
+        try {
+            return ddl.apply(modelOf(body));
+        } catch (RuntimeException e) {
+            // отказ охраны и падение SQL для пользователя выглядят одинаково — как 400
+            // с текстом причины; в журнале они уже разведены на REJECTED и ERROR
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    /** Модель из тела запроса, а при пустом теле — сохранённая. */
+    private JsonNode modelOf(JsonNode body) {
+        if (body != null && body.has("model")) return body.get("model");
+        if (body != null && body.has("entities")) return body;
+        return service.currentAsNode();
     }
 }

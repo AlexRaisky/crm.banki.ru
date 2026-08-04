@@ -71,6 +71,16 @@ public class SchemaModelService {
         return seed;
     }
 
+    /** Та же текущая модель, но разобранная — нужна планировщику DDL. */
+    @Transactional
+    public JsonNode currentAsNode() {
+        try {
+            return json.readTree(current());
+        } catch (Exception e) {
+            return json.createObjectNode();
+        }
+    }
+
     private String readModel() {
         List<?> rows = em.createNativeQuery(
                         "SELECT model::text FROM app.schema_model WHERE id = 1")
