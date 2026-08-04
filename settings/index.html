@@ -568,6 +568,7 @@ const S_EN = {
   "Удалить поле?":"Delete the field?", "Удалить связь?":"Delete the relation?",
   "Сначала выберите сущность":"Pick an entity first", "Нужно хотя бы две сущности":"At least two entities are required",
   "Не удалось загрузить схему":"Could not load the schema",
+  "Не удалось сохранить на сервер — правка сохранена локально":"Could not save to the server — the change was stored locally",
   "Черновик будет потерян. Загрузить версию из Git?":"The draft will be lost. Load the version from Git?",
   "Загружено из Git":"Loaded from Git", "Скопировано":"Copied", "Отмечено как сохранённое":"Marked as saved",
   "Схема версионируется в репозитории. Скачайте файл и положите его по пути":"The schema is versioned in the repository. Download the file and put it at",
@@ -1557,10 +1558,10 @@ window.CRM = window.CRM || (function(){
   border:1px solid var(--line);color:var(--ink);padding:11px 15px;border-radius:11px;font-size:13px;
   box-shadow:0 14px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(8px);transition:.18s;pointer-events:none"></div>
 <style>#sbToast.show{opacity:1;transform:none}</style>
-<script src="scheme-builder.js?v=7"></script>
+<script src="scheme-builder.js?v=8"></script>
 <!-- «Сущности»: общий с панелью расчёт раскладки + сам раздел. Порядок важен:
      object-manager.js работает с хранилищем схемы из scheme-builder.js. -->
-<script src="../js/entity-layout.js?v=4"></script>
+<script src="../js/entity-layout.js?v=5"></script>
 <script src="object-manager.js?v=4"></script>
 </body>
 </html>

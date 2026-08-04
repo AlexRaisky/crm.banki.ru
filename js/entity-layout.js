@@ -272,6 +272,28 @@ function mergeDraft(base, draft){
     have[e.id] = 1;
   });
 
+  /* То же самое на уровень ниже: сущность в черновике есть, а поля, добавленные
+     в файл позже, — нет. Без этого блок «Тип токена» не появлялся ни у кого с
+     готовым черновиком, хотя сама сущность была на месте. Удалённые вручную поля
+     не возвращаются — их помечает Scheme Builder в model.deletedFields. */
+  var baseById = {};
+  base.entities.forEach(function(e){ baseById[e.id] = e; });
+  var droppedF = Array.isArray(out.deletedFields) ? out.deletedFields : [];
+  out.entities.forEach(function(e){
+    var b = baseById[e.id];
+    if (!b || !Array.isArray(b.fields)) return;
+    if (!Array.isArray(e.fields)) e.fields = [];
+    var haveF = {};
+    e.fields.forEach(function(f){ haveF[f.name] = 1; });
+    /* идём по файлу по порядку и вставляем на ту же позицию: иначе новые поля
+       уезжали бы в хвост и разрывали смысловые блоки */
+    b.fields.forEach(function(f, i){
+      if (haveF[f.name] || droppedF.indexOf(e.id + "." + f.name) >= 0) return;
+      e.fields.splice(Math.min(i, e.fields.length), 0, clone(f));
+      haveF[f.name] = 1;
+    });
+  });
+
   /* связи новой сущности: добавляем только те, у которых оба конца на месте */
   var relHave = {};
   out.relations.forEach(function(r){ relHave[r.id] = 1; });
