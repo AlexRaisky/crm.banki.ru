@@ -231,6 +231,9 @@
   .ent-row .l .api{font-family:var(--mono);font-size:10px;color:var(--faint);opacity:.75}
   .ent-row .v{font-size:13.5px;color:var(--ink);word-break:break-word;white-space:pre-wrap}
   .ent-row .v.empty{color:var(--faint)}
+  /* обязательное и незаполненное — видно, что запись неполная */
+  .ent-row .v.missing{color:var(--coral);font-size:12.5px}
+  .ent-row.missing .l .req{animation:none}
   .ent-row .v .flag-on{color:var(--green);font-weight:600}
   .ent-row .v .flag-off{color:var(--faint)}
   .ent-row .v .num{font-variant-numeric:tabular-nums}

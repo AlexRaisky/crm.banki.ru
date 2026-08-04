@@ -171,6 +171,33 @@ var ENT_SHOW_IF = {
     app_version:       { field:"type", values:["mobile_token"] }
   }
 };
+/* Условная обязательность: поле обязательно не всегда, а при определённом
+   значении другого. Формат тот же, что у ENT_SHOW_IF, — одно условие или
+   несколько по И. Токен платформы обязателен, когда доставка идёт через
+   платформу: без него отправить в неё нечего. */
+var ENT_REQUIRE_IF = {
+  client_contact_info: {
+    platform_token: [{ field:"type", values:["mobile_token"] },
+                     { field:"delivery_platform", values:["appmetrica"] }]
+  }
+};
+function entRequireIf(e, name){
+  var v = (ENT_REQUIRE_IF[e.id] || {})[name];
+  if (!v) return null;
+  return Array.isArray(v) ? v : [v];
+}
+/* обязательно ли поле для ЭТОЙ записи: своя пометка в схеме плюс условие */
+function entRequired(e, f, r){
+  if (f.required) return true;
+  var rule = entRequireIf(e, f.name);
+  if (!rule || !r) return false;
+  return rule.every(function(c){
+    return c.values.indexOf(String(r[c.field] == null ? "" : r[c.field])) >= 0;
+  });
+}
+function entIsEmpty(v){
+  return v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length);
+}
 function entMirrorRule(e, name){ return (ENT_MIRROR[e.id] || {})[name] || null; }
 function entShowIf(e, name){
   var v = (ENT_SHOW_IF[e.id] || {})[name];
@@ -394,8 +421,9 @@ function entRowHtml(e, f, r){
   if (st.hidden) return "";
   var editing = ENT_CUR.edit === f.name;
   var wide = ["textarea","related_list","multilookup"].indexOf(f.ui_type) >= 0;
+  var req = entRequired(e, f, r);
   var label = '<div class="l"><span>' + entEsc(f.label || f.name) + "</span>" +
-    (f.required ? '<span class="req" title="' + entT("Обязательное поле") + '">*</span>' : "") +
+    (req ? '<span class="req" title="' + entT(f.required ? "Обязательное поле" : "Обязательное при текущих значениях") + '">*</span>' : "") +
     '<span class="api">' + entEsc(f.name) + "</span></div>";
   /* поле-зеркало: значение подтягивается из источника и не правится вручную */
   if (st.mirrored){
@@ -405,12 +433,16 @@ function entRowHtml(e, f, r){
       '<div class="ent-mirror-note">' + entT("подтягивается из поля") + " «" +
       entEsc(src ? (src.label || src.name) : st.rule.from) + "»</div></div>";
   }
-  var body = editing ? entEditorHtml(e, f, r) : entValueHtml(e, f, r);
+  /* обязательное и незаполненное видно сразу: иначе условная обязательность
+     молча появлялась бы после смены управляющего поля и оставалась незамеченной */
+  var missing = !editing && req && entEditable(f) && entIsEmpty(r[f.name]);
+  var body = editing ? entEditorHtml(e, f, r)
+    : (missing ? '<span class="v missing">' + entT("не заполнено") + "</span>" : entValueHtml(e, f, r));
   var pen = (!editing && entEditable(f))
     ? '<button type="button" class="ent-pen" data-edit="' + entEsc(f.name) + '" title="' + entT("Редактировать") + '">' + ENT_PEN + "</button>"
     : "";
   return '<div class="ent-row' + (wide ? " wide" : "") + (editing ? " editing" : "") +
-    '" data-f="' + entEsc(f.name) + '">' + label + body + pen + "</div>";
+    (missing ? " missing" : "") + '" data-f="' + entEsc(f.name) + '">' + label + body + pen + "</div>";
 }
 
 /* ============================================================
@@ -815,7 +847,8 @@ function entRender(){
     host.innerHTML = '<div class="ent-empty">' + entT("Сущность не найдена в схеме. Проверьте Scheme Builder в настроечной админке.") + "</div>";
     return;
   }
-  var toast = '<div class="ent-toast" id="entToast"></div>';
+  /* тост живёт в разметке страницы, вне entHost: перерисовка карточки его гасила */
+  var toast = "";
   var list = entRows(e.id);
 
   if (ENT_CUR.mode === "card" && entRecById(e.id, ENT_CUR.rec)){
@@ -983,6 +1016,12 @@ function entCommit(e, r){
   var next = entFromEditor(e, f, row);
   var prev = r[f.name];
   if (JSON.stringify(prev === undefined ? null : prev) === JSON.stringify(next === undefined ? null : next)) return;
+  /* обязательное поле нельзя очистить правкой: раньше значение просто стиралось,
+     и запись молча становилась неполной */
+  if (entIsEmpty(next) && !entIsEmpty(prev) && entRequired(e, f, r)){
+    entToast(entT("Поле обязательно") + ": " + (f.label || f.name));
+    return;
+  }
   r[f.name] = next;
   /* правка могла включить «Адреса совпадают» или изменить адрес-источник —
      подтягиваем зависимые поля до сохранения */
@@ -1077,8 +1116,10 @@ function entModalFieldHtml(e, f, draft){
     html = '<input type="text" class="ent-in" data-mf="' + entEsc(f.name) + '" value="' + entEsc(v || "") + '">';
   }
   var wide = ["textarea","multilookup"].indexOf(f.ui_type) >= 0;
+  /* звёздочка считается по черновику: поле могло стать обязательным только что,
+     когда выбрали значение управляющего поля */
   return '<div class="ent-m-fg' + (wide ? " wide" : "") + '"><label>' + entEsc(f.label || f.name) +
-    (f.required ? '<span class="req">*</span>' : "") + "</label>" + html + "</div>";
+    (entRequired(e, f, draft) ? '<span class="req">*</span>' : "") + "</label>" + html + "</div>";
 }
 
 function entModalHtml(){
@@ -1180,12 +1221,14 @@ function entNewRecord(e){
 function entCreateSave(e){
   var r = ENT_MODAL.draft;
   entApplyMirror(e, r);
-  /* обязательные поля: флажок и ноль — законные значения, поэтому проверяем
-     только пустую строку/отсутствие */
+  /* Обязательные поля: флажок и ноль — законные значения, поэтому проверяем
+     только пустую строку/отсутствие. Скрытые условием не проверяем: их и
+     заполнить было негде. Обязательность считается по самой записи —
+     поле могло стать обязательным из-за выбранных значений. */
   var miss = e.fields.filter(function(f){
-    if (!f.required || !entEditable(f)) return false;
-    var v = r[f.name];
-    return v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length);
+    if (!entEditable(f) || !entRequired(e, f, r)) return false;
+    if (entFieldState(e, f, r).hidden) return false;
+    return entIsEmpty(r[f.name]);
   }).map(function(f){ return f.label || f.name; });
   if (miss.length){
     ENT_MODAL.err = entT("Заполните") + ": " + miss.join(", ");

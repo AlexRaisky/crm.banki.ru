@@ -239,6 +239,9 @@
     <section class="view" id="view-entity">
       <div class="ent-host" id="entHost"></div>
       <div id="entModalHost"></div>
+      <!-- Уведомление тоже вне entHost: правка сразу перерисовывает карточку,
+           и тост внутри неё исчезал в тот же кадр, так и не показавшись. -->
+      <div class="ent-toast" id="entToast"></div>
     </section>
 
     <!-- ===== Обзор раздела «Отчёты» ===== -->

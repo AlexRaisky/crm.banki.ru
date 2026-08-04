@@ -461,6 +461,8 @@ Object.assign(I18N_EN, {
   "связанных записей нет":"no related records", "нет обратной ссылки в схеме":"no back-reference in the schema",
   "запись не найдена":"record not found", "записей нет":"no records",
   "Обязательное поле":"Required field", "Сохранено":"Saved",
+  "Обязательное при текущих значениях":"Required with the current values",
+  "не заполнено":"not filled in", "Поле обязательно":"The field is required",
   "Как это работает:":"How it works:",
   "подраздел построен по сущности из Scheme Builder: блоки полей собраны по смыслу, связи показаны ссылками на записи других сущностей — по ним можно перейти. Правка поля подтверждается ✓ (Enter), отменяется ✕ или Esc; клик мимо поля сохраняет значение. Изменения хранятся в браузере.":"the subsection is built from a Scheme Builder object: field blocks are grouped by meaning and relations are shown as links to records of other objects, which you can follow. A field edit is confirmed with ✓ (Enter) and cancelled with ✕ or Esc; clicking outside the field saves the value. Changes are stored in the browser.",
   /* названия смысловых блоков карточки */
