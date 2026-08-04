@@ -430,7 +430,7 @@ function renderInspector(){
 
 function renderEntityForm(out){
   const e = entityById(state.entity);
-  if (!e){ out.innerHTML = `<div class="sb-form"><div class="sb-empty">${T("Выберите сущность на схеме или создайте новую.")}</div></div>`; return; }
+  if (!e){ out.innerHTML = `<div class="sb-form"><div class="sb-empty">${T("Выберите таблицу на схеме или создайте новую.")}</div></div>`; return; }
   out.innerHTML = `<div class="sb-form">
     <div class="sb-grid2">
       <div class="sb-fg"><label>${T("Системное имя")}</label><input class="mono" id="sbE_id" value="${esc(e.id)}"></div>
@@ -450,7 +450,7 @@ function renderEntityForm(out){
       <option value="">—</option>${e.fields.map(f => `<option value="${esc(f.name)}" ${e.title_field===f.name?"selected":""}>${esc(f.name)}</option>`).join("")}</select></div>
     <div class="sb-fg"><label>${T("Описание")}</label><textarea id="sbE_desc">${esc(e.description||"")}</textarea></div>
     <label class="sb-check"><input type="checkbox" id="sbE_tech" ${e.technical ? "checked" : ""}>
-      <span>${T("Техническая")}<i>${T("служебная сущность: в пользовательской панели не показывается")}</i></span></label>
+      <span>${T("Техническая")}<i>${T("служебная таблица: в пользовательской панели не показывается")}</i></span></label>
     <div class="sb-acts">
       <button class="btn accent" id="sbE_save">${T("Сохранить")}</button>
       <button class="btn" id="sbE_addField">+ ${T("Поле")}</button>
@@ -473,11 +473,11 @@ function renderEntityForm(out){
       if (r.to_entity === old) r.to_entity = id;
     });
     state.entity = id;
-    commit("update", "entity", id, e); toast(T("Сущность сохранена"));
+    commit("update", "entity", id, e); toast(T("Таблица сохранена"));
   };
   $("#sbE_addField").onclick = openFieldModal;
   $("#sbE_del").onclick = () => {
-    if (!confirm(T("Удалить сущность и все её связи?"))) return;
+    if (!confirm(T("Удалить таблицу и все её связи?"))) return;
     model.entities = model.entities.filter(x => x.id !== e.id);
     model.relations = model.relations.filter(r => r.from_entity !== e.id && r.to_entity !== e.id);
     pruneSchemas();
@@ -486,7 +486,7 @@ function renderEntityForm(out){
     if (!Array.isArray(model.deleted)) model.deleted = [];
     if (model.deleted.indexOf(e.id) < 0) model.deleted.push(e.id);
     state.entity = null; state.field = null;
-    commit("delete", "entity", e.id, null); toast(T("Сущность удалена"));
+    commit("delete", "entity", e.id, null); toast(T("Таблица удалена"));
   };
 }
 
@@ -504,7 +504,7 @@ function fieldFormHtml(f, isNew){
         ${UI_TYPES.map(t => `<option value="${t.v}" ${f.ui_type===t.v?"selected":""}>${esc(T(t.label))}</option>`).join("")}</select></div>
     </div>
     <div class="sb-grid2">
-      <div class="sb-fg"><label>${T("Связанная сущность")}</label><select id="sbF_target"><option value="">—</option>
+      <div class="sb-fg"><label>${T("Связанная таблица")}</label><select id="sbF_target"><option value="">—</option>
         ${model.entities.map(e => `<option value="${esc(e.id)}" ${f.target_entity===e.id?"selected":""}>${esc(e.label)}</option>`).join("")}</select></div>
       <div class="sb-fg"><label>${T("Тип связи поля")}</label><select id="sbF_rel"><option value="">—</option>
         ${["lookup","related_list"].map(x => `<option ${f.relation_kind===x?"selected":""}>${x}</option>`).join("")}</select></div>
@@ -551,7 +551,7 @@ function fieldPreviewHtml(f){
     case "picklist": w = (f.options && f.options.length)
         ? `<select ${ro}>${f.options.map(o => `<option>${esc(o)}</option>`).join("")}</select>`
         : `<select disabled><option>— ${T("добавьте значения списка")} —</option></select>`; break;
-    case "lookup":   w = `<div class="sb-pv-lookup">🔍 ${tgt ? esc(tgt.label) : T("выберите связанную сущность")} …</div>`; break;
+    case "lookup":   w = `<div class="sb-pv-lookup">🔍 ${tgt ? esc(tgt.label) : T("выберите связанную таблицу")} …</div>`; break;
     case "multilookup": w = `<div class="sb-pv-chips"><span>${tgt ? esc(tgt.label) : T("запись")} 1 ×</span>
         <span>${tgt ? esc(tgt.label) : T("запись")} 2 ×</span><span class="add">+ ${T("добавить")}</span></div>`; break;
     case "related_list": w = `<div class="sb-pv-list"><div class="sb-pv-list-head">
@@ -563,7 +563,7 @@ function fieldPreviewHtml(f){
 }
 function fieldHintHtml(f){
   const parts = [];
-  if (REL_UI.includes(f.ui_type) && !f.target_entity) parts.push("⚠ " + T("Укажите связанную сущность — без неё связь не построится."));
+  if (REL_UI.includes(f.ui_type) && !f.target_entity) parts.push("⚠ " + T("Укажите связанную таблицу — без неё связь не построится."));
   if (f.ui_type === "picklist" && !(f.options||[]).length) parts.push("⚠ " + T("Для списка добавьте значения через запятую."));
   const fam = dbFamily(f.db_type), ok = UI_DB_OK[f.ui_type];
   if (fam && ok && !ok.includes(fam))
@@ -596,7 +596,7 @@ function wireFieldAux(isNew){
 }
 function renderFieldForm(out){
   const e = entityById(state.entity), f = e && e.fields[state.field];
-  if (!f){ out.innerHTML = `<div class="sb-form"><div class="sb-empty">${T("Выберите поле внутри сущности на схеме.")}</div></div>`; return; }
+  if (!f){ out.innerHTML = `<div class="sb-form"><div class="sb-empty">${T("Выберите поле внутри таблицы на схеме.")}</div></div>`; return; }
   out.innerHTML = fieldFormHtml(f, false);
   wireFieldAux();
   $("#sbF_save").onclick = () => {
@@ -643,11 +643,11 @@ function relationFormHtml(r, isNew){
   const entOpts = (sel) => model.entities.map(e => `<option value="${esc(e.id)}" ${sel===e.id?"selected":""}>${esc(e.label)}</option>`).join("");
   return `<div class="sb-form">
     <div class="sb-grid2">
-      <div class="sb-fg"><label>${T("Из сущности")}</label><select id="sbR_fromE">${entOpts(r.from_entity)}</select></div>
+      <div class="sb-fg"><label>${T("Из таблицы")}</label><select id="sbR_fromE">${entOpts(r.from_entity)}</select></div>
       <div class="sb-fg"><label>${T("Поле FK")}</label><select class="mono" id="sbR_fromF"></select></div>
     </div>
     <div class="sb-grid2">
-      <div class="sb-fg"><label>${T("В сущность")}</label><select id="sbR_toE">${entOpts(r.to_entity)}</select></div>
+      <div class="sb-fg"><label>${T("В таблицу")}</label><select id="sbR_toE">${entOpts(r.to_entity)}</select></div>
       <div class="sb-fg"><label>${T("Целевое поле")}</label><select class="mono" id="sbR_toF"></select></div>
     </div>
     <div class="sb-grid2">
@@ -769,7 +769,7 @@ function closeModal(){ $("#sbModal").classList.remove("open"); }
 
 /* preset — схема, в которую сразу кладём таблицу (кнопка «+» у группы схемы). */
 function openEntityModal(preset){
-  openModal(`<h3>${T("Новая сущность")}</h3><div class="sb-form" style="padding:0">
+  openModal(`<h3>${T("Новая таблица")}</h3><div class="sb-form" style="padding:0">
     <div class="sb-grid2">
       <div class="sb-fg"><label>${T("Название")}</label><input id="sbNE_label" placeholder="${T("Например, Заявка")}"></div>
       <div class="sb-fg"><label>${T("Системное имя")}</label><input class="mono" id="sbNE_id" placeholder="application"></div>
@@ -812,12 +812,12 @@ function openEntityModal(preset){
        ключу пользовательская панель (js/entities.js) строит подразделы раздела
        «Сущности»: новая сущность появляется там сама, доступ по умолчанию только
        у администраторов (реестр crmpanel:entityAccess). */
-    closeModal(); commit("create", "entity", id, e); toast(T("Сущность создана"));
+    closeModal(); commit("create", "entity", id, e); toast(T("Таблица создана"));
   };
 }
 function openFieldModal(){
   const e = entityById(state.entity);
-  if (!e) return toast(T("Сначала выберите сущность"));
+  if (!e) return toast(T("Сначала выберите таблицу"));
   const f = { name:"", label:"", db_type:"varchar(255)", ui_type:"text", required:false, read_only:false,
     description:"", target_entity:"", relation_kind:"", default_value:"", options:[] };
   openModal(`<h3>${T("Новое поле")} · ${esc(e.label)}</h3>` + fieldFormHtml(f, true));
@@ -833,7 +833,7 @@ function openFieldModal(){
   };
 }
 function openRelationModal(){
-  if (model.entities.length < 2) return toast(T("Нужно хотя бы две сущности"));
+  if (model.entities.length < 2) return toast(T("Нужно хотя бы две таблицы"));
   const a = model.entities[0], b = model.entities[1];
   const r = { id:"rel_" + Date.now(), from_entity:a.id, from_field:(a.fields[0]||{}).name || "",
     to_entity:b.id, to_field:"id", relation_type:"many_to_one", nullable:true,
