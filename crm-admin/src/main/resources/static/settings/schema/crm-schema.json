@@ -1270,6 +1270,58 @@
                                                         ]
                                         },
                                         {
+                                            "name":  "token_type",
+                                            "label":  "Тип токена",
+                                            "db_type":  "varchar(32)",
+                                            "ui_type":  "picklist",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Служба доставки push: зависит от магазина приложений и прошивки устройства. wns — исторические записи с Windows-устройств.",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+                                                            "fcm",
+                                                            "apns",
+                                                            "hms",
+                                                            "rustore",
+                                                            "wns"
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "os",
+                                            "label":  "Операционная система",
+                                            "db_type":  "varchar(32)",
+                                            "ui_type":  "picklist",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "ОС устройства. windows — исторические записи (Windows Phone/Mobile сняты с поддержки), заведено для импорта старых данных.",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+                                                            "ios",
+                                                            "android",
+                                                            "harmonyos",
+                                                            "windows"
+                                                        ]
+                                        },
+                                        {
+                                            "name":  "app_version",
+                                            "label":  "Версия мобильного приложения",
+                                            "db_type":  "varchar(32)",
+                                            "ui_type":  "text",
+                                            "required":  false,
+                                            "read_only":  false,
+                                            "description":  "Версия приложения, из которого получен токен: нужна для разбора проблем с доставкой push.",
+                                            "target_entity":  "",
+                                            "relation_kind":  "",
+                                            "default_value":  "",
+                                            "options":  [
+
+                                                        ]
+                                        },
+                                        {
                                             "name":  "double_opt_in",
                                             "label":  "Подтверждён",
                                             "db_type":  "boolean",
