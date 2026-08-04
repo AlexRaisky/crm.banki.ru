@@ -113,7 +113,20 @@ public class SchemaInspectService {
         Map<String, Map<String, Object>> out = new LinkedHashMap<>();
         try {
             JsonNode model = models.currentAsNode();
-            JsonNode entities = model == null ? null : model.get("entities");
+            if (model == null) return out;
+            /* Подписи самих схем — из списка schemas: там их задаёт человек, и это
+               точнее, чем брать описание у одноимённой таблицы. */
+            JsonNode schemas = model.get("schemas");
+            if (schemas != null && schemas.isArray()) {
+                for (JsonNode s : schemas) {
+                    String id = text(s, "id");
+                    if (id.isEmpty()) continue;
+                    String d = text(s, "description");
+                    if (d.isEmpty()) d = text(s, "label");
+                    out.computeIfAbsent(id, k -> new LinkedHashMap<>()).put("", d);
+                }
+            }
+            JsonNode entities = model.get("entities");
             if (entities == null || !entities.isArray()) return out;
             for (JsonNode e : entities) {
                 String schema = DdlPlanner.schemaOf(e);
