@@ -187,7 +187,12 @@ const SchemaStore = {
 let model = { version:"2.0", entities:[], relations:[] };
 /* expanded — какие сущности показывают все поля; это состояние интерфейса,
    в модель (и, значит, в Git) оно не попадает */
-const state = { scale:1, tx:20, ty:20, entity:null, field:null, relation:null, tab:"entity",
+/* Навигация в панели — три уровня: сущность (схема) → таблица → колонка.
+   schema выбран, entity нет  — показываем сущность и список её таблиц;
+   entity выбран, field нет   — таблицу и список её колонок;
+   field выбран               — саму колонку.
+   Возврат наверх — по хлебным крошкам. */
+const state = { scale:1, tx:20, ty:20, schema:null, entity:null, field:null, relation:null, tab:"entity",
                 drag:null, pan:null, q:"", expanded:{} };
 let booted = false;
 
@@ -267,30 +272,22 @@ function matches(e){
 function renderLists(){
   const el = $("#sbEntityList");
   if (!el) return;
-  /* Список группируем по схемам: сущность это схема, её таблицы лежат внутри,
-     и в списке это должно быть видно так же, как будет в базе. */
+  /* В списке — только СУЩНОСТИ. Таблицы и колонки раскрываются в боковой панели:
+     на схеме из сотни таблиц плоский список нечитаем, а сущностей всегда единицы. */
   const list = model.entities.filter(matches);
   const groups = allSchemas().filter(s => list.some(e => schemaOf(e) === s.id));
   el.innerHTML = groups.length ? groups.map(s => {
     const tables = list.filter(e => schemaOf(e) === s.id);
-    return `<div class="sb-sgroup">
-      <div class="sb-shead">
-        <span class="lbl mono">${esc(s.id)}</span>
-        <span class="cnt">${tables.length}</span>
-        <button class="sb-sadd" data-s="${esc(s.id)}" title="${T("Добавить таблицу в эту схему")}">+</button>
-      </div>` +
-      tables.map(e => `<div class="sb-item ${state.entity === e.id ? "active" : ""}" data-e="${esc(e.id)}">
-        <span class="dot"></span><span class="lbl">${esc(e.label)}</span>
-        <span class="cnt">${e.fields.length}</span></div>`).join("") +
-      `</div>`;
+    const cols = tables.reduce((n, e) => n + e.fields.length, 0);
+    return `<div class="sb-item sb-ent ${state.schema === s.id ? "active" : ""}" data-s="${esc(s.id)}">
+      <span class="dot"></span>
+      <span class="lbl">${esc(s.label || s.id)}<i class="sb-ent-sub mono">${esc(s.id)}</i></span>
+      <span class="cnt" title="${T("таблиц / колонок")}">${tables.length} / ${cols}</span>
+    </div>`;
   }).join("") : `<div class="sb-empty">${T("Ничего не найдено")}</div>`;
-  $$("#sbEntityList .sb-item").forEach(x => x.onclick = () => {
-    state.entity = x.dataset.e; state.field = null; setTab("entity"); render();
-  });
-  /* «+» у схемы: заводим таблицу сразу в ней — не заставляя потом искать поле «Схема» */
-  $$("#sbEntityList .sb-sadd").forEach(b => b.onclick = ev => {
-    ev.stopPropagation();
-    openEntityModal(b.dataset.s);
+  $$("#sbEntityList .sb-ent").forEach(x => x.onclick = () => {
+    state.schema = x.dataset.s; state.entity = null; state.field = null;
+    setTab("entity"); render();
   });
   $("#sbEntityCount").textContent = model.entities.length;
 
@@ -419,13 +416,93 @@ function setTab(t){
   state.tab = t;
   $$("#sbTabs .sb-tab").forEach(x => x.classList.toggle("on", x.dataset.tab === t));
 }
+/* Хлебные крошки вместо вкладок: панель раскрывается вглубь, и вернуться
+   на уровень выше нужно уметь из любого места. Рисуем в контейнер вкладок —
+   так разметка остаётся прежней, а поведение меняется. */
+function renderCrumbs(){
+  const bar = $("#sbTabs");
+  if (!bar) return;
+  const s = model.schemas && model.schemas.find(x => x.id === state.schema);
+  const e = state.entity ? entityById(state.entity) : null;
+  const f = (e && state.field != null) ? e.fields[state.field] : null;
+  const parts = [];
+  if (state.tab === "relation"){
+    parts.push(`<span class="sb-crumb on">${T("Связь")}</span>`);
+  } else if (!s && !e){
+    parts.push(`<span class="sb-crumb on">${T("Сущность")}</span>`);
+  } else {
+    parts.push(`<button class="sb-crumb ${!e ? "on" : ""}" data-go="schema">${esc((s && (s.label || s.id)) || T("Сущность"))}</button>`);
+    if (e) parts.push(`<span class="sb-crumb-sep">›</span>` +
+      `<button class="sb-crumb ${f ? "" : "on"}" data-go="table">${esc(e.table || e.id)}</button>`);
+    if (f) parts.push(`<span class="sb-crumb-sep">›</span>` +
+      `<span class="sb-crumb on">${esc(f.name)}</span>`);
+  }
+  bar.innerHTML = parts.join("");
+  bar.className = "sb-crumbs";
+  $$("#sbTabs .sb-crumb[data-go]").forEach(b => b.onclick = () => {
+    if (b.dataset.go === "schema"){ state.entity = null; state.field = null; }
+    if (b.dataset.go === "table"){ state.field = null; }
+    setTab("entity"); render();
+  });
+}
+
 function renderInspector(){
   const out = $("#sbInspector");
   if (!out) return;
-  $$("#sbTabs .sb-tab").forEach(x => x.classList.toggle("on", x.dataset.tab === state.tab));
-  if (state.tab === "entity") return renderEntityForm(out);
-  if (state.tab === "field")  return renderFieldForm(out);
-  return renderRelationForm(out);
+  /* Таблицу могли выбрать не из панели, а кликом по узлу на холсте — тогда
+     сущность в крошках не совпала бы с показанным. Подтягиваем. */
+  if (state.entity){
+    const e = entityById(state.entity);
+    if (e) state.schema = schemaOf(e);
+  }
+  renderCrumbs();
+  if (state.tab === "relation") return renderRelationForm(out);
+  /* Уровень определяем по выбранному, а не по вкладке: панель раскрывается вглубь. */
+  if (state.entity && state.field != null) return renderFieldForm(out);
+  if (state.entity) return renderEntityForm(out);
+  if (state.schema) return renderSchemaForm(out);
+  out.innerHTML = `<div class="sb-form"><div class="sb-empty">${
+    T("Выберите сущность слева или создайте новую.")}</div></div>`;
+}
+
+/* ---------- уровень 1: сущность и её таблицы ---------- */
+function renderSchemaForm(out){
+  const s = ensureSchema(state.schema);
+  if (!s){ out.innerHTML = `<div class="sb-form"><div class="sb-empty">${T("Выберите сущность слева или создайте новую.")}</div></div>`; return; }
+  const tables = model.entities.filter(e => schemaOf(e) === s.id);
+  out.innerHTML = `<div class="sb-form">
+    <div class="sb-fg"><label>${T("Системное имя")}</label>
+      <input class="mono" id="sbS_id" value="${esc(s.id)}">
+      <i class="sb-hint">${T("Это имя схемы в базе")}</i></div>
+    <div class="sb-fg"><label>${T("Название")}</label><input id="sbS_label" value="${esc(s.label || "")}"></div>
+    <div class="sb-fg"><label>${T("Описание")}</label><textarea id="sbS_desc">${esc(s.description || "")}</textarea></div>
+    <div class="sb-acts">
+      <button class="btn accent" id="sbS_save">${T("Сохранить")}</button>
+      <button class="btn" id="sbS_addTable">+ ${T("Таблица")}</button>
+    </div>
+    <div class="sb-sub-head">${T("Таблицы")} <span class="n">${tables.length}</span></div>
+    ${tables.length ? tables.map(e => `<div class="sb-item sb-tbl" data-e="${esc(e.id)}">
+        <span class="dot"></span>
+        <span class="lbl">${esc(e.label || e.id)}<i class="sb-ent-sub mono">${esc(s.id)}.${esc(e.table || e.id)}</i></span>
+        <span class="cnt">${e.fields.length}</span></div>`).join("")
+      : `<div class="sb-empty">${T("В сущности пока нет таблиц")}</div>`}
+  </div>`;
+  $("#sbS_save").onclick = () => {
+    const id = slug($("#sbS_id").value);
+    if (!id) return toast(T("Нужно системное имя"));
+    const old = s.id;
+    if (id !== old && model.schemas.some(x => x.id === id)) return toast(T("Такое системное имя уже есть"));
+    /* Переименование схемы тянет за собой все её таблицы — иначе они осиротеют
+       и разъедутся по разным схемам. */
+    if (id !== old) model.entities.forEach(e => { if (schemaOf(e) === old) e.schema = id; });
+    s.id = id; s.label = $("#sbS_label").value || id; s.description = $("#sbS_desc").value;
+    state.schema = id;
+    commit("update", "schema", id, s); toast(T("Сущность сохранена"));
+  };
+  $("#sbS_addTable").onclick = () => openEntityModal(s.id);
+  $$("#sbInspector .sb-tbl").forEach(x => x.onclick = () => {
+    state.entity = x.dataset.e; state.field = null; setTab("entity"); render();
+  });
 }
 
 function renderEntityForm(out){
@@ -453,9 +530,31 @@ function renderEntityForm(out){
       <span>${T("Техническая")}<i>${T("служебная таблица: в пользовательской панели не показывается")}</i></span></label>
     <div class="sb-acts">
       <button class="btn accent" id="sbE_save">${T("Сохранить")}</button>
-      <button class="btn" id="sbE_addField">+ ${T("Поле")}</button>
+      <button class="btn" id="sbE_addField">+ ${T("Колонка")}</button>
       <button class="btn ghost-danger" id="sbE_del">${T("Удалить")}</button>
-    </div></div>`;
+    </div>
+    <div class="sb-sub-head">${T("Колонки")} <span class="n">${e.fields.length}</span></div>
+    ${e.fields.length ? e.fields.map((f, i) => `<div class="sb-item sb-col" data-i="${i}">
+        <span class="dot ${f.required ? "" : "opt"}"></span>
+        <span class="lbl">${esc(f.name)}<i class="sb-ent-sub mono">${esc(f.db_type || "text")}</i></span>
+        ${f.name === "id" ? `<span class="cnt">PK</span>`
+          : `<button class="sb-col-del" data-i="${i}" title="${T("Удалить колонку")}">×</button>`}
+      </div>`).join("")
+      : `<div class="sb-empty">${T("В таблице пока нет колонок")}</div>`}
+  </div>`;
+  $$("#sbInspector .sb-col").forEach(x => x.onclick = () => {
+    state.field = Number(x.dataset.i); setTab("field"); render();
+  });
+  /* Удаление колонки прямо из списка. id не даём убрать: это первичный ключ,
+     на него ссылаются внешние ключи, и таблица без него нам не нужна. */
+  $$("#sbInspector .sb-col-del").forEach(b => b.onclick = ev => {
+    ev.stopPropagation();
+    const i = Number(b.dataset.i), f = e.fields[i];
+    if (!f || !confirm(T("Удалить колонку") + " «" + f.name + "»?")) return;
+    e.fields.splice(i, 1);
+    if (state.field === i) state.field = null;
+    commit("delete", "field", `${e.id}.${f.name}`, null); toast(T("Колонка удалена"));
+  });
   $("#sbE_save").onclick = () => {
     const old = e.id, id = slug($("#sbE_id").value);
     if (!id) return toast(T("Нужно системное имя"));
@@ -767,6 +866,50 @@ function openModal(html){
 }
 function closeModal(){ $("#sbModal").classList.remove("open"); }
 
+/* Новая СУЩНОСТЬ: заводим схему и сразу таблицу с тем же именем.
+   Пустая сущность бесполезна — в базе схема без таблиц ничего не значит,
+   и заставлять человека делать второй шаг незачем. */
+function openSchemaModal(){
+  openModal(`<h3>${T("Новая сущность")}</h3><div class="sb-form" style="padding:0">
+    <div class="sb-grid2">
+      <div class="sb-fg"><label>${T("Название")}</label><input id="sbNS_label" placeholder="${T("Например, Пользователь")}"></div>
+      <div class="sb-fg"><label>${T("Системное имя")}</label><input class="mono" id="sbNS_id" placeholder="user"></div>
+    </div>
+    <div class="sb-fg"><label>${T("Описание")}</label><textarea id="sbNS_desc"></textarea></div>
+    <div class="sb-modal-note" id="sbNS_hint"></div>
+    <div class="sb-acts"><button class="btn accent" id="sbNS_create">${T("Создать")}</button>
+      <button class="btn" id="sbNS_cancel">${T("Отмена")}</button></div></div>`);
+  const hint = () => {
+    const id = slug($("#sbNS_id").value || $("#sbNS_label").value) || "user";
+    $("#sbNS_hint").innerHTML = T("В базе получится") + " <b class=\"mono\">" + esc(id) + "." + esc(id) + "</b>";
+  };
+  $("#sbNS_label").oninput = () => {
+    if (!$("#sbNS_id").dataset.edited) $("#sbNS_id").value = slug($("#sbNS_label").value);
+    hint();
+  };
+  $("#sbNS_id").oninput = () => { $("#sbNS_id").dataset.edited = "1"; hint(); };
+  hint();
+  $("#sbNS_cancel").onclick = closeModal;
+  $("#sbNS_create").onclick = () => {
+    const id = slug($("#sbNS_id").value || $("#sbNS_label").value);
+    if (!id) return toast(T("Введите название"));
+    if ((model.schemas || []).some(x => x.id === id)) return toast(T("Такое системное имя уже есть"));
+    if (entityById(id)) return toast(T("Такое системное имя уже есть"));
+    const label = $("#sbNS_label").value || id;
+    const sch = ensureSchema(id);
+    sch.label = label; sch.description = $("#sbNS_desc").value;
+    const n = model.entities.length;
+    const e = { id, schema: id, table: id, label, plural_label: label,
+      description: "", title_field: "",
+      fields: [{ name:"id", label:"ID", db_type:"bigserial", ui_type:"number", required:true, read_only:true,
+        description: T("Первичный ключ"), target_entity:"", relation_kind:"", default_value:"", options:[] }],
+      x: 40 + (n % 3) * 330, y: 40 + Math.floor(n / 3) * 300 };
+    model.entities.push(e);
+    state.schema = id; state.entity = e.id; state.field = null;
+    closeModal(); commit("create", "schema", id, sch); toast(T("Сущность создана"));
+  };
+}
+
 /* preset — схема, в которую сразу кладём таблицу (кнопка «+» у группы схемы). */
 function openEntityModal(preset){
   openModal(`<h3>${T("Новая таблица")}</h3><div class="sb-form" style="padding:0">
@@ -1016,7 +1159,7 @@ async function boot(){
   booted = true;
 
   /* тулбар */
-  $("#sbAddEntity").onclick = openEntityModal;
+  $("#sbAddEntity").onclick = openSchemaModal;
   $("#sbAddRelation").onclick = openRelationModal;
   $("#sbAuto").onclick = autoLayout;
   $("#sbFit").onclick = fit;

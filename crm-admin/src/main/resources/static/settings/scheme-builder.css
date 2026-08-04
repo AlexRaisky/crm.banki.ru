@@ -201,3 +201,22 @@
   padding:5px 8px; border-bottom:1px solid var(--line) }
 .sb-ddl td{ padding:5px 8px; border-bottom:1px solid var(--line) }
 .sb-ddl .mono{ font-family:var(--mono) }
+
+/* ---- Панель раскрывается вглубь: сущность → таблицы → колонки ---- */
+.sb-crumbs{ display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  padding:8px 10px; border-bottom:1px solid var(--line); font-size:12.5px }
+.sb-crumbs .sb-crumb{ background:none; border:none; padding:2px 4px; cursor:pointer;
+  color:var(--blue); font-family:inherit; font-size:12.5px }
+.sb-crumbs .sb-crumb.on{ color:var(--ink); font-weight:600; cursor:default }
+.sb-crumbs .sb-crumb-sep{ color:var(--faint) }
+/* подзаголовок вложенного списка внутри формы */
+.sb-form .sb-sub-head{ display:flex; align-items:center; gap:8px; margin:14px 0 6px;
+  color:var(--dim); font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:.06em }
+.sb-form .sb-sub-head .n{ color:var(--faint); font-weight:400; letter-spacing:0 }
+/* строка списка: подпись сверху, системное имя мелким снизу */
+.sb-item .lbl .sb-ent-sub{ display:block; font-style:normal; font-size:11px; color:var(--faint); margin-top:1px }
+.sb-item.sb-ent .cnt, .sb-item.sb-tbl .cnt{ white-space:nowrap }
+.sb-item .dot.opt{ opacity:.45 }
+.sb-col-del{ width:20px; height:20px; line-height:1; padding:0; border-radius:6px; cursor:pointer;
+  border:1px solid var(--line); background:var(--card); color:var(--faint); font-size:13px }
+.sb-col-del:hover{ color:var(--coral); border-color:rgba(255,107,138,.45) }
