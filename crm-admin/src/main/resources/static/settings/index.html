@@ -367,6 +367,16 @@
         </div>
       </section>
 
+      <!-- ===== Схемы и таблицы — фактическое состояние базы (только чтение) =====
+           Содержимое рисует db-explorer.js по ответу GET /api/schema/db. -->
+      <section class="pane" id="pane-dbtree">
+        <h1 data-i18n-html="h_dbtree">Схемы и <span class="grad">таблицы</span></h1>
+        <div class="sub" data-i18n="Что реально лежит в базе панели: схемы, внутри — их таблицы. Показывается фактическое состояние, а не модель конструктора: часть схем заведена миграциями, часть — конструктором схемы. Раздел только читает и ничего не меняет.">Что реально лежит в базе панели: схемы, внутри — их таблицы. Показывается
+          фактическое состояние, а не модель конструктора: часть схем заведена миграциями,
+          часть — конструктором схемы. Раздел только читает и ничего не меняет.</div>
+        <div id="dbxHost"></div>
+      </section>
+
       <!-- ===== Общие параметры ===== -->
       <section class="pane" id="pane-general">
         <h1 data-i18n-html="h_gen">Общие <span class="grad">параметры</span></h1>
@@ -706,13 +716,15 @@ const S_HTML = {
         h_gen:'Общие <span class="grad">параметры</span>', h_diag:'Диагностика <span class="grad">хранилища</span>',
         h_access:'Управление <span class="grad">доступом</span>',
         h_objects:'Сущности <span class="grad">CRM</span>',
-        h_scheme:'Scheme <span class="grad">Builder</span>' },
+        h_scheme:'Scheme <span class="grad">Builder</span>',
+        h_dbtree:'Схемы и <span class="grad">таблицы</span>' },
   en: { h_over:'Admin <span class="grad">settings</span>', h_apps:'Apps <span class="grad">& sections</span>',
         h_mon:'Integration <span class="grad">monitoring</span>', h_up:'Uploaded <span class="grad">tools</span>',
         h_gen:'General <span class="grad">settings</span>', h_diag:'Storage <span class="grad">diagnostics</span>',
         h_access:'Access <span class="grad">management</span>',
         h_objects:'CRM <span class="grad">objects</span>',
-        h_scheme:'Scheme <span class="grad">Builder</span>' }
+        h_scheme:'Scheme <span class="grad">Builder</span>',
+        h_dbtree:'Schemas and <span class="grad">tables</span>' }
 };
 function translateStatic(){
   document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t2(el.dataset.i18n); });
@@ -747,6 +759,8 @@ const PANES = [
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.5h18M9 9.5V20"/></svg>' },
   { id:"scheme",     label:"Scheme Builder", desc:"Конструктор схемы данных CRM: сущности, поля, типы и связи.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><rect x="3" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v6M17.5 15V12H6.5"/></svg>' },
+  { id:"dbtree",     label:"Схемы и таблицы", desc:"Что реально есть в базе: схемы, внутри — таблицы с описанием, числом колонок и оценкой строк.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>' },
   { id:"general",    label:"Общие параметры", desc:"Тема оформления (светлая, тёмная, системная) и язык интерфейса.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>' },
   { id:"diag",       label:"Диагностика", desc:"Занятость localStorage браузера данными панели.",
@@ -768,6 +782,8 @@ function openPane(id){
   if (id === "scheme" && window.SchemeBuilder) window.SchemeBuilder.open();
   /* «Сущности» работают с той же схемой — перечитываем её при каждом открытии */
   if (id === "objects" && window.ObjectManager) window.ObjectManager.open();
+  /* Структура базы меняется мимо панели (миграции, применение DDL) — читаем заново */
+  if (id === "dbtree" && window.DbExplorer) window.DbExplorer.open();
 }
 PANES.forEach(p => {
   const el = document.createElement("div");
@@ -1561,7 +1577,31 @@ window.CRM = window.CRM || (function(){
 <script src="scheme-builder.js?v=8"></script>
 <!-- «Сущности»: общий с панелью расчёт раскладки + сам раздел. Порядок важен:
      object-manager.js работает с хранилищем схемы из scheme-builder.js. -->
-<script src="../js/entity-layout.js?v=5"></script>
+<script src="../js/entity-layout.js?v=4"></script>
 <script src="object-manager.js?v=4"></script>
+<!-- «Схемы и таблицы»: обозреватель фактического состояния БД, только чтение -->
+<style>
+  #dbxHost .dbx-schema{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden}
+  #dbxHost .dbx-head{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;background:var(--card2)}
+  #dbxHost .dbx-head:hover{background:var(--card)}
+  #dbxHost .dbx-caret{color:var(--faint);width:12px}
+  #dbxHost .dbx-name{font-weight:600}
+  #dbxHost .mono{font-family:var(--mono,monospace)}
+  #dbxHost .dbx-badge{font-size:10.5px;padding:2px 7px;border-radius:9px;white-space:nowrap}
+  #dbxHost .dbx-badge.own{background:var(--green-bg);color:var(--green)}
+  #dbxHost .dbx-badge.res{background:var(--amber-bg);color:var(--amber)}
+  #dbxHost .dbx-cnt{color:var(--faint);font-size:12px;white-space:nowrap}
+  #dbxHost .dbx-cmt{color:var(--dim);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #dbxHost .dbx-body{padding:0}
+  #dbxHost .dbx-schema.open .dbx-body{padding:2px 12px 12px}
+  #dbxHost .dbx-tbl{width:100%;border-collapse:collapse;font-size:13px}
+  #dbxHost .dbx-tbl th{text-align:left;color:var(--dim);font-size:11.5px;font-weight:600;
+    padding:6px 8px;border-bottom:1px solid var(--line)}
+  #dbxHost .dbx-tbl td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  #dbxHost .dbx-tbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  #dbxHost .dbx-empty{color:var(--faint);padding:18px 4px;font-size:13px}
+  #dbxHost .dbx-empty.small{padding:8px 4px;font-size:12.5px}
+</style>
+<script src="db-explorer.js?v=1"></script>
 </body>
 </html>

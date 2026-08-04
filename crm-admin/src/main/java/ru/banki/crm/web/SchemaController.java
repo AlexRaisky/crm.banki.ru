@@ -31,11 +31,23 @@ public class SchemaController {
 
     private final SchemaModelService service;
     private final ru.banki.crm.service.schema.SchemaDdlService ddl;
+    private final ru.banki.crm.service.schema.SchemaInspectService inspect;
 
     public SchemaController(SchemaModelService service,
-                            ru.banki.crm.service.schema.SchemaDdlService ddl) {
+                            ru.banki.crm.service.schema.SchemaDdlService ddl,
+                            ru.banki.crm.service.schema.SchemaInspectService inspect) {
         this.service = service;
         this.ddl = ddl;
+        this.inspect = inspect;
+    }
+
+    /**
+     * Что реально есть в базе: схемы с вложенными таблицами. Только чтение —
+     * обозреватель для админа и заодно проверка того, что применение DDL сработало.
+     */
+    @GetMapping("/db")
+    public List<Map<String, Object>> db() {
+        return inspect.tree();
     }
 
     /** Текущая модель. Первое обращение засевает её из файла в classpath. */
