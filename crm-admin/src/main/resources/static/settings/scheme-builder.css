@@ -201,6 +201,9 @@
   padding:5px 8px; border-bottom:1px solid var(--line) }
 .sb-ddl td{ padding:5px 8px; border-bottom:1px solid var(--line) }
 .sb-ddl .mono{ font-family:var(--mono) }
+/* строка пропуска: видно, что она в плане была, но выполнена не будет */
+.sb-ddl tr.skip td{ opacity:.45; text-decoration:line-through }
+.sb-ddl tr.skip td:last-child{ opacity:.7; text-decoration:none; color:var(--dim) }
 
 /* ---- Панель раскрывается вглубь: сущность → таблицы → колонки ---- */
 .sb-crumbs{ display:flex; align-items:center; gap:6px; flex-wrap:wrap;

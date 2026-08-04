@@ -34,8 +34,20 @@ public final class DdlPlanner {
     /** db_type = relation — это не колонка, а пометка о связи; в таблицу не идёт. */
     private static final String RELATION = "relation";
 
-    /** Одна инструкция плана. */
-    public record Stmt(String kind, String schema, String table, String sql) {}
+    /**
+     * Одна инструкция плана.
+     * <p>
+     * {@code refs} — все схемы, которых инструкция касается. Для создания это её
+     * собственная схема, для внешнего ключа — ещё и та, куда он ссылается. Нужно, чтобы
+     * недоступную схему можно было честно обойти: пропустить инструкции ПРО неё мало,
+     * надо выбросить и те, что тянут в неё ссылку, иначе на боевой таблице появится
+     * чужой constraint.
+     */
+    public record Stmt(String kind, String schema, String table, String sql, List<String> refs) {
+        public Stmt(String kind, String schema, String table, String sql) {
+            this(kind, schema, table, sql, schema == null ? List.of() : List.of(schema));
+        }
+    }
 
     /** Результат планирования: инструкции и то, что не удалось разобрать. */
     public record Plan(List<Stmt> statements, List<String> problems, List<String> schemas) {}
@@ -144,7 +156,8 @@ public final class DdlPlanner {
                         + "    ALTER TABLE " + fs + "." + ft + " ADD CONSTRAINT " + name + "\n"
                         + "      FOREIGN KEY (" + fromField + ") REFERENCES " + ts + "." + tt
                         + " (" + (toField.isEmpty() ? "id" : toField) + ") ON DELETE " + onDelete + ";\n"
-                        + "  END IF;\nEND $$;"));
+                        + "  END IF;\nEND $$;",
+                        List.of(fs, ts)));
             }
 
             // 4. Связующие таблицы many-to-many.
@@ -173,7 +186,8 @@ public final class DdlPlanner {
                         "CREATE TABLE IF NOT EXISTS " + fs + "." + link + " (\n"
                         + "    " + fromCol + " bigint NOT NULL REFERENCES " + fs + "." + ft + "(id) ON DELETE CASCADE,\n"
                         + "    " + toCol + " bigint NOT NULL REFERENCES " + ts + "." + tt + "(id) ON DELETE CASCADE,\n"
-                        + "    PRIMARY KEY (" + fromCol + ", " + toCol + ")\n);"));
+                        + "    PRIMARY KEY (" + fromCol + ", " + toCol + ")\n);",
+                        List.of(fs, ts)));
             }
         }
         return new Plan(out, problems, new ArrayList<>(schemas));
@@ -209,7 +223,34 @@ public final class DdlPlanner {
 
     private static String def(JsonNode f) {
         String d = text(f, "default_value");
-        return d.isEmpty() ? "" : " DEFAULT " + d;
+        return d.isEmpty() ? "" : " DEFAULT " + defaultLiteral(d);
+    }
+
+    /** Числовой литерал: такой в DEFAULT идёт как есть. */
+    private static final Pattern NUMBER = Pattern.compile("-?\\d+(\\.\\d+)?");
+
+    /** Слова, которые Postgres понимает в DEFAULT без кавычек. */
+    private static final java.util.Set<String> BARE = java.util.Set.of(
+            "true", "false", "null", "current_date", "current_time", "current_timestamp",
+            "localtime", "localtimestamp", "current_user", "session_user", "user");
+
+    /**
+     * Значение по умолчанию → выражение для DEFAULT.
+     * <p>
+     * В поле «по умолчанию» человек пишет <i>значение</i>: для varchar это {@code direct},
+     * а не {@code 'direct'}. Подставленное как есть, оно становится для Postgres ссылкой
+     * на колонку — «cannot use column reference in DEFAULT expression», и падает вся
+     * транзакция. Поэтому голое слово оборачиваем в кавычки, а то, что уже является
+     * выражением — литерал, число, ключевое слово, вызов функции, приведение типа —
+     * оставляем нетронутым: там человек написал именно выражение и знал, что делает.
+     */
+    static String defaultLiteral(String d) {
+        String low = d.toLowerCase();
+        if (BARE.contains(low)) return d;
+        if (d.startsWith("'") || d.startsWith("\"")) return d;   // уже литерал
+        if (d.indexOf('(') >= 0 || d.contains("::")) return d;   // вызов функции / приведение типа
+        if (NUMBER.matcher(d).matches()) return d;
+        return "'" + d.replace("'", "''") + "'";
     }
 
     private static String onDelete(String v) {

@@ -891,7 +891,16 @@ function readRelationForm(){
    ============================================================ */
 function ddlRow(st){
   const where = st.table ? `${st.schema}.${st.table}` : st.schema;
-  return `<tr><td class="mono">${esc(st.kind)}</td><td class="mono">${esc(where)}</td></tr>`;
+  return `<tr class="${st.skip ? "skip" : ""}"><td class="mono">${esc(st.kind)}</td>
+    <td class="mono">${esc(where)}</td>
+    <td>${st.skip ? T("пропуск") : ""}</td></tr>`;
+}
+
+/* Схему в модели занимает сущность — по имени схемы человек её не узнает.
+   Показываем, о какой именно сущности речь. */
+function entitiesOfSchema(schema){
+  return (model.entities || []).filter(e => schemaOf(e) === schema)
+    .map(e => e.label || e.id);
 }
 
 async function applyToDb(){
@@ -913,24 +922,34 @@ async function applyToDb(){
     return;
   }
 
-  const blocked = plan.blocked || [], problems = plan.problems || [];
+  const skipped = plan.skipped || [], problems = plan.problems || [];
   const stmts = plan.statements || [];
   const warn = (list, cls) => list.length
     ? `<div class="sb-modal-note ${cls}">${list.map(x => "• " + esc(x)).join("<br>")}</div>` : "";
+  /* Пропуск — не ошибка: такое в базе уже есть, и мы его не трогаем. Говорим об этом
+     обычным текстом, а не красным, иначе выглядит как поломка. */
+  const skipNote = skipped.length ? `<div class="sb-modal-note">
+      ${T("Уже есть в базе — создаваться не будет")}:<br>
+      ${skipped.map(s => { const ents = entitiesOfSchema(s.schema);
+        return "• <b>" + esc(s.schema) + "</b> — " + esc(s.reason)
+          + (ents.length ? " · " + T("сущность") + " «" + esc(ents.join("», «")) + "»" : ""); })
+        .join("<br>")}</div>` : "";
+  const skipCount = stmts.filter(s => s.skip).length;
   /* Расхождение с сохранённым видно сразу: применяем то, что на экране. */
   const dirty = SchemaStore.isDirty(model)
     ? `<div class="sb-modal-note">${T("Внимание: в модели есть несохранённые правки — применится то, что на экране.")}</div>` : "";
 
   openModal(`<h3>${T("Применить к базе")}</h3>
-    ${warn(blocked, "bad")}
+    ${skipNote}
     ${warn(problems, "")}
     ${dirty}
-    <div class="sb-modal-note">${T("Операций")}: <b>${stmts.length}</b> · ${T("схем")}: <b>${(plan.schemas||[]).length}</b>.
+    <div class="sb-modal-note">${T("Будет выполнено операций")}: <b>${plan.applicable != null ? plan.applicable : stmts.length}</b>${
+      skipCount ? " · " + T("пропущено") + ": <b>" + skipCount + "</b>" : ""} · ${T("схем")}: <b>${(plan.schemas||[]).length}</b>.
       ${T("Только создание: DROP, RENAME и смена типа не выполняются.")}</div>
     <div class="sb-acts" style="margin:0 0 12px">
       <button class="btn accent" id="sbAp_go" ${plan.canApply ? "" : "disabled"}>${T("Применить")}</button>
       <button class="btn" id="sbAp_close">${T("Закрыть")}</button></div>
-    ${stmts.length ? `<table class="sb-ddl"><thead><tr><th>${T("Операция")}</th><th>${T("Объект")}</th></tr></thead>
+    ${stmts.length ? `<table class="sb-ddl"><thead><tr><th>${T("Операция")}</th><th>${T("Объект")}</th><th></th></tr></thead>
       <tbody>${stmts.map(ddlRow).join("")}</tbody></table>` : ""}
     <pre>${esc(plan.sql || "")}</pre>`);
   $("#sbAp_close").onclick = closeModal;
@@ -945,7 +964,8 @@ async function applyToDb(){
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.message || body.error || ("HTTP " + r.status));
       closeModal();
-      toast(T("Применено к базе") + ": " + (body.applied || 0) + " " + T("операц."));
+      toast(T("Применено к базе") + ": " + (body.applied || 0) + " " + T("операц.")
+            + (body.skipped ? " · " + T("пропущено") + ": " + body.skipped : ""));
     } catch (e){
       go.disabled = false; go.textContent = T("Применить");
       openModal(`<h3>${T("Применить к базе")}</h3>
