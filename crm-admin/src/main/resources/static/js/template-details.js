@@ -573,7 +573,13 @@ function sfdRowHtml(f){
             /* редактируемая выпадашка: нативный input+datalist — и выбрать из списка,
                и вписать своё, без самодельного дропдауна */
             var lid = 'sfd-dl-' + f.k;
+            /* autocomplete="off" обязателен: иначе браузер показывает поверх datalist свою
+               историю ввода — то, что когда-то набирали в этом поле. В ней оказываются
+               значения с уже приклеенными флагами (NoComName-cross-nr), которых в справочнике
+               нет и быть не должно: флаги проставляются галками и считаются сами. Человек
+               видит подсказку не из справочника, а из своего же прошлого мусора. */
             var inpHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" list="' + lid + '"' +
+                      ' autocomplete="off"' +
                       ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
             /* f.create: вписанное значение можно тут же занести в справочник — иначе оно
                осталось бы только в этом шаблоне и в следующий раз его снова набирали бы руками */
@@ -590,7 +596,9 @@ function sfdRowHtml(f){
         } else if (f.type === 'textarea'){
             valHtml = '<textarea class="sfd-edit" data-k="' + f.k + '">' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '</textarea>';
         } else {
-            valHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
+            /* та же причина, что и у combo: история браузера в полях карточки только мешает */
+            valHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" autocomplete="off"' +
+                      ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
         }
     } else if (f.type === 'bool'){
         valHtml = '<span class="v">' + (d[f.k] ? '<span class="flag-on">✓ ' + sfdT('да') + '</span>' : '<span class="flag-off">— ' + sfdT('нет') + '</span>') + '</span>';
