@@ -544,6 +544,11 @@ function renderFieldForm(out){
     const name = f.name;
     e.fields.splice(state.field, 1);
     model.relations = model.relations.filter(r => !(r.from_entity === e.id && r.from_field === name));
+    /* помечаем удаление: иначе наложение черновика на файл (EntityLayout.mergeDraft)
+       вернуло бы поле обратно при следующей загрузке */
+    if (!Array.isArray(model.deletedFields)) model.deletedFields = [];
+    const key = `${e.id}.${name}`;
+    if (model.deletedFields.indexOf(key) < 0) model.deletedFields.push(key);
     state.field = null;
     commit("delete", "field", `${e.id}.${name}`, null); toast(T("Поле удалено"));
   };
@@ -674,6 +679,9 @@ function openFieldModal(){
     if (!v.name) return toast(T("Нужно системное имя"));
     if (e.fields.some(x => x.name === v.name)) return toast(T("Поле с таким именем уже есть"));
     e.fields.push(v);
+    /* поле с таким именем могли раньше удалить — снимаем пометку */
+    if (Array.isArray(model.deletedFields))
+      model.deletedFields = model.deletedFields.filter(x => x !== `${e.id}.${v.name}`);
     state.field = e.fields.length - 1; setTab("field");
     closeModal(); commit("create", "field", `${e.id}.${v.name}`, v); toast(T("Поле добавлено"));
   };
@@ -706,10 +714,12 @@ function download(name, content, type){
   setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 30000);
 }
 function saveToGit(){
-  /* deleted — служебная пометка черновика (что не возвращать при наложении на файл).
-     В сам файл она не едет: там сущности просто нет, и это уже вся правда. */
+  /* deleted / deletedFields — служебные пометки черновика (что не возвращать при
+     наложении на файл). В сам файл они не едут: там сущности или поля просто нет,
+     и это уже вся правда. */
   const forFile = JSON.parse(JSON.stringify(model));
   delete forFile.deleted;
+  delete forFile.deletedFields;
   const json = JSON.stringify(forFile, null, 2);
   openModal(`<h3>${T("Сохранить в Git")}</h3>
     <div class="sb-modal-note">${T("Схема версионируется в репозитории. Скачайте файл и положите его по пути")}
