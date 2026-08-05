@@ -66,22 +66,28 @@ public class SchemaDdlService {
      */
     public Map<String, Object> preview(JsonNode model) {
         DdlPlanner.Plan plan = DdlPlanner.plan(model);
-        List<Skip> found = tx.execute(s -> skips(plan.schemas()));
-        List<Skip> skips = found == null ? List.of() : found;
+        Snapshot snap = tx.execute(s -> new Snapshot(skips(plan.schemas()), existing()));
+        List<Skip> skips = snap == null ? List.of() : snap.skips();
+        Set<String> have = snap == null ? Set.of() : snap.have();
         Set<String> off = names(skips);
 
         List<Map<String, Object>> stmts = new ArrayList<>();
-        List<String> applicableSql = new ArrayList<>();
+        List<String> freshSql = new ArrayList<>();
+        int already = 0;
         for (DdlPlanner.Stmt st : plan.statements()) {
             boolean skip = touchesSkipped(st, off);
+            boolean exists = !skip && alreadyThere(st, have);
+            if (exists) already++;
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("kind", st.kind());
             m.put("schema", st.schema() == null ? "" : st.schema());
             m.put("table", st.table() == null ? "" : st.table());
+            m.put("name", st.name() == null ? "" : st.name());
             m.put("sql", st.sql());
             m.put("skip", skip);
+            m.put("exists", exists);
             stmts.add(m);
-            if (!skip) applicableSql.add(st.sql());
+            if (!skip && !exists) freshSql.add(st.sql());
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -90,12 +96,17 @@ public class SchemaDdlService {
         out.put("problems", plan.problems());
         out.put("skipped", skips.stream()
                 .map(s -> Map.of("schema", s.schema(), "reason", s.reason())).toList());
-        out.put("applicable", applicableSql.size());
-        out.put("canApply", !applicableSql.isEmpty());
-        // в SQL показываем только то, что реально уедет: пропущенное сбивало бы с толку
-        out.put("sql", String.join("\n\n", applicableSql));
+        out.put("applicable", freshSql.size());
+        out.put("already", already);
+        out.put("canApply", !freshSql.isEmpty());
+        // в SQL показываем только то, что реально уедет: пропущенное и уже созданное
+        // сбивало бы с толку — по этому тексту сверяют, что именно поменяется
+        out.put("sql", String.join("\n\n", freshSql));
         return out;
     }
+
+    /** Слепок базы на один заход: что трогать нельзя и что уже создано. */
+    private record Snapshot(List<Skip> skips, Set<String> have) {}
 
     // ------------------------------------------------------------- ПРИМЕНЕНИЕ
 
@@ -122,10 +133,14 @@ public class SchemaDdlService {
                     audit("SKIP", s.schema(), null, null, "SKIPPED", s.reason(),
                             System.currentTimeMillis() - started);
                 }
+                /* Уже созданное не переприменяем. Инструкции идемпотентны, вреда бы не было,
+                   но журнал заполнялся бы сотней записей «сделали то, что и так было», и
+                   найти в нём настоящее изменение стало бы нельзя. */
+                Set<String> have = existing();
                 List<DdlPlanner.Stmt> run = plan.statements().stream()
-                        .filter(st -> !touchesSkipped(st, off)).toList();
+                        .filter(st -> !touchesSkipped(st, off) && !alreadyThere(st, have)).toList();
                 if (run.isEmpty()) throw new GuardViolation(
-                        "Все схемы модели уже есть в базе и заведены не билдером — применять нечего");
+                        "Нечего применять: всё, что можно создать, в базе уже есть");
 
                 int done = 0;
                 Set<String> touchedSchemas = new LinkedHashSet<>();
@@ -153,7 +168,9 @@ public class SchemaDdlService {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("applied", done);
                 m.put("schemas", new ArrayList<>(touchedSchemas));
-                m.put("skipped", plan.statements().size() - run.size());
+                long blocked = plan.statements().stream().filter(st -> touchesSkipped(st, off)).count();
+                m.put("skipped", blocked);
+                m.put("already", plan.statements().size() - run.size() - blocked);
                 m.put("skippedSchemas", new ArrayList<>(off));
                 return m;
             });
@@ -214,6 +231,49 @@ public class SchemaDdlService {
         if (off.isEmpty()) return false;
         for (String r : st.refs()) if (off.contains(r)) return true;
         return off.contains(st.schema());
+    }
+
+    // -------------------------------------------------------- ЧТО УЖЕ ЕСТЬ В БАЗЕ
+
+    /**
+     * Снимок того, что в базе уже создано: схемы, таблицы, колонки, внешние ключи.
+     * <p>
+     * Планировщик в базу не смотрит и всегда выдаёт полный список инструкций — они
+     * идемпотентны (IF NOT EXISTS), и повторный прогон безвреден. Но человеку от этого
+     * не легче: после успешного применения предпросмотр показывал те же 118 операций,
+     * и понять, осталось ли что-то новое, было нельзя. Сверяемся с фактом и помечаем
+     * каждую инструкцию: она создаст объект или он уже есть.
+     */
+    private Set<String> existing() {
+        Set<String> have = new java.util.HashSet<>();
+        addAll(have, "SELECT 'S:' || schema_name FROM information_schema.schemata");
+        addAll(have, "SELECT 'T:' || table_schema || '.' || table_name FROM information_schema.tables");
+        addAll(have, "SELECT 'C:' || table_schema || '.' || table_name || '.' || column_name" +
+                     "  FROM information_schema.columns");
+        addAll(have, "SELECT 'F:' || n.nspname || '.' || t.relname || '.' || c.conname" +
+                     "  FROM pg_constraint c" +
+                     "  JOIN pg_class t ON t.oid = c.conrelid" +
+                     "  JOIN pg_namespace n ON n.oid = t.relnamespace");
+        return have;
+    }
+
+    private void addAll(Set<String> into, String sql) {
+        @SuppressWarnings("unchecked")
+        List<Object> rows = em.createNativeQuery(sql).getResultList();
+        for (Object o : rows) if (o != null) into.add(String.valueOf(o));
+    }
+
+    /** Объект этой инструкции уже создан? Инструкцию без опознавательного ключа считаем новой. */
+    private static boolean alreadyThere(DdlPlanner.Stmt st, Set<String> have) {
+        return switch (st.kind()) {
+            case "CREATE_SCHEMA" -> have.contains("S:" + st.schema());
+            case "CREATE_TABLE" -> have.contains("T:" + st.schema() + "." + st.table());
+            case "ADD_COLUMN" -> st.name() != null
+                    && have.contains("C:" + st.schema() + "." + st.table() + "." + st.name());
+            case "ADD_FK" -> st.name() != null
+                    && have.contains("F:" + st.schema() + "." + st.table() + "." + st.name());
+            default -> false;
+        };
     }
 
     /** Причина из стоп-листа, либо null, если схема в нём не значится. */

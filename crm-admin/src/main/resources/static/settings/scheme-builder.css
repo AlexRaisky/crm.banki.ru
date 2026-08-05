@@ -204,6 +204,9 @@
 /* строка пропуска: видно, что она в плане была, но выполнена не будет */
 .sb-ddl tr.skip td{ opacity:.45; text-decoration:line-through }
 .sb-ddl tr.skip td:last-child{ opacity:.7; text-decoration:none; color:var(--dim) }
+/* объект уже в базе: не зачёркиваем — он не отменён, просто создавать нечего */
+.sb-ddl tr.have td{ opacity:.5 }
+.sb-ddl tr.have td:last-child{ opacity:.85; color:var(--green) }
 
 /* ---- Панель раскрывается вглубь: сущность → таблицы → колонки ---- */
 .sb-crumbs{ display:flex; align-items:center; gap:6px; flex-wrap:wrap;

@@ -43,9 +43,12 @@ public final class DdlPlanner {
      * надо выбросить и те, что тянут в неё ссылку, иначе на боевой таблице появится
      * чужой constraint.
      */
-    public record Stmt(String kind, String schema, String table, String sql, List<String> refs) {
+    public record Stmt(String kind, String schema, String table, String name, String sql, List<String> refs) {
         public Stmt(String kind, String schema, String table, String sql) {
-            this(kind, schema, table, sql, schema == null ? List.of() : List.of(schema));
+            this(kind, schema, table, null, sql, schema == null ? List.of() : List.of(schema));
+        }
+        public Stmt(String kind, String schema, String table, String name, String sql) {
+            this(kind, schema, table, name, sql, schema == null ? List.of() : List.of(schema));
         }
     }
 
@@ -109,7 +112,7 @@ public final class DdlPlanner {
                        пропустит, и новое поле иначе не доехало бы. Здесь НЕТ ни NOT NULL,
                        ни PRIMARY KEY: на заполненной таблице такое падает, а мы обещали
                        только безопасные операции. */
-                    adds.add(new Stmt("ADD_COLUMN", schema, table,
+                    adds.add(new Stmt("ADD_COLUMN", schema, table, name,
                             "ALTER TABLE " + schema + "." + table
                             + " ADD COLUMN IF NOT EXISTS " + name + " " + dbType + def(f) + ";"));
                 }
@@ -146,7 +149,7 @@ public final class DdlPlanner {
                 String onDelete = onDelete(text(r, "on_delete"));
                 /* Constraint нельзя завести через IF NOT EXISTS — оборачиваем проверкой
                    по каталогу, иначе повторное применение падало бы на дубликате. */
-                out.add(new Stmt("ADD_FK", fs, ft,
+                out.add(new Stmt("ADD_FK", fs, ft, name,
                         "DO $$ BEGIN\n"
                         + "  IF NOT EXISTS (SELECT 1 FROM pg_constraint c\n"
                         + "                 JOIN pg_class t ON t.oid = c.conrelid\n"
@@ -182,7 +185,7 @@ public final class DdlPlanner {
                     problems.add("Связь " + text(r, "id") + ": не удалось построить колонки связующей таблицы");
                     continue;
                 }
-                out.add(new Stmt("CREATE_TABLE", fs, link,
+                out.add(new Stmt("CREATE_TABLE", fs, link, null,
                         "CREATE TABLE IF NOT EXISTS " + fs + "." + link + " (\n"
                         + "    " + fromCol + " bigint NOT NULL REFERENCES " + fs + "." + ft + "(id) ON DELETE CASCADE,\n"
                         + "    " + toCol + " bigint NOT NULL REFERENCES " + ts + "." + tt + "(id) ON DELETE CASCADE,\n"

@@ -890,10 +890,14 @@ function readRelationForm(){
    Показываем ровно то, что уйдёт в базу, и только потом применяем.
    ============================================================ */
 function ddlRow(st){
-  const where = st.table ? `${st.schema}.${st.table}` : st.schema;
-  return `<tr class="${st.skip ? "skip" : ""}"><td class="mono">${esc(st.kind)}</td>
+  let where = st.table ? `${st.schema}.${st.table}` : st.schema;
+  /* Для колонок и внешних ключей имя объекта обязательно: без него в списке идут
+     десятки одинаковых строк «ADD_COLUMN lead.leads», и что именно добавится — не видно. */
+  if (st.name) where += "." + st.name;
+  const mark = st.skip ? T("пропуск") : (st.exists ? T("уже есть") : "");
+  return `<tr class="${st.skip ? "skip" : (st.exists ? "have" : "")}"><td class="mono">${esc(st.kind)}</td>
     <td class="mono">${esc(where)}</td>
-    <td>${st.skip ? T("пропуск") : ""}</td></tr>`;
+    <td>${mark}</td></tr>`;
 }
 
 /* Схему в модели занимает сущность — по имени схемы человек её не узнает.
@@ -935,6 +939,7 @@ async function applyToDb(){
           + (ents.length ? " · " + T("сущность") + " «" + esc(ents.join("», «")) + "»" : ""); })
         .join("<br>")}</div>` : "";
   const skipCount = stmts.filter(s => s.skip).length;
+  const haveCount = plan.already != null ? plan.already : stmts.filter(s => s.exists).length;
   /* Расхождение с сохранённым видно сразу: применяем то, что на экране. */
   const dirty = SchemaStore.isDirty(model)
     ? `<div class="sb-modal-note">${T("Внимание: в модели есть несохранённые правки — применится то, что на экране.")}</div>` : "";
@@ -944,8 +949,11 @@ async function applyToDb(){
     ${warn(problems, "")}
     ${dirty}
     <div class="sb-modal-note">${T("Будет выполнено операций")}: <b>${plan.applicable != null ? plan.applicable : stmts.length}</b>${
+      haveCount ? " · " + T("уже есть") + ": <b>" + haveCount + "</b>" : ""}${
       skipCount ? " · " + T("пропущено") + ": <b>" + skipCount + "</b>" : ""} · ${T("схем")}: <b>${(plan.schemas||[]).length}</b>.
       ${T("Только создание: DROP, RENAME и смена типа не выполняются.")}</div>
+    ${plan.canApply === false && !skipCount && haveCount
+      ? `<div class="sb-modal-note">${T("Модель уже целиком в базе — применять нечего.")}</div>` : ""}
     <div class="sb-acts" style="margin:0 0 12px">
       <button class="btn accent" id="sbAp_go" ${plan.canApply ? "" : "disabled"}>${T("Применить")}</button>
       <button class="btn" id="sbAp_close">${T("Закрыть")}</button></div>
