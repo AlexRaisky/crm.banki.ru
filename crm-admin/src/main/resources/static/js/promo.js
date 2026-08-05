@@ -465,20 +465,32 @@ function promoAnalyze(){
  * это пересечение по НС, и именно НС надо показать.
  */
 function promoComputeClash(){
+  /* Сравниваем без учёта регистра: галки из справочника всегда пишутся одинаково, а вот
+     вписанное руками расходится («Вся база Москва+МО» против «вся база москва+МО») — и
+     пересечение молча не находилось бы. Ключ приводим к нижнему регистру, а показываем
+     значение так, как его написали: подсвечиваем по совпадению ключа, а не текста. */
   var byDay = {};
   PROMO_ROWS.forEach(function(r, i){
     promoBaseList(r.base).forEach(function(b){
-      var k = r.d + '|' + b;
+      var k = r.d + '|' + b.toLowerCase();
       (byDay[k] = byDay[k] || []).push(i);
     });
   });
-  var clash = {};
+  var keys = {};                                 /* индекс строки → ключи её баз, что конфликтуют */
   Object.keys(byDay).forEach(function(k){
     var idx = byDay[k];
-    if (idx.length < 2) return;                 /* база встречается один раз — не конфликт */
+    if (idx.length < 2) return;                  /* база встречается один раз — не конфликт */
     var base = k.slice(k.indexOf('|') + 1);
     idx.forEach(function(i){
-      (clash[i] = clash[i] || []).push(base);
+      (keys[i] = keys[i] || []).push(base);
+    });
+  });
+  /* Обратно к тому, что написано в строке: иначе в подсказке и подсветке оказался бы
+     нижний регистр вместо настоящего написания. */
+  var clash = {};
+  Object.keys(keys).forEach(function(i){
+    clash[i] = promoBaseList(PROMO_ROWS[i].base).filter(function(b){
+      return keys[i].indexOf(b.toLowerCase()) > -1;
     });
   });
   PROMO_CLASH = clash;
