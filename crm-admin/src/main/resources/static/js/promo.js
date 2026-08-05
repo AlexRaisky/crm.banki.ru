@@ -732,7 +732,7 @@ function promoRowHtml(x){
   var uniqEd = '<div class="uniq-ed">' +
     '<input class="cell-in mono' + (uniqVal && !promoUniqOk(uniqVal) ? ' bad' : '') + '" id="promoUniqIn" value="' + pmAttr(uniqVal) +
       '" placeholder="spring-sale-2026" oninput="promoDraftUniq(this.value)" onkeydown="promoKey(event)">' +
-    '<div class="hint-s" id="promoUniqHint">' + pmT('Латиница, цифры и дефис') + '</div></div>';
+    '<div class="hint-s" id="promoUniqHint">' + pmT('Латиница, цифры и дефис. Если имени нет — NoComName') + '</div></div>';
 
   var nm = promoBuildName(r);
   /* Приоритет — авто-собранное имя (правила Конструктора source). Если частей не хватает
@@ -819,7 +819,8 @@ function promoNewOpen(iso){
   if (!promoCan('add')) return;
   PROMO_EDIT = null;
   PROMO_NEW = { d: iso || promoToday(), product:'', partner:'', base:'', baseExtra:'', chan: [],
-                total:false, uniq:'', task:'', owner:'', status: PROMO_STATUS_NEW, note:'', err:'' };
+                total:false, uniq:'', task:'', taskByChan:{}, owner:'',
+                status: PROMO_STATUS_NEW, note:'', err:'' };
   promoRender();
   var el = document.getElementById('promoNewDate');
   if (el) el.focus();
@@ -854,7 +855,10 @@ function promoNewChan(c, on){
   if (on && at === -1) list.push(c);
   if (!on && at > -1) list.splice(at, 1);
   PROMO_NEW.chan = PROMO_CHANNELS.filter(function(x){ return list.indexOf(x) > -1; });
-  promoNewPreview();
+  /* Перерисовываем строку целиком, а не только предпросмотр: от набора каналов зависит
+     колонка задач — одно поле или по полю на канал. Фокус при этом не теряется:
+     переключали галку, а не набирали текст. */
+  promoRender();
 }
 /* живой предпросмотр: какие записи будут созданы */
 function promoNewPreview(){
@@ -876,23 +880,56 @@ function promoNewPreview(){
   var btn = document.getElementById('promoNewSave');
   if (btn) btn.disabled = !!probs.length;
 }
+/* Задача выбранного канала. Одна на всех (поле task) — когда канал один; при нескольких
+   у каждого своя, они лежат в taskByChan. Так задачу можно завести на канал, а не на всё
+   промо разом: в Jira это и есть разные тикеты. */
+function promoNewTask(chan){
+  var n = PROMO_NEW;
+  if (!n) return '';
+  if (n.chan.length < 2) return n.task || '';
+  return (n.taskByChan && n.taskByChan[chan]) || '';
+}
+function promoNewSetTask(chan, v){
+  if (!PROMO_NEW) return;
+  if (PROMO_NEW.chan.length < 2){ PROMO_NEW.task = v; }
+  else {
+    PROMO_NEW.taskByChan = PROMO_NEW.taskByChan || {};
+    PROMO_NEW.taskByChan[chan] = v;
+  }
+  promoNewPreview();
+}
+
 function promoNewSave(){
   if (!PROMO_NEW) return;
   var n = PROMO_NEW;
   if (!n.d || !n.chan.length) return;
   if (n.uniq && !promoUniqOk(n.uniq)) return;
   if (!promoCan('add')){ alert(pmT('Нет прав на добавление записей.')); return; }
-  /* каналы уходят одним запросом — сервер сам создаст по строке на канал */
-  var body = { d:n.d, product:n.product, partner:n.partner, base:n.base, baseExtra:n.baseExtra,
-               chan:n.chan, total:!!n.total, uniq:n.uniq, task: promoTaskKey(n.task) || n.task,
-               owner:n.owner, status:n.status || PROMO_STATUS_NEW, note:n.note };
+  var common = { d:n.d, product:n.product, partner:n.partner, base:n.base, baseExtra:n.baseExtra,
+                 total:!!n.total, uniq:n.uniq, owner:n.owner,
+                 status:n.status || PROMO_STATUS_NEW, note:n.note };
+  var chans = n.chan.slice();
   PROMO_NEW = null;
-  promoReq('POST', '', body)
-    .then(function(created){
-      (created || []).forEach(promoApplyRow);
-      promoRender();
-    })
-    .catch(promoFail);
+
+  /* Один канал — один запрос, как и было. Несколько — по запросу на канал: задача у
+     каждого своя, а одним телом сервер разложил бы одну и ту же во все строки. */
+  var reqs = chans.map(function(c){
+    var raw = (chans.length < 2) ? (n.task || '') : ((n.taskByChan || {})[c] || '');
+    return Object.assign({}, common, { chan: [c], task: promoTaskKey(raw) || raw });
+  });
+  var seq = reqs.reduce(function(p, body){
+    return p.then(function(acc){
+      return promoReq('POST', '', body).then(function(created){
+        (created || []).forEach(function(r){ acc.push(r); });
+        return acc;
+      });
+    });
+  }, Promise.resolve([]));
+
+  seq.then(function(created){
+    created.forEach(promoApplyRow);
+    promoRender();
+  }).catch(promoFail);
 }
 function promoNewRowHtml(){
   var n = PROMO_NEW;
@@ -921,11 +958,20 @@ function promoNewRowHtml(){
       }).join('') + '</div></td>' +
     '<td class="c-total"><input type="checkbox"' + (n.total ? ' checked' : '') +
       ' onchange="promoNewSet(\'total\',this.checked)"></td>' +
-    '<td><input class="cell-in mono" placeholder="spring-sale-2026" value="' + pmAttr(n.uniq) +
-      '" oninput="promoNewSet(\'uniq\',this.value)"></td>' +
+    '<td><div class="uniq-ed"><input class="cell-in mono" placeholder="spring-sale-2026" value="' +
+      pmAttr(n.uniq) + '" oninput="promoNewSet(\'uniq\',this.value)">' +
+      '<div class="hint-s">' + pmT('Латиница, цифры и дефис. Если имени нет — NoComName') + '</div></div></td>' +
     '<td class="c-name"><span class="need">' + pmT('соберётся автоматически') + '</span></td>' +
-    '<td><input class="cell-in" placeholder="CRM-8748" value="' + pmAttr(n.task) +
-      '" oninput="promoNewSet(\'task\',this.value)"></td>' +
+    /* Задача: одно поле на один канал, по полю на каждый — когда каналов несколько.
+       Подпись канала обязательна: без неё три одинаковых поля подряд не различить. */
+    '<td>' + (n.chan.length > 1
+      ? '<div class="task-multi">' + n.chan.map(function(c){
+          return '<label class="task-row"><span class="chan ' + promoChanCls(c) + '">' + c + '</span>' +
+            '<input class="cell-in" placeholder="CRM-8748" value="' + pmAttr(promoNewTask(c)) +
+            '" oninput="promoNewSetTask(\'' + c + '\',this.value)"></label>';
+        }).join('') + '</div>'
+      : '<input class="cell-in" placeholder="CRM-8748" value="' + pmAttr(n.task) +
+        '" oninput="promoNewSetTask(\'\',this.value)">') + '</td>' +
     '<td><select class="cell-in" onchange="promoNewSet(\'owner\',this.value)">' +
       '<option value="">' + pmT('Ответственный') + '…</option>' +
       PROMO_OWNERS.map(function(o){
