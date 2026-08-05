@@ -731,8 +731,8 @@ function promoRowHtml(x){
       return '<option value="' + pmAttr(n) + '"' + (n === (draft != null ? draft : r.product) ? ' selected' : '') + '>' + pmEsc(n) + '</option>';
     }).join('') + '</select>';
 
-  var partEd = '<input class="cell-in" list="promoPartnerList" value="' + pmAttr(draft != null ? draft : r.partner) +
-    '" placeholder="General" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
+  var partEd = promoPartnerEd(pmAttr(draft != null ? draft : r.partner),
+                              'promoDraft(this.value)', 'General');
 
   /* База: чекбоксы справочника + строка для своего значения. Черновик держим строкой
      (как поле в БД), а не списком: так правка уходит на сервер тем же путём, что и
@@ -972,8 +972,7 @@ function promoNewRowHtml(){
       '<option value="">' + pmT('Продукт') + '…</option>' +
       prodOpts.map(function(p){ return '<option value="' + pmAttr(p) + '"' + (p === n.product ? ' selected' : '') + '>' + pmEsc(p) + '</option>'; }).join('') +
       '</select></td>' +
-    '<td><input class="cell-in" list="promoPartnerList" placeholder="' + pmT('Партнёр') + '" value="' + pmAttr(n.partner) +
-      '" oninput="promoNewSet(\'partner\',this.value)"></td>' +
+    '<td>' + promoPartnerEd(pmAttr(n.partner), 'promoNewSet(\'partner\',this.value)', pmT('Партнёр')) + '</td>' +
     '<td><div class="ms ms-base">' + PROMO_BASES.map(function(b){
         return '<label class="ms-i"><input type="checkbox"' + (promoBaseList(n.base).indexOf(b) > -1 ? ' checked' : '') +
           ' onchange="promoNewBase(\'' + b + '\',this.checked)"><span>' + pmEsc(b) + '</span></label>';
@@ -1206,6 +1205,64 @@ function promoExportCsv(){
    источник, что у поля «Partner name» в карточке шаблона). Пока список не приехал,
    подставляем зашитый PROMO_PARTNERS: он же остаётся фолбэком, если справочник
    недоступен, — поле в любом случае свободное для ввода. */
+/**
+ * Поле партнёра: ввод с подсказкой из справочника плюс кнопка «+».
+ * <p>
+ * Список закрытым быть не может — новый партнёр появляется в плане раньше, чем его
+ * заводят в справочник. Поэтому поле свободное, а кнопка переносит набранное в
+ * dictionary.d_partner, чтобы в следующий раз оно подсказывалось само и писалось
+ * у всех одинаково. Без права add кнопки нет: справочник общий, и пополнять его
+ * должен тот, кому вообще позволено заводить записи.
+ */
+function promoPartnerEd(value, oninput, placeholder){
+  var inp = '<input class="cell-in" list="promoPartnerList" value="' + value +
+    '" placeholder="' + pmEsc(placeholder) + '" oninput="' + oninput + '" onkeydown="promoKey(event)">';
+  if (!promoCan('add')) return inp;
+  return '<div class="combo-add">' + inp +
+    '<button type="button" class="dict-add" title="' + pmT('Добавить партнёра в справочник') +
+    '" aria-label="' + pmT('Добавить партнёра в справочник') + '" onclick="promoAddPartner(this)">+</button></div>';
+}
+
+/* Короткое уведомление. Своего тоста в разделе нет, а alert на удачное действие —
+   перебор: человек и так видит, что поле заполнилось и значение появилось в списке.
+   Пишем в подвал формы заведения, когда она открыта; иначе молчим. */
+function pmNote(msg){
+  var box = document.querySelector('#promoNewPreview');
+  if (!box) return;
+  var el = document.createElement('div');
+  el.className = 'np-ok';
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(function(){ if (el.parentElement) el.parentElement.removeChild(el); }, 2500);
+}
+
+/** Занести набранного партнёра в справочник и подставить обратно то, что вернул сервер. */
+function promoAddPartner(btn){
+  var inp = btn.parentElement.querySelector('input');
+  var value = inp ? String(inp.value || '').trim() : '';
+  if (!value){ alert(pmT('Сначала впишите партнёра.')); return; }
+  var have = [...document.querySelectorAll('#promoPartnerList option')].map(function(o){ return o.value; });
+  var same = have.filter(function(p){ return p.toLowerCase() === value.toLowerCase(); })[0];
+  if (same){
+    /* уже в справочнике — запрос не нужен, просто выравниваем написание */
+    inp.value = same;
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    pmNote(pmT('Партнёр уже в справочнике'));
+    return;
+  }
+  if (!window.CRM || !CRM.dictAddPartner){ alert(pmT('Справочник недоступен.')); return; }
+  btn.disabled = true;
+  CRM.dictAddPartner(value).then(function(res){
+    var saved = (res && res.name) || value;
+    inp.value = saved;
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    promoFillPartnerList();
+    pmNote(pmT('Партнёр добавлен в справочник') + ': ' + saved);
+  }).catch(function(e){
+    alert(pmT('Не удалось добавить партнёра') + ': ' + ((e && e.message) || e));
+  }).then(function(){ btn.disabled = false; });
+}
+
 function promoRenderPartnerList(list){
   var dl = document.getElementById('promoPartnerList');
   if (!dl) return;
