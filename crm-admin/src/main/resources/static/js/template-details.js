@@ -314,7 +314,11 @@ function sfdFieldDefs(d){
     ];
     if (isVk) segRows.push({ k:'ab_group', label:'AB Group' });
     if (isCC){
-        segRows.push({ k:'segment', label:sfdT('Сегмент'), ro:true });
+        /* Отдельной строки «Сегмент» здесь нет: у КЦ номер сегмента и есть код шаблона,
+           он вводится выше как «Сегмент (code)». Строка была слепком старых развёрнутых
+           форм — показывала то же значение на чтение, а при заведении всегда прочерк.
+           Ключ segment в данных остаётся: из него собирается campaign_name (с откатом
+           на code, см. sfdComputeCampaignName). */
         segRows.push({ k:'segment_desc', label:sfdT('Описание сегмента') });
         segRows.push({ k:'source_system', label:'Source system', type:'select', opts: SFD_SOURCE_SYSTEMS });
         segRows.push({ k:'host_id', label:'Host Id' });
