@@ -153,8 +153,10 @@
      поэтому красим строку целиком, как у нарушенных правил, только янтарным: красный
      значит «так нельзя», янтарный — «посмотри, тут пересечение».
      :not(.rule-bad) — настоящее нарушение важнее, его красный перебивать нечем. */
-  .base-tag.clash{background:rgba(255,184,77,.22);border-color:var(--amber);color:var(--amber);font-weight:600}
-  tbody tr.base-clash:not(.rule-bad) td{background:rgba(255,184,77,.10)}
+  /* Метка — сплошная заливка, а не полупрозрачная: строка теперь и сама янтарная,
+     и прозрачная метка на ней сливалась бы с фоном. Текст тёмный — по нему и читается. */
+  .base-tag.clash{background:var(--amber);border-color:var(--amber);color:#2A1A02;font-weight:600}
+  tbody tr.base-clash:not(.rule-bad) td{background:rgba(255,184,77,.20)}
   tbody tr.base-clash td:first-child{box-shadow:inset 4px 0 0 var(--amber)}
   /* и та же метка в самой ячейке базы — чтобы было видно, из-за чего строка горит */
   tbody tr.base-clash .c-base{position:relative}
