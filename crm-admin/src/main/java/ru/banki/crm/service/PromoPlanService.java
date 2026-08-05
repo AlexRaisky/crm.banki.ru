@@ -28,17 +28,18 @@ import java.util.Set;
 public class PromoPlanService {
 
     /** Поля строки, которые раздел имеет право менять (ключ v1 -> колонка). */
-    private static final Map<String, String> COLUMNS = Map.of(
-            "d", "plan_date",
-            "product", "product",
-            "partner", "partner",
-            "base", "base",
-            "chan", "channel",
-            "total", "is_total",
-            "uniq", "uniq_name",
-            "task", "task_key",
-            "owner", "owner_name",
-            "status", "status");
+    private static final Map<String, String> COLUMNS = Map.ofEntries(
+            Map.entry("d", "plan_date"),
+            Map.entry("product", "product"),
+            Map.entry("partner", "partner"),
+            Map.entry("base", "base"),
+            Map.entry("baseExtra", "base_extra"),
+            Map.entry("chan", "channel"),
+            Map.entry("total", "is_total"),
+            Map.entry("uniq", "uniq_name"),
+            Map.entry("task", "task_key"),
+            Map.entry("owner", "owner_name"),
+            Map.entry("status", "status"));
     /** note вынесен отдельно: Map.of ограничен 10 парами. */
     private static final String NOTE_COLUMN = "note";
 
@@ -50,7 +51,7 @@ public class PromoPlanService {
      */
     private static final String ROW_COLUMNS =
             "id, plan_date, product, partner, base, channel, is_total," +
-            " uniq_name, task_key, owner_name, status, note, communication_name, timestamp_upd";
+            " uniq_name, task_key, owner_name, status, note, communication_name, base_extra, timestamp_upd";
 
     private static final String STATUS_PLANNED = "запланировано";
     private static final String STATUS_SENT = "отправлено";
@@ -62,6 +63,30 @@ public class PromoPlanService {
 
     public PromoPlanService(AdminLogService adminLog) {
         this.adminLog = adminLog;
+    }
+
+    /**
+     * Кого можно поставить ответственным: включённые пользователи панели плюс имена,
+     * которые уже стоят в плане.
+     * <p>
+     * Вторая половина обязательна. План вели до появления учёток, и там стоят «Саша»,
+     * «Таня», «Юля» — людей, которых в app.users под такими именами нет. Оставь список
+     * только из таблицы — и у половины строк ответственный оказался бы вне списка:
+     * при первой же правке соседней ячейки его молча подменило бы первым попавшимся.
+     */
+    @Transactional(readOnly = true)
+    public List<String> ownerCandidates() {
+        @SuppressWarnings("unchecked")
+        List<String> out = em.createNativeQuery(
+                        "SELECT name FROM (" +
+                        "   SELECT DISTINCT trim(display_name) AS name FROM app.users" +
+                        "    WHERE enabled AND coalesce(trim(display_name), '') <> ''" +
+                        "   UNION" +
+                        "   SELECT DISTINCT trim(owner_name) FROM app.promo_plan" +
+                        "    WHERE coalesce(trim(owner_name), '') <> ''" +
+                        " ) s ORDER BY name")
+                .getResultList();
+        return out;
     }
 
     // ------------------------------------------------------------------ чтение
@@ -99,7 +124,8 @@ public class PromoPlanService {
         m.put("status", str(r[10]));
         m.put("note", str(r[11]));
         m.put("commName", str(r[12]));   // сохранённое «Название коммуникации» (обычно из импорта)
-        m.put("ver", instant(r[13]));
+        m.put("baseExtra", str(r[13]));  // доп. условия для базы, словами
+        m.put("ver", instant(r[14]));
         return m;
     }
 
@@ -147,15 +173,17 @@ public class PromoPlanService {
             long id = ((Number) em.createNativeQuery("SELECT nextval('app.promo_plan_id_seq')")
                     .getSingleResult()).longValue();
             em.createNativeQuery(
-                            "INSERT INTO app.promo_plan (id, plan_date, product, partner, base, channel," +
-                            " is_total, uniq_name, task_key, owner_name, status, note, created_by, updated_by)" +
-                            " VALUES (:id, :d, :product, :partner, :base, :ch, :total, :uniq, :task, :owner," +
-                            " :status, :note, :u, :u)")
+                            "INSERT INTO app.promo_plan (id, plan_date, product, partner, base, base_extra," +
+                            " channel, is_total, uniq_name, task_key, owner_name, status, note," +
+                            " created_by, updated_by)" +
+                            " VALUES (:id, :d, :product, :partner, :base, :baseExtra, :ch, :total, :uniq," +
+                            " :task, :owner, :status, :note, :u, :u)")
                     .setParameter("id", id)
                     .setParameter("d", date)
                     .setParameter("product", text(body.get("product")))
                     .setParameter("partner", text(body.get("partner")))
                     .setParameter("base", text(body.get("base")))
+                    .setParameter("baseExtra", text(body.get("baseExtra")))
                     .setParameter("ch", ch)
                     .setParameter("total", bool(body.get("total")))
                     .setParameter("uniq", text(body.get("uniq")))
@@ -236,10 +264,12 @@ public class PromoPlanService {
         }
         for (String ch : channels.subList(Math.min(1, channels.size()), channels.size())) {
             em.createNativeQuery(
-                            "INSERT INTO app.promo_plan (plan_date, product, partner, base, channel, is_total," +
-                            " uniq_name, task_key, owner_name, status, note, communication_name, created_by, updated_by)" +
-                            " SELECT plan_date, product, partner, base, :ch, is_total, uniq_name, task_key," +
-                            " owner_name, status, note, communication_name, :u, :u FROM app.promo_plan WHERE id = :id")
+                            "INSERT INTO app.promo_plan (plan_date, product, partner, base, base_extra," +
+                            " channel, is_total, uniq_name, task_key, owner_name, status, note," +
+                            " communication_name, created_by, updated_by)" +
+                            " SELECT plan_date, product, partner, base, base_extra, :ch, is_total, uniq_name," +
+                            " task_key, owner_name, status, note, communication_name, :u, :u" +
+                            " FROM app.promo_plan WHERE id = :id")
                     .setParameter("ch", ch)
                     .setParameter("u", CurrentUser.email())
                     .setParameter("id", id)
