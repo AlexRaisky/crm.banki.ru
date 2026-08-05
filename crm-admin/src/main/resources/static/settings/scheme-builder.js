@@ -156,6 +156,10 @@ const SchemaStore = {
         this.baseline = JSON.parse(JSON.stringify(model));
         this.journal = [];
         this.offline = false;
+        /* Обновляем шапку: commit() рисует ДО того, как сюда дошёл ответ сервера, и
+           на момент отрисовки baseline ещё старый — значок «есть несохранённые правки»
+           загорался и больше не гас, хотя правка давно уехала. */
+        if (typeof renderStatus === "function") renderStatus();
         return true;
       } catch (e){
         /* Страховка: правку кладём в черновик браузера, журнал НЕ чистим —
@@ -343,13 +347,17 @@ function syncExpandBtn(){
 
 /* Координаты сущности. Старая модель хранила их у таблиц — переносим с первой,
    чтобы схема не схлопнулась в угол при первом открытии после обновления. */
+/* Координаты сущности на холсте. НИЧЕГО НЕ ПИШЕТ в модель: раньше эта функция
+   проставляла x/y прямо при отрисовке, и модель начинала отличаться от сохранённой
+   сразу после загрузки — значок «есть несохранённые правки» загорался сам, хотя
+   человек ничего не трогал. Отсутствие координат — не правка, а повод их вычислить:
+   берём их у первой таблицы схемы, иначе ставим в угол. Записываются они только
+   когда сущность действительно двигают (drag) или раскладывают (авто-раскладка). */
 function schemaXY(s){
-  if (s.x == null || s.y == null){
-    const first = model.entities.find(e => schemaOf(e) === s.id);
-    s.x = first && first.x != null ? first.x : 40;
-    s.y = first && first.y != null ? first.y : 40;
-  }
-  return s;
+  if (s.x != null && s.y != null) return { x: s.x, y: s.y };
+  const first = model.entities.find(e => schemaOf(e) === s.id);
+  return { x: first && first.x != null ? first.x : 40,
+           y: first && first.y != null ? first.y : 40 };
 }
 
 /* Настройки вида — в localStorage, а не в модели: модель общая для всех,
@@ -366,7 +374,7 @@ function renderNodes(){
   const host = $("#sbNodes");
   if (!host) return;
   host.innerHTML = allSchemas().map(s => {
-    schemaXY(s);
+    const xy = schemaXY(s);
     const tables = model.entities.filter(e => schemaOf(e) === s.id);
     const cols = tables.reduce((n, e) => n + e.fields.length, 0);
     const plates = tables.map(e => {
@@ -396,7 +404,7 @@ function renderNodes(){
       </div>`;
     }).join("");
     return `<div class="sb-node ${state.schema === s.id ? "selected" : ""}"
-        data-s="${esc(s.id)}" style="left:${s.x|0}px;top:${s.y|0}px">
+        data-s="${esc(s.id)}" style="left:${xy.x|0}px;top:${xy.y|0}px">
       <div class="sb-node-head">
         <div><div class="sb-node-title">${esc(s.label || s.id)}</div>
           <div class="sb-node-sub mono">${esc(s.id)} · ${tables.length} ${T("табл.")} · ${cols}</div></div>
@@ -421,8 +429,8 @@ function renderNodes(){
       if (ev.target.closest("button")) return;
       const p = toWorld(ev), s = model.schemas.find(x => x.id === sid);
       if (!s) return;
-      schemaXY(s);
-      state.drag = { id: sid, dx: p.x - s.x, dy: p.y - s.y }; ev.preventDefault();
+      const xy = schemaXY(s);
+      state.drag = { id: sid, dx: p.x - xy.x, dy: p.y - xy.y }; ev.preventDefault();
     };
     n.querySelector(".sb-node-add").onclick = ev => { ev.stopPropagation(); openEntityModal(sid); };
     $$(".sb-plate-add", n).forEach(b => b.onclick = ev => {
@@ -450,19 +458,19 @@ function tableRect(tableId){
   const e = entityById(tableId);
   const s = e && model.schemas.find(x => x.id === schemaOf(e));
   if (!node || !s) return null;
-  schemaXY(s);
+  const xy = schemaXY(s);
   const nr = node.getBoundingClientRect(), pr = plate.getBoundingClientRect();
   const k = state.scale || 1;
-  return { x: (s.x|0) + (pr.left - nr.left) / k, y: (s.y|0) + (pr.top - nr.top) / k,
+  return { x: (xy.x|0) + (pr.left - nr.left) / k, y: (xy.y|0) + (pr.top - nr.top) / k,
            w: pr.width / k, h: pr.height / k };
 }
 function nodeRect(schemaId){
   const n = document.querySelector(`.sb-node[data-s="${CSS.escape(schemaId)}"]`);
   const s = model.schemas && model.schemas.find(x => x.id === schemaId);
   if (!n || !s) return null;
-  schemaXY(s);
+  const xy = schemaXY(s);
   const k = state.scale || 1;
-  return { x: s.x|0, y: s.y|0, w: n.getBoundingClientRect().width / k, h: n.getBoundingClientRect().height / k };
+  return { x: xy.x|0, y: xy.y|0, w: n.getBoundingClientRect().width / k, h: n.getBoundingClientRect().height / k };
 }
 function edgePath(a, b){
   const ax = a.x + a.w, ay = a.y + a.h/2, bx = b.x, by = b.y + b.h/2;
@@ -1350,7 +1358,11 @@ async function boot(){
       const p = toWorld(ev), e = model.schemas.find(x => x.id === state.drag.id);
       if (!e) return;
       e.x = Math.round(p.x - state.drag.dx); e.y = Math.round(p.y - state.drag.dy);
-      const n = document.querySelector(`.sb-node[data-id="${CSS.escape(e.id)}"]`);
+      /* data-s, а не data-id: узел помечен идентификатором СХЕМЫ (см. renderNodes).
+         По data-id селектор не находил ничего, и во время перетаскивания двигались
+         только связи — сам блок стоял на месте и перескакивал уже после отпускания,
+         на следующей полной перерисовке. */
+      const n = document.querySelector(`.sb-node[data-s="${CSS.escape(e.id)}"]`);
       if (n){ n.style.left = e.x + "px"; n.style.top = e.y + "px"; }
       renderEdges();
     } else if (state.pan){
@@ -1360,7 +1372,16 @@ async function boot(){
     }
   });
   document.addEventListener("mouseup", () => {
-    if (state.drag){ const id = state.drag.id; state.drag = null; commit("move", "schema", id, null); }
+    if (state.drag){
+      const id = state.drag.id; state.drag = null;
+      /* Не через commit(): тот перерисовывает холст целиком, и после броска все узлы
+         пересобирались заново — плашки теряли прокрутку, картинка дёргалась. Узел уже
+         стоит где надо (его двигал сам обработчик), связи перерисованы — остаётся
+         записать в журнал, сохранить и обновить шапку. */
+      SchemaStore.log("move", "schema", id, null);
+      SchemaStore.save(model);
+      renderLists(); renderStatus();
+    }
     state.pan = null;
   });
   document.addEventListener("keydown", ev => {
