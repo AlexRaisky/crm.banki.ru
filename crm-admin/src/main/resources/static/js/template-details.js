@@ -622,6 +622,13 @@ function sfdRowHtml(f){
 }
 
 /* ---------- Мастер коммуникаций: та же карточка в режиме создания ---------- */
+/* Диплинк пуша почти всегда ведёт в вебвью, и адрес страницы дописывают к служебному
+   префиксу. Подставляем его сразу: набирать руками каждый раз незачем, а ошибка в
+   префиксе ломает переход молча — приложение просто не откроет ссылку.
+   Тот же адрес зашит в старой развёрнутой форме (index.html) и в «Конструкторе
+   ссылок» (onelink.js, WEBVIEW_PREFIX) — при переезде мастера на карточку он потерялся. */
+var SFD_PUSH_DEEPLINK = 'https://www.banki.ru/deepLink/webview?webviewUrl=';
+
 /* Пустая карточка — действительно пустая.
    Trigger type, Sending day и Sender name раньше приходили с готовыми значениями
    (promo, 0, Banki.ru). Раз эти поля обязательные, подставленное значение — обман:
@@ -632,7 +639,10 @@ function sfdBlank(channel){
     return { channel: channel, code:'', active:true, comname:'NoComName', source:'',
              trigger:'', product:'', partner:'', touch:'', day:'',
              message:'', title:'', sender_name:'',
-             deeplink:'', webview:'', subject:'', email_from:'', letteros_id:'',
+             /* только у пуша и Live Activity: у FA и VK свои правила ссылок */
+             deeplink: (channel === 'push' || channel === 'mobile-push' || channel === 'la')
+                       ? SFD_PUSH_DEEPLINK : '',
+             webview:'', subject:'', email_from:'', letteros_id:'',
              segment:'', segment_desc:'', source_system:'', host_id:'', kvint:'',
              communication_type:'', biz_type:'', aff_sub3:'',
              /* FA */ fa_id:'', channel_id:'', need_push:false, c2d_transport:'', c2d_account:'',
