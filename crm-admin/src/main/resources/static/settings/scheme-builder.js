@@ -640,7 +640,10 @@ function renderEntityForm(out){
       <button class="btn ghost-danger" id="sbE_del">${T("Удалить")}</button>
     </div>
     <div class="sb-sub-head">${T("Колонки")} <span class="n">${e.fields.length}</span></div>
-    ${e.fields.length ? e.fields.map((f, i) => `<div class="sb-item sb-col" data-i="${i}">
+    <!-- sb-fld, а не sb-col: sb-col занят под колонку-панель всего экрана
+         (flex-direction:column, карточка со скруглением), и строка колонки,
+         получив этот класс, разворачивалась в высокую карточку по центру. -->
+    ${e.fields.length ? e.fields.map((f, i) => `<div class="sb-item sb-fld" data-i="${i}">
         <span class="dot ${f.required ? "" : "opt"}"></span>
         <span class="lbl">${esc(f.name)}<i class="sb-ent-sub mono">${esc(f.db_type || "text")}</i></span>
         ${f.name === "id" ? `<span class="cnt">PK</span>`
@@ -648,7 +651,7 @@ function renderEntityForm(out){
       </div>`).join("")
       : `<div class="sb-empty">${T("В таблице пока нет колонок")}</div>`}
   </div>`;
-  $$("#sbInspector .sb-col").forEach(x => x.onclick = () => {
+  $$("#sbInspector .sb-fld").forEach(x => x.onclick = () => {
     state.field = Number(x.dataset.i); setTab("field"); render();
   });
   /* Удаление колонки прямо из списка. id не даём убрать: это первичный ключ,
