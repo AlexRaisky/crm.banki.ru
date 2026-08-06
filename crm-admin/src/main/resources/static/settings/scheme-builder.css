@@ -207,6 +207,30 @@
 /* объект уже в базе: не зачёркиваем — он не отменён, просто создавать нечего */
 .sb-ddl tr.have td{ opacity:.5 }
 .sb-ddl tr.have td:last-child{ opacity:.85; color:var(--green) }
+.sb-modal-note.ok{ color:var(--green) }
+.sb-modal-note .bad{ color:var(--coral) }
+.sb-modal-note .mono, .sb-drop .mono{ font-family:var(--mono) }
+.sb-drop .dim{ color:var(--dim) }
+
+/* Полный план — не на виду: он длинный и читается как «сейчас всё это создастся» */
+.sb-more{ margin-bottom:12px }
+.sb-more summary{ cursor:pointer; font-size:12.5px; color:var(--blue); padding:4px 0 }
+.sb-more[open] summary{ margin-bottom:6px }
+
+/* ---- Удаление колонок: единственное разрушительное место, и выглядит так ---- */
+.sb-drop-h{ font-size:14px; margin:18px 0 8px; color:var(--coral) }
+.sb-drop-item{ border:1px solid var(--line); border-radius:8px; padding:9px 11px; margin-bottom:8px }
+.sb-drop-top{ display:flex; align-items:center; gap:9px; font-size:12.5px; cursor:pointer }
+.sb-drop-top input{ accent-color:#FF6B8A; width:16px; height:16px; cursor:pointer }
+.sb-drop-body{ padding:6px 0 0 25px }
+.sb-drop-body .sb-check{ margin:5px 0; font-size:12.5px }
+.sb-drop-note{ font-size:11.5px; color:var(--dim); line-height:1.5; margin:2px 0 }
+.sb-drop-target{ margin:2px 0 4px 25px; font-size:12px; background:var(--bg2); color:var(--ink);
+  border:1px solid var(--line); border-radius:6px; padding:4px 7px; font-family:var(--mono) }
+.sb-drop-deps{ margin-top:7px; padding-top:7px; border-top:1px solid var(--line);
+  font-size:11.5px; color:var(--dim); line-height:1.6 }
+.btn.danger{ border-color:rgba(255,107,138,.5); color:var(--coral) }
+.btn.danger:hover{ background:rgba(255,107,138,.12); border-color:var(--coral) }
 
 /* ---- Панель раскрывается вглубь: сущность → таблицы → колонки ---- */
 .sb-crumbs{ display:flex; align-items:center; gap:6px; flex-wrap:wrap;

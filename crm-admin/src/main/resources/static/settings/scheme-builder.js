@@ -918,7 +918,7 @@ function entitiesOfSchema(schema){
 async function applyToDb(){
   openModal(`<h3>${T("Применить к базе")}</h3>
     <div class="sb-modal-note">${T("Считаем, что нужно сделать в базе…")}</div>`);
-  let plan;
+  let plan, dropPlan;
   try {
     const r = await fetch("/api/schema/ddl/preview", {
       method:"POST", credentials:"same-origin",
@@ -926,6 +926,14 @@ async function applyToDb(){
       body: JSON.stringify({ model }) });
     if (!r.ok) throw new Error("HTTP " + r.status);
     plan = await r.json();
+    /* Удаление считаем тем же заходом, но отдельным запросом: оно разрушительное,
+       и складывать его в один ответ с созданием — значит однажды применить заодно. */
+    dropPlan = await fetch("/api/schema/ddl/drops", {
+      method:"POST", credentials:"same-origin",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ model }) })
+      .then(r2 => r2.ok ? r2.json() : { candidates: [] })
+      .catch(() => ({ candidates: [] }));
   } catch (e){
     openModal(`<h3>${T("Применить к базе")}</h3>
       <div class="sb-modal-note">${T("Не удалось получить план изменений")}: ${esc(e.message)}</div>
@@ -952,22 +960,36 @@ async function applyToDb(){
   const dirty = SchemaStore.isDirty(model)
     ? `<div class="sb-modal-note">${T("Внимание: в модели есть несохранённые правки — применится то, что на экране.")}</div>` : "";
 
+  /* Показываем ТОЛЬКО то, что уедет в базу. Полный план — под раскрывашкой: список
+     из ста семидесяти строк «CREATE_SCHEMA / CREATE_TABLE / ADD_COLUMN» читается как
+     «сейчас всё это создастся», даже когда в шапке честно написано «операций: 0». */
+  const todo = stmts.filter(s => !s.skip && !s.exists);
+  const nothing = todo.length === 0;
+  const counts = `${haveCount ? T("уже есть") + ": <b>" + haveCount + "</b>" : ""}${
+      haveCount && skipCount ? " · " : ""}${
+      skipCount ? T("пропущено") + ": <b>" + skipCount + "</b>" : ""}`;
+
   openModal(`<h3>${T("Применить к базе")}</h3>
     ${skipNote}
     ${warn(problems, "")}
     ${dirty}
-    <div class="sb-modal-note">${T("Будет выполнено операций")}: <b>${plan.applicable != null ? plan.applicable : stmts.length}</b>${
-      haveCount ? " · " + T("уже есть") + ": <b>" + haveCount + "</b>" : ""}${
-      skipCount ? " · " + T("пропущено") + ": <b>" + skipCount + "</b>" : ""} · ${T("схем")}: <b>${(plan.schemas||[]).length}</b>.
-      ${T("Только создание: DROP, RENAME и смена типа не выполняются.")}</div>
-    ${plan.canApply === false && !skipCount && haveCount
-      ? `<div class="sb-modal-note">${T("Модель уже целиком в базе — применять нечего.")}</div>` : ""}
+    ${nothing
+      ? `<div class="sb-modal-note ok">${T("Создавать нечего: всё, что есть в модели, уже создано в базе.")}</div>
+         <div class="sb-modal-note">${counts} · ${T("схем")}: <b>${(plan.schemas||[]).length}</b>.</div>`
+      : `<div class="sb-modal-note">${T("Будет выполнено операций")}: <b>${todo.length}</b>${
+          counts ? " · " + counts : ""} · ${T("схем")}: <b>${(plan.schemas||[]).length}</b>.
+          ${T("Только создание: DROP, RENAME и смена типа не выполняются.")}</div>`}
     <div class="sb-acts" style="margin:0 0 12px">
-      <button class="btn accent" id="sbAp_go" ${plan.canApply ? "" : "disabled"}>${T("Применить")}</button>
+      ${nothing ? "" : `<button class="btn accent" id="sbAp_go">${T("Применить")}</button>`}
       <button class="btn" id="sbAp_close">${T("Закрыть")}</button></div>
-    ${stmts.length ? `<table class="sb-ddl"><thead><tr><th>${T("Операция")}</th><th>${T("Объект")}</th><th></th></tr></thead>
-      <tbody>${stmts.map(ddlRow).join("")}</tbody></table>` : ""}
-    <pre>${esc(plan.sql || "")}</pre>`);
+    ${todo.length ? `<table class="sb-ddl"><thead><tr><th>${T("Операция")}</th><th>${T("Объект")}</th><th></th></tr></thead>
+      <tbody>${todo.map(ddlRow).join("")}</tbody></table>
+      <pre>${esc(plan.sql || "")}</pre>` : ""}
+    ${stmts.length ? `<details class="sb-more"><summary>${T("Показать полный план")} (${stmts.length})</summary>
+      <table class="sb-ddl"><thead><tr><th>${T("Операция")}</th><th>${T("Объект")}</th><th></th></tr></thead>
+      <tbody>${stmts.map(ddlRow).join("")}</tbody></table></details>` : ""}
+    <div id="sbDropBlock"></div>`);
+  renderDropBlock(dropPlan);
   $("#sbAp_close").onclick = closeModal;
   const go = $("#sbAp_go");
   if (go) go.onclick = async () => {
@@ -989,6 +1011,134 @@ async function applyToDb(){
         <div class="sb-modal-note">${T("База осталась в прежнем состоянии: применение идёт одной транзакцией. Отказ записан в журнал.")}</div>
         <div class="sb-acts"><button class="btn" id="sbAp_close2">${T("Закрыть")}</button></div>`);
       $("#sbAp_close2").onclick = closeModal;
+    }
+  };
+}
+
+/* ============================================================
+   УДАЛЕНИЕ КОЛОНОК. Единственное разрушительное место билдера, поэтому оно
+   устроено иначе, чем создание:
+
+   • отдельная кнопка — «Применить» колонки не сносит, сколько бы их ни удалили
+     в модели: одно нажатие не должно означать сразу и создать, и потерять;
+   • по каждой колонке решение принимает человек — что с данными (снести вместе
+     с колонкой или перенести в соседнюю) и что со связями (снять или отступить);
+   • подтверждение вторым нажатием, с цифрами: сколько колонок и сколько строк.
+
+   Кандидатов считает сервер и пересчитывает их при выполнении заново — здесь
+   только выбор, а не разрешение.
+   ============================================================ */
+function renderDropBlock(dp){
+  const box = $("#sbDropBlock");
+  if (!box) return;
+  const list = (dp && dp.candidates) || [];
+  if (!list.length){ box.innerHTML = ""; return; }
+
+  const rows = list.map((c, i) => {
+    const filled = c.filled < 0 ? T("не удалось посчитать")
+      : (c.filled === 0 ? T("данных нет")
+         : T("заполнено строк") + ": <b>" + c.filled + "</b> " + T("из") + " " + c.rows);
+    const sib = (c.siblings || []).map(s =>
+      `<option value="${esc(s.name)}">${esc(s.name)} · ${esc(s.type)}</option>`).join("");
+    const deps = (c.deps || []).map(d => "• " + T(d.inbound ? "ссылается сюда" : "ссылка отсюда")
+        + ": <span class='mono'>" + esc(d.schema + "." + d.table + "." + d.column) + "</span>"
+        + " · <span class='mono'>" + esc(d.constraint) + "</span>").join("<br>");
+    return `<div class="sb-drop-item">
+      <label class="sb-drop-top"><input type="checkbox" class="sbDropPick" data-i="${i}">
+        <span class="mono">${esc(c.schema + "." + c.table + "." + c.column)}</span>
+        <span class="dim mono">${esc(c.type)}</span></label>
+      <div class="sb-drop-body">
+        <div class="sb-drop-note">${filled}</div>
+        <label class="sb-check"><input type="radio" name="sbDropD${i}" value="drop" checked>
+          ${T("удалить вместе с данными")}</label>
+        <label class="sb-check"><input type="radio" name="sbDropD${i}" value="move" ${sib ? "" : "disabled"}>
+          ${T("перенести данные в колонку")}</label>
+        <select class="sb-drop-target" data-i="${i}" ${sib ? "" : "disabled"}>${
+          sib || `<option>${T("переносить некуда")}</option>`}</select>
+        <div class="sb-drop-note">${T("Переносим только туда, где целевая колонка пуста: заполненное не перезаписываем.")}</div>
+        ${deps ? `<div class="sb-drop-deps">${T("Связанные таблицы")}:<br>${deps}
+          <label class="sb-check"><input type="checkbox" class="sbDropDeps" data-i="${i}">
+            ${T("снять эти связи (без этого колонку удалить нельзя)")}</label></div>` : ""}
+      </div></div>`;
+  }).join("");
+
+  box.innerHTML = `<h3 class="sb-drop-h">${T("Удалить из базы")}</h3>
+    <div class="sb-modal-note">${T("В базе есть колонки, которых больше нет в модели")}: <b>${list.length}</b>.
+      ${T("Ищем только по таблицам, заведённым билдером. Таблицы и схемы целиком не удаляются — только колонки.")}</div>
+    <div class="sb-drop">${rows}</div>
+    <div class="sb-acts" id="sbDropActs">
+      <button class="btn danger" id="sbDrop_go">${T("Удалить выбранное")}</button></div>
+    <div class="sb-modal-note" id="sbDrop_msg"></div>`;
+
+  $("#sbDrop_go").onclick = () => confirmDrop(list);
+}
+
+/** Что человек выбрал в блоке удаления. null — выбор неполон, причина уже показана. */
+function collectDrops(list){
+  const msg = $("#sbDrop_msg");
+  const say = t => { if (msg) msg.innerHTML = `<span class="bad">${esc(t)}</span>`; return null; };
+  const out = [];
+  for (const cb of $$(".sbDropPick")){
+    if (!cb.checked) continue;
+    const i = +cb.dataset.i, c = list[i];
+    const mode = ($(`input[name="sbDropD${i}"]:checked`) || {}).value || "drop";
+    const d = { schema:c.schema, table:c.table, column:c.column, data:mode };
+    if (mode === "move"){
+      const sel = $(`.sb-drop-target[data-i="${i}"]`);
+      if (!sel || sel.disabled || !sel.value)
+        return say(T("Некуда переносить данные из") + " " + c.column);
+      d.target = sel.value;
+    }
+    if ((c.deps || []).length){
+      const box = $(`.sbDropDeps[data-i="${i}"]`);
+      if (!box || !box.checked)
+        return say(T("У колонки есть связи — отметьте, что их можно снять") + ": " + c.column);
+      d.deps = "drop";
+    }
+    out.push(d);
+  }
+  if (!out.length) return say(T("Не отмечено ни одной колонки"));
+  if (msg) msg.innerHTML = "";
+  return out;
+}
+
+/* Подтверждение с цифрами. «Удалить N колонок» человек прочитает и пропустит,
+   а «в них 4128 заполненных строк» — уже нет. */
+function confirmDrop(list){
+  const drops = collectDrops(list);
+  if (!drops) return;
+  const picked = drops.map(d => list.find(c =>
+    c.schema === d.schema && c.table === d.table && c.column === d.column));
+  const rows = picked.reduce((s, c) => s + (c.filled > 0 ? c.filled : 0), 0);
+  const links = picked.reduce((s, c) => s + (c.deps || []).length, 0);
+  const moves = drops.filter(d => d.data === "move").length;
+  $("#sbDropActs").innerHTML =
+    `<button class="btn danger" id="sbDrop_yes">${T("Да, удалить")}</button>
+     <button class="btn" id="sbDrop_no">${T("Отмена")}</button>`;
+  $("#sbDrop_msg").innerHTML = `${T("Колонок к удалению")}: <b>${drops.length}</b>`
+    + (rows ? " · " + T("заполненных строк в них") + ": <b>" + rows + "</b>" : "")
+    + (moves ? " · " + T("с переносом данных") + ": <b>" + moves + "</b>" : "")
+    + (links ? " · " + T("будет снято связей") + ": <b>" + links + "</b>" : "")
+    + ". " + T("Отменить это нельзя.");
+  $("#sbDrop_no").onclick = () => renderDropBlock({ candidates: list });
+  $("#sbDrop_yes").onclick = async () => {
+    const yes = $("#sbDrop_yes");
+    yes.disabled = true; yes.textContent = T("Удаляем…");
+    try {
+      const r = await fetch("/api/schema/ddl/drop", {
+        method:"POST", credentials:"same-origin",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ model, drops }) });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.message || body.error || ("HTTP " + r.status));
+      closeModal();
+      toast(T("Удалено колонок") + ": " + (body.dropped || 0)
+            + (body.links ? " · " + T("снято связей") + ": " + body.links : ""));
+      if ((body.notes || []).length) console.log("[scheme-builder]", body.notes.join("\n"));
+    } catch (e){
+      yes.disabled = false; yes.textContent = T("Да, удалить");
+      $("#sbDrop_msg").innerHTML = `<span class="bad">${T("Не удалилось")}: ${esc(e.message)}</span>
+        <br>${T("База осталась в прежнем состоянии: удаление идёт одной транзакцией.")}`;
     }
   };
 }

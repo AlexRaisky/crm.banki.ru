@@ -112,6 +112,31 @@ public class SchemaController {
         }
     }
 
+    /**
+     * Колонки, которые есть в базе, но которых больше нет в модели. Только чтение:
+     * вместе с каждой возвращаются заполненность, соседние колонки (куда можно перенести
+     * данные) и связи, которые придётся снять.
+     */
+    @PostMapping("/ddl/drops")
+    public Map<String, Object> ddlDrops(@RequestBody(required = false) JsonNode body) {
+        return ddl.dropCandidates(modelOf(body));
+    }
+
+    /**
+     * Удалить колонки из базы. Единственная разрушительная ручка билдера, поэтому:
+     * тело обязано нести решения по каждой колонке (что с данными, что со связями),
+     * а список кандидатов сервер пересчитывает сам — телу запроса тут веры нет.
+     */
+    @PostMapping("/ddl/drop")
+    public Map<String, Object> ddlDrop(@RequestBody JsonNode body) {
+        try {
+            return ddl.dropColumns(modelOf(body), body == null ? null : body.get("drops"));
+        } catch (RuntimeException e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
     /** Модель из тела запроса, а при пустом теле — сохранённая. */
     private JsonNode modelOf(JsonNode body) {
         if (body != null && body.has("model")) return body.get("model");

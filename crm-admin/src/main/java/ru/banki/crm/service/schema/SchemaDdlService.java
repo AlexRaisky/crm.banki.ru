@@ -311,6 +311,318 @@ public class SchemaDdlService {
                 .executeUpdate();
     }
 
+    // ------------------------------------------------------- УДАЛЕНИЕ КОЛОНОК
+
+    /**
+     * Что мешает удалить колонку: внешний ключ на ней самой или чужой, ссылающийся в неё.
+     * {@code inbound} — ссылка ИЗ другой таблицы: её удаление рвёт связь у соседа,
+     * и спрашивать про неё надо отдельно от собственных ограничений таблицы.
+     */
+    public record DropDep(String kind, String constraint, String schema, String table,
+                          String column, boolean inbound) {}
+
+    /**
+     * Колонки, которых в модели больше нет, но в базе они ещё есть.
+     * <p>
+     * Ищем только по таблицам, <b>заведённым билдером</b> (app.schema_owned): колонку в
+     * чужой таблице мы не создавали и удалять не станем, даже если её нет в модели —
+     * скорее всего её там никогда и не было. Схемы, которые применение обходит, тоже мимо.
+     * <p>
+     * Считаем заполненность и собираем зависимости, чтобы человек решал не вслепую:
+     * «удалить вместе с данными» и «удалить со связью» — разные решения, и принимать
+     * их надо, видя, сколько строк заполнено и кто на колонку ссылается.
+     */
+    public Map<String, Object> dropCandidates(JsonNode model) {
+        Model want = modelTables(model);
+        return tx.execute(s -> {
+            Set<String> off = names(skips(want.schemas()));
+            List<Map<String, Object>> out = new ArrayList<>();
+            for (String key : ownedTables()) {
+                Set<String> cols = want.tables().get(key);
+                if (cols == null) continue;                      // таблицы нет в модели — таблицы не удаляем
+                String schema = key.substring(0, key.indexOf('.'));
+                String table = key.substring(key.indexOf('.') + 1);
+                if (off.contains(schema)) continue;
+                for (Object[] c : dbColumns(schema, table)) {
+                    String name = String.valueOf(c[0]);
+                    if (cols.contains(name)) continue;
+                    out.add(candidate(schema, table, name, String.valueOf(c[1]), cols));
+                }
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("candidates", out);
+            return m;
+        });
+    }
+
+    /** Одна колонка-сирота вместе со всем, что нужно для решения о ней. */
+    private Map<String, Object> candidate(String schema, String table, String column,
+                                          String type, Set<String> modelCols) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("schema", schema);
+        m.put("table", table);
+        m.put("column", column);
+        m.put("type", type);
+        Object[] counts = counts(schema, table, column);
+        m.put("rows", counts[0]);
+        m.put("filled", counts[1]);
+        List<Map<String, String>> siblings = new ArrayList<>();
+        for (Object[] c : dbColumns(schema, table)) {
+            String n = String.valueOf(c[0]);
+            if (n.equals(column) || !modelCols.contains(n)) continue;
+            siblings.add(Map.of("name", n, "type", String.valueOf(c[1])));
+        }
+        m.put("siblings", siblings);
+        m.put("deps", deps(schema, table, column).stream()
+                .map(d -> {
+                    Map<String, Object> x = new LinkedHashMap<>();
+                    x.put("kind", d.kind());
+                    x.put("constraint", d.constraint());
+                    x.put("schema", d.schema());
+                    x.put("table", d.table());
+                    x.put("column", d.column());
+                    x.put("inbound", d.inbound());
+                    return x;
+                }).toList());
+        return m;
+    }
+
+    /**
+     * Выполнить удаление. Решения приходят с фронта, но кандидатов пересчитываем здесь
+     * заново: тело запроса — это не разрешение. Удалить можно только ту колонку, которая
+     * и по нашему счёту лишняя, в нашей таблице и в доступной схеме.
+     * <p>
+     * Порядок внутри одной транзакции: сначала снять мешающие связи, потом перенести
+     * данные, и только затем DROP COLUMN. Иначе перенос читал бы уже удалённое.
+     */
+    public Map<String, Object> dropColumns(JsonNode model, JsonNode drops) {
+        long started = System.currentTimeMillis();
+        Map<String, Object> plan = dropCandidates(model);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> cands = (List<Map<String, Object>>) plan.get("candidates");
+        Map<String, Map<String, Object>> byKey = new LinkedHashMap<>();
+        for (Map<String, Object> c : cands) {
+            byKey.put(c.get("schema") + "." + c.get("table") + "." + c.get("column"), c);
+        }
+        java.util.concurrent.atomic.AtomicReference<String> cause = new java.util.concurrent.atomic.AtomicReference<>();
+        try {
+            return tx.execute(status -> {
+                if (drops == null || !drops.isArray() || drops.isEmpty())
+                    throw new GuardViolation("Не выбрано ни одной колонки");
+                int dropped = 0, links = 0;
+                List<String> notes = new ArrayList<>();
+                for (JsonNode d : drops) {
+                    String schema = txt(d, "schema"), table = txt(d, "table"), column = txt(d, "column");
+                    String key = schema + "." + table + "." + column;
+                    Map<String, Object> c = byKey.get(key);
+                    if (c == null) throw new GuardViolation(
+                            "Колонку " + key + " удалять нельзя: она либо есть в модели,"
+                            + " либо таблица заведена не билдером");
+                    if (!DdlPlanner.valid(schema) || !DdlPlanner.valid(table) || !DdlPlanner.valid(column))
+                        throw new GuardViolation("Недопустимое имя: " + key);
+
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> deps = (List<Map<String, Object>>) c.get("deps");
+                    if (!deps.isEmpty() && !"drop".equals(txt(d, "deps")))
+                        throw new GuardViolation("У колонки " + key + " есть связи —"
+                                + " решение по ним не принято");
+
+                    try {
+                        for (Map<String, Object> dep : deps) {
+                            String sql = "ALTER TABLE " + dep.get("schema") + "." + dep.get("table")
+                                    + " DROP CONSTRAINT IF EXISTS " + dep.get("constraint") + ";";
+                            em.createNativeQuery(sql).executeUpdate();
+                            audit("DROP_CONSTRAINT", String.valueOf(dep.get("schema")),
+                                    String.valueOf(dep.get("table")), sql, "OK", null,
+                                    System.currentTimeMillis() - started);
+                            links++;
+                        }
+                        if ("move".equals(txt(d, "data"))) {
+                            String target = txt(d, "target");
+                            if (!DdlPlanner.valid(target)) throw new GuardViolation(
+                                    "Не выбрана колонка, куда переносить данные из " + key);
+                            boolean ok = ((List<?>) c.get("siblings")).stream()
+                                    .anyMatch(x -> target.equals(((Map<?, ?>) x).get("name")));
+                            if (!ok) throw new GuardViolation(
+                                    "Колонка " + target + " не годится как приёмник для " + key);
+                            /* Переносим только туда, где пусто: перезаписывать заполненное
+                               нельзя — это уничтожило бы данные, о которых никто не спрашивал. */
+                            String sql = "UPDATE " + schema + "." + table
+                                    + " SET " + target + " = " + column + "::" + typeOf(schema, table, target)
+                                    + " WHERE " + column + " IS NOT NULL AND " + target + " IS NULL";
+                            int moved = em.createNativeQuery(sql).executeUpdate();
+                            audit("MOVE_DATA", schema, table, sql, "OK", null,
+                                    System.currentTimeMillis() - started);
+                            notes.add(key + " → " + target + ": перенесено строк " + moved);
+                        }
+                        String sql = "ALTER TABLE " + schema + "." + table
+                                + " DROP COLUMN IF EXISTS " + column + ";";
+                        em.createNativeQuery(sql).executeUpdate();
+                        audit("DROP_COLUMN", schema, table, sql, "OK", null,
+                                System.currentTimeMillis() - started);
+                        dropped++;
+                    } catch (GuardViolation g) {
+                        throw g;
+                    } catch (RuntimeException e) {
+                        cause.set("DROP_COLUMN " + key + ": " + message(e));
+                        throw new DdlFailure(cause.get(), e);
+                    }
+                }
+                audit("DROP", null, null, null, "OK", null, System.currentTimeMillis() - started);
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("dropped", dropped);
+                m.put("links", links);
+                m.put("notes", notes);
+                return m;
+            });
+        } catch (GuardViolation g) {
+            auditSeparately("DROP", "REJECTED", g.getMessage(), System.currentTimeMillis() - started);
+            throw g;
+        } catch (RuntimeException e) {
+            String why = cause.get() != null ? cause.get() : message(e);
+            auditSeparately("DROP", "ERROR", why, System.currentTimeMillis() - started);
+            throw new DdlFailure(why, e);
+        }
+    }
+
+    /** Модель в виде «схема.таблица → колонки». Схемы нужны отдельно: по ним считается охрана. */
+    private record Model(Map<String, Set<String>> tables, List<String> schemas) {}
+
+    /**
+     * Разбор модели под удаление. Читаем ровно то же, что планировщик кладёт в CREATE TABLE,
+     * иначе колонка, которая в модели есть, попала бы в кандидаты на снос.
+     * <p>
+     * Связующие таблицы many-to-many в разбор НЕ идут: их колонки модель не перечисляет,
+     * и без этого правила билдер предложил бы удалить у них вообще всё.
+     */
+    private static Model modelTables(JsonNode model) {
+        Map<String, Set<String>> tables = new LinkedHashMap<>();
+        LinkedHashSet<String> schemas = new LinkedHashSet<>();
+        JsonNode entities = model == null ? null : model.get("entities");
+        if (entities == null || !entities.isArray()) return new Model(tables, List.of());
+        for (JsonNode e : entities) {
+            String schema = DdlPlanner.schemaOf(e), table = DdlPlanner.tableOf(e);
+            if (!DdlPlanner.valid(schema) || !DdlPlanner.valid(table)) continue;
+            schemas.add(schema);
+            Set<String> cols = new LinkedHashSet<>();
+            JsonNode fields = e.get("fields");
+            if (fields != null && fields.isArray()) {
+                for (JsonNode f : fields) {
+                    JsonNode t = f.get("db_type");
+                    if (t != null && "relation".equals(t.asText())) continue;
+                    JsonNode n = f.get("name");
+                    if (n != null && !n.asText().isBlank()) cols.add(n.asText().trim());
+                }
+            }
+            tables.put(schema + "." + table, cols);
+        }
+        /* Связующие таблицы вычёркиваем: они наши, но их состав задан кодом, а не полями. */
+        JsonNode relations = model.get("relations");
+        if (relations != null && relations.isArray()) {
+            Map<String, JsonNode> byId = new LinkedHashMap<>();
+            for (JsonNode e : entities) byId.put(e.path("id").asText(""), e);
+            for (JsonNode r : relations) {
+                if (!"many_to_many".equals(r.path("relation_type").asText(""))) continue;
+                JsonNode fe = byId.get(r.path("from_entity").asText(""));
+                JsonNode te = byId.get(r.path("to_entity").asText(""));
+                if (fe == null || te == null) continue;
+                String through = r.path("through").asText("");
+                String link = through.isBlank()
+                        ? DdlPlanner.tableOf(fe) + "_" + DdlPlanner.tableOf(te) + "_link" : through;
+                tables.remove(DdlPlanner.schemaOf(fe) + "." + link);
+            }
+        }
+        return new Model(tables, new ArrayList<>(schemas));
+    }
+
+    /** Таблицы, которые числятся за билдером в этой среде. */
+    private List<String> ownedTables() {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery(
+                        "SELECT schema_name, table_name FROM app.schema_owned" +
+                        " WHERE env = :e AND table_name IS NOT NULL")
+                .setParameter("e", envName).getResultList();
+        List<String> out = new ArrayList<>();
+        for (Object[] r : rows) out.add(r[0] + "." + r[1]);
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Object[]> dbColumns(String schema, String table) {
+        return em.createNativeQuery(
+                        "SELECT a.attname, format_type(a.atttypid, a.atttypmod)" +
+                        "  FROM pg_attribute a" +
+                        "  JOIN pg_class t ON t.oid = a.attrelid" +
+                        "  JOIN pg_namespace n ON n.oid = t.relnamespace" +
+                        " WHERE n.nspname = :s AND t.relname = :t" +
+                        "   AND a.attnum > 0 AND NOT a.attisdropped" +
+                        " ORDER BY a.attnum")
+                .setParameter("s", schema).setParameter("t", table).getResultList();
+    }
+
+    private String typeOf(String schema, String table, String column) {
+        for (Object[] c : dbColumns(schema, table)) {
+            if (column.equals(String.valueOf(c[0]))) return String.valueOf(c[1]);
+        }
+        return "text";
+    }
+
+    /** Сколько всего строк и в скольких колонка заполнена. Пустую можно сносить не думая. */
+    private Object[] counts(String schema, String table, String column) {
+        try {
+            Object[] r = (Object[]) em.createNativeQuery(
+                            "SELECT count(*), count(" + column + ") FROM " + schema + "." + table)
+                    .getSingleResult();
+            return new Object[]{ ((Number) r[0]).longValue(), ((Number) r[1]).longValue() };
+        } catch (RuntimeException e) {
+            return new Object[]{ -1L, -1L };   // не посчиталось — покажем «неизвестно», а не соврём нулём
+        }
+    }
+
+    /** Внешние ключи, которые придётся снять, чтобы колонка ушла. */
+    @SuppressWarnings("unchecked")
+    private List<DropDep> deps(String schema, String table, String column) {
+        List<DropDep> out = new ArrayList<>();
+        List<Object[]> own = em.createNativeQuery(
+                        "SELECT c.conname FROM pg_constraint c" +
+                        "  JOIN pg_class t ON t.oid = c.conrelid" +
+                        "  JOIN pg_namespace n ON n.oid = t.relnamespace" +
+                        " WHERE n.nspname = :s AND t.relname = :t AND c.contype = 'f'" +
+                        "   AND EXISTS (SELECT 1 FROM unnest(c.conkey) k" +
+                        "               JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k" +
+                        "               WHERE a.attname = :c)")
+                .setParameter("s", schema).setParameter("t", table).setParameter("c", column)
+                .getResultList();
+        for (Object o : own) {
+            out.add(new DropDep("fk", String.valueOf(o), schema, table, column, false));
+        }
+        List<Object[]> in = em.createNativeQuery(
+                        "SELECT c.conname, n.nspname, t.relname," +
+                        "       (SELECT string_agg(a.attname, ', ') FROM unnest(c.conkey) k" +
+                        "          JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k)" +
+                        "  FROM pg_constraint c" +
+                        "  JOIN pg_class t ON t.oid = c.conrelid" +
+                        "  JOIN pg_namespace n ON n.oid = t.relnamespace" +
+                        "  JOIN pg_class rt ON rt.oid = c.confrelid" +
+                        "  JOIN pg_namespace rn ON rn.oid = rt.relnamespace" +
+                        " WHERE c.contype = 'f' AND rn.nspname = :s AND rt.relname = :t" +
+                        "   AND EXISTS (SELECT 1 FROM unnest(c.confkey) k" +
+                        "               JOIN pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = k" +
+                        "               WHERE a.attname = :c)")
+                .setParameter("s", schema).setParameter("t", table).setParameter("c", column)
+                .getResultList();
+        for (Object[] r : in) {
+            out.add(new DropDep("fk", String.valueOf(r[0]), String.valueOf(r[1]),
+                    String.valueOf(r[2]), String.valueOf(r[3]), true));
+        }
+        return out;
+    }
+
+    private static String txt(JsonNode n, String field) {
+        JsonNode v = n == null ? null : n.get(field);
+        return (v == null || v.isNull()) ? "" : v.asText().trim();
+    }
+
     // ---------------------------------------------------------------- ЖУРНАЛ
 
     private void audit(String action, String schema, String table, String sql,
