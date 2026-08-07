@@ -13,7 +13,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- ?v — метка версии: без неё браузер держит старый файл из HTTP-кеша
      и правки раздела доезжают к пользователю с задержкой. Поднимать при изменениях. -->
-<link rel="stylesheet" href="scheme-builder.css?v=16">
+<link rel="stylesheet" href="scheme-builder.css?v=17">
 <link rel="stylesheet" href="object-manager.css?v=4">
 <style>
   /* ============================================================
@@ -336,6 +336,9 @@
                изменении, поэтому «несохранённые правки» — редкий случай (сервер не
                ответил), а обычный исход не показывался ничем. -->
           <span class="sb-saved" id="sbSaved" data-i18n="● Сохранено">● Сохранено</span>
+          <!-- Главный из трёх: модель ушла вперёд базы. Держится до «Применить к базе»,
+               текст дописывается из ответа предпросмотра (сколько создать, сколько удалить). -->
+          <span class="sb-pending" id="sbPending">● Есть изменения, не применённые к базе</span>
           <button class="btn" id="sbSql">SQL DDL</button>
           <!-- Применение к базе — отдельной кнопкой и всегда через предпросмотр.
                На каждое сохранение DDL не льём: сохранение идёт при любой правке. -->
@@ -1587,7 +1590,7 @@ window.CRM = window.CRM || (function(){
   border:1px solid var(--line);color:var(--ink);padding:11px 15px;border-radius:11px;font-size:13px;
   box-shadow:0 14px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(8px);transition:.18s;pointer-events:none"></div>
 <style>#sbToast.show{opacity:1;transform:none}</style>
-<script src="scheme-builder.js?v=22"></script>
+<script src="scheme-builder.js?v=23"></script>
 <!-- «Сущности»: общий с панелью расчёт раскладки + сам раздел. Порядок важен:
      object-manager.js работает с хранилищем схемы из scheme-builder.js. -->
 <script src="../js/entity-layout.js?v=4"></script>

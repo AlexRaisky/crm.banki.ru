@@ -248,6 +248,47 @@ function commit(op, target, id, payload){
   SchemaStore.log(op, target, id, payload);
   SchemaStore.save(model);
   render();
+  refreshPending();
+}
+
+/**
+ * «Есть изменения, не применённые к базе» — и держится, пока их не применят.
+ * <p>
+ * Считаем разницу не с сохранённой моделью, а <b>с базой</b>. Модель уезжает на
+ * сервер при каждой правке, поэтому «несохранённого» почти никогда нет, и значок,
+ * построенный на нём, молчал бы всегда. Человека же занимает другое: он добавил
+ * колонку — и хочет видеть, что база от модели отстала. Это состояние живёт до
+ * «Применить к базе», а не две секунды.
+ * <p>
+ * Запрос отложенный: правки идут пачками (создал таблицу — тут же три колонки),
+ * и дёргать сервер на каждое нажатие незачем. {@code now} — посчитать немедленно:
+ * после применения ответ нужен сразу, иначе значок ещё секунду висит зря.
+ */
+let pendingTimer = null;
+function refreshPending(now){
+  clearTimeout(pendingTimer);
+  pendingTimer = setTimeout(async () => {
+    const el = $("#sbPending");
+    if (!el) return;
+    const opt = { method:"POST", credentials:"same-origin",
+                  headers:{ "Content-Type":"application/json" },
+                  body: JSON.stringify({ model }) };
+    /* Оба запроса только читают. Ошибку глотаем молча: значок — подсказка, и
+       ронять из-за него раздел нельзя. */
+    const [plan, drops] = await Promise.all([
+      fetch("/api/schema/ddl/preview", opt).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch("/api/schema/ddl/drops", opt).then(r => r.ok ? r.json() : null).catch(() => null)
+    ]);
+    if (!plan && !drops) return;                      // сервер не ответил — прежнее состояние честнее
+    const add = plan ? (plan.applicable || 0) : 0;
+    const del = drops ? (drops.candidates || []).length : 0;
+    const bits = [];
+    if (add) bits.push(T("создать") + ": " + add);
+    if (del) bits.push(T("удалить") + ": " + del);
+    el.textContent = "● " + T("Есть изменения, не применённые к базе")
+                   + (bits.length ? " (" + bits.join(", ") + ")" : "");
+    el.classList.toggle("on", add + del > 0);
+  }, now ? 0 : 900);
 }
 function toast(msg){
   if (typeof window.sbToast === "function") return window.sbToast(msg);
@@ -1036,6 +1077,7 @@ async function applyToDb(){
         <div class="sb-modal-note">${T("Каждая операция записана в журнал раздела.")}</div>
         <div class="sb-acts"><button class="btn accent" id="sbAp_done">${T("Закрыть")}</button></div>`);
       $("#sbAp_done").onclick = closeModal;
+      refreshPending(true);   /* база догнала модель — значок гасим сразу */
       toast(T("Применено к базе") + ": " + (body.applied || 0) + " " + T("операц."));
     } catch (e){
       go.disabled = false; go.textContent = T("Применить");
@@ -1176,6 +1218,7 @@ function confirmDrop(list){
         <div class="sb-modal-note">${T("Каждая операция записана в журнал раздела.")}</div>
         <div class="sb-acts"><button class="btn accent" id="sbDrop_done">${T("Закрыть")}</button></div>`);
       $("#sbDrop_done").onclick = closeModal;
+      refreshPending(true);
       toast(T("Удалено колонок") + ": " + (body.dropped || 0));
     } catch (e){
       yes.disabled = false; yes.textContent = T("Да, удалить");
@@ -1592,6 +1635,9 @@ async function load(){
     });
     state.entity = model.entities[0] ? model.entities[0].id : null;
     render(); layoutShell(); transform(); setTimeout(fit, 40);
+    /* Расхождение с базой могло накопиться в прошлый заход или у коллеги —
+       показываем его сразу при открытии, а не только после первой правки. */
+    refreshPending();
   } catch(err){
     const host = $("#sbInspector");
     if (host) host.innerHTML = `<div class="sb-form"><div class="sb-hint bad">${T("Не удалось загрузить схему")}: ${esc(err.message)}</div></div>`;

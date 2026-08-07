@@ -21,6 +21,11 @@
   background:rgba(60,250,180,.10);border:1px solid rgba(60,250,180,.30);border-radius:20px;padding:4px 11px;
   transition:opacity .2s}
 .sb-saved.on{display:inline-flex}
+/* «Не применено к базе» — состояние, а не вспышка: держится до применения, поэтому
+   стоит вплотную к кнопке «Применить к базе» и окрашен в её же тон. */
+.sb-pending{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--blue);
+  background:var(--blue-bg);border:1px solid rgba(80,195,255,.35);border-radius:20px;padding:4px 11px}
+.sb-pending.on{display:inline-flex}
 
 /* Остальные разделы настроек читаются в колонку и ограничены .pane{max-width:1060px},
    схеме же нужна вся ширина — иначе канвас остаётся узким, а справа пустует экран. */
