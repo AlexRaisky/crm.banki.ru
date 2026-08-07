@@ -15,6 +15,12 @@
 .sb-dirty{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--amber);
   background:var(--amber-bg);border:1px solid rgba(255,184,77,.35);border-radius:20px;padding:4px 11px}
 .sb-dirty.on{display:inline-flex}
+/* Парный значок удачного сохранения: та же форма и то же место, другой цвет —
+   так глазу не приходится искать подтверждение в другом углу экрана. */
+.sb-saved{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--green);
+  background:rgba(60,250,180,.10);border:1px solid rgba(60,250,180,.30);border-radius:20px;padding:4px 11px;
+  transition:opacity .2s}
+.sb-saved.on{display:inline-flex}
 
 /* Остальные разделы настроек читаются в колонку и ограничены .pane{max-width:1060px},
    схеме же нужна вся ширина — иначе канвас остаётся узким, а справа пустует экран. */

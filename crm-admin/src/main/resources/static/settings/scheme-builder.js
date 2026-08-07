@@ -160,6 +160,7 @@ const SchemaStore = {
            на момент отрисовки baseline ещё старый — значок «есть несохранённые правки»
            загорался и больше не гас, хотя правка давно уехала. */
         if (typeof renderStatus === "function") renderStatus();
+        if (typeof flashSaved === "function") flashSaved();
         return true;
       } catch (e){
         /* Страховка: правку кладём в черновик браузера, журнал НЕ чистим —
@@ -265,6 +266,23 @@ function renderStatus(){
   const st = $("#sbStatus"), dirty = $("#sbDirty");
   if (st) st.textContent = `${model.entities.length} ${T("сущн.")} · ${model.relations.length} ${T("связей")} · ${Math.round(state.scale*100)}%`;
   if (dirty) dirty.classList.toggle("on", SchemaStore.isDirty(model));
+}
+
+/**
+ * Отметка «сохранено» на пару секунд.
+ * <p>
+ * Схема уезжает на сервер при каждой правке, поэтому значок «есть несохранённые
+ * правки» после удаления колонки не загорается — сохранять уже нечего, и это верно.
+ * Но человеку от этого не легче: он нажал «удалить», строка исчезла, и больше не
+ * произошло ничего. Показываем сам факт записи — там же, где показали бы её
+ * отсутствие, чтобы место подтверждения было одно.
+ */
+function flashSaved(){
+  const el = $("#sbSaved");
+  if (!el || SchemaStore.isDirty(model)) return;
+  el.classList.add("on");
+  clearTimeout(flashSaved._t);
+  flashSaved._t = setTimeout(() => el.classList.remove("on"), 2200);
 }
 
 function matches(e){
@@ -1004,9 +1022,21 @@ async function applyToDb(){
         body: JSON.stringify({ model }) });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.message || body.error || ("HTTP " + r.status));
-      closeModal();
-      toast(T("Применено к базе") + ": " + (body.applied || 0) + " " + T("операц.")
-            + (body.skipped ? " · " + T("пропущено") + ": " + body.skipped : ""));
+      /* Итог показываем В модалке, а не всплывашкой в углу. Всплывашка живёт две
+         секунды и появляется там, куда человек в этот момент не смотрит: он смотрит
+         на кнопку, которую нажал. А это единственное место, где билдер меняет базу —
+         подтверждение должно остаться на экране, пока его не закроют. */
+      const parts = [T("создано объектов") + ": <b>" + (body.applied || 0) + "</b>"];
+      if (body.already) parts.push(T("уже было") + ": <b>" + body.already + "</b>");
+      if (body.skipped) parts.push(T("пропущено") + ": <b>" + body.skipped + "</b>");
+      openModal(`<h3>${T("Применено к базе")}</h3>
+        <div class="sb-modal-note ok">${T("Готово")} — ${parts.join(" · ")}.</div>
+        ${(body.schemas || []).length
+          ? `<div class="sb-modal-note">${T("Затронуты схемы")}: <span class="mono">${esc(body.schemas.join(", "))}</span></div>` : ""}
+        <div class="sb-modal-note">${T("Каждая операция записана в журнал раздела.")}</div>
+        <div class="sb-acts"><button class="btn accent" id="sbAp_done">${T("Закрыть")}</button></div>`);
+      $("#sbAp_done").onclick = closeModal;
+      toast(T("Применено к базе") + ": " + (body.applied || 0) + " " + T("операц."));
     } catch (e){
       go.disabled = false; go.textContent = T("Применить");
       openModal(`<h3>${T("Применить к базе")}</h3>
@@ -1134,10 +1164,19 @@ function confirmDrop(list){
         body: JSON.stringify({ model, drops }) });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.message || body.error || ("HTTP " + r.status));
-      closeModal();
-      toast(T("Удалено колонок") + ": " + (body.dropped || 0)
-            + (body.links ? " · " + T("снято связей") + ": " + body.links : ""));
-      if ((body.notes || []).length) console.log("[scheme-builder]", body.notes.join("\n"));
+      const parts = [T("удалено колонок") + ": <b>" + (body.dropped || 0) + "</b>"];
+      if (body.links) parts.push(T("снято связей") + ": <b>" + body.links + "</b>");
+      /* Сколько строк реально переехало — не мелочь: «перенесено 0» означает, что
+         приёмник везде был занят, и данные ушли вместе с колонкой. Такое человек
+         должен увидеть сразу, а не находить потом в консоли. */
+      openModal(`<h3>${T("Удалено из базы")}</h3>
+        <div class="sb-modal-note ok">${T("Готово")} — ${parts.join(" · ")}.</div>
+        ${(body.notes || []).length
+          ? `<div class="sb-modal-note">${body.notes.map(n => "• " + esc(n)).join("<br>")}</div>` : ""}
+        <div class="sb-modal-note">${T("Каждая операция записана в журнал раздела.")}</div>
+        <div class="sb-acts"><button class="btn accent" id="sbDrop_done">${T("Закрыть")}</button></div>`);
+      $("#sbDrop_done").onclick = closeModal;
+      toast(T("Удалено колонок") + ": " + (body.dropped || 0));
     } catch (e){
       yes.disabled = false; yes.textContent = T("Да, удалить");
       $("#sbDrop_msg").innerHTML = `<span class="bad">${T("Не удалилось")}: ${esc(e.message)}</span>
