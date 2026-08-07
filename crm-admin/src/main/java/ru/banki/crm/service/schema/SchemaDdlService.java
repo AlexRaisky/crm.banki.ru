@@ -246,10 +246,27 @@ public class SchemaDdlService {
      */
     private Set<String> existing() {
         Set<String> have = new java.util.HashSet<>();
-        addAll(have, "SELECT 'S:' || schema_name FROM information_schema.schemata");
-        addAll(have, "SELECT 'T:' || table_schema || '.' || table_name FROM information_schema.tables");
-        addAll(have, "SELECT 'C:' || table_schema || '.' || table_name || '.' || column_name" +
-                     "  FROM information_schema.columns");
+        /* Спрашиваем pg_catalog, а не information_schema, и по трём разным причинам —
+           каждая из них однажды заставила бы предпросмотр соврать.
+
+           information_schema.schemata показывает ТОЛЬКО схемы, принадлежащие текущей
+           роли: чужая выглядела бы несуществующей, охрана считала бы её нашей и пустила
+           бы билдер внутрь. information_schema.tables и .columns, наоборот, показывают
+           лишнее — представления и сторонние таблицы наравне с обычными: представление
+           с именем таблицы помечало бы её как «уже есть», хотя таблицы нет и создана
+           она не будет. relkind IN ('r','p') — ровно то же условие, по которому строит
+           список обозреватель схем; иначе два экрана в одной админке отвечают на один
+           вопрос по-разному. */
+        addAll(have, "SELECT 'S:' || nspname FROM pg_namespace");
+        addAll(have, "SELECT 'T:' || n.nspname || '.' || c.relname" +
+                     "  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace" +
+                     " WHERE c.relkind IN ('r','p')");
+        addAll(have, "SELECT 'C:' || n.nspname || '.' || c.relname || '.' || a.attname" +
+                     "  FROM pg_attribute a" +
+                     "  JOIN pg_class c ON c.oid = a.attrelid" +
+                     "  JOIN pg_namespace n ON n.oid = c.relnamespace" +
+                     " WHERE c.relkind IN ('r','p')" +
+                     "   AND a.attnum > 0 AND NOT a.attisdropped");
         addAll(have, "SELECT 'F:' || n.nspname || '.' || t.relname || '.' || c.conname" +
                      "  FROM pg_constraint c" +
                      "  JOIN pg_class t ON t.oid = c.conrelid" +
@@ -285,9 +302,15 @@ public class SchemaDdlService {
         return rows.isEmpty() ? null : String.valueOf(rows.get(0));
     }
 
+    /**
+     * Схема есть в базе? По pg_namespace, а не по information_schema.schemata: последняя
+     * показывает только схемы, принадлежащие текущей роли, и чужая выглядела бы
+     * несуществующей. А «схемы нет» здесь означает «она наша, можно создавать» — то есть
+     * ровно на чужой схеме охрана и открывалась бы.
+     */
     private boolean existsInDb(String schema) {
         Number n = (Number) em.createNativeQuery(
-                        "SELECT count(*) FROM information_schema.schemata WHERE schema_name = :s")
+                        "SELECT count(*) FROM pg_namespace WHERE nspname = :s")
                 .setParameter("s", schema).getSingleResult();
         return n.intValue() > 0;
     }
