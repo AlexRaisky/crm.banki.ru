@@ -22,15 +22,10 @@ let loading = false;
 
 function host(){ return document.getElementById("dbxHost"); }
 
-/* Оценка строк — из статистики планировщика, а не count(*): точный подсчёт по каждой
-   таблице превратил бы открытие раздела в полное сканирование базы. Отсюда «≈». */
-function rows(n){
-  if (n == null) return "—";
-  if (n === 0) return "0";
-  if (n < 1000) return "≈ " + n;
-  if (n < 1000000) return "≈ " + Math.round(n / 100) / 10 + " тыс.";
-  return "≈ " + Math.round(n / 100000) / 10 + " млн";
-}
+/* Колонки «Строк» здесь нет намеренно. Точный count(*) по каждой таблице превратил бы
+   открытие раздела в полное сканирование базы, а оценка планировщика (reltuples) врёт
+   тем сильнее, чем дольше не было ANALYZE: на свежей таблице она попросту -1. Раздел
+   про структуру, и приблизительное число строк в нём только сбивало с толку. */
 
 function render(){
   const el = host();
@@ -47,12 +42,11 @@ function render(){
     const tables = s.tables.length
       ? `<table class="dbx-tbl"><thead><tr>
            <th>${T("Таблица")}</th><th>${T("Описание")}</th>
-           <th class="num">${T("Колонок")}</th><th class="num">${T("Строк")}</th></tr></thead><tbody>` +
+           <th class="num">${T("Колонок")}</th></tr></thead><tbody>` +
         s.tables.map(t => `<tr>
            <td class="mono">${esc(t.name)}</td>
            <td class="dbx-cmt">${esc(t.comment || "")}</td>
-           <td class="num">${t.columns}</td>
-           <td class="num">${esc(rows(t.rows))}</td></tr>`).join("") +
+           <td class="num">${t.columns}</td></tr>`).join("") +
         `</tbody></table>`
       : `<div class="dbx-empty small">${T("В схеме нет таблиц")}</div>`;
     return `<div class="dbx-schema${isOpen ? " open" : ""}">

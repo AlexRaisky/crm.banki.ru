@@ -68,10 +68,11 @@ public class SchemaInspectService {
                         "SELECT n.nspname, c.relname," +
                         "       obj_description(c.oid, 'pg_class')," +
                         "       (SELECT count(*) FROM pg_attribute a" +
-                        "         WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped)," +
-                        // reltuples — ОЦЕНКА планировщика, не точный count: точный по каждой
-                        // таблице превратил бы открытие списка в полное сканирование базы
-                        "       GREATEST(c.reltuples, 0)::bigint" +
+                        "         WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped)" +
+                        // Числа строк здесь нет намеренно: точный count(*) по каждой таблице
+                        // превратил бы открытие раздела в полное сканирование базы, а оценка
+                        // планировщика (reltuples) врёт тем сильнее, чем дольше не было
+                        // ANALYZE. Раздел про структуру — приблизительное число только мешало.
                         "  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace" +
                         " WHERE c.relkind IN ('r','p')" +
                         "   AND n.nspname NOT LIKE 'pg\\_%' AND n.nspname <> 'information_schema'" +
@@ -85,7 +86,6 @@ public class SchemaInspectService {
             t.put("name", table);
             t.put("comment", pick(str(r[2]), descrOf(descr, schema, table)));
             t.put("columns", num(r[3]));
-            t.put("rows", num(r[4]));
             bySchema.computeIfAbsent(schema, k -> new ArrayList<>()).add(t);
         }
 
