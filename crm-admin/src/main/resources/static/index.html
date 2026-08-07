@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Свой значок вкладки: без него браузер каждый раз просит /favicon.ico и получает 404 —
+     мусор в консоли, из-за которого потом ищут несуществующую поломку. Значок инлайновый,
+     отдельным файлом его класть незачем. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%230A1420%27/%3E%3Ctext x=%2716%27 y=%2722%27 font-family=%27sans-serif%27 font-size=%2716%27 font-weight=%27bold%27 fill=%27%233CFAB4%27 text-anchor=%27middle%27%3EC%3C/text%3E%3C/svg%3E">
 <title>CRM Team · Панель управления</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -971,6 +975,7 @@
           <th data-i18n="Продукт">Продукт</th>
           <th data-i18n="Партнёр">Партнёр</th>
           <th data-i18n="База">База</th>
+          <th data-i18n="Доп. условия">Доп. условия</th>
           <th data-i18n="Канал">Канал</th>
           <th data-i18n="Тотал">Тотал</th>
           <th data-i18n="Уникальное имя">Уникальное имя</th>
@@ -2246,8 +2251,10 @@
      должен успеть запомнить, какой подраздел был открыт.
      entity-layout.js — общий расчёт раскладки карточки: тот же модуль читает
      настроечная админка, поэтому идёт первым. -->
-<script src="js/entity-layout.js"></script>
-<script src="js/entities.js"></script>
+<!-- метка версии: у скриптов панели её не было, и правки залипали в кеше браузера
+     до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
+<script src="js/entity-layout.js?v=2"></script>
+<script src="js/entities.js?v=2"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->
 <!-- фиксированный попап подсказок полей (showFieldHelp): не обрезается краями карточек -->

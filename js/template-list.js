@@ -30,6 +30,12 @@ var LIST_COLUMNS = [
     { k:'source',   label:'Source type', ro:true },
     { k:'letteros', label:'Letteros ID', ro:true },
 ];
+/* Ключ колонки списка не всегда совпадает с ключом поля карточки: строки списка
+   собирает CRM.apiItemToList, а сохраняется правка через CRM.dtoToV1 — там имя
+   коммуникации лежит в comname, а не в name. Без этой таблицы правка «Названия»
+   уходила в несуществующее поле, до сервера не доезжала и молча откатывалась
+   при следующем обновлении списка: на экране значение менялось, в базе — нет. */
+var LIST_TO_V1 = { name: 'comname' };
 /* Фильтры — только те, что умеет бэкенд (TemplateController.list): фильтрация и подсчёт
    идут по всей базе, клиентский фильтр поверх страницы в 50 строк врал бы. Новый фильтр
    = новый @RequestParam и условие в запросе. */
@@ -500,8 +506,18 @@ function listCellSave(id, k){
     CRM.getTemplate(prevChannel, prevCode)
         .then(function(dto){
             var v1 = CRM.dtoToV1(dto);
-            v1[k] = val;
+            var v1k = LIST_TO_V1[k] || k;
+            var прежнееИмя = v1.comname;
+            v1[v1k] = val;
             if (k === 'code' && v1.channel === 'email') v1.letteros_id = val;
+            /* Имя коммуникации входит в campaign_name — поменяли имя, пересчитываем
+               и его, иначе в source_type осталось бы старое, и два поля разошлись бы.
+               Карточка на сохранении делает ровно это же (sfdRecalcNames). */
+            if (v1k === 'comname' && v1.comname !== прежнееИмя
+                && typeof sfdComputeCampaignName === 'function'){
+                var src = sfdComputeCampaignName(v1);
+                if (src) v1.source = src;
+            }
             window.CRM_CURRENT = { channel: prevChannel, code: prevCode };
             return CRM.saveFromV1(v1);
         })

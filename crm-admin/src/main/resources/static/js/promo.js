@@ -117,7 +117,25 @@ var PROMO_MONTHS = ['Январь','Февраль','Март','Апрель','�
 var PROMO_STATUS_NEW = 'К планированию';
 var PROMO_STATUS_ASK = 'Нужен статус по рассылке';
 var PROMO_STATUSES = ['', PROMO_STATUS_NEW, 'запланировано', 'в работе', 'отправлено', 'отменено'];
-var PROMO_COLS = 12;          /* колонок до кнопки «+» в строке-дате */
+/* Базы рассылки. Список закрытый — по нему строки сравниваются между собой (подсветка
+   пересечений в один день), а свободный текст этому мешает. Но вписать своё всё же можно:
+   в плане встречается «Вся база Москва+МО» и подобное, и отсекать это значило бы терять
+   уже накопленное. Своё значение просто не участвует в сравнении как элемент списка —
+   оно сравнивается целиком, как есть. */
+var PROMO_BASES = ['Вклады', 'ОСАГО', 'Каско', 'НС', 'Инвестиции', 'КК', 'ДК', 'ПК',
+                   'КПЗН', 'Ипотека', 'КВ', 'Бизнес', 'Диалог', 'ИС', 'МФО', 'Тотал'];
+var PROMO_OWNERS = [];        /* имена для выпадашки ответственных, приезжают с сервера */
+var PROMO_COLS = 13;          /* колонок до кнопки «+» в строке-дате */
+
+/* Строка баз → список. Разделители — запятая, точка с запятой и перевод строки:
+   в накопленных данных встречаются все три. */
+function promoBaseList(v){
+  return String(v == null ? '' : v).split(/[,;\n]+/)
+    .map(function(s){ return s.trim(); })
+    .filter(function(s){ return s.length > 0; });
+}
+/* Список → строка в том виде, в каком база хранилась и раньше: через запятую. */
+function promoBaseText(list){ return (list || []).join(', '); }
 /* иконка календаря в колонке «Дата»: по клику дату можно переназначить */
 var PROMO_CAL_ICO = '<svg class="cal-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -127,6 +145,7 @@ var PROMO_EDIT = null;        /* { i, k, v } — v это черновик пр�
 var PROMO_NEW = null;         /* форма новой записи над таблицей */
 var PROMO_TAB = 'active';     /* active | archive */
 var PROMO_FLAGS = {};         /* индекс строки → { bad:[…], warn:[…] } */
+var PROMO_CLASH = {};         /* индекс строки → базы, пересекающиеся с другим промо того же дня */
 
 function pmT(s){ return (typeof t === 'function') ? t(s) : s; }
 function pmEsc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
@@ -266,15 +285,29 @@ function promoApplyRow(row){
 function promoLoad(){
   if (_promoLoading) return Promise.resolve();
   _promoLoading = true;
+  promoLoadOwners();
   return promoReq('GET', '').then(function(rows){
     PROMO_ROWS = (rows || []).map(function(r){ r.chan = promoNormChan(r.chan); return r; });
     promoRender();
   }).catch(function(e){
     if (e && e.status === 403){
       var body = document.getElementById('promoBody');
-      if (body) body.innerHTML = '<tr><td colspan="13" class="empty">' + pmT('Нет доступа к разделу') + '</td></tr>';
+      if (body) body.innerHTML = '<tr><td colspan="14" class="empty">' + pmT('Нет доступа к разделу') + '</td></tr>';
     }
   }).then(function(){ _promoLoading = false; });
+}
+
+/* Кого можно назначить ответственным. Спрашиваем один раз за загрузку страницы:
+   список меняется не чаще, чем заводят сотрудников. Не приехал — беда небольшая,
+   в выпадашке останется только то имя, что уже стоит в строке. */
+var _promoOwnersAsked = false;
+function promoLoadOwners(){
+  if (_promoOwnersAsked) return;
+  _promoOwnersAsked = true;
+  promoReq('GET', '/owners').then(function(list){
+    PROMO_OWNERS = list || [];
+    promoRender();
+  }).catch(function(){ PROMO_OWNERS = []; });
 }
 
 /* Пока раздел открыт — подтягиваем чужие правки. Во время правки ячейки
@@ -418,7 +451,81 @@ function promoAnalyze(){
   });
 
   PROMO_FLAGS = flags;
+  promoComputeClash();
   return flags;
+}
+
+/**
+ * Опознавательный признак кампании — то, что общее у её строк и различает разные
+ * кампании между собой: продукт, партнёр и уникальное имя. Канала здесь нет намеренно:
+ * строки одной кампании как раз им и отличаются (промо на sms, e-mail и push — одна
+ * кампания, три строки).
+ *
+ * Уникального имени может не быть (строки из импорта) — тогда опознаём по сохранённому
+ * названию коммуникации, а если и его нет, по паре «продукт + партнёр». Последнее грубее,
+ * но лучше, чем свалить все безымянные строки дня в одну кампанию.
+ */
+function promoCampaignKey(r){
+  var norm = function(v){ return String(v == null ? '' : v).trim().toLowerCase(); };
+  var uniq = norm(r.uniq);
+  if (uniq) return 'u:' + norm(r.product) + '|' + norm(r.partner) + '|' + uniq;
+  var nm = norm(r.commName);
+  if (nm) return 'n:' + nm;
+  return 'p:' + norm(r.product) + '|' + norm(r.partner);
+}
+
+/**
+ * Пересечения баз внутри одного дня: индекс строки → список баз, которые встречаются
+ * ещё у кого-то в этот же день.
+ *
+ * Конфликт — когда по одной базе в один день бьют РАЗНЫЕ кампании: человек получит
+ * промо от двух не связанных между собой рассылок. Внутри одной кампании повтор
+ * нормален и не подсвечивается — это её же строки на разных каналах (e-mail и push
+ * одного промо по одной базе делаются намеренно).
+ * Сравниваем по отдельным базам, а не по строке целиком: «Вклады, НС» и «НС, ДК» —
+ * это пересечение по НС, и именно НС надо показать.
+ */
+function promoComputeClash(){
+  /* Сравниваем без учёта регистра: галки из справочника всегда пишутся одинаково, а вот
+     вписанное руками расходится («Вся база Москва+МО» против «вся база москва+МО») — и
+     пересечение молча не находилось бы. Ключ приводим к нижнему регистру, а показываем
+     значение так, как его написали: подсвечиваем по совпадению ключа, а не текста. */
+  /* Группируем по «день + база» и запоминаем, какие кампании в эту базу метят.
+     В корзине держим и саму базу: выковыривать её обратно из составного ключа
+     значило бы гадать, где кончается день и начинается база. */
+  var byDay = {};
+  PROMO_ROWS.forEach(function(r, i){
+    var bases = promoBaseList(r.base);
+    if (!bases.length) return;
+    var camp = promoCampaignKey(r);
+    bases.forEach(function(b){
+      var low = b.toLowerCase();
+      var k = r.d + '||' + low;
+      var slot = byDay[k] = byDay[k] || { base: low, rows: [], camps: {} };
+      slot.rows.push(i);
+      slot.camps[camp] = true;
+    });
+  });
+  var keys = {};                                 /* индекс строки → базы, что конфликтуют */
+  Object.keys(byDay).forEach(function(k){
+    var slot = byDay[k];
+    /* Кампания одна — сколько бы строк в ней ни было, это её собственные каналы.
+       Конфликт начинается со второй кампании на ту же базу. */
+    if (Object.keys(slot.camps).length < 2) return;
+    slot.rows.forEach(function(i){
+      (keys[i] = keys[i] || []).push(slot.base);
+    });
+  });
+  /* Обратно к тому, что написано в строке: иначе в подсказке и подсветке оказался бы
+     нижний регистр вместо настоящего написания. */
+  var clash = {};
+  Object.keys(keys).forEach(function(i){
+    clash[i] = promoBaseList(PROMO_ROWS[i].base).filter(function(b){
+      return keys[i].indexOf(b.toLowerCase()) > -1;
+    });
+  });
+  PROMO_CLASH = clash;
+  return clash;
 }
 
 /* ---------- фильтры и вкладки ---------- */
@@ -488,7 +595,7 @@ function promoFiltered(){
     if (tv === 'no' && r.total) return false;
     if (q){
       var nm = promoBuildName(r);
-      var hay = [nm.value, r.base, r.product, r.partner, r.uniq, r.task, r.note].join(' ').toLowerCase();
+      var hay = [nm.value, r.base, r.baseExtra, r.product, r.partner, r.uniq, r.task, r.note].join(' ').toLowerCase();
       if (hay.indexOf(q) === -1) return false;
     }
     return true;
@@ -624,11 +731,26 @@ function promoRowHtml(x){
       return '<option value="' + pmAttr(n) + '"' + (n === (draft != null ? draft : r.product) ? ' selected' : '') + '>' + pmEsc(n) + '</option>';
     }).join('') + '</select>';
 
-  var partEd = '<input class="cell-in" list="promoPartnerList" value="' + pmAttr(draft != null ? draft : r.partner) +
-    '" placeholder="General" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
+  var partEd = promoPartnerEd(pmAttr(draft != null ? draft : r.partner),
+                              'promoDraft(this.value)', 'General');
 
-  var baseEd = '<textarea class="cell-in ta" rows="3" placeholder="' + pmT('Словесное описание базы') +
-    '" oninput="promoDraft(this.value)" onkeydown="promoKey(event,true)">' + pmEsc(draft != null ? draft : r.base) + '</textarea>';
+  /* База: чекбоксы справочника + строка для своего значения. Черновик держим строкой
+     (как поле в БД), а не списком: так правка уходит на сервер тем же путём, что и
+     раньше, и ничего не надо разворачивать в копии строк, как у каналов. */
+  var baseSel = promoBaseList(draft != null ? draft : r.base);
+  var baseOwn = baseSel.filter(function(b){ return PROMO_BASES.indexOf(b) === -1; });
+  var baseEd = '<div class="ms ms-base">' + PROMO_BASES.map(function(b){
+      return '<label class="ms-i"><input type="checkbox"' + (baseSel.indexOf(b) > -1 ? ' checked' : '') +
+        ' onchange="promoDraftBase(\'' + b + '\',this.checked)"><span>' + pmEsc(b) + '</span></label>';
+    }).join('') +
+    '<input class="cell-in ms-own" value="' + pmAttr(promoBaseText(baseOwn)) +
+      '" placeholder="' + pmT('своё значение') + '" oninput="promoDraftBaseOwn(this.value)"' +
+      ' onkeydown="promoKey(event)">' +
+    '</div>';
+
+  var extraEd = '<textarea class="cell-in ta" rows="3" placeholder="' + pmT('Уточнение выборки словами') +
+    '" oninput="promoDraft(this.value)" onkeydown="promoKey(event,true)">' +
+    pmEsc(draft != null ? draft : r.baseExtra) + '</textarea>';
 
   var chanSel = (draft != null ? draft : r.chan) || [];
   var chanEd = '<div class="ms">' + PROMO_CHANNELS.map(function(c){
@@ -641,7 +763,7 @@ function promoRowHtml(x){
   var uniqEd = '<div class="uniq-ed">' +
     '<input class="cell-in mono' + (uniqVal && !promoUniqOk(uniqVal) ? ' bad' : '') + '" id="promoUniqIn" value="' + pmAttr(uniqVal) +
       '" placeholder="spring-sale-2026" oninput="promoDraftUniq(this.value)" onkeydown="promoKey(event)">' +
-    '<div class="hint-s" id="promoUniqHint">' + pmT('Латиница, цифры и дефис') + '</div></div>';
+    '<div class="hint-s" id="promoUniqHint">' + pmT('Латиница, цифры и дефис. Если имени нет — NoComName') + '</div></div>';
 
   var nm = promoBuildName(r);
   /* Приоритет — авто-собранное имя (правила Конструктора source). Если частей не хватает
@@ -660,8 +782,17 @@ function promoRowHtml(x){
     ? '<a class="jira" href="' + PROMO_JIRA_BASE + pmAttr(taskKey) + '" target="_blank" rel="noopener">' + pmEsc(taskKey) + '</a>'
     : '—';
 
-  var ownerEd = '<input class="cell-in" value="' + pmAttr(draft != null ? draft : r.owner) +
-    '" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
+  /* Ответственный — из пользователей панели. Текущее значение строки всегда есть в
+     списке, даже если такого пользователя уже нет: иначе открытие редактора молча
+     подменяло бы его первым пунктом. */
+  var ownerVal = draft != null ? draft : (r.owner || '');
+  var ownerOpts = PROMO_OWNERS.slice();
+  if (ownerVal && ownerOpts.indexOf(ownerVal) === -1) ownerOpts.unshift(ownerVal);
+  var ownerEd = '<select class="cell-in" onchange="promoDraft(this.value)">' +
+    '<option value="">—</option>' +
+    ownerOpts.map(function(n){
+      return '<option value="' + pmAttr(n) + '"' + (n === ownerVal ? ' selected' : '') + '>' + pmEsc(n) + '</option>';
+    }).join('') + '</select>';
   var statusEd = '<select class="cell-in" onchange="promoDraft(this.value)">' +
     PROMO_STATUSES.map(function(s){
       return '<option value="' + pmAttr(s) + '"' + (s === (draft != null ? draft : (r.status || '')) ? ' selected' : '') + '>' + (pmEsc(s) || '—') + '</option>';
@@ -682,11 +813,22 @@ function promoRowHtml(x){
   var dateHtml = '<span class="date-pick" title="' + pmT('Перенести на другую дату') + '">' +
     PROMO_CAL_ICO + '<span class="dv">' + pmEsc(promoFmtDate(r.d)) + '</span></span>';
 
-  return '<tr class="' + (r.total ? 'total-row ' : '') + (f.bad.length ? 'rule-bad' : '') + '">' +
+  /* Пересечение баз с другим промо того же дня — показываем на самих базах:
+     подсвечиваем только совпавшие, чтобы было видно, из-за какой именно. */
+  var clash = PROMO_CLASH[i] || [];
+  var baseHtml = r.base
+    ? promoBaseList(r.base).map(function(b){
+        return '<span class="base-tag' + (clash.indexOf(b) > -1 ? ' clash' : '') + '">' + pmEsc(b) + '</span>';
+      }).join(' ')
+    : '—';
+
+  return '<tr class="' + (r.total ? 'total-row ' : '') + (clash.length ? 'base-clash ' : '') +
+      (f.bad.length ? 'rule-bad' : '') + '">' +
     promoCell(x, 'd', dateHtml, dateEd) +
     promoCell(x, 'product', badIcon + (pmEsc(r.product) || '—'), prodEd) +
     promoCell(x, 'partner', pmEsc(r.partner) || '—', partEd) +
-    promoCell(x, 'base', r.base ? '<span class="multi">' + pmEsc(r.base) + '</span>' : '—', baseEd) +
+    promoCell(x, 'base', baseHtml, baseEd) +
+    promoCell(x, 'baseExtra', r.baseExtra ? '<span class="multi">' + pmEsc(r.baseExtra) + '</span>' : '—', extraEd) +
     promoCell(x, 'chan', promoChanBadges(r.chan), chanEd) +
     '<td class="c-total"><input type="checkbox" ' + (r.total ? 'checked' : '') +
       (promoCan('edit') ? '' : ' disabled') +
@@ -707,8 +849,9 @@ function promoRowHtml(x){
 function promoNewOpen(iso){
   if (!promoCan('add')) return;
   PROMO_EDIT = null;
-  PROMO_NEW = { d: iso || promoToday(), product:'', partner:'', base:'', chan: [], total:false,
-                uniq:'', task:'', owner:'', status: PROMO_STATUS_NEW, note:'', err:'' };
+  PROMO_NEW = { d: iso || promoToday(), product:'', partner:'', base:'', baseExtra:'', chan: [],
+                total:false, uniq:'', task:'', taskByChan:{}, owner:'',
+                status: PROMO_STATUS_NEW, note:'', err:'' };
   promoRender();
   var el = document.getElementById('promoNewDate');
   if (el) el.focus();
@@ -717,6 +860,25 @@ function promoNewOpen(iso){
 }
 function promoNewClose(){ PROMO_NEW = null; promoRender(); }
 function promoNewSet(k, v){ if (PROMO_NEW){ PROMO_NEW[k] = v; promoNewPreview(); } }
+/* База в форме новой записи — та же механика, что и в редакторе ячейки. */
+function promoNewBase(b, on){
+  if (!PROMO_NEW) return;
+  var list = promoBaseList(PROMO_NEW.base);
+  var own = list.filter(function(x){ return PROMO_BASES.indexOf(x) === -1; });
+  var std = list.filter(function(x){ return PROMO_BASES.indexOf(x) > -1; });
+  var at = std.indexOf(b);
+  if (on && at === -1) std.push(b);
+  if (!on && at > -1) std.splice(at, 1);
+  std = PROMO_BASES.filter(function(x){ return std.indexOf(x) > -1; });
+  PROMO_NEW.base = promoBaseText(std.concat(own));
+  promoNewPreview();
+}
+function promoNewBaseOwn(v){
+  if (!PROMO_NEW) return;
+  var std = promoBaseList(PROMO_NEW.base).filter(function(x){ return PROMO_BASES.indexOf(x) > -1; });
+  PROMO_NEW.base = promoBaseText(std.concat(promoBaseList(v)));
+  promoNewPreview();
+}
 function promoNewChan(c, on){
   if (!PROMO_NEW) return;
   var list = PROMO_NEW.chan.slice();
@@ -724,7 +886,10 @@ function promoNewChan(c, on){
   if (on && at === -1) list.push(c);
   if (!on && at > -1) list.splice(at, 1);
   PROMO_NEW.chan = PROMO_CHANNELS.filter(function(x){ return list.indexOf(x) > -1; });
-  promoNewPreview();
+  /* Перерисовываем строку целиком, а не только предпросмотр: от набора каналов зависит
+     колонка задач — одно поле или по полю на канал. Фокус при этом не теряется:
+     переключали галку, а не набирали текст. */
+  promoRender();
 }
 /* живой предпросмотр: какие записи будут созданы */
 function promoNewPreview(){
@@ -746,23 +911,56 @@ function promoNewPreview(){
   var btn = document.getElementById('promoNewSave');
   if (btn) btn.disabled = !!probs.length;
 }
+/* Задача выбранного канала. Одна на всех (поле task) — когда канал один; при нескольких
+   у каждого своя, они лежат в taskByChan. Так задачу можно завести на канал, а не на всё
+   промо разом: в Jira это и есть разные тикеты. */
+function promoNewTask(chan){
+  var n = PROMO_NEW;
+  if (!n) return '';
+  if (n.chan.length < 2) return n.task || '';
+  return (n.taskByChan && n.taskByChan[chan]) || '';
+}
+function promoNewSetTask(chan, v){
+  if (!PROMO_NEW) return;
+  if (PROMO_NEW.chan.length < 2){ PROMO_NEW.task = v; }
+  else {
+    PROMO_NEW.taskByChan = PROMO_NEW.taskByChan || {};
+    PROMO_NEW.taskByChan[chan] = v;
+  }
+  promoNewPreview();
+}
+
 function promoNewSave(){
   if (!PROMO_NEW) return;
   var n = PROMO_NEW;
   if (!n.d || !n.chan.length) return;
   if (n.uniq && !promoUniqOk(n.uniq)) return;
   if (!promoCan('add')){ alert(pmT('Нет прав на добавление записей.')); return; }
-  /* каналы уходят одним запросом — сервер сам создаст по строке на канал */
-  var body = { d:n.d, product:n.product, partner:n.partner, base:n.base, chan:n.chan,
-               total:!!n.total, uniq:n.uniq, task: promoTaskKey(n.task) || n.task,
-               owner:n.owner, status:n.status || PROMO_STATUS_NEW, note:n.note };
+  var common = { d:n.d, product:n.product, partner:n.partner, base:n.base, baseExtra:n.baseExtra,
+                 total:!!n.total, uniq:n.uniq, owner:n.owner,
+                 status:n.status || PROMO_STATUS_NEW, note:n.note };
+  var chans = n.chan.slice();
   PROMO_NEW = null;
-  promoReq('POST', '', body)
-    .then(function(created){
-      (created || []).forEach(promoApplyRow);
-      promoRender();
-    })
-    .catch(promoFail);
+
+  /* Один канал — один запрос, как и было. Несколько — по запросу на канал: задача у
+     каждого своя, а одним телом сервер разложил бы одну и ту же во все строки. */
+  var reqs = chans.map(function(c){
+    var raw = (chans.length < 2) ? (n.task || '') : ((n.taskByChan || {})[c] || '');
+    return Object.assign({}, common, { chan: [c], task: promoTaskKey(raw) || raw });
+  });
+  var seq = reqs.reduce(function(p, body){
+    return p.then(function(acc){
+      return promoReq('POST', '', body).then(function(created){
+        (created || []).forEach(function(r){ acc.push(r); });
+        return acc;
+      });
+    });
+  }, Promise.resolve([]));
+
+  seq.then(function(created){
+    created.forEach(promoApplyRow);
+    promoRender();
+  }).catch(promoFail);
 }
 function promoNewRowHtml(){
   var n = PROMO_NEW;
@@ -774,23 +972,41 @@ function promoNewRowHtml(){
       '<option value="">' + pmT('Продукт') + '…</option>' +
       prodOpts.map(function(p){ return '<option value="' + pmAttr(p) + '"' + (p === n.product ? ' selected' : '') + '>' + pmEsc(p) + '</option>'; }).join('') +
       '</select></td>' +
-    '<td><input class="cell-in" list="promoPartnerList" placeholder="' + pmT('Партнёр') + '" value="' + pmAttr(n.partner) +
-      '" oninput="promoNewSet(\'partner\',this.value)"></td>' +
-    '<td><textarea class="cell-in ta" rows="3" placeholder="' + pmT('Словесное описание базы') +
-      '" oninput="promoNewSet(\'base\',this.value)">' + pmEsc(n.base) + '</textarea></td>' +
+    '<td>' + promoPartnerEd(pmAttr(n.partner), 'promoNewSet(\'partner\',this.value)', pmT('Партнёр')) + '</td>' +
+    '<td><div class="ms ms-base">' + PROMO_BASES.map(function(b){
+        return '<label class="ms-i"><input type="checkbox"' + (promoBaseList(n.base).indexOf(b) > -1 ? ' checked' : '') +
+          ' onchange="promoNewBase(\'' + b + '\',this.checked)"><span>' + pmEsc(b) + '</span></label>';
+      }).join('') +
+      '<input class="cell-in ms-own" placeholder="' + pmT('своё значение') + '" value="' +
+        pmAttr(promoBaseText(promoBaseList(n.base).filter(function(b){ return PROMO_BASES.indexOf(b) === -1; }))) +
+        '" oninput="promoNewBaseOwn(this.value)"></div></td>' +
+    '<td><textarea class="cell-in ta" rows="3" placeholder="' + pmT('Уточнение выборки словами') +
+      '" oninput="promoNewSet(\'baseExtra\',this.value)">' + pmEsc(n.baseExtra) + '</textarea></td>' +
     '<td><div class="ms">' + PROMO_CHANNELS.map(function(c){
         return '<label class="ms-i"><input type="checkbox"' + (n.chan.indexOf(c) > -1 ? ' checked' : '') +
           ' onchange="promoNewChan(\'' + c + '\',this.checked)"><span class="chan ' + promoChanCls(c) + '">' + c + '</span></label>';
       }).join('') + '</div></td>' +
     '<td class="c-total"><input type="checkbox"' + (n.total ? ' checked' : '') +
       ' onchange="promoNewSet(\'total\',this.checked)"></td>' +
-    '<td><input class="cell-in mono" placeholder="spring-sale-2026" value="' + pmAttr(n.uniq) +
-      '" oninput="promoNewSet(\'uniq\',this.value)"></td>' +
+    '<td><div class="uniq-ed"><input class="cell-in mono" placeholder="spring-sale-2026" value="' +
+      pmAttr(n.uniq) + '" oninput="promoNewSet(\'uniq\',this.value)">' +
+      '<div class="hint-s">' + pmT('Латиница, цифры и дефис. Если имени нет — NoComName') + '</div></div></td>' +
     '<td class="c-name"><span class="need">' + pmT('соберётся автоматически') + '</span></td>' +
-    '<td><input class="cell-in" placeholder="CRM-8748" value="' + pmAttr(n.task) +
-      '" oninput="promoNewSet(\'task\',this.value)"></td>' +
-    '<td><input class="cell-in" placeholder="' + pmT('Ответственный') + '" value="' + pmAttr(n.owner) +
-      '" oninput="promoNewSet(\'owner\',this.value)"></td>' +
+    /* Задача: одно поле на один канал, по полю на каждый — когда каналов несколько.
+       Подпись канала обязательна: без неё три одинаковых поля подряд не различить. */
+    '<td>' + (n.chan.length > 1
+      ? '<div class="task-multi">' + n.chan.map(function(c){
+          return '<label class="task-row"><span class="chan ' + promoChanCls(c) + '">' + c + '</span>' +
+            '<input class="cell-in" placeholder="CRM-8748" value="' + pmAttr(promoNewTask(c)) +
+            '" oninput="promoNewSetTask(\'' + c + '\',this.value)"></label>';
+        }).join('') + '</div>'
+      : '<input class="cell-in" placeholder="CRM-8748" value="' + pmAttr(n.task) +
+        '" oninput="promoNewSetTask(\'\',this.value)">') + '</td>' +
+    '<td><select class="cell-in" onchange="promoNewSet(\'owner\',this.value)">' +
+      '<option value="">' + pmT('Ответственный') + '…</option>' +
+      PROMO_OWNERS.map(function(o){
+        return '<option value="' + pmAttr(o) + '"' + (o === n.owner ? ' selected' : '') + '>' + pmEsc(o) + '</option>';
+      }).join('') + '</select></td>' +
     '<td><select class="cell-in" onchange="promoNewSet(\'status\',this.value)">' +
       PROMO_STATUSES.map(function(s){
         return '<option value="' + pmAttr(s) + '"' + (s === n.status ? ' selected' : '') + '>' + (pmEsc(s) || '—') + '</option>';
@@ -820,6 +1036,26 @@ function promoEdit(i, k){
   promoRender();
 }
 function promoDraft(v){ if (PROMO_EDIT) PROMO_EDIT.v = v; }
+/* Отметили/сняли базу из справочника. Порядок держим по справочнику, а вписанное
+   руками (его в справочнике нет) остаётся в хвосте — иначе оно прыгало бы при каждой
+   отметке чекбокса. */
+function promoDraftBase(b, on){
+  if (!PROMO_EDIT) return;
+  var list = promoBaseList(PROMO_EDIT.v);
+  var own = list.filter(function(x){ return PROMO_BASES.indexOf(x) === -1; });
+  var std = list.filter(function(x){ return PROMO_BASES.indexOf(x) > -1; });
+  var at = std.indexOf(b);
+  if (on && at === -1) std.push(b);
+  if (!on && at > -1) std.splice(at, 1);
+  std = PROMO_BASES.filter(function(x){ return std.indexOf(x) > -1; });
+  PROMO_EDIT.v = promoBaseText(std.concat(own));
+}
+/* Своё значение: заменяет всё, чего нет в справочнике, отмеченные галки не трогает. */
+function promoDraftBaseOwn(v){
+  if (!PROMO_EDIT) return;
+  var std = promoBaseList(PROMO_EDIT.v).filter(function(x){ return PROMO_BASES.indexOf(x) > -1; });
+  PROMO_EDIT.v = promoBaseText(std.concat(promoBaseList(v)));
+}
 function promoDraftChan(c, on){
   if (!PROMO_EDIT) return;
   var list = Array.isArray(PROMO_EDIT.v) ? PROMO_EDIT.v.slice() : [];
@@ -859,7 +1095,7 @@ function promoCommit(){
   if (e.k === 'd' && !String(v || '').trim()){ PROMO_EDIT = null; promoRender(); return; }  /* дату не очищаем */
   if (e.k === 'task') v = promoTaskKey(v) || String(v || '').trim();
   if (e.k === 'chan') v = promoNormChan(v);   /* несколько каналов сервер развернёт в копии строк */
-  if (typeof v === 'string' && e.k !== 'base' && e.k !== 'note') v = v.trim();
+  if (typeof v === 'string' && e.k !== 'base' && e.k !== 'baseExtra' && e.k !== 'note') v = v.trim();
 
   /* значение не изменилось — на сервер не ходим */
   var was = r[e.k];
@@ -942,13 +1178,14 @@ document.addEventListener('click', function(e){
 });
 
 function promoExportCsv(){
-  var head = ['Дата','День недели','Продукт','Партнёр','База','Канал','Тотал','Уникальное имя',
-              'Название коммуникации','Задача','Ответственный','Статус','Комментарий','Замечания'];
+  var head = ['Дата','День недели','Продукт','Партнёр','База','Доп. условия','Канал','Тотал',
+              'Уникальное имя','Название коммуникации','Задача','Ответственный','Статус',
+              'Комментарий','Замечания'];
   var rows = promoFiltered().map(function(x){
     var r = x.r, f = PROMO_FLAGS[x.i] || { bad: [], warn: [] };
     var key = promoTaskKey(r.task);
     var nm = promoBuildName(r);
-    return [promoFmtDate(r.d), promoDow(r.d), r.product, r.partner, r.base,
+    return [promoFmtDate(r.d), promoDow(r.d), r.product, r.partner, r.base, r.baseExtra,
             (r.chan || []).join(', '), r.total ? 'TRUE' : 'FALSE', r.uniq,
             nm.ok ? nm.value : (r.commName || ''), key ? PROMO_JIRA_BASE + key : '', r.owner,
             promoStatusShown(r), r.note, f.bad.concat(f.warn).join(' | ')];
@@ -968,6 +1205,64 @@ function promoExportCsv(){
    источник, что у поля «Partner name» в карточке шаблона). Пока список не приехал,
    подставляем зашитый PROMO_PARTNERS: он же остаётся фолбэком, если справочник
    недоступен, — поле в любом случае свободное для ввода. */
+/**
+ * Поле партнёра: ввод с подсказкой из справочника плюс кнопка «+».
+ * <p>
+ * Список закрытым быть не может — новый партнёр появляется в плане раньше, чем его
+ * заводят в справочник. Поэтому поле свободное, а кнопка переносит набранное в
+ * dictionary.d_partner, чтобы в следующий раз оно подсказывалось само и писалось
+ * у всех одинаково. Без права add кнопки нет: справочник общий, и пополнять его
+ * должен тот, кому вообще позволено заводить записи.
+ */
+function promoPartnerEd(value, oninput, placeholder){
+  var inp = '<input class="cell-in" list="promoPartnerList" value="' + value +
+    '" placeholder="' + pmEsc(placeholder) + '" oninput="' + oninput + '" onkeydown="promoKey(event)">';
+  if (!promoCan('add')) return inp;
+  return '<div class="combo-add">' + inp +
+    '<button type="button" class="dict-add" title="' + pmT('Добавить партнёра в справочник') +
+    '" aria-label="' + pmT('Добавить партнёра в справочник') + '" onclick="promoAddPartner(this)">+</button></div>';
+}
+
+/* Короткое уведомление. Своего тоста в разделе нет, а alert на удачное действие —
+   перебор: человек и так видит, что поле заполнилось и значение появилось в списке.
+   Пишем в подвал формы заведения, когда она открыта; иначе молчим. */
+function pmNote(msg){
+  var box = document.querySelector('#promoNewPreview');
+  if (!box) return;
+  var el = document.createElement('div');
+  el.className = 'np-ok';
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(function(){ if (el.parentElement) el.parentElement.removeChild(el); }, 2500);
+}
+
+/** Занести набранного партнёра в справочник и подставить обратно то, что вернул сервер. */
+function promoAddPartner(btn){
+  var inp = btn.parentElement.querySelector('input');
+  var value = inp ? String(inp.value || '').trim() : '';
+  if (!value){ alert(pmT('Сначала впишите партнёра.')); return; }
+  var have = [...document.querySelectorAll('#promoPartnerList option')].map(function(o){ return o.value; });
+  var same = have.filter(function(p){ return p.toLowerCase() === value.toLowerCase(); })[0];
+  if (same){
+    /* уже в справочнике — запрос не нужен, просто выравниваем написание */
+    inp.value = same;
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    pmNote(pmT('Партнёр уже в справочнике'));
+    return;
+  }
+  if (!window.CRM || !CRM.dictAddPartner){ alert(pmT('Справочник недоступен.')); return; }
+  btn.disabled = true;
+  CRM.dictAddPartner(value).then(function(res){
+    var saved = (res && res.name) || value;
+    inp.value = saved;
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    promoFillPartnerList();
+    pmNote(pmT('Партнёр добавлен в справочник') + ': ' + saved);
+  }).catch(function(e){
+    alert(pmT('Не удалось добавить партнёра') + ': ' + ((e && e.message) || e));
+  }).then(function(){ btn.disabled = false; });
+}
+
 function promoRenderPartnerList(list){
   var dl = document.getElementById('promoPartnerList');
   if (!dl) return;

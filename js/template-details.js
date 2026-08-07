@@ -126,34 +126,51 @@ function sfdRecalcNames(){
 var SFD_DICT = { touch: null, comm: null, product: null, partner: null };
 var SFD_DICT_REQ = {};                      /* что уже запрошено, чтобы не дёргать API повторно */
 
+/**
+ * Перерисовать карточку — но не из-под рук.
+ * <p>
+ * Справочники приезжают четырьмя запросами, каждый по готовности перерисовывал карточку.
+ * Если человек в этот момент печатает или выбирает значение, перерисовка заменяет input
+ * новым: фокус и каретка теряются, а набранное на экране откатывается к тому, что было
+ * в состоянии на момент отрисовки. Со стороны это выглядит как «поле не меняется».
+ * Откладываем: в мастере карточка всё равно перерисуется по уходу из поля (change),
+ * и список к тому времени будет готов.
+ */
+function sfdRenderUnlessTyping(){
+    var a = document.activeElement;
+    if (a && a.classList &&
+        (a.classList.contains('sfd-edit') || a.classList.contains('sfd-edit-check'))) return;
+    sfdRender();
+}
+
 function sfdEnsureDicts(channel){
     if (!window.CRM) return;
     if (SFD_DICT.partner === null && !SFD_DICT_REQ.partner && CRM.dictPartners){
         SFD_DICT_REQ.partner = true;
         CRM.dictPartners().then(function(list){
             SFD_DICT.partner = list || [];
-            sfdRender();
+            sfdRenderUnlessTyping();
         }).catch(function(){ SFD_DICT.partner = []; });
     }
     if (SFD_DICT.touch === null && !SFD_DICT_REQ.touch && CRM.dictTouchPoints){
         SFD_DICT_REQ.touch = true;
         CRM.dictTouchPoints().then(function(list){
             SFD_DICT.touch = list || [];
-            sfdRender();      /* справочник приехал — перерисовываем с готовым списком */
+            sfdRenderUnlessTyping();      /* справочник приехал — перерисовываем с готовым списком */
         }).catch(function(){ SFD_DICT.touch = []; });
     }
     if (SFD_DICT.product === null && !SFD_DICT_REQ.product && CRM.dictProductTypes){
         SFD_DICT_REQ.product = true;
         CRM.dictProductTypes().then(function(list){
             SFD_DICT.product = list || [];
-            sfdRender();
+            sfdRenderUnlessTyping();
         }).catch(function(){ SFD_DICT.product = []; });
     }
     if (SFD_DICT.comm === null && !SFD_DICT_REQ.comm && CRM.dictCommNames){
         SFD_DICT_REQ.comm = true;
         CRM.dictCommNames(channel || '').then(function(list){
             SFD_DICT.comm = list || [];
-            sfdRender();
+            sfdRenderUnlessTyping();
         }).catch(function(){ SFD_DICT.comm = []; });
     }
 }
@@ -297,7 +314,11 @@ function sfdFieldDefs(d){
     ];
     if (isVk) segRows.push({ k:'ab_group', label:'AB Group' });
     if (isCC){
-        segRows.push({ k:'segment', label:sfdT('Сегмент'), ro:true });
+        /* Отдельной строки «Сегмент» здесь нет: у КЦ номер сегмента и есть код шаблона,
+           он вводится выше как «Сегмент (code)». Строка была слепком старых развёрнутых
+           форм — показывала то же значение на чтение, а при заведении всегда прочерк.
+           Ключ segment в данных остаётся: из него собирается campaign_name (с откатом
+           на code, см. sfdComputeCampaignName). */
         segRows.push({ k:'segment_desc', label:sfdT('Описание сегмента') });
         segRows.push({ k:'source_system', label:'Source system', type:'select', opts: SFD_SOURCE_SYSTEMS });
         segRows.push({ k:'host_id', label:'Host Id' });
@@ -556,7 +577,13 @@ function sfdRowHtml(f){
             /* редактируемая выпадашка: нативный input+datalist — и выбрать из списка,
                и вписать своё, без самодельного дропдауна */
             var lid = 'sfd-dl-' + f.k;
+            /* autocomplete="off" обязателен: иначе браузер показывает поверх datalist свою
+               историю ввода — то, что когда-то набирали в этом поле. В ней оказываются
+               значения с уже приклеенными флагами (NoComName-cross-nr), которых в справочнике
+               нет и быть не должно: флаги проставляются галками и считаются сами. Человек
+               видит подсказку не из справочника, а из своего же прошлого мусора. */
             var inpHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" list="' + lid + '"' +
+                      ' autocomplete="off"' +
                       ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
             /* f.create: вписанное значение можно тут же занести в справочник — иначе оно
                осталось бы только в этом шаблоне и в следующий раз его снова набирали бы руками */
@@ -573,7 +600,9 @@ function sfdRowHtml(f){
         } else if (f.type === 'textarea'){
             valHtml = '<textarea class="sfd-edit" data-k="' + f.k + '">' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '</textarea>';
         } else {
-            valHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
+            /* та же причина, что и у combo: история браузера в полях карточки только мешает */
+            valHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" autocomplete="off"' +
+                      ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
         }
     } else if (f.type === 'bool'){
         valHtml = '<span class="v">' + (d[f.k] ? '<span class="flag-on">✓ ' + sfdT('да') + '</span>' : '<span class="flag-off">— ' + sfdT('нет') + '</span>') + '</span>';
@@ -593,11 +622,27 @@ function sfdRowHtml(f){
 }
 
 /* ---------- Мастер коммуникаций: та же карточка в режиме создания ---------- */
+/* Диплинк пуша почти всегда ведёт в вебвью, и адрес страницы дописывают к служебному
+   префиксу. Подставляем его сразу: набирать руками каждый раз незачем, а ошибка в
+   префиксе ломает переход молча — приложение просто не откроет ссылку.
+   Тот же адрес зашит в старой развёрнутой форме (index.html) и в «Конструкторе
+   ссылок» (onelink.js, WEBVIEW_PREFIX) — при переезде мастера на карточку он потерялся. */
+var SFD_PUSH_DEEPLINK = 'https://www.banki.ru/deepLink/webview?webviewUrl=';
+
+/* Пустая карточка — действительно пустая.
+   Trigger type, Sending day и Sender name раньше приходили с готовыми значениями
+   (promo, 0, Banki.ru). Раз эти поля обязательные, подставленное значение — обман:
+   в подсказке «заполните» они не появлялись и уезжали в прод такими, какими их
+   никто не выбирал. Пусть человек выберет сам; значения никуда не делись — они
+   первые в своих списках. */
 function sfdBlank(channel){
     return { channel: channel, code:'', active:true, comname:'NoComName', source:'',
-             trigger:'promo', product:'', partner:'', touch:'', day:'0',
-             message:'', title:'', sender_name: channel === 'sms' ? 'Banki.ru' : '',
-             deeplink:'', webview:'', subject:'', email_from:'', letteros_id:'',
+             trigger:'', product:'', partner:'', touch:'', day:'',
+             message:'', title:'', sender_name:'',
+             /* только у пуша и Live Activity: у FA и VK свои правила ссылок */
+             deeplink: (channel === 'push' || channel === 'mobile-push' || channel === 'la')
+                       ? SFD_PUSH_DEEPLINK : '',
+             webview:'', subject:'', email_from:'', letteros_id:'',
              segment:'', segment_desc:'', source_system:'', host_id:'', kvint:'',
              communication_type:'', biz_type:'', aff_sub3:'',
              /* FA */ fa_id:'', channel_id:'', need_push:false, c2d_transport:'', c2d_account:'',
@@ -711,6 +756,16 @@ function sfdChainHtml(d){
     return '<div class="sfd-sec"><div class="sfd-sec-title" onclick="this.parentElement.classList.toggle(\'closed\')">' +
         sfdT('Цепочка') + '</div><div class="sfd-chain">' + body + '</div></div>';
 }
+/* Поля, без которых шаблон не заводится.
+   Список общий для всех каналов, но спрашиваются только те, что есть в карточке
+   ЭТОГО канала: набор полей у sms, e-mail, КЦ и пушей разный (sfdFieldDefs), и
+   требовать «Sender name» у письма было бы не с чего. Поэтому список сверяется
+   с реально нарисованными полями, а не перечисляется по каналам руками —
+   иначе новый канал молча остался бы без проверок.
+   comname здесь нет: у него своё правило (см. ниже, NoComName). */
+var SFD_REQUIRED = ['trigger', 'product', 'partner', 'touch', 'day', 'message',
+                    'sender_name', 'communication_type', 'biz_type', 'aff_sub3'];
+
 /* обязательные поля нового шаблона; при цепочке code и контент задаются по дням */
 function sfdCreateMissing(d){
     var miss = [];
@@ -723,23 +778,38 @@ function sfdCreateMissing(d){
     /* В проде source_system у d_segment_properties NOT NULL без дефолта: пустое поле
        заводило шаблон у нас, а в прод не уезжало (см. пре-флайт в TemplateService). */
     if (d.channel === 'cc' && !String(d.source_system || '').trim()) miss.push('Source system');
-    if (!String(d.product || '').trim()) miss.push('Product type');
-    if (!String(d.touch || '').trim()) miss.push('Touch point');
-    /* NoComName — полноценное значение справочника, но им же заводится пустая карточка
-       (sfdBlank) и его же подставляет sfdComputeComname при пустой базе. По значению
-       «не трогали поле» и «выбрали NoComName осознанно» не различить — различаем по
-       флагу, который ставится при первой правке поля. */
-    if (!d.comname || (d.comname === 'NoComName' && !(SFD_STATE && SFD_STATE.comnameTouched))) {
-        miss.push('communication_name');
-    }
+    /* Подписи берём из самой карточки: в сообщении человек читает ровно то,
+       что видит над полем. */
+    var shown = {};
+    sfdFieldDefs(d).forEach(function(s){
+        (s.rows || []).forEach(function(f){ if (f && !f.ro) shown[f.k] = f.label; });
+    });
+    /* Идём по полям в порядке карточки, а не по списку обязательных: тогда подсказка
+       читается сверху вниз ровно так, как человек будет их заполнять. */
+    Object.keys(shown).forEach(function(k){
+        if (k === 'comname'){
+            /* NoComName — полноценное значение справочника, но им же заводится пустая
+               карточка (sfdBlank) и его же подставляет sfdComputeComname при пустой базе.
+               По значению «не трогали поле» и «выбрали NoComName осознанно» не различить —
+               различаем по флагу, который ставится при первой правке поля. */
+            if (!d.comname || (d.comname === 'NoComName'
+                && !(SFD_STATE && SFD_STATE.comnameTouched))) miss.push('communication_name');
+            return;
+        }
+        if (SFD_REQUIRED.indexOf(k) < 0) return;          /* поле не обязательное */
+        /* Sending day при цепочке берётся из строк таблицы (sfdCreate подставляет
+           день каждому шаблону), в карточке он пустой и требовать его нечего. */
+        if (chainOn && k === 'day') return;
+        var v = d[k];
+        if (v == null || !String(v).trim()) miss.push(shown[k]);
+    });
     /* У e-mail контент живёт в Letteros, а тему проставляет отправка — требуем не текст,
        а Letteros ID: он же становится кодом шаблона, и без него за шаблоном не стоит
        никакого письма. При цепочке ID задаётся по дням в таблице. */
-    if (d.channel === 'email'){
-        if (!chainOn && !String(d.letteros_id == null ? '' : d.letteros_id).trim()) miss.push('Letteros ID');
-    } else if (d.channel !== 'cc' && !chainOn){
-        if (!String(d.message || '').trim()) miss.push('Message text');
-    }
+    if (d.channel === 'email' && !chainOn
+        && !String(d.letteros_id == null ? '' : d.letteros_id).trim()) miss.push('Letteros ID');
+    /* Message text отдельной строкой здесь больше нет: он в SFD_REQUIRED, а карточка
+       при включённой цепочке сама убирает по-дневные поля — проверка идёт по ним. */
     return miss;
 }
 function sfdCreate(){

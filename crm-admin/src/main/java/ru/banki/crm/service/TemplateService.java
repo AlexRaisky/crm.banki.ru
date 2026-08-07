@@ -55,6 +55,68 @@ public class TemplateService {
                 "Прод не примет шаблон: не заполнены обязательные поля — " + String.join(", ", missing));
     }
 
+    // ------------------------------------------------- ОБЯЗАТЕЛЬНЫЕ ПОЛЯ КАРТОЧКИ
+
+    /** Обязательное поле: подпись как в карточке и способ достать значение. */
+    private record Req(String label, java.util.function.Function<TemplateDto, Object> get) {}
+
+    /**
+     * Поля, без которых шаблон не заводится. Тот же список, что и в карточке
+     * (SFD_REQUIRED в template-details.js), но проверяется здесь: форму можно обойти —
+     * запросом в API, материализацией цепочки, импортом. Раз правило про то, что уедет
+     * в прод, держать его должен сервер, а форма лишь показывает это заранее.
+     * <p>
+     * Набор зависит от канала: у письма нет текста сообщения (контент в Letteros),
+     * у КЦ — ни текста, ни отправителя, «Sender name» есть только у sms.
+     */
+    private static List<Req> requiredFields(String channel) {
+        List<Req> r = new ArrayList<>(List.of(
+                new Req("Communication name", TemplateDto::getCommunicationName),
+                new Req("Trigger type", TemplateDto::getTriggerType),
+                new Req("Product type", TemplateDto::getProductType),
+                new Req("Partner name", TemplateDto::getPartnerName),
+                new Req("Touch point", TemplateDto::getTouchPoint),
+                new Req("Sending day", TemplateDto::getSendingDay),
+                new Req("Communication tunnel", TemplateDto::getCommunicationType),
+                new Req("Business communication type", TemplateDto::getBusinessCommunicationType),
+                new Req("Landing page", TemplateDto::getAffSub3)));
+        if ("email".equals(channel)) {
+            r.add(new Req("Letteros ID", TemplateDto::getLetterosId));
+        } else if (!"cc".equals(channel)) {
+            r.add(new Req("Message text", TemplateDto::getMsgText));
+            if ("sms".equals(channel)) r.add(new Req("Sender name", TemplateDto::getSenderName));
+        }
+        return r;
+    }
+
+    /**
+     * Проверка обязательных полей.
+     * <p>
+     * При правке ({@code old} не null) спрашиваем только за то, что <b>очищают</b>: у
+     * шаблонов, заведённых до этого правила, часть полей пуста, и запрещать их правку
+     * целиком значило бы запереть старые карточки — поправить текст было бы нельзя,
+     * пока не заполнишь всё остальное. Стереть уже заполненное по-прежнему нельзя.
+     */
+    private void requireFilled(String channel, TemplateDto dto, TemplateDto old) {
+        List<String> missing = new ArrayList<>();
+        for (Req r : requiredFields(channel)) {
+            if (!blank(r.get().apply(dto))) continue;
+            if (old != null && blank(r.get().apply(old))) continue;   // было пусто — не запираем
+            missing.add(r.label());
+        }
+        if (missing.isEmpty()) return;
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Не заполнены обязательные поля: " + String.join(", ", missing));
+    }
+
+    private static boolean blank(Object v) {
+        if (v == null) return true;
+        if (v instanceof String s) return s.isBlank();
+        if (v instanceof java.util.Collection<?> c) return c.isEmpty()
+                || c.stream().allMatch(x -> x == null || String.valueOf(x).isBlank());
+        return false;
+    }
+
     // ------------------------------------------------------------------- LIST
     @Transactional(readOnly = true)
     public List<TemplateListItemDto> list(List<String> channel, List<String> product, List<String> touch,
@@ -204,6 +266,7 @@ public class TemplateService {
         if (!List.of("sms", "push", "email", "cc", "fa", "vk", "la").contains(channel)) {
             throw badChannel(dto.getChannel());
         }
+        requireFilled(channel, dto, null);
         long code;
         if ("cc".equals(channel)) {
             // у КЦ бизнес-ключ (segment) задаёт пользователь
@@ -254,7 +317,10 @@ public class TemplateService {
     public void update(String channel, String code, TemplateDto dto) {
         audit.mark();
         String ch = norm(channel);
-        // old_row: состояние ДО изменения
+        // состояние ДО изменения нужно дважды: в журнал и чтобы отличить «поле стёрли»
+        // от «оно и было пустым» (см. requireFilled)
+        TemplateDto old = store.get(ch, code);
+        requireFilled(ch, dto, old);
         adminLog.logTable("template.d_template", "UPDATE", store.rowJson(ch, code));
         dto.setChannel(ch);
         store.update(ch, code, dto);

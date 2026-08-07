@@ -58,4 +58,17 @@ public class PromoPlanController {
         access.requireCapability(Capability.DELETE, Sections.PROMO);
         service.delete(id);
     }
+
+    /**
+     * Кого можно назначить ответственным — имена пользователей панели.
+     * <p>
+     * Лежит здесь, а не в админской ручке пользователей: список нужен всем, кто ведёт
+     * план, а /api/admin/users отдаёт учётки целиком и только админу. Отдаём одни имена,
+     * без почты и ролей — для выпадающего списка больше ничего не требуется.
+     */
+    @GetMapping("/owners")
+    public List<String> owners() {
+        access.requireAnySection(Sections.PROMO);
+        return service.ownerCandidates();
+    }
 }

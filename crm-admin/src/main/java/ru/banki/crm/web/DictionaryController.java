@@ -31,10 +31,14 @@ public class DictionaryController {
         return service.partnerNames();
     }
 
-    /** Пополнение справочника партнёров из формы мастера: право то же, что на заведение шаблона. */
+    /**
+     * Пополнение справочника партнёров. Право — как на заведение шаблона ИЛИ промо:
+     * справочник у них общий, и планировщик промо встречает нового партнёра ничуть
+     * не реже. Без раздела promo кнопка «+» в плане упиралась бы в 403.
+     */
     @PostMapping("/partners")
     public Map<String, String> addPartner(@RequestBody Map<String, String> body) {
-        access.requireCapability(Capability.ADD, Sections.ADMIN, Sections.TEMPLATES);
+        access.requireCapability(Capability.ADD, Sections.ADMIN, Sections.TEMPLATES, Sections.PROMO);
         return Map.of("name", service.addPartner(body == null ? null : body.get("name")));
     }
 

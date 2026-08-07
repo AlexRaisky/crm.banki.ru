@@ -8,6 +8,10 @@
   :root{
     --bg:#0A1420; --bg2:#0D1826; --card:#162136; --card2:#1B2942; --line:rgba(80,195,255,.12);
     --ink:#F2F7FD; --dim:#A7BAD4; --faint:#6B8098;
+    /* Подписи полей в формах и карточках. Отдельным тоном, а не --dim: подпись читают
+       наравне со значением, и приглушённый служебный оттенок для неё слишком тусклый.
+       В светлой теме «светлее» означало бы хуже — там он, наоборот, темнее --dim. */
+    --label:#D6E2F2;
     --green:#3CFAB4; --blue:#50C3FF; --coral:#FF6B8A; --amber:#FFB84D;
     --green-bg:rgba(60,250,180,.12); --blue-bg:rgba(80,195,255,.12);
     --amber-bg:rgba(255,184,77,.12); --coral-bg:rgba(255,107,138,.13);
@@ -24,7 +28,7 @@
   html.theme-light #sec-onelink,
   html.theme-light #sec-deviations{
     --bg:#EFF3F8; --bg2:#FFFFFF; --card:#FFFFFF; --card2:#E7EDF5; --line:rgba(20,60,100,.16);
-    --ink:#16283E; --dim:#44597A; --faint:#7C8DA6;
+    --ink:#16283E; --dim:#44597A; --faint:#7C8DA6; --label:#2A3E5C;
     --green:#0E9F63; --blue:#0B7FD1; --coral:#CE3D64; --amber:#A9720F;
     --green-bg:rgba(14,159,99,.12); --blue-bg:rgba(11,127,209,.10);
     --amber-bg:rgba(169,114,15,.12); --coral-bg:rgba(206,61,100,.10);

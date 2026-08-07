@@ -30,9 +30,24 @@ import java.util.Map;
 public class SchemaController {
 
     private final SchemaModelService service;
+    private final ru.banki.crm.service.schema.SchemaDdlService ddl;
+    private final ru.banki.crm.service.schema.SchemaInspectService inspect;
 
-    public SchemaController(SchemaModelService service) {
+    public SchemaController(SchemaModelService service,
+                            ru.banki.crm.service.schema.SchemaDdlService ddl,
+                            ru.banki.crm.service.schema.SchemaInspectService inspect) {
         this.service = service;
+        this.ddl = ddl;
+        this.inspect = inspect;
+    }
+
+    /**
+     * Что реально есть в базе: схемы с вложенными таблицами. Только чтение —
+     * обозреватель для админа и заодно проверка того, что применение DDL сработало.
+     */
+    @GetMapping("/db")
+    public List<Map<String, Object>> db() {
+        return inspect.tree();
     }
 
     /** Текущая модель. Первое обращение засевает её из файла в classpath. */
@@ -73,5 +88,59 @@ public class SchemaController {
     @GetMapping("/audit")
     public List<Map<String, Object>> audit(@RequestParam(defaultValue = "200") int limit) {
         return service.auditLog(Math.max(1, Math.min(limit, 1000)));
+    }
+
+    /**
+     * Что будет выполнено в базе — без выполнения. Тело: модель либо {@code {model}}.
+     * Модель не передали — берём сохранённую, чтобы можно было посмотреть план по текущей.
+     */
+    @PostMapping("/ddl/preview")
+    public Map<String, Object> ddlPreview(@RequestBody(required = false) JsonNode body) {
+        return ddl.preview(modelOf(body));
+    }
+
+    /** Применить модель к базе: схемы, таблицы, колонки, внешние ключи. Только аддитивно. */
+    @PostMapping("/ddl/apply")
+    public Map<String, Object> ddlApply(@RequestBody(required = false) JsonNode body) {
+        try {
+            return ddl.apply(modelOf(body));
+        } catch (RuntimeException e) {
+            // отказ охраны и падение SQL для пользователя выглядят одинаково — как 400
+            // с текстом причины; в журнале они уже разведены на REJECTED и ERROR
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    /**
+     * Колонки, которые есть в базе, но которых больше нет в модели. Только чтение:
+     * вместе с каждой возвращаются заполненность, соседние колонки (куда можно перенести
+     * данные) и связи, которые придётся снять.
+     */
+    @PostMapping("/ddl/drops")
+    public Map<String, Object> ddlDrops(@RequestBody(required = false) JsonNode body) {
+        return ddl.dropCandidates(modelOf(body));
+    }
+
+    /**
+     * Удалить колонки из базы. Единственная разрушительная ручка билдера, поэтому:
+     * тело обязано нести решения по каждой колонке (что с данными, что со связями),
+     * а список кандидатов сервер пересчитывает сам — телу запроса тут веры нет.
+     */
+    @PostMapping("/ddl/drop")
+    public Map<String, Object> ddlDrop(@RequestBody JsonNode body) {
+        try {
+            return ddl.dropColumns(modelOf(body), body == null ? null : body.get("drops"));
+        } catch (RuntimeException e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    /** Модель из тела запроса, а при пустом теле — сохранённая. */
+    private JsonNode modelOf(JsonNode body) {
+        if (body != null && body.has("model")) return body.get("model");
+        if (body != null && body.has("entities")) return body;
+        return service.currentAsNode();
     }
 }

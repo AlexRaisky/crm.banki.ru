@@ -2,8 +2,10 @@
    СУЩНОСТИ — данные CRM по схеме из Scheme Builder.
 
    ОТКУДА БЕРУТСЯ ПОДРАЗДЕЛЫ. Источник истины — та же схема, что и у
-   Scheme Builder: файл settings/schema/crm-schema.json плюс черновик
-   правок в localStorage (crmpanel:schemaDraft). Каждая сущность схемы
+   Scheme Builder, и лежит она на сервере: GET /api/schema (app.schema_model).
+   Если сервера нет (страница открыта статикой), читается запасной путь —
+   файл settings/schema/crm-schema.json плюс черновик в localStorage.
+   Каждая сущность схемы
    автоматически становится подразделом раздела «Сущности»: список
    строится в entSyncNav() при загрузке и переcтраивается по событию
    storage — то есть заведённая в Scheme Builder сущность появляется
@@ -121,9 +123,33 @@ function entField(e, name){
   return null;
 }
 function entLoadSchema(){
-  /* Черновик Scheme Builder накладывается НА файл, а не подменяет его: иначе
-     сущность, добавленная в файл позже, не появилась бы ни у кого, кто хоть раз
-     открывал конструктор. Правило общее с настроечной админкой — EntityLayout.mergeDraft. */
+  /* Источник истины — сервер (app.schema_model): Scheme Builder сохраняет схему туда.
+     Пока конструктор писал черновик в localStorage, раздел читал файл и накладывал
+     черновик сверху; после переезда конструктора на сервер эта связь оборвалась —
+     правки в конструкторе до раздела не доходили. Поэтому сначала спрашиваем сервер.
+
+     Черновик при удачном ответе НЕ накладываем: он остался от прежней схемы работы,
+     и наложение воскресило бы устаревшее поверх актуального.
+
+     Раздел админский (adminOnly в NAV), а /api/schema под ADMIN — права совпадают. */
+  return fetch("/api/schema", { credentials:"same-origin" })
+    .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(function(m){
+      if (!m || !Array.isArray(m.entities)) throw new Error("пустой ответ");
+      return m;
+    })
+    .catch(function(e){
+      if (typeof console !== "undefined") console.warn("Сущности: схема с сервера недоступна, читаем файл —", e);
+      return entLoadSchemaFromFile();
+    });
+}
+
+/* Запасной путь: файл в репозитории плюс черновик конструктора — прежнее поведение.
+   Нужен там, где сервера нет вовсе (страница открыта статикой, GitHub Pages). */
+function entLoadSchemaFromFile(){
+  /* Черновик накладывается НА файл, а не подменяет его: иначе сущность, добавленная
+     в файл позже, не появилась бы ни у кого, кто хоть раз открывал конструктор.
+     Правило общее с настроечной админкой — EntityLayout.mergeDraft. */
   var draft = entRead(ENT_DRAFT_KEY, null);
   return fetch(ENT_FILE + "?v=" + Date.now(), { cache:"no-store" })
     .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
@@ -132,7 +158,7 @@ function entLoadSchema(){
         ? EntityLayout.mergeDraft(base, draft) : (draft && draft.entities ? draft : base);
     })
     .catch(function(){
-      /* файл недоступен (нет сети) — работаем хотя бы по черновику */
+      /* файла тоже нет — работаем хотя бы по черновику */
       return (draft && draft.entities) ? draft : { version:"0", entities:[], relations:[] };
     });
 }

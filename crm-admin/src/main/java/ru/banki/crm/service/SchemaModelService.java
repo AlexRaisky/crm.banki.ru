@@ -2,6 +2,8 @@ package ru.banki.crm.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.banki.crm.security.CurrentUser;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -57,6 +58,11 @@ public class SchemaModelService {
      */
     @Transactional
     public String current() {
+        return normalize(currentRaw()).toString();
+    }
+
+    /** Модель как она лежит в базе, без приведения к двухуровневому виду. */
+    private String currentRaw() {
         String stored = readModel();
         if (stored != null) return stored;
         String seed = readSeed();
@@ -71,6 +77,92 @@ public class SchemaModelService {
         return seed;
     }
 
+    /** Та же текущая модель, но разобранная — нужна планировщику DDL. */
+    @Transactional
+    public JsonNode currentAsNode() {
+        return normalize(currentRaw());
+    }
+
+    /**
+     * Модель только если она уже сохранена — БЕЗ засева.
+     * <p>
+     * Нужна тем, кто читает модель в read-only транзакции: засев делает INSERT, а Postgres
+     * в read-only соединении его отклоняет и помечает транзакцию на откат — тогда падает
+     * весь запрос, и поймать это внутри уже поздно. Первым на это наступил обозреватель
+     * схем: подписи ему нужны по возможности, а не любой ценой.
+     * <p>
+     * Модели ещё нет — возвращаем пустой узел, вызывающий обойдётся без подписей.
+     */
+    @Transactional(readOnly = true)
+    public JsonNode storedAsNode() {
+        String stored = readModel();
+        return stored == null ? json.createObjectNode() : normalize(stored);
+    }
+
+    /**
+     * Приведение модели к двухуровневому виду: схемы отдельным списком, у каждой таблицы —
+     * указание, в какой схеме она живёт.
+     * <p>
+     * Модель исторически была одноуровневой: сущность и есть таблица, схем не было вовсе.
+     * Чтобы не ломать уже заведённое, старая модель разворачивается по правилу «сущность
+     * становится своей схемой» — ровно то поведение, что было до появления уровня схем.
+     * Дальше пользователь перегруппирует таблицы в редакторе как ему нужно.
+     * <p>
+     * Приведение делается ПРИ ЧТЕНИИ и в базу само по себе не пишется: сохранится оно
+     * первым же сохранением из редактора. Так чтение остаётся безопасным, а «миграция»
+     * модели не требует отдельного прогона.
+     */
+    private JsonNode normalize(String modelText) {
+        ObjectNode m;
+        try {
+            JsonNode parsed = json.readTree(modelText);
+            if (!(parsed instanceof ObjectNode on)) return json.createObjectNode();
+            m = on;
+        } catch (Exception e) {
+            return json.createObjectNode();
+        }
+        JsonNode entities = m.get("entities");
+        if (entities == null || !entities.isArray()) return m;
+
+        // 1. У каждой таблицы должно быть поле schema. Нет — значит модель старая,
+        //    и схемой считается сама сущность.
+        java.util.LinkedHashMap<String, String> found = new java.util.LinkedHashMap<>();
+        for (JsonNode e : entities) {
+            if (!(e instanceof ObjectNode en)) continue;
+            String id = txt(en, "id");
+            String schema = txt(en, "schema");
+            if (schema.isEmpty()) {
+                schema = id;
+                en.put("schema", schema);
+            }
+            if (!schema.isEmpty()) {
+                // подпись схемы берём у той таблицы, чьё имя совпало с именем схемы:
+                // при развороте старой модели это она и есть
+                String label = txt(en, "label");
+                found.merge(schema, schema.equals(id) ? label : "", (a, b) -> a.isEmpty() ? b : a);
+            }
+        }
+
+        // 2. Список схем. Уже описанные не трогаем — у них может быть своя подпись
+        //    и описание, заданные человеком.
+        ArrayNode schemas = m.get("schemas") instanceof ArrayNode a ? a : m.putArray("schemas");
+        java.util.Set<String> known = new java.util.HashSet<>();
+        for (JsonNode s : schemas) known.add(txt(s, "id"));
+        for (var en : found.entrySet()) {
+            if (known.contains(en.getKey())) continue;
+            ObjectNode s = schemas.addObject();
+            s.put("id", en.getKey());
+            s.put("label", en.getValue() == null || en.getValue().isEmpty() ? en.getKey() : en.getValue());
+            s.put("description", "");
+        }
+        return m;
+    }
+
+    private static String txt(JsonNode n, String field) {
+        JsonNode v = n == null ? null : n.get(field);
+        return (v == null || v.isNull()) ? "" : v.asText().trim();
+    }
+
     private String readModel() {
         List<?> rows = em.createNativeQuery(
                         "SELECT model::text FROM app.schema_model WHERE id = 1")
@@ -78,12 +170,23 @@ public class SchemaModelService {
         return rows.isEmpty() ? null : (String) rows.get(0);
     }
 
+    /**
+     * Файл-засев. Читаем ПОТОКОМ через Jackson, а не строкой.
+     * <p>
+     * У crm-schema.json в начале стоит BOM — невидимая метка UTF-8. При чтении в строку
+     * она остаётся первым символом, и Postgres отказывается считать такое значение json
+     * («invalid input syntax for type json»), роняя первый же засев. Jackson определяет
+     * кодировку сам и метку съедает, а повторная сериализация заодно гарантирует, что
+     * в базу уедет валидный JSON, а не то, что лежало в файле.
+     * <p>
+     * Файла нет или он битый — возвращаем null: пустая модель лучше падения.
+     */
     private String readSeed() {
-        try {
-            return new String(new ClassPathResource(SEED_RESOURCE).getInputStream().readAllBytes(),
-                    StandardCharsets.UTF_8);
+        try (var in = new ClassPathResource(SEED_RESOURCE).getInputStream()) {
+            JsonNode parsed = json.readTree(in);
+            return (parsed == null || parsed.isNull() || parsed.isMissingNode()) ? null : parsed.toString();
         } catch (Exception e) {
-            return null;   // файла нет — не повод падать, отдадим пустую модель
+            return null;
         }
     }
 

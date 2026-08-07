@@ -15,6 +15,17 @@
 .sb-dirty{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--amber);
   background:var(--amber-bg);border:1px solid rgba(255,184,77,.35);border-radius:20px;padding:4px 11px}
 .sb-dirty.on{display:inline-flex}
+/* Парный значок удачного сохранения: та же форма и то же место, другой цвет —
+   так глазу не приходится искать подтверждение в другом углу экрана. */
+.sb-saved{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--green);
+  background:rgba(60,250,180,.10);border:1px solid rgba(60,250,180,.30);border-radius:20px;padding:4px 11px;
+  transition:opacity .2s}
+.sb-saved.on{display:inline-flex}
+/* «Не применено к базе» — состояние, а не вспышка: держится до применения, поэтому
+   стоит вплотную к кнопке «Применить к базе» и окрашен в её же тон. */
+.sb-pending{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--blue);
+  background:var(--blue-bg);border:1px solid rgba(80,195,255,.35);border-radius:20px;padding:4px 11px}
+.sb-pending.on{display:inline-flex}
 
 /* Остальные разделы настроек читаются в колонку и ограничены .pane{max-width:1060px},
    схеме же нужна вся ширина — иначе канвас остаётся узким, а справа пустует экран. */
@@ -174,3 +185,93 @@
   .sb-col.sb-canvas-col{height:min(62vh,440px)}
   .sb-grid2{grid-template-columns:1fr}      /* поля формы в одну колонку */
 }
+
+/* ---- Уровень схемы: список таблиц сгруппирован по схемам ----
+   Сущность это схема, её таблицы лежат внутри — в списке это должно читаться
+   так же, как потом будет в базе. */
+#sbEntityList .sb-sgroup{ margin-bottom:6px }
+#sbEntityList .sb-shead{
+  display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:7px;
+  background:var(--card2); color:var(--dim); font-size:11.5px; font-weight:600;
+}
+#sbEntityList .sb-shead .lbl{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+#sbEntityList .sb-shead .cnt{ color:var(--faint); font-weight:400 }
+#sbEntityList .sb-sadd{
+  width:20px; height:20px; line-height:1; padding:0; border-radius:6px; cursor:pointer;
+  border:1px solid var(--line); background:var(--card); color:var(--dim); font-size:13px;
+}
+#sbEntityList .sb-sadd:hover{ color:var(--blue); border-color:var(--blue) }
+#sbEntityList .sb-sgroup .sb-item{ margin-left:10px }
+/* подсказка «в базе получится schema.table» под полем «Схема» */
+.sb-form .sb-fg .sb-hint{ display:block; margin-top:4px; color:var(--faint); font-size:11.5px; font-style:normal }
+
+/* ---- Применение к базе: предпросмотр операций ---- */
+.sb-modal-note.bad{ color:var(--coral) }
+.sb-ddl{ width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:12px }
+.sb-ddl th{ text-align:left; color:var(--dim); font-size:11px; font-weight:600;
+  padding:5px 8px; border-bottom:1px solid var(--line) }
+.sb-ddl td{ padding:5px 8px; border-bottom:1px solid var(--line) }
+.sb-ddl .mono{ font-family:var(--mono) }
+/* строка пропуска: видно, что она в плане была, но выполнена не будет */
+.sb-ddl tr.skip td{ opacity:.45; text-decoration:line-through }
+.sb-ddl tr.skip td:last-child{ opacity:.7; text-decoration:none; color:var(--dim) }
+/* объект уже в базе: не зачёркиваем — он не отменён, просто создавать нечего */
+.sb-ddl tr.have td{ opacity:.5 }
+.sb-ddl tr.have td:last-child{ opacity:.85; color:var(--green) }
+.sb-modal-note.ok{ color:var(--green) }
+.sb-modal-note .bad{ color:var(--coral) }
+.sb-modal-note .mono, .sb-drop .mono{ font-family:var(--mono) }
+.sb-drop .dim{ color:var(--dim) }
+
+/* Полный план — не на виду: он длинный и читается как «сейчас всё это создастся» */
+.sb-more{ margin-bottom:12px }
+.sb-more summary{ cursor:pointer; font-size:12.5px; color:var(--blue); padding:4px 0 }
+.sb-more[open] summary{ margin-bottom:6px }
+
+/* ---- Удаление колонок: единственное разрушительное место, и выглядит так ---- */
+.sb-drop-h{ font-size:14px; margin:18px 0 8px; color:var(--coral) }
+.sb-drop-item{ border:1px solid var(--line); border-radius:8px; padding:9px 11px; margin-bottom:8px }
+.sb-drop-top{ display:flex; align-items:center; gap:9px; font-size:12.5px; cursor:pointer }
+.sb-drop-top input{ accent-color:#FF6B8A; width:16px; height:16px; cursor:pointer }
+.sb-drop-body{ padding:6px 0 0 25px }
+.sb-drop-body .sb-check{ margin:5px 0; font-size:12.5px }
+.sb-drop-note{ font-size:11.5px; color:var(--dim); line-height:1.5; margin:2px 0 }
+.sb-drop-target{ margin:2px 0 4px 25px; font-size:12px; background:var(--bg2); color:var(--ink);
+  border:1px solid var(--line); border-radius:6px; padding:4px 7px; font-family:var(--mono) }
+.sb-drop-deps{ margin-top:7px; padding-top:7px; border-top:1px solid var(--line);
+  font-size:11.5px; color:var(--dim); line-height:1.6 }
+.btn.danger{ border-color:rgba(255,107,138,.5); color:var(--coral) }
+.btn.danger:hover{ background:rgba(255,107,138,.12); border-color:var(--coral) }
+
+/* ---- Панель раскрывается вглубь: сущность → таблицы → колонки ---- */
+.sb-crumbs{ display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  padding:8px 10px; border-bottom:1px solid var(--line); font-size:12.5px }
+.sb-crumbs .sb-crumb{ background:none; border:none; padding:2px 4px; cursor:pointer;
+  color:var(--blue); font-family:inherit; font-size:12.5px }
+.sb-crumbs .sb-crumb.on{ color:var(--ink); font-weight:600; cursor:default }
+.sb-crumbs .sb-crumb-sep{ color:var(--faint) }
+/* подзаголовок вложенного списка внутри формы */
+.sb-form .sb-sub-head{ display:flex; align-items:center; gap:8px; margin:14px 0 6px;
+  color:var(--dim); font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:.06em }
+.sb-form .sb-sub-head .n{ color:var(--faint); font-weight:400; letter-spacing:0 }
+/* строка списка: подпись сверху, системное имя мелким снизу */
+.sb-item .lbl .sb-ent-sub{ display:block; font-style:normal; font-size:11px; color:var(--faint); margin-top:1px }
+.sb-item.sb-ent .cnt, .sb-item.sb-tbl .cnt{ white-space:nowrap }
+.sb-item .dot.opt{ opacity:.45 }
+.sb-col-del{ width:20px; height:20px; line-height:1; padding:0; border-radius:6px; cursor:pointer;
+  border:1px solid var(--line); background:var(--card); color:var(--faint); font-size:13px }
+.sb-col-del:hover{ color:var(--coral); border-color:rgba(255,107,138,.45) }
+
+/* ---- Холст: узел = сущность, внутри плашки таблиц ---- */
+.sb-node-body{ padding:8px; display:flex; flex-direction:column; gap:8px }
+.sb-plate{ border:1px solid var(--line); border-radius:9px; overflow:hidden; background:var(--bg2) }
+.sb-plate.selected{ border-color:var(--blue); box-shadow:0 0 0 1px var(--blue) inset }
+.sb-plate-head{ display:flex; align-items:center; gap:8px; padding:6px 8px; background:var(--card2) }
+.sb-plate-name{ flex:1; min-width:0; font-size:12.5px; font-weight:600; color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.sb-plate-cnt{ color:var(--faint); font-size:11px; white-space:nowrap }
+.sb-plate-add{ width:18px; height:18px; line-height:1; padding:0; border-radius:5px; cursor:pointer;
+  border:1px solid var(--line); background:var(--card); color:var(--dim); font-size:12px }
+.sb-plate-add:hover{ color:var(--blue); border-color:var(--blue) }
+.sb-plate-empty{ color:var(--faint); font-size:12px; padding:10px 4px; text-align:center }
+.sb-node-sub.mono{ font-family:var(--mono) }
