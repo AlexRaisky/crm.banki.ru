@@ -21,6 +21,10 @@ function renderTemplateDetails(data, templateId) {
     var work = Object.assign({}, data);
     /* флаг cross не хранится в БД отдельным полем — восстанавливаем из communication_name */
     if (work.cross == null) work.cross = !!(work.comname && String(work.comname).indexOf('-cross') !== -1);
+    /* is_contact — ровно та же история: своей колонки в notice.* у него нет, но он
+       виден в campaign_name, где вместо канала стоит contact_. Оттуда и читаем,
+       иначе галка при открытии сохранённого шаблона всегда была бы снята. */
+    if (work.cc_cross == null) work.cc_cross = /^contact_/.test(String(work.source || ''));
     SFD_STATE = {
         id: templateId || null,
         orig: data,
@@ -77,16 +81,19 @@ function sfdComputeCampaignName(d){
        FA — как fin-assistent (единый нейминг с «Планированием промо») */
     var chTab = ({ sms:'sms', push:'mobile-push', 'mobile-push':'mobile-push', email:'email',
                    fa:'fin-assistent', vk:'vk' })[d.channel] || d.channel;
-    /* контекст «выгрузка в КЦ» (cb-sms-cc / cb-email-cc) отдельным полем не хранится —
-       восстанавливаем из сохранённого campaign_name (префикс contact_) */
-    var tab = /^contact_/.test(d.source || '') ? 'contact' : chTab;
+    /* «выгрузка в КЦ» (в старой форме — cb-sms-cc / cb-email-cc): вместо канала в
+       campaign_name встаёт contact. Своей колонки у флага нет, поэтому при открытии
+       он восстанавливается из префикса — но раз человек может его переключить, решает
+       именно галка, и только при её отсутствии смотрим на сохранённое имя. */
+    var tab = (d.cc_cross != null ? !!d.cc_cross : /^contact_/.test(d.source || ''))
+              ? 'contact' : chTab;
     if (senderType === 'promo') return tab + '_' + senderType + '_' + product + '_' + partner + '_' + comname + '_' + date;
     return tab + '_' + senderType + '_' + product + '_' + comname + '_' + day + 'day';
 }
 /* touch здесь не ради comname/source (они его не используют), а ради адреса
    отправителя: renewal — первое условие в правиле. */
 var SFD_NAME_KEYS = { trigger:1, product:1, partner:1, comname:1, day:1, segment:1, touch:1,
-    marketplace:1, cross:1, dialog:1, loyalty:1, national_rating:1, news:1, mobile_app:1 };
+    marketplace:1, cross:1, cc_cross:1, dialog:1, loyalty:1, national_rating:1, news:1, mobile_app:1 };
 /* Адрес отправителя e-mail — копия generateEmail из v2. Порядок проверок значимый:
    renewal (по touch_point) → service → info (по business_communication_type) →
    trigger+adv → promo+adv (по trigger_type) → newsletter как общий случай. */
@@ -393,6 +400,10 @@ function sfdFieldDefs(d){
     svc = svc.concat([
         { k:'marketplace', label:'marketplace', type:'bool' },
         { k:'cross', label:'cross', type:'bool' },
+        /* «выгрузка в КЦ» — была отдельной галкой в развёрнутой форме (SMS CallCenter /
+           Email CallCenter) и при переезде на карточку потерялась. Канал у неё только
+           SMS и e-mail: у пуша и КЦ выгружать в КЦ нечего. */
+        ...(isSms || isEmail ? [{ k:'cc_cross', label:'is_contact', type:'bool' }] : []),
         { k:'dialog', label:'dialog', type:'bool' },
         { k:'loyalty', label:'loyalty', type:'bool' },
         { k:'national_rating', label:'national_rating', type:'bool' },
@@ -446,6 +457,7 @@ var SFD_DB = {
     aff_sub3:           { all:'aff_sub3' },
     marketplace:        { all:'marketplace' },
     cross:              { all:'—' },
+    cc_cross:           { all:'—' },
     dialog:             { all:'dialog' },
     loyalty:            { all:'loyalty' },
     national_rating:    { all:'national_rating' },
@@ -503,6 +515,7 @@ var SFD_HELP = {
     aff_sub3:           'Метка aff_sub3 для партнёрской аналитики.',
     marketplace:        'Продукт маркетплейса: в communication_name добавляется префикс marketplace-.',
     cross:              'Кросс-коммуникация: суффикс -cross. Отдельного поля в БД нет — признак живёт в communication_name.',
+    cc_cross:           'Выгрузка в кол-центр: в campaign_name вместо канала встаёт contact (sms_promo_… → contact_promo_…). Отдельного поля в БД нет — признак виден только в самом имени.',
     dialog:             'Ведёт на страницу диалога: суффикс -dialog.',
     loyalty:            'Ссылка на продукты лояльности: суффикс -loyalty.',
     national_rating:    'Народный рейтинг: суффикс -nr.',
@@ -650,7 +663,7 @@ function sfdBlank(channel){
              /* VK */ vk_template_name:'', ttl:'', ab_group:'', buttons:'',
              /* Live Activity */ activity_name:'', la_event:'', la_visualization:'',
              la_visualization_attributes:'', la_status:'', current_step:'',
-             marketplace:false, cross:false, dialog:false, loyalty:false,
+             marketplace:false, cross:false, cc_cross:false, dialog:false, loyalty:false,
              national_rating:false, news:false, mobile_app:false, night_send:false };
 }
 function wizardCardOpen(channel){
