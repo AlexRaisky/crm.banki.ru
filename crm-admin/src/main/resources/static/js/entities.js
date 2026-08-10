@@ -128,6 +128,27 @@ function entTables(schemaId){
   });
 }
 
+/* Связующие таблицы many-to-many. В entities[] их нет и быть не должно: они
+   рождаются из связи, а не заводятся руками, — но в базе они есть, и без них
+   экран таблиц врал бы. Правило повторяет планировщик (DdlPlanner): имя берётся
+   из through, иначе <таблица слева>_<таблица справа>_link, а лежит таблица в
+   схеме ЛЕВОЙ сущности — «посередине» в Postgres не бывает.
+   Записи в них не показываем: это пары идентификаторов, и смотреть их надо со
+   стороны той сущности, чью связь они хранят. */
+function entLinkTables(schemaId){
+  var out = [];
+  (ENT_MODEL.relations || []).forEach(function(r){
+    if (r.relation_type !== "many_to_many") return;
+    var fe = entEntity(r.from_entity), te = entEntity(r.to_entity);
+    if (!fe || !te || entSchemaOf(fe) !== schemaId) return;
+    out.push({
+      table: r.through || ((fe.table || fe.id) + "_" + (te.table || te.id) + "_link"),
+      from: fe, to: te
+    });
+  });
+  return out;
+}
+
 function entAllowed(e){
   /* техническая сущность (флаг ставится в настройках) в панели не показывается
      вообще: это служебный справочник, работать с ним нужно в схеме, а не здесь */
@@ -914,14 +935,15 @@ function entHeroHtml(e){
    знал бы заранее, куда попадёт по клику. */
 function entTablesHtml(schemaId){
   var head = entSchemaHead(schemaId), tables = entTables(schemaId);
+  var links = entLinkTables(schemaId);
   var title = head ? (head.plural_label || head.label || schemaId) : schemaId;
   var html = '<header class="ent-hero">' +
     '<div class="eyebrow">CRM · ' + entT("Сущность") + " · " + entEsc(schemaId) + "</div>" +
     "<h1>" + entEsc(title) + "</h1>" +
     '<p class="sub">' + entT("Таблицы сущности. Выберите таблицу, чтобы открыть её записи.") + "</p>" +
-    '<div class="meta"><span>' + entPlural(tables.length, "table") + "</span>" +
+    '<div class="meta"><span>' + entPlural(tables.length + links.length, "table") + "</span>" +
       "<span>" + entT("доступ") + ": ADMIN</span></div></header>";
-  if (!tables.length){
+  if (!tables.length && !links.length){
     return html + '<div class="ent-empty">' +
       entT("У сущности нет таблиц. Заведите их в Scheme Builder (настроечная админка).") + "</div>";
   }
@@ -934,6 +956,14 @@ function entTablesHtml(schemaId){
         entPlural(x.fields.length, "field") + " · " + entPlural(rows, "record") + "</div>" +
       "<p>" + entEsc(x.description || entT("Список записей и карточка: поля по смысловым блокам, переходы по связям.")) + "</p>" +
       '<span class="ov-go">' + entT("Открыть →") + "</span></div>";
+  }).join("") + links.map(function(l){
+    return '<div class="ov-card ent-linktbl">' +
+      '<div class="ov-ico">' + (ICONS.link || ICONS.table || ICONS.doc) + "</div>" +
+      "<h3>" + entEsc(l.table) + "</h3>" +
+      '<div class="ov-meta">' + entT("связующая таблица") + " · 2 " + entT("колонки") + "</div>" +
+      "<p>" + entT("Хранит пары «многие ко многим»") + ": " +
+        entEsc(l.from.label || l.from.id) + " ↔ " + entEsc(l.to.label || l.to.id) + ". " +
+        entT("Заводится связью в Scheme Builder; записи видны со стороны самих сущностей.") + "</p></div>";
   }).join("") + "</div>";
   return html;
 }

@@ -17,6 +17,10 @@
   .ent-up{background:none;border:none;padding:0;margin-bottom:9px;cursor:pointer;
     font-family:inherit;font-size:12.5px;color:var(--blue);display:inline-flex;align-items:center;gap:5px}
   .ent-up:hover{text-decoration:underline}
+  /* связующая таблица: показана ради полноты картины, но открывать в ней нечего —
+     поэтому не притворяется кликабельной карточкой */
+  .ov-card.ent-linktbl{cursor:default;border-style:dashed}
+  .ov-card.ent-linktbl:hover{border-color:var(--line);transform:none}
   .ent-hero .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
     color:var(--faint);margin-bottom:7px}
   .ent-hero h1{font-size:26px;font-weight:700;letter-spacing:-.015em}
