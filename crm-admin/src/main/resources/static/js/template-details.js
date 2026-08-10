@@ -355,6 +355,12 @@ function sfdFieldDefs(d){
         mainRows.push({ k:'code', label: sfdCodeLabel(ch), ro: !isCreate });
     }
     mainRows.push({ k:'active', label:sfdT('Статус'), type:'bool' });
+    /* «Выгрузка в КЦ» (в развёрнутой форме — SMS CallCenter / Email CallCenter):
+       меняет campaign_name, подставляя contact вместо канала. Стоит здесь, рядом со
+       статусом, а не среди служебных флагов: те правят communication_name суффиксами,
+       а этот — сам канал в имени, и решение по нему принимают в начале, а не в конце.
+       Канал только SMS и e-mail: у пуша и КЦ выгружать в кол-центр нечего. */
+    if (isSms || isEmail) mainRows.push({ k:'cc_cross', label:'is_contact', type:'bool' });
     /* combo, а не select: значение выбирается из справочника ИЛИ вписывается своё —
        новые имена коммуникаций заводятся регулярно, строгий список их бы отсёк. */
     mainRows.push({ k:'comname', label:'Communication name', wide:true, type:'combo',
@@ -400,10 +406,6 @@ function sfdFieldDefs(d){
     svc = svc.concat([
         { k:'marketplace', label:'marketplace', type:'bool' },
         { k:'cross', label:'cross', type:'bool' },
-        /* «выгрузка в КЦ» — была отдельной галкой в развёрнутой форме (SMS CallCenter /
-           Email CallCenter) и при переезде на карточку потерялась. Канал у неё только
-           SMS и e-mail: у пуша и КЦ выгружать в КЦ нечего. */
-        ...(isSms || isEmail ? [{ k:'cc_cross', label:'is_contact', type:'bool' }] : []),
         { k:'dialog', label:'dialog', type:'bool' },
         { k:'loyalty', label:'loyalty', type:'bool' },
         { k:'national_rating', label:'national_rating', type:'bool' },
