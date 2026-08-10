@@ -81,40 +81,56 @@
 
   function bool(v) { return v == null ? null : !!v; }
 
+  /* Обрезка краёв у всех текстовых полей шаблона.
+     Пробел в начале заголовка пуша никто не набирает руками — он приезжает вместе со
+     вставкой из Excel, письма или Confluence. И сохранялся молча: trim() в панели
+     звали только чтобы решить, пустое ли поле, а в базу уходила исходная строка.
+     Класс \s в JS покрывает и неразрывный пробел (U+00A0), и узкий (U+202F), и BOM
+     (U+FEFF) — глазом они неотличимы от обычного, а поиск и сравнение строк ломают.
+     Середину не трогаем нигде: двойной пробел внутри текста — забота автора, не наша.
+     Пустая строка после обрезки становится null, как и было при `|| null`.
+     Имя не t(): так зовётся параметр-DTO в соседних функциях, и тень сбивала бы с толку. */
+  function trimEdges(v) {
+    if (typeof v !== "string") return v;
+    var s = v.replace(/^\s+|\s+$/g, "");
+    return s === "" ? null : s;
+  }
+
   // ---- маппинг «рыхлого» объекта формы v1 -> TemplateDto бэкенда ----
   function v1ToDto(d) {
     var products = [];
-    if (d.product) products = Array.isArray(d.product) ? d.product : [d.product];
+    if (d.product) products = (Array.isArray(d.product) ? d.product : [d.product])
+      .map(trimEdges).filter(function (x) { return x != null; });
     return {
       channel: d.channel,
-      code: d.code != null && d.code !== "" ? String(d.code) : null,
+      code: trimEdges(d.code != null ? String(d.code) : null),
       productType: products,
-      sourceType: d.source || null,
-      communicationType: d.communication_type || null,
-      triggerType: d.trigger || null,
-      partnerName: d.partner || null,
-      touchPoint: d.touch || null,
-      affSub3: d.aff_sub3 || null,
-      sendingDay: d.day != null && d.day !== "" ? String(d.day) : null,
-      source: d.source || null,
-      communicationName: d.comname || null,
-      name: d.comname || null,
-      brief: d.comname || null,
-      msgText: d.message || null,
-      title: d.title || null,
-      deepLink: d.deeplink || null,
-      webviewUrl: d.webview || null,
-      senderName: d.sender_name || null,
-      emailFrom: d.email_from || null,
-      subject: d.subject || null,
-      letterosId: d.letteros_id != null && d.letteros_id !== "" ? String(d.letteros_id) : null,
+      sourceType: trimEdges(d.source),
+      communicationType: trimEdges(d.communication_type),
+      triggerType: trimEdges(d.trigger),
+      partnerName: trimEdges(d.partner),
+      touchPoint: trimEdges(d.touch),
+      affSub3: trimEdges(d.aff_sub3),
+      sendingDay: trimEdges(d.day != null ? String(d.day) : null),
+      source: trimEdges(d.source),
+      communicationName: trimEdges(d.comname),
+      name: trimEdges(d.comname),
+      brief: trimEdges(d.comname),
+      msgText: trimEdges(d.message),
+      title: trimEdges(d.title),
+      deepLink: trimEdges(d.deeplink),
+      webviewUrl: trimEdges(d.webview),
+      senderName: trimEdges(d.sender_name),
+      emailFrom: trimEdges(d.email_from),
+      subject: trimEdges(d.subject),
+      letterosId: trimEdges(d.letteros_id != null ? String(d.letteros_id) : null),
       serviceFlag: bool(d.service_flag),
       infoFlag: bool(d.info_flag),
-      sourceSystem: d.source_system || null,
-      segmentDescr: d.segment_desc || null,
+      sourceSystem: trimEdges(d.source_system),
+      segmentDescr: trimEdges(d.segment_desc),
       hostId: d.host_id != null && d.host_id !== "" ? Number(d.host_id) : null,
-      kvintCampaignId: d.kvint || null,
-      businessCommunicationType: d.biz_type || null,
+      kvintCampaignId: trimEdges(d.kvint),
+      businessCommunicationType: trimEdges(d.biz_type),
       active: d.active != null ? !!d.active : null,
       marketplace: bool(d.marketplace),
       dialog: bool(d.dialog),
@@ -124,26 +140,26 @@
       mobileApp: bool(d.mobile_app),
       nightSend: bool(d.night_send),
       // fa
-      faId: d.fa_id || null,
+      faId: trimEdges(d.fa_id),
       channelId: d.channel_id != null && d.channel_id !== "" ? Number(d.channel_id) : null,
       needPush: bool(d.need_push),
-      c2dTransport: d.c2d_transport || null,
-      c2dAccount: d.c2d_account || null,
+      c2dTransport: trimEdges(d.c2d_transport),
+      c2dAccount: trimEdges(d.c2d_account),
       ch2dOperatorId: d.ch2d_operator_id != null && d.ch2d_operator_id !== "" ? Number(d.ch2d_operator_id) : null,
-      webUrl: d.web_url || null,
-      linkTitle: d.link_title || null,
-      actionButtons: d.action_buttons || null,
+      webUrl: trimEdges(d.web_url),
+      linkTitle: trimEdges(d.link_title),
+      actionButtons: trimEdges(d.action_buttons),
       // vk
-      vkTemplateName: d.vk_template_name || null,
+      vkTemplateName: trimEdges(d.vk_template_name),
       ttl: d.ttl != null && d.ttl !== "" ? Number(d.ttl) : null,
-      abGroup: d.ab_group || null,
-      buttons: d.buttons || null,
+      abGroup: trimEdges(d.ab_group),
+      buttons: trimEdges(d.buttons),
       // la
-      activityName: d.activity_name || null,
-      laEvent: d.la_event || null,
-      laVisualization: d.la_visualization || null,
-      laVisualizationAttributes: d.la_visualization_attributes || null,
-      laStatus: d.la_status || null,
+      activityName: trimEdges(d.activity_name),
+      laEvent: trimEdges(d.la_event),
+      laVisualization: trimEdges(d.la_visualization),
+      laVisualizationAttributes: trimEdges(d.la_visualization_attributes),
+      laStatus: trimEdges(d.la_status),
       currentStep: d.current_step != null && d.current_step !== "" ? Number(d.current_step) : null
     };
   }
