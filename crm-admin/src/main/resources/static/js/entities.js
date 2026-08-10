@@ -119,6 +119,11 @@ function entSchemaHead(schemaId){
   return first;
 }
 function entIsSchemaHead(e){ return entSchemaHead(entSchemaOf(e)) === e; }
+/* Сущность служебная, если служебна её главная таблица. */
+function entSchemaTechnical(schemaId){
+  var h = entSchemaHead(schemaId);
+  return !!(h && h.technical);
+}
 
 /* Таблицы сущности — то, что показывает экран между карточкой сущности и данными.
    Технические не показываем и здесь: флаг ровно об этом и говорит. */
@@ -165,10 +170,12 @@ function entLinkTables(schemaId){
 
 function entAllowed(e){
   if (!entIsSchemaHead(e)) return false;
-  /* Флаг «Техническая» стоит на ТАБЛИЦЕ, а карточка теперь про сущность целиком.
-     Поэтому прячем сущность, только если служебные все её таблицы: раньше хватало
-     флага на главной, и рабочая таблица схемы становилась недостижимой из-за
-     соседа — так пропала целиком сущность record_type вместе со своей таблицей. */
+  /* Служебная сущность в раздел не попадает — если только не включён переключатель
+     «Выводить технические». Судим по её главной таблице: именно она даёт карточке
+     имя и описание, её человек и видит. Рабочая таблица внутри служебной сущности
+     не делает сущность рабочей — до неё добираются тем же переключателем. */
+  if (!entShowTech() && entSchemaTechnical(entSchemaOf(e))) return false;
+  /* Показывать нечего — незачем и карточка: экран таблиц открылся бы пустым. */
   if (!entTables(entSchemaOf(e)).length && !entLinkTables(entSchemaOf(e)).length) return false;
   /* сущность с готовым серверным экраном («Шаблоны и сегменты») гейтится обычным
      RBAC по своей секции — applyNavAcl сделает это по aclSection, реестр не при чём */
@@ -1477,10 +1484,12 @@ function entRenderOverview(){
   grid.innerHTML = items.map(function(e){
     var rows = (ENT_DATA[e.id] || []).length;
     var api = e.source === "templates";
-    return '<div class="ov-card" data-nav-ref="ent-' + entEsc(e.id) + '"' +
+    var tech = entSchemaTechnical(entSchemaOf(e));
+    return '<div class="ov-card' + (tech ? " ent-techtbl" : "") + '" data-nav-ref="ent-' + entEsc(e.id) + '"' +
       (api ? ' data-acl-section="templates"' : ' data-no-acl="1"') + ' data-ent="' + entEsc(e.id) + '">' +
       '<div class="ov-ico">' + (api ? (ICONS.list || ICONS.doc) : (ICONS.table || ICONS.doc)) + "</div>" +
-      "<h3>" + entEsc(e.plural_label || e.label) + "</h3>" +
+      "<h3>" + entEsc(e.plural_label || e.label) +
+        (tech ? ' <span class="ent-tech-tag">' + entT("служебная") + "</span>" : "") + "</h3>" +
       '<div class="ov-meta">' + entEsc(e.table || e.id) + " · " + entPlural(e.fields.length, "field") +
         (api ? " · " + entT("данные из API") : " · " + entPlural(rows, "record")) + "</div>" +
       "<p>" + entEsc(e.description || entT("Список записей и карточка: поля по смысловым блокам, переходы по связям.")) + "</p>" +
