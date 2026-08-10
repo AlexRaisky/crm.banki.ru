@@ -41,8 +41,10 @@ var ENT_WANT = (function(){
 })();
 /* mode — список записей или карточка одной записи; tab — вкладка карточки;
    q / fv / sort — состояние списка (поиск, значения фильтров, сортировка по сущностям) */
-var ENT_CUR = { id:null, rec:null, edit:null, closed:{},
-                mode:"list", tab:"details", q:"", fv:{}, sort:{}, gear:false };
+/* id — открытая ТАБЛИЦА, schema — сущность, которой она принадлежит.
+   mode: tables (список таблиц сущности) → list (записи таблицы) → card (запись). */
+var ENT_CUR = { id:null, schema:null, rec:null, edit:null, closed:{},
+                mode:"tables", tab:"details", q:"", fv:{}, sort:{}, gear:false };
 
 var ENT_REL_UI = ["lookup","multilookup","related_list"];
 
@@ -57,7 +59,8 @@ function entEn(){ return typeof UI_LANG !== "undefined" && UI_LANG === "en"; }
 var ENT_PLURAL = {
   field:  { en:["field","fields"],       ru:["поле","поля","полей"] },
   record: { en:["record","records"],     ru:["запись","записи","записей"] },
-  rel:    { en:["relation","relations"], ru:["связь","связи","связей"] }
+  rel:    { en:["relation","relations"], ru:["связь","связи","связей"] },
+  table:  { en:["table","tables"],       ru:["таблица","таблицы","таблиц"] }
 };
 function entPlural(n, kind){
   var f = ENT_PLURAL[kind];
@@ -105,17 +108,24 @@ function entSchemaOf(e){ return (e && e.schema) || (e && e.id) || ""; }
    <p>
    Если таблицы с именем схемы нет вовсе, представителем становится первая по
    порядку — иначе схема пропала бы из раздела целиком. */
-function entIsSchemaHead(e){
-  var s = entSchemaOf(e);
-  if (e.id === s) return true;
+function entSchemaHead(schemaId){
   var first = null;
   for (var i = 0; i < ENT_MODEL.entities.length; i++){
     var x = ENT_MODEL.entities[i];
-    if (entSchemaOf(x) !== s) continue;
-    if (x.id === s) return false;      /* представитель у схемы есть, и это не мы */
+    if (entSchemaOf(x) !== schemaId) continue;
+    if (x.id === schemaId) return x;
     if (!first) first = x;
   }
-  return first === e;
+  return first;
+}
+function entIsSchemaHead(e){ return entSchemaHead(entSchemaOf(e)) === e; }
+
+/* Таблицы сущности — то, что показывает экран между карточкой сущности и данными.
+   Технические не показываем и здесь: флаг ровно об этом и говорит. */
+function entTables(schemaId){
+  return ENT_MODEL.entities.filter(function(x){
+    return entSchemaOf(x) === schemaId && !x.technical;
+  });
 }
 
 function entAllowed(e){
@@ -883,7 +893,11 @@ function entCardHtml(e, r){
 function entHeroHtml(e){
   var rows = (ENT_DATA[e.id] || []).length;
   var rels = ENT_MODEL.relations.filter(function(x){ return x.from_entity === e.id || x.to_entity === e.id; }).length;
-  return '<header class="ent-hero">' +
+  /* Крошка наверх: таблица открыта изнутри сущности, и вернуться к её списку
+     таблиц должно быть можно, не уходя в меню. */
+  var up = '<button type="button" class="ent-up" data-tables="1">← ' +
+           entEsc(entT("Таблицы сущности")) + "</button>";
+  return '<header class="ent-hero">' + up +
     '<div class="eyebrow">CRM · ' + entT("Данные") + " · " + entEsc(e.table || e.id) + "</div>" +
     "<h1>" + entEsc(e.plural_label || e.label) + "</h1>" +
     '<p class="sub">' + entEsc(e.description || entT("Список записей сущности: колонки и фильтры настраиваются шестерёнкой, запись открывается по клику.")) + "</p>" +
@@ -893,9 +907,52 @@ function entHeroHtml(e){
       "<span>" + entT("доступ") + ": ADMIN</span></div></header>";
 }
 
+/* Экран между сущностью и данными: её таблицы. Сущность — это схема, и таблиц
+   в ней может быть несколько; раньше вторая вылезала отдельным подразделом, а
+   первая подменяла собой всю сущность. Экран показываем всегда, даже когда
+   таблица одна: иначе путь до данных зависел бы от состава схемы, и человек не
+   знал бы заранее, куда попадёт по клику. */
+function entTablesHtml(schemaId){
+  var head = entSchemaHead(schemaId), tables = entTables(schemaId);
+  var title = head ? (head.plural_label || head.label || schemaId) : schemaId;
+  var html = '<header class="ent-hero">' +
+    '<div class="eyebrow">CRM · ' + entT("Сущность") + " · " + entEsc(schemaId) + "</div>" +
+    "<h1>" + entEsc(title) + "</h1>" +
+    '<p class="sub">' + entT("Таблицы сущности. Выберите таблицу, чтобы открыть её записи.") + "</p>" +
+    '<div class="meta"><span>' + entPlural(tables.length, "table") + "</span>" +
+      "<span>" + entT("доступ") + ": ADMIN</span></div></header>";
+  if (!tables.length){
+    return html + '<div class="ent-empty">' +
+      entT("У сущности нет таблиц. Заведите их в Scheme Builder (настроечная админка).") + "</div>";
+  }
+  html += '<div class="ov-grid">' + tables.map(function(x){
+    var rows = (ENT_DATA[x.id] || []).length;
+    return '<div class="ov-card" data-tbl="' + entEsc(x.id) + '">' +
+      '<div class="ov-ico">' + (ICONS.table || ICONS.doc) + "</div>" +
+      "<h3>" + entEsc(x.label || x.id) + "</h3>" +
+      '<div class="ov-meta">' + entEsc(x.table || x.id) + " · " +
+        entPlural(x.fields.length, "field") + " · " + entPlural(rows, "record") + "</div>" +
+      "<p>" + entEsc(x.description || entT("Список записей и карточка: поля по смысловым блокам, переходы по связям.")) + "</p>" +
+      '<span class="ov-go">' + entT("Открыть →") + "</span></div>";
+  }).join("") + "</div>";
+  return html;
+}
+
 function entRender(){
   var host = document.getElementById("entHost");
   if (!host) return;
+  if (ENT_CUR.mode === "tables" || !ENT_CUR.id){
+    host.innerHTML = entTablesHtml(ENT_CUR.schema);
+    host.querySelectorAll("[data-tbl]").forEach(function(card){
+      card.onclick = function(){
+        ENT_CUR.id = card.dataset.tbl; ENT_CUR.mode = "list";
+        ENT_CUR.rec = null; ENT_CUR.q = ""; ENT_CUR.edit = null;
+        entRender();
+        var v = document.getElementById("view-entity"); if (v) v.scrollTop = 0;
+      };
+    });
+    return;
+  }
   var e = entEntity(ENT_CUR.id);
   if (!e){
     host.innerHTML = '<div class="ent-empty">' + entT("Сущность не найдена в схеме. Проверьте Scheme Builder в настроечной админке.") + "</div>";
@@ -935,6 +992,7 @@ function entToast(msg){
 
 /* ---------- обработчики ---------- */
 function entWire(host, e, r){
+  host.querySelectorAll("[data-tables]").forEach(function(b){ b.onclick = entBackToTables; });
   /* --- список --- */
   host.querySelectorAll("tr[data-open]").forEach(function(tr){
     tr.onclick = function(){
@@ -1308,19 +1366,33 @@ function entDeleteConfirmed(e, r){
   entToast(entT("Запись удалена"));
 }
 /* переход по связи: открыть другую сущность на нужной записи */
+/* Переход по связи ведёт в КОНКРЕТНУЮ таблицу, а подраздел в меню заведён на
+   сущность — поэтому открываем подраздел её схемы, а таблицу выставляем сами,
+   минуя промежуточный экран: человек шёл к записи, а не выбирать таблицу. */
 function entGo(entityId, recId){
-  if (!entEntity(entityId)) return;
-  if (typeof openSection === "function") openSection("entities", "ent-" + entityId);
+  var e = entEntity(entityId);
+  if (!e) return;
+  var schema = entSchemaOf(e), head = entSchemaHead(schema);
+  if (typeof openSection === "function") openSection("entities", "ent-" + (head ? head.id : entityId));
+  ENT_CUR.schema = schema; ENT_CUR.id = entityId;
   ENT_CUR.rec = recId; ENT_CUR.edit = null; ENT_CUR.mode = "card"; ENT_CUR.tab = "details";
   entRender();
   var v = document.getElementById("view-entity"); if (v) v.scrollTop = 0;
 }
-/* вызывается из openSection при открытии подраздела */
-function entOpen(entityId){
-  /* другая сущность — начинаем со списка и со своим поиском */
-  if (ENT_CUR.id !== entityId){ ENT_CUR.rec = null; ENT_CUR.mode = "list"; ENT_CUR.q = ""; }
-  ENT_CUR.id = entityId; ENT_CUR.edit = null; ENT_CUR.gear = false;
+/* вызывается из openSection при открытии подраздела: id подраздела — сущность,
+   и начинаем всегда с её таблиц */
+function entOpen(headId){
+  var head = entEntity(headId);
+  ENT_CUR.schema = head ? entSchemaOf(head) : headId;
+  ENT_CUR.id = null; ENT_CUR.rec = null; ENT_CUR.mode = "tables";
+  ENT_CUR.q = ""; ENT_CUR.edit = null; ENT_CUR.gear = false;
   entRender();
+}
+/* возврат с записей к таблицам сущности */
+function entBackToTables(){
+  ENT_CUR.id = null; ENT_CUR.rec = null; ENT_CUR.mode = "tables"; ENT_CUR.edit = null;
+  entRender();
+  var v = document.getElementById("view-entity"); if (v) v.scrollTop = 0;
 }
 /* клик мимо панели шестерёнки — закрываем её */
 document.addEventListener("mousedown", function(ev){
