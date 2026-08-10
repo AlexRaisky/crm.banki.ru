@@ -122,9 +122,23 @@ function entIsSchemaHead(e){ return entSchemaHead(entSchemaOf(e)) === e; }
 
 /* Таблицы сущности — то, что показывает экран между карточкой сущности и данными.
    Технические не показываем и здесь: флаг ровно об этом и говорит. */
+/* Показывать ли служебные таблицы. Решение живёт в браузере у каждого своё:
+   это взгляд на данные, а не свойство схемы, и навязывать его коллеге незачем. */
+var ENT_TECH_KEY = "crmpanel:entityShowTech";
+function entShowTech(){ return entRead(ENT_TECH_KEY, false) === true; }
+function entTechSet(on){
+  entWrite(ENT_TECH_KEY, !!on);
+  /* Видимость сущностей меняется вместе с этим переключателем — значит и меню:
+     сущность, у которой служебные все таблицы, то появляется, то исчезает. */
+  entSyncNav();
+  entRenderOverview();
+  if (ENT_CUR.schema) entRender();
+}
+
 function entTables(schemaId){
+  var tech = entShowTech();
   return ENT_MODEL.entities.filter(function(x){
-    return entSchemaOf(x) === schemaId && !x.technical;
+    return entSchemaOf(x) === schemaId && (tech || !x.technical);
   });
 }
 
@@ -944,16 +958,22 @@ function entTablesHtml(schemaId){
     "<h1>" + entEsc(title) + "</h1>" +
     '<p class="sub">' + entT("Таблицы сущности. Выберите таблицу, чтобы открыть её записи.") + "</p>" +
     '<div class="meta"><span>' + entPlural(tables.length + links.length, "table") + "</span>" +
-      "<span>" + entT("доступ") + ": ADMIN</span></div></header>";
+      "<span>" + entT("доступ") + ": ADMIN</span></div>" +
+    /* тот же переключатель, что и на обзорной: служебную таблицу чаще ищут уже
+       внутри сущности, и возвращаться за ней на верхний экран незачем */
+    '<div class="ent-techbar"><button type="button" class="ent-btn' + (entShowTech() ? " on" : "") +
+      '" data-tech="1">' + (entShowTech() ? "☑ " : "☐ ") + entT("Выводить технические") +
+      "</button></div></header>";
   if (!tables.length && !links.length){
     return html + '<div class="ent-empty">' +
       entT("У сущности нет таблиц. Заведите их в Scheme Builder (настроечная админка).") + "</div>";
   }
   html += '<div class="ov-grid">' + tables.map(function(x){
     var rows = (ENT_DATA[x.id] || []).length;
-    return '<div class="ov-card" data-tbl="' + entEsc(x.id) + '">' +
+    return '<div class="ov-card' + (x.technical ? " ent-techtbl" : "") + '" data-tbl="' + entEsc(x.id) + '">' +
       '<div class="ov-ico">' + (ICONS.table || ICONS.doc) + "</div>" +
-      "<h3>" + entEsc(x.label || x.id) + "</h3>" +
+      "<h3>" + entEsc(x.label || x.id) +
+        (x.technical ? ' <span class="ent-tech-tag">' + entT("служебная") + "</span>" : "") + "</h3>" +
       '<div class="ov-meta">' + entEsc(x.table || x.id) + " · " +
         entPlural(x.fields.length, "field") + " · " + entPlural(rows, "record") + "</div>" +
       "<p>" + entEsc(x.description || entT("Список записей и карточка: поля по смысловым блокам, переходы по связям.")) + "</p>" +
@@ -975,6 +995,9 @@ function entRender(){
   if (!host) return;
   if (ENT_CUR.mode === "tables" || !ENT_CUR.id){
     host.innerHTML = entTablesHtml(ENT_CUR.schema);
+    host.querySelectorAll("[data-tech]").forEach(function(b){
+      b.onclick = function(){ entTechSet(!entShowTech()); };
+    });
     host.querySelectorAll("[data-tbl]").forEach(function(card){
       card.onclick = function(){
         ENT_CUR.id = card.dataset.tbl; ENT_CUR.mode = "list";
@@ -1438,6 +1461,13 @@ document.addEventListener("mousedown", function(ev){
 function entRenderOverview(){
   var grid = document.getElementById("entOvGrid");
   if (!grid) return;
+  var btn = document.getElementById("entTechToggle");
+  if (btn){
+    var on = entShowTech();
+    btn.textContent = (on ? "☑ " : "☐ ") + entT("Выводить технические");
+    btn.classList.toggle("on", on);
+    btn.onclick = function(){ entTechSet(!entShowTech()); };
+  }
   var items = ENT_MODEL.entities.filter(entAllowed);
   if (!items.length){
     grid.innerHTML = '<div class="ent-empty">' +

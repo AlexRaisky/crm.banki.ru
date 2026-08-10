@@ -21,6 +21,15 @@
      поэтому не притворяется кликабельной карточкой */
   .ov-card.ent-linktbl{cursor:default;border-style:dashed}
   .ov-card.ent-linktbl:hover{border-color:var(--line);transform:none}
+  /* переключатель служебных: выключен — обычная кнопка, включён — заметен, чтобы
+     не гадать потом, почему в списке лишние таблицы */
+  .ent-techbar{margin:12px 0 16px}
+  .ent-hero .ent-techbar{margin:12px 0 0}
+  .ent-btn.on{border-color:rgba(80,195,255,.45);color:var(--blue);background:var(--blue-bg)}
+  .ov-card.ent-techtbl{opacity:.72}
+  .ent-tech-tag{font-family:var(--mono);font-size:10px;font-weight:600;text-transform:uppercase;
+    letter-spacing:.06em;color:var(--faint);border:1px solid var(--line);border-radius:11px;
+    padding:2px 7px;vertical-align:middle;margin-left:6px}
   .ent-hero .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
     color:var(--faint);margin-bottom:7px}
   .ent-hero h1{font-size:26px;font-weight:700;letter-spacing:-.015em}
