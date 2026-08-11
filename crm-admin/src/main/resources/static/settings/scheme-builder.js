@@ -1701,5 +1701,13 @@ function adopt(m){
   if (state.entity && !entityById(state.entity)) state.entity = null;
   render();
 }
-window.SchemeBuilder = { open: openSection, render, adopt, store: SchemaStore, API_CONTRACT, UI_TYPES };
+/* Заведение сущности снаружи: раздел «Сущности» в панели ведёт сюда своей кнопкой.
+   Форму не дублируем — открываем эту же, иначе правила именования и проверки
+   разъехались бы по двум местам. Ждём boot(): в окне есть список существующих
+   схем, и до загрузки модели он был бы пуст. */
+async function newEntity(){
+  await openSection();
+  openSchemaModal();
+}
+window.SchemeBuilder = { open: openSection, newEntity, render, adopt, store: SchemaStore, API_CONTRACT, UI_TYPES };
 })();

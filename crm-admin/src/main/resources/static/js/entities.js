@@ -1468,6 +1468,11 @@ document.addEventListener("mousedown", function(ev){
 function entRenderOverview(){
   var grid = document.getElementById("entOvGrid");
   if (!grid) return;
+  /* Заведение сущности живёт в Scheme Builder — туда и ведём. Форму не повторяем:
+     правила именования, проверка занятых имён и запись в модель уже описаны там,
+     и вторая копия рано или поздно разошлась бы с первой. */
+  var add = document.getElementById("entAddEntity");
+  if (add) add.onclick = function(){ location.href = "settings/#scheme:new"; };
   var btn = document.getElementById("entTechToggle");
   if (btn){
     var on = entShowTech();

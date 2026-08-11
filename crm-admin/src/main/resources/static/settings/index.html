@@ -810,6 +810,20 @@ PANES.forEach(p => {
   snav.appendChild(el);
 });
 
+/* Глубокая ссылка: #scheme открывает раздел сразу, #scheme:new — ещё и окно
+   заведения сущности. Нужна кнопке «+ Сущность» в самой панели: она ведёт сюда,
+   а не заводит вторую такую же форму у себя. */
+(function(){
+  const h = (location.hash || "").replace(/^#/, "");
+  if (!h) return;
+  const [pane, action] = h.split(":");
+  if (!pane || !document.getElementById("pane-" + pane)) return;
+  openPane(pane);
+  if (pane === "scheme" && action === "new" && window.SchemeBuilder && SchemeBuilder.newEntity){
+    SchemeBuilder.newEntity();
+  }
+})();
+
 /* ---------- обзор (страница с блоками главных разделов) ---------- */
 const overGrid = $("#overGrid");
 PANES.filter(p => p.id !== "over").forEach(p => {
@@ -1590,7 +1604,7 @@ window.CRM = window.CRM || (function(){
   border:1px solid var(--line);color:var(--ink);padding:11px 15px;border-radius:11px;font-size:13px;
   box-shadow:0 14px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(8px);transition:.18s;pointer-events:none"></div>
 <style>#sbToast.show{opacity:1;transform:none}</style>
-<script src="scheme-builder.js?v=24"></script>
+<script src="scheme-builder.js?v=25"></script>
 <!-- «Сущности»: общий с панелью расчёт раскладки + сам раздел. Порядок важен:
      object-manager.js работает с хранилищем схемы из scheme-builder.js. -->
 <script src="../js/entity-layout.js?v=4"></script>

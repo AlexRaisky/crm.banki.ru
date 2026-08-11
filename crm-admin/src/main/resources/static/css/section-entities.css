@@ -354,3 +354,22 @@
    цвет задаём явно. Правило вне @scope: :scope — это #view-entity, а класс
    темы висит на <html>, снаружи области видимости. */
 html.theme-light #view-entity select.ent-in option{background:#FFFFFF;color:#16283E}
+
+/* ---- панель над карточками обзорной страницы раздела ----
+   Стили выше ограничены @scope (#view-entity) — это экран данных. Обзор живёт в
+   отдельном #view-entities-overview, и туда они не долетают: кнопки оставались
+   системными. Дублируем ровно то, что нужно панели, а не весь набор. */
+@scope (#view-entities-overview){
+  .ent-techbar{display:flex;align-items:center;gap:10px;margin:0 0 16px}
+  .ent-btn{font-family:var(--sans);font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:9px;
+    cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);transition:.15s}
+  .ent-btn:hover{border-color:var(--blue);color:var(--blue)}
+  .ent-btn.on{border-color:rgba(80,195,255,.45);color:var(--blue);background:var(--blue-bg)}
+  .ent-btn.accent{background:var(--grad);color:#06101B;border:none}
+  .ent-btn.accent:hover{filter:brightness(1.07);color:#06101B}
+  /* служебная сущность: показана по кнопке, но глаз на ней не задерживается */
+  .ov-card.ent-techtbl{opacity:.72}
+  .ent-tech-tag{font-family:var(--mono);font-size:10px;font-weight:600;text-transform:uppercase;
+    letter-spacing:.06em;color:var(--faint);border:1px solid var(--line);border-radius:11px;
+    padding:2px 7px;vertical-align:middle;margin-left:6px}
+}

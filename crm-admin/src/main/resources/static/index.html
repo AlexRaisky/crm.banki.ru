@@ -235,7 +235,12 @@
       <div class="ov-sub" data-i18n="Данные CRM по схеме из Scheme Builder. Каждая заведённая сущность становится подразделом: выберите её здесь или в меню слева.">Данные CRM по схеме из Scheme Builder. Каждая заведённая сущность становится подразделом: выберите её здесь или в меню слева.</div>
       <!-- Переключатель служебных: по умолчанию их не видно, но иногда нужно —
            заглянуть в справочник или найти сущность, у которой служебные все таблицы. -->
-      <div class="ent-techbar"><button type="button" class="ent-btn" id="entTechToggle"></button></div>
+      <div class="ent-techbar">
+        <!-- Заведение ведёт в Scheme Builder: сущность описывается там, и вторая
+             такая же форма здесь означала бы два места с правилами именования. -->
+        <button type="button" class="ent-btn accent" id="entAddEntity" data-i18n="+ Сущность">+ Сущность</button>
+        <button type="button" class="ent-btn" id="entTechToggle"></button>
+      </div>
       <div class="ov-grid" id="entOvGrid"></div>
       <div class="ov-sub" style="margin-top:20px" data-i18n="Раздел доступен только администраторам. Сущности и их поля настраиваются в Scheme Builder (настроечная админка).">Раздел доступен только администраторам. Сущности и их поля настраиваются в Scheme Builder (настроечная админка).</div>
     </section>
