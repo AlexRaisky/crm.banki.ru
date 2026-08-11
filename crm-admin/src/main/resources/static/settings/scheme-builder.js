@@ -1260,43 +1260,80 @@ function closeModal(){ $("#sbModal").classList.remove("open"); }
    Пустая сущность бесполезна — в базе схема без таблиц ничего не значит,
    и заставлять человека делать второй шаг незачем. */
 function openSchemaModal(){
+  /* Схема и таблица — отдельными полями. По умолчанию оба повторяют системное имя:
+     в большинстве случаев так и надо, и лишних движений это не требует. Но когда
+     имена должны разойтись (схема mail, таблица providers), задать их можно сразу,
+     а не заводить сущность и переименовывать её следом в карточке. */
   openModal(`<h3>${T("Новая сущность")}</h3><div class="sb-form" style="padding:0">
     <div class="sb-grid2">
       <div class="sb-fg"><label>${T("Название")}</label><input id="sbNS_label" placeholder="${T("Например, Пользователь")}"></div>
       <div class="sb-fg"><label>${T("Системное имя")}</label><input class="mono" id="sbNS_id" placeholder="user"></div>
     </div>
+    <div class="sb-grid2">
+      <div class="sb-fg"><label>${T("Схема")}</label><input class="mono" id="sbNS_schema" list="sbNSSchemaList" placeholder="user">
+        <datalist id="sbNSSchemaList">${allSchemas().map(s =>
+          `<option value="${esc(s.id)}">${esc(s.label || s.id)}</option>`).join("")}</datalist></div>
+      <div class="sb-fg"><label>${T("Таблица")}</label><input class="mono" id="sbNS_table" placeholder="user"></div>
+    </div>
     <div class="sb-fg"><label>${T("Описание")}</label><textarea id="sbNS_desc"></textarea></div>
     <div class="sb-modal-note" id="sbNS_hint"></div>
     <div class="sb-acts"><button class="btn accent" id="sbNS_create">${T("Создать")}</button>
       <button class="btn" id="sbNS_cancel">${T("Отмена")}</button></div></div>`);
-  const hint = () => {
+  /* Что реально уедет в базу: схема и таблица по отдельности, каждая со своим полем
+     либо, если поле не трогали, с подставленным системным именем. */
+  const parts = () => {
     const id = slug($("#sbNS_id").value || $("#sbNS_label").value) || "user";
-    $("#sbNS_hint").innerHTML = T("В базе получится") + " <b class=\"mono\">" + esc(id) + "." + esc(id) + "</b>";
+    return { id,
+      schema: slug($("#sbNS_schema").value) || id,
+      table:  slug($("#sbNS_table").value)  || id };
   };
+  const hint = () => {
+    const p = parts();
+    const known = (model.schemas || []).some(x => x.id === p.schema);
+    $("#sbNS_hint").innerHTML = T("В базе получится") +
+      " <b class=\"mono\">" + esc(p.schema) + "." + esc(p.table) + "</b>" +
+      (known ? " · " + T("схема уже есть — таблица добавится в неё") : "");
+  };
+  /* Правка названия тянет за собой все три системных поля, пока их не трогали руками:
+     иначе пришлось бы вписывать одно и то же трижды. */
   $("#sbNS_label").oninput = () => {
-    if (!$("#sbNS_id").dataset.edited) $("#sbNS_id").value = slug($("#sbNS_label").value);
+    const s = slug($("#sbNS_label").value);
+    if (!$("#sbNS_id").dataset.edited)     $("#sbNS_id").value = s;
+    if (!$("#sbNS_schema").dataset.edited) $("#sbNS_schema").value = s;
+    if (!$("#sbNS_table").dataset.edited)  $("#sbNS_table").value = s;
     hint();
   };
-  $("#sbNS_id").oninput = () => { $("#sbNS_id").dataset.edited = "1"; hint(); };
+  $("#sbNS_id").oninput = () => {
+    $("#sbNS_id").dataset.edited = "1";
+    const s = slug($("#sbNS_id").value);
+    if (!$("#sbNS_schema").dataset.edited) $("#sbNS_schema").value = s;
+    if (!$("#sbNS_table").dataset.edited)  $("#sbNS_table").value = s;
+    hint();
+  };
+  $("#sbNS_schema").oninput = () => { $("#sbNS_schema").dataset.edited = "1"; hint(); };
+  $("#sbNS_table").oninput  = () => { $("#sbNS_table").dataset.edited  = "1"; hint(); };
   hint();
   $("#sbNS_cancel").onclick = closeModal;
   $("#sbNS_create").onclick = () => {
-    const id = slug($("#sbNS_id").value || $("#sbNS_label").value);
-    if (!id) return toast(T("Введите название"));
-    if ((model.schemas || []).some(x => x.id === id)) return toast(T("Такое системное имя уже есть"));
+    const p = parts();
+    const id = p.id;
+    if (!$("#sbNS_id").value && !$("#sbNS_label").value) return toast(T("Введите название"));
     if (entityById(id)) return toast(T("Такое системное имя уже есть"));
+    /* Схему, которой ещё нет, заводим; существующую переиспользуем — это и есть
+       «добавить таблицу в имеющуюся сущность», отдельной кнопки для того не нужно. */
     const label = $("#sbNS_label").value || id;
-    const sch = ensureSchema(id);
-    sch.label = label; sch.description = $("#sbNS_desc").value;
+    const sch = ensureSchema(p.schema);
+    if (!sch.label || sch.label === sch.id) sch.label = label;
+    if (!sch.description) sch.description = $("#sbNS_desc").value;
     const n = model.entities.length;
-    const e = { id, schema: id, table: id, label, plural_label: label,
+    const e = { id, schema: p.schema, table: p.table, label, plural_label: label,
       description: "", title_field: "",
       fields: [{ name:"id", label:"ID", db_type:"bigserial", ui_type:"number", required:true, read_only:true,
         description: T("Первичный ключ"), target_entity:"", relation_kind:"", default_value:"", options:[] }],
       x: 40 + (n % 3) * 330, y: 40 + Math.floor(n / 3) * 300 };
     model.entities.push(e);
-    state.schema = id; state.entity = e.id; state.field = null;
-    closeModal(); commit("create", "schema", id, sch); toast(T("Сущность создана"));
+    state.schema = p.schema; state.entity = e.id; state.field = null;
+    closeModal(); commit("create", "schema", p.schema, sch); toast(T("Сущность создана"));
   };
 }
 
