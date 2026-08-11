@@ -68,14 +68,29 @@ public final class DdlPlanner {
             problems.add("В модели нет сущностей — создавать нечего");
             return new Plan(out, problems, List.of());
         }
+        /* Сущность с непустым source живёт не в своей таблице, а в чужой, и приходит
+           через API — «Шаблоны и сегменты» обслуживаются /api/templates поверх
+           template.d_template. Своей таблицы у неё нет и быть не должно: раньше это
+           не мешало, потому что вся схема обходилась целиком, а теперь, когда новые
+           таблицы в защищённой схеме создавать можно, план бодро завёл бы
+           template.communication_template на 54 колонки. В byId такие тоже не кладём —
+           иначе связь на них построила бы внешний ключ в несуществующую таблицу. */
+        List<JsonNode> real = new ArrayList<>();
         for (JsonNode e : entities) {
+            if (!text(e, "source").isEmpty()) {
+                problems.add("Сущность " + text(e, "id") + " обслуживается через API ("
+                        + text(e, "source") + ") — своей таблицы у неё нет, в план не идёт");
+                continue;
+            }
+            real.add(e);
             String id = text(e, "id");
             if (!id.isEmpty()) byId.put(id, e);
         }
+        entities = null;   /* дальше только real: чтобы не забыть про фильтр ниже */
 
         // 1. Схемы. Отдельной инструкцией на каждую: так в предпросмотре видно, что появится
         //    новое пространство имён, а не только таблицы.
-        for (JsonNode e : entities) {
+        for (JsonNode e : real) {
             String schema = schemaOf(e);
             if (!valid(schema)) {
                 problems.add("Недопустимое имя схемы: «" + schema + "» (сущность " + text(e, "id") + ")");
@@ -88,7 +103,7 @@ public final class DdlPlanner {
         }
 
         // 2. Таблицы.
-        for (JsonNode e : entities) {
+        for (JsonNode e : real) {
             String schema = schemaOf(e), table = tableOf(e);
             if (!valid(schema) || !valid(table)) {
                 if (valid(schema)) problems.add("Недопустимое имя таблицы: «" + table + "»");

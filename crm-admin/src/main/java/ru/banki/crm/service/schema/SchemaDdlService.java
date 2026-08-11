@@ -69,13 +69,13 @@ public class SchemaDdlService {
         Snapshot snap = tx.execute(s -> new Snapshot(skips(plan.schemas()), existing()));
         List<Skip> skips = snap == null ? List.of() : snap.skips();
         Set<String> have = snap == null ? Set.of() : snap.have();
-        Set<String> off = names(skips);
+        Map<String, Skip> off = guard(skips);
 
         List<Map<String, Object>> stmts = new ArrayList<>();
         List<String> freshSql = new ArrayList<>();
         int already = 0;
         for (DdlPlanner.Stmt st : plan.statements()) {
-            boolean skip = touchesSkipped(st, off);
+            boolean skip = blocked(st, off, have);
             boolean exists = !skip && alreadyThere(st, have);
             if (exists) already++;
             Map<String, Object> m = new LinkedHashMap<>();
@@ -95,7 +95,8 @@ public class SchemaDdlService {
         out.put("schemas", plan.schemas());
         out.put("problems", plan.problems());
         out.put("skipped", skips.stream()
-                .map(s -> Map.of("schema", s.schema(), "reason", s.reason())).toList());
+                .map(s -> Map.of("schema", s.schema(), "reason", s.reason(),
+                                 "newTablesOk", s.newTablesOk())).toList());
         out.put("applicable", freshSql.size());
         out.put("already", already);
         out.put("canApply", !freshSql.isEmpty());
@@ -128,7 +129,7 @@ public class SchemaDdlService {
                    от всего сразу выглядел бы как поломка. Пропуск идёт в журнал: молча
                    не сделать то, что человек видел в предпросмотре, нельзя. */
                 List<Skip> skips = skips(plan.schemas());
-                Set<String> off = names(skips);
+                Map<String, Skip> off = guard(skips);
                 for (Skip s : skips) {
                     audit("SKIP", s.schema(), null, null, "SKIPPED", s.reason(),
                             System.currentTimeMillis() - started);
@@ -138,7 +139,7 @@ public class SchemaDdlService {
                    найти в нём настоящее изменение стало бы нельзя. */
                 Set<String> have = existing();
                 List<DdlPlanner.Stmt> run = plan.statements().stream()
-                        .filter(st -> !touchesSkipped(st, off) && !alreadyThere(st, have)).toList();
+                        .filter(st -> !blocked(st, off, have) && !alreadyThere(st, have)).toList();
                 if (run.isEmpty()) throw new GuardViolation(
                         "Нечего применять: всё, что можно создать, в базе уже есть");
 
@@ -168,10 +169,10 @@ public class SchemaDdlService {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("applied", done);
                 m.put("schemas", new ArrayList<>(touchedSchemas));
-                long blocked = plan.statements().stream().filter(st -> touchesSkipped(st, off)).count();
-                m.put("skipped", blocked);
-                m.put("already", plan.statements().size() - run.size() - blocked);
-                m.put("skippedSchemas", new ArrayList<>(off));
+                long guarded = plan.statements().stream().filter(st -> blocked(st, off, have)).count();
+                m.put("skipped", guarded);
+                m.put("already", plan.statements().size() - run.size() - guarded);
+                m.put("skippedSchemas", new ArrayList<>(off.keySet()));
                 return m;
             });
             return res;
@@ -187,8 +188,17 @@ public class SchemaDdlService {
 
     // ----------------------------------------------------------------- ОХРАНА
 
-    /** Схема, которую применение обойдёт, и почему. */
-    public record Skip(String schema, String reason) {}
+    /**
+     * Схема под охраной: что именно ей запрещено и почему.
+     * <p>
+     * {@code newTablesOk} различает два случая, которые раньше были свалены в один.
+     * Схема из стоп-листа (app.schema_reserved) — наша, просто её существующие
+     * таблицы трогать нельзя: это боевые справочники, и колонка, доехавшая туда
+     * по недосмотру, ломает синхронизацию с продом. Заводить в ней НОВЫЕ таблицы
+     * при этом можно и нужно. Чужая же схема — та, что существует и за билдером
+     * не числится, — закрыта целиком: в ней и создавать нечего, мы её не ведём.
+     */
+    public record Skip(String schema, String reason, boolean newTablesOk) {}
 
     /**
      * Какие из этих схем трогать нельзя. Пусто — путь свободен весь.
@@ -200,37 +210,53 @@ public class SchemaDdlService {
         List<Skip> out = new ArrayList<>();
         for (String s : schemas) {
             if (!DdlPlanner.valid(s)) {
-                out.add(new Skip(s, "недопустимое имя схемы"));
+                out.add(new Skip(s, "недопустимое имя схемы", false));
                 continue;
             }
             String reserved = reservedReason(s);
             if (reserved != null) {
-                out.add(new Skip(s, "защищена и билдеру недоступна"
-                        + (reserved.isBlank() ? "" : " (" + reserved + ")")));
+                out.add(new Skip(s, "существующие таблицы защищены, новые создавать можно"
+                        + (reserved.isBlank() ? "" : " (" + reserved + ")"), true));
                 continue;
             }
             if (existsInDb(s) && !isOwned(s)) {
-                out.add(new Skip(s, "уже есть в базе и заведена не билдером"));
+                out.add(new Skip(s, "уже есть в базе и заведена не билдером", false));
             }
         }
         return out;
     }
 
-    private static Set<String> names(List<Skip> skips) {
-        Set<String> out = new LinkedHashSet<>();
-        if (skips != null) for (Skip s : skips) out.add(s.schema());
+    private static Map<String, Skip> guard(List<Skip> skips) {
+        Map<String, Skip> out = new LinkedHashMap<>();
+        if (skips != null) for (Skip s : skips) out.put(s.schema(), s);
         return out;
     }
 
     /**
-     * Инструкция задевает недоступную схему? Считаем по всем её схемам, а не только по
-     * целевой: внешний ключ живёт в нашей таблице, но ссылается в чужую — и повесил бы
-     * на неё constraint. Такое тоже мимо.
+     * Инструкцию выполнять нельзя?
+     * <p>
+     * Чужая схема закрыта целиком, и считаем по всем схемам инструкции, а не только по
+     * целевой: внешний ключ живёт в нашей таблице, но вешает constraint на ту, куда
+     * ссылается — такое тоже мимо.
+     * <p>
+     * Схема из стоп-листа устроена мягче: закрыты её СУЩЕСТВУЮЩИЕ таблицы, а не она сама.
+     * Новую таблицу в ней завести можно, вместе с её колонками и ключами — ничего чужого
+     * это не трогает. А вот колонка в уже существующую не пройдёт: там боевые справочники,
+     * и лишнее поле ломает синхронизацию с продом. Ссылаться на такую таблицу извне
+     * разрешаем: внешний ключ создаётся на СВОЕЙ таблице и структуру защищённой не меняет.
+     * Саму схему не создаём — она и так есть.
      */
-    private static boolean touchesSkipped(DdlPlanner.Stmt st, Set<String> off) {
-        if (off.isEmpty()) return false;
-        for (String r : st.refs()) if (off.contains(r)) return true;
-        return off.contains(st.schema());
+    private static boolean blocked(DdlPlanner.Stmt st, Map<String, Skip> guard, Set<String> have) {
+        if (guard.isEmpty()) return false;
+        for (String r : st.refs()) {
+            Skip s = guard.get(r);
+            if (s != null && !s.newTablesOk()) return true;
+        }
+        Skip own = guard.get(st.schema());
+        if (own == null) return false;
+        if (!own.newTablesOk()) return true;
+        if ("CREATE_SCHEMA".equals(st.kind())) return true;
+        return st.table() != null && have.contains("T:" + st.schema() + "." + st.table());
     }
 
     // -------------------------------------------------------- ЧТО УЖЕ ЕСТЬ В БАЗЕ
@@ -358,7 +384,12 @@ public class SchemaDdlService {
     public Map<String, Object> dropCandidates(JsonNode model) {
         Model want = modelTables(model);
         return tx.execute(s -> {
-            Set<String> off = names(skips(want.schemas()));
+            /* Мимо только схемы, закрытые целиком. Схему из стоп-листа не исключаем:
+               кандидатами и так становятся лишь таблицы из app.schema_owned, то есть
+               заведённые самим билдером, — а их он вправе и править. Боевые справочники
+               в реестр не попадали никогда и сюда не придут. */
+            Set<String> off = new LinkedHashSet<>();
+            for (Skip g : skips(want.schemas())) if (!g.newTablesOk()) off.add(g.schema());
             List<Map<String, Object>> out = new ArrayList<>();
             for (String key : ownedTables()) {
                 Set<String> cols = want.tables().get(key);
