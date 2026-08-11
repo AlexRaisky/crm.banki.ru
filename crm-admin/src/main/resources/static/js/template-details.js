@@ -384,6 +384,11 @@ function sfdFieldDefs(d){
        а этот — сам канал в имени, и решение по нему принимают в начале, а не в конце.
        Канал только SMS и e-mail: у пуша и КЦ выгружать в кол-центр нечего. */
     if (isSms || isEmail) mainRows.push({ k:'cc_cross', label:'is_contact', type:'bool' });
+    /* is_autopromo — рядом со статусом и is_contact, а не среди служебных флагов:
+       он тоже меняет само имя кампании (убирает из него дату), а не только вешает
+       суффикс. Во всех каналах кроме КЦ: у сегментов кол-центра имя строится по
+       своим правилам (contact_…day), суффикса там не предусмотрено. */
+    if (!isCC) mainRows.push({ k:'autopromo', label:'is_autopromo', type:'bool' });
     /* combo, а не select: значение выбирается из справочника ИЛИ вписывается своё —
        новые имена коммуникаций заводятся регулярно, строгий список их бы отсёк. */
     mainRows.push({ k:'comname', label:'Communication name', wide:true, type:'combo',
@@ -435,9 +440,6 @@ function sfdFieldDefs(d){
         { k:'news', label:'news', type:'bool' },
         { k:'mobile_app', label:'mobile_app', type:'bool' }
     ]);
-    /* is_autopromo — во всех каналах, кроме КЦ: у сегментов кол-центра имя кампании
-       строится по своим правилам (contact_…day), и суффикса там не предусмотрено */
-    if (!isCC) svc.push({ k:'autopromo', label:'is_autopromo', type:'bool' });
     /* night_send есть в таблицах push, sms и live_activity — но не в fa/vk */
     if (!isFa && !isVk) svc.push({ k:'night_send', label:'night_send', type:'bool' });
     secs.push({ sec:'Служебные параметры и флаги', rows: svc });
