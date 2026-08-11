@@ -498,9 +498,15 @@ function promoComputeClash(){
     var bases = promoBaseList(r.base);
     if (!bases.length) return;
     var camp = promoCampaignKey(r);
+    /* Продукт входит в ключ: одна и та же база под разными продуктами — это разные
+       срезы аудитории, и планируют их независимо. Раньше «Инвестиции» и «Курсы
+       валют», совпавшие по базе, подсвечивались как конфликт, хотя мешать друг
+       другу не могут. Спорить тут не о чем: правило про то, чтобы человек не
+       получил два промо ОДНОГО продукта в день. */
+    var prod = String(r.product == null ? '' : r.product).trim().toLowerCase();
     bases.forEach(function(b){
       var low = b.toLowerCase();
-      var k = r.d + '||' + low;
+      var k = r.d + '||' + prod + '||' + low;
       var slot = byDay[k] = byDay[k] || { base: low, rows: [], camps: {} };
       slot.rows.push(i);
       slot.camps[camp] = true;
