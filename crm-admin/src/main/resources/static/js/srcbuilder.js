@@ -95,16 +95,73 @@
     }
   };
 
-  el.sbCopyBtn.addEventListener("click", async () => {
+  /* Копирование в буфер.
+     navigator.clipboard существует только в защищённом контексте — по HTTPS или на
+     localhost. Панель отдаётся по http://crm.banki.ru, поэтому объекта там просто
+     НЕТ: обращение к нему бросало TypeError, его глотал пустой catch, и кнопка
+     молча не делала ничего. Отсюда запасной путь через скрытое поле и execCommand:
+     он устарел, но работает без защищённого контекста. И об отказе теперь говорим
+     вслух — молчащая кнопка хуже честной ошибки. */
+  function copyText(value){
+    if (navigator.clipboard && window.isSecureContext){
+      return navigator.clipboard.writeText(value);
+    }
+    return new Promise((resolve, reject) => {
+      const ta = document.createElement("textarea");
+      ta.value = value;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;top:-1000px;opacity:0";
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);   /* без этого не копирует iOS */
+      let ok = false;
+      try { ok = document.execCommand("copy"); } catch(e){ ok = false; }
+      document.body.removeChild(ta);
+      ok ? resolve() : reject(new Error("execCommand"));
+    });
+  }
+
+  el.sbCopyBtn.addEventListener("click", () => {
     if (el.sbCopyBtn.disabled) return;
     const value = el.sbResult.textContent.trim();
     if (!value) return;
-    try {
-      await navigator.clipboard.writeText(value);
+    copyText(value).then(() => {
       el.sbCopyBtn.textContent = (typeof t === "function") ? t("✓ Скопировано") : "✓ Скопировано";
       setTimeout(sbUpdate, 1600);
-    } catch(e){}
+    }).catch(() => {
+      el.sbCopyBtn.textContent = (typeof t === "function") ? t("Не удалось — скопируйте вручную") : "Не удалось — скопируйте вручную";
+      setTimeout(sbUpdate, 2600);
+    });
   });
+
+  /* ---- партнёр: подсказка из справочника и пополнение его же ---- */
+  function fillPartners(){
+    const list = document.getElementById("sbPartnerList");
+    if (!list || !window.CRM || !CRM.dictPartners) return;
+    CRM.dictPartners().then(names => {
+      list.innerHTML = (names || []).map(n =>
+        '<option value="' + String(n).replace(/"/g, "&quot;") + '"></option>').join("");
+    }).catch(() => {});
+  }
+  const addBtn = document.getElementById("sbPartnerAdd");
+  if (addBtn) addBtn.addEventListener("click", () => {
+    const value = (el.sbPartner.value || "").trim();
+    if (!value) return alert((typeof t === "function") ? t("Сначала впишите партнёра.") : "Сначала впишите партнёра.");
+    /* Уже в справочнике — запрос не нужен, только выравниваем написание. */
+    const have = [...document.querySelectorAll("#sbPartnerList option")].map(o => o.value);
+    const same = have.filter(p => p.toLowerCase() === value.toLowerCase())[0];
+    if (same){ el.sbPartner.value = same; sbUpdate(); return; }
+    if (!window.CRM || !CRM.dictAddPartner) return;
+    addBtn.disabled = true;
+    CRM.dictAddPartner(value).then(res => {
+      el.sbPartner.value = (res && res.name) || value;
+      fillPartners(); sbUpdate();
+    }).catch(e => {
+      alert(((typeof t === "function") ? t("Не удалось добавить партнёра") : "Не удалось добавить партнёра")
+            + ": " + ((e && e.message) || e));
+    }).then(() => { addBtn.disabled = false; });
+  });
+  fillPartners();
 
   ["sbChannel","sbCampType","sbProduct","sbPartner","sbUniqP","sbDate","sbUniqT","sbSegment","sbDay"].forEach(id => {
     ["input","change"].forEach(ev => el[id].addEventListener(ev, () => { syncVisibility(); sbUpdate(); }));

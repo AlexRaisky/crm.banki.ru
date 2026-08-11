@@ -1126,7 +1126,14 @@
       <!-- PROMO -->
       <div class="field" data-req="partner" id="sbWrapPartner" style="display:none">
         <label for="sbPartner"><span data-i18n="Партнёр / General / Digest">Партнёр / General / Digest</span> <span class="req">*</span></label>
-        <input id="sbPartner" type="text" placeholder="General / tinkoff">
+        <!-- input + datalist, а не select: General и Digest в справочнике не значатся,
+             да и новый партнёр появляется раньше, чем его успевают завести. Кнопка «+»
+             кладёт вписанное в справочник, чтобы в следующий раз он был в подсказке. -->
+        <div class="combo-add">
+          <input id="sbPartner" type="text" list="sbPartnerList" placeholder="General / tinkoff" autocomplete="off">
+          <datalist id="sbPartnerList"></datalist>
+          <button type="button" class="dict-add" id="sbPartnerAdd" title="Добавить партнёра в справочник">+</button>
+        </div>
       </div>
       <div class="field" data-req="uniqP" id="sbWrapUniqP" style="display:none">
         <label for="sbUniqP"><span data-i18n="Уникальное название">Уникальное название</span> <span class="req">*</span></label>
