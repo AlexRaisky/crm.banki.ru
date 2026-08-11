@@ -757,6 +757,16 @@ function renderEntityForm(out){
   };
 }
 
+/* Тип БД выбирается из списка — как и UI-тип: набор конечный, а опечатка в нём
+   доезжает до DDL. Но у поля, поднятого из существующей таблицы, тип может быть
+   любым (varchar(64), numeric(12,4)) — такой ставим первой строкой, иначе select
+   молча подменил бы его первым значением списка. */
+function dbTypeOptions(cur){
+  const v = String(cur || "");
+  const opts = DB_TYPES.includes(v) ? DB_TYPES : [v].concat(DB_TYPES);
+  return opts.map(t => `<option value="${esc(t)}"${t === v ? " selected" : ""}>${t ? esc(t) : "—"}</option>`).join("");
+}
+
 /* --- поле: форма + живой предпросмотр + подсказки --- */
 function fieldFormHtml(f, isNew){
   return `<div class="sb-form">
@@ -765,8 +775,8 @@ function fieldFormHtml(f, isNew){
       <div class="sb-fg"><label>${T("Название")}</label><input id="sbF_label" value="${esc(f.label||"")}"></div>
     </div>
     <div class="sb-grid2">
-      <div class="sb-fg"><label>${T("Тип в БД")}</label><input class="mono" id="sbF_db" list="sbDbTypes" value="${esc(f.db_type||"")}">
-        <datalist id="sbDbTypes">${DB_TYPES.map(t => `<option>${t}</option>`).join("")}</datalist></div>
+      <div class="sb-fg"><label>${T("Тип в БД")}</label><select class="mono" id="sbF_db">
+        ${dbTypeOptions(f.db_type)}</select></div>
       <div class="sb-fg"><label>${T("UI-тип (как показывается)")}</label><select id="sbF_ui">
         ${UI_TYPES.map(t => `<option value="${t.v}" ${f.ui_type===t.v?"selected":""}>${esc(T(t.label))}</option>`).join("")}</select></div>
     </div>
@@ -853,7 +863,7 @@ function wireFieldAux(isNew){
   ["sbF_name","sbF_label","sbF_default","sbF_options","sbF_desc"].forEach(id => { const el = $("#"+id); if (el) el.oninput = refreshFieldAux; });
   ["sbF_target","sbF_rel","sbF_req","sbF_ro"].forEach(id => { const el = $("#"+id); if (el) el.onchange = refreshFieldAux; });
   const db = $("#sbF_db");
-  if (db) db.oninput = () => { db.dataset.touched = "1"; refreshFieldAux(); };
+  if (db) db.onchange = () => { db.dataset.touched = "1"; refreshFieldAux(); };
   const ui = $("#sbF_ui");
   if (ui) ui.onchange = () => {
     if (db && (isNew ? !db.dataset.touched : !db.value.trim())) db.value = uiMeta(ui.value).db;
