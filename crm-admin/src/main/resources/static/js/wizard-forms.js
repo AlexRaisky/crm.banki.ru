@@ -173,12 +173,14 @@ function isCallcenterOn(form) {
    overrideDay — подстановка дня для строк цепочки. */
 function computeCampaignName(form, overrideDay) {
     var val = function (cls) { var el = form.querySelector('.' + cls); return el ? (el.value || '') : ''; };
+    var on = function (cls) { var el = form.querySelector('.' + cls); return !!(el && el.checked); };
     var senderType = val('trigger');   // Sender Type: promo | trigger
     var product = val('product');
     var partner = val('partner');
     var comname = val('comname');
     var day = (overrideDay !== undefined && overrideDay !== '') ? String(overrideDay) : val('day');
-    var date = formatDateDDMMYY();
+    /* autopromo: дата из имени кампании уходит — такие рассылки не привязаны ко дню */
+    var date = on('cb-autopromo') ? '' : formatDateDDMMYY();
     var channel = channelTab(form);
     if (channel === 'cc') {
         var segment = val('segment');
@@ -187,7 +189,12 @@ function computeCampaignName(form, overrideDay) {
         return '';
     }
     var tab = isCallcenterOn(form) ? 'contact' : channel;   // sms | mobile-push | email | contact
-    if (senderType === 'promo')   return tab + '_' + senderType + '_' + product + '_' + partner + '_' + comname + '_' + date;
+    if (senderType === 'promo') {
+        /* дата приклеивается отдельно: у autopromo её нет, и обычная конкатенация
+           оставила бы висеть хвостовой разделитель — sms_promo_kk_alfa_leto_ */
+        var head = tab + '_' + senderType + '_' + product + '_' + partner + '_' + comname;
+        return date ? head + '_' + date : head;
+    }
     if (senderType === 'trigger') return tab + '_' + senderType + '_' + product + '_' + comname + '_' + day + 'day';
     return '';
 }
@@ -237,6 +244,8 @@ function updateComNameFromContext(comnameInput) {
     if (on('cb-national_rating')) v += '-nr';
     if (on('cb-news')) v += '-news';
     if (on('cb-mobile_app')) v += '-mobile-app';
+    /* autopromo — последним суффиксом; дефис только если есть к чему цеплять */
+    if (on('cb-autopromo')) v += (v ? '-' : '') + 'autopromo';
     comnameInput.value = v;
     syncNameFromCom(comnameInput);
 }
@@ -271,6 +280,7 @@ function updateCheckboxesFromComname(comEl) {
     set('cb-national_rating', v.includes('-nr'));
     set('cb-news', v.includes('-news'));
     set('cb-mobile_app', v.includes('-mobile-app'));
+    set('cb-autopromo', v.includes('-autopromo') || v === 'autopromo');
 }
 /* Ручной ввод communication_name: синхронизируем флаги и пересчитываем campaign_name
    (сам comname НЕ перестраиваем, чтобы не мешать вводу). */

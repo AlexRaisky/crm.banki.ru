@@ -59,6 +59,17 @@ public class TemplateStore {
      */
     public static final java.util.Set<String> PROD_TIMESTAMPS = java.util.Set.of("timestamp_cr", "timestamp_upd");
 
+    /**
+     * Колонка source прод-таблицы e-mail и то, что мы в неё кладём.
+     * <p>
+     * Это НЕ имя кампании: оно уезжает отдельной колонкой source_type (см. CORE_TO_PROD).
+     * В source у писем стоит плейсхолдер — ссылки в письме собираются через него, а
+     * подставляет значение CRM в момент отправки. Тот же плейсхолдер знает «Конструктор
+     * ссылок» (onelink.js, getSourceValue) для канала email.
+     */
+    static final String EMAIL_SOURCE_COL = "source";
+    static final String EMAIL_SOURCE_PLACEHOLDER = "{{linkSourceCRM}}";
+
     private static final Map<String, String> CORE_TO_PROD = new LinkedHashMap<>(Map.ofEntries(
             Map.entry("communication_name", "communication_name"),
             Map.entry("campaign_name", "source_type"),
@@ -225,6 +236,10 @@ public class TemplateStore {
         // Метки времени прода наружу не отправляем: их проставляет сам прод (см. ProdDbService).
         // Иначе записали бы туда устаревшее значение и сломали отслеживание изменений.
         PROD_TIMESTAMPS.forEach(out::remove);
+        // E-mail: в колонку source уезжает плейсхолдер, а не значение из карточки. Ссылки в
+        // письмах собираются через {{linkSourceCRM}} — CRM подставит источник в момент
+        // отправки. Имя кампании это не трогает: оно живёт в отдельной колонке source_type.
+        if ("email".equals(channel)) out.put(EMAIL_SOURCE_COL, EMAIL_SOURCE_PLACEHOLDER);
         List<String> emptyKeys = new ArrayList<>();
         out.fieldNames().forEachRemaining(k -> { if (out.get(k).isNull()) emptyKeys.add(k); });
         emptyKeys.forEach(out::remove);
@@ -344,6 +359,13 @@ public class TemplateStore {
             if (PROD_TIMESTAMPS.contains(k)) return;   // метки — бухгалтерия прода, у себя не храним
             props.set(k, prod.get(k));
         });
+        // Обратный ход: в проде у писем в source стоит плейсхолдер (см. prodPayload).
+        // Тянуть его к себе нельзя — карточка показывает channel_props.source как имя
+        // кампании, и вместо имени в поле оказался бы {{linkSourceCRM}}. Берём имя из
+        // source_type, куда оно и уезжало.
+        if ("email".equals(channel) && EMAIL_SOURCE_PLACEHOLDER.equals(text(prod, EMAIL_SOURCE_COL))) {
+            props.put(EMAIL_SOURCE_COL, nz(text(prod, "source_type")));
+        }
         List<String> products = new ArrayList<>();
         JsonNode pt = prod.get("product_type");
         if (pt != null && pt.isArray()) pt.forEach(n -> products.add(n.asText()));

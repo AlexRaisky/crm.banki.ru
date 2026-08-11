@@ -25,6 +25,9 @@ function renderTemplateDetails(data, templateId) {
        виден в campaign_name, где вместо канала стоит contact_. Оттуда и читаем,
        иначе галка при открытии сохранённого шаблона всегда была бы снята. */
     if (work.cc_cross == null) work.cc_cross = /^contact_/.test(String(work.source || ''));
+    /* is_autopromo — тоже без своей колонки: виден суффиксом -autopromo в
+       communication_name, оттуда и читаем при открытии сохранённого шаблона */
+    if (work.autopromo == null) work.autopromo = sfdAutopromoOn(work);
     SFD_STATE = {
         id: templateId || null,
         orig: data,
@@ -43,7 +46,7 @@ function renderTemplateDetails(data, templateId) {
 function sfdStripComnameFlags(v){
     v = String(v == null ? '' : v).trim();
     if (v.indexOf('marketplace-') === 0) v = v.slice('marketplace-'.length);
-    var sufs = ['-cross','-dialog','-loyalty','-nr','-news','-mobile-app'];
+    var sufs = ['-cross','-dialog','-loyalty','-nr','-news','-mobile-app','-autopromo'];
     var changed = true;
     while (changed){
         changed = false;
@@ -65,13 +68,30 @@ function sfdComputeComname(d){
     if (d.national_rating) v += '-nr';
     if (d.news) v += '-news';
     if (d.mobile_app) v += '-mobile-app';
+    /* autopromo — последним суффиксом. Дефис только если есть к чему цеплять:
+       у пустого имени коммуникации остаётся голое autopromo. */
+    if (d.autopromo) v += (v ? '-' : '') + 'autopromo';
     return v;
 }
+/* Флаг is_autopromo своей колонки в notice.* не имеет — признак живёт суффиксом в
+   communication_name. Правки из списка шаблонов приходят объектом без ключа
+   autopromo (dtoToV1 его не знает), поэтому при отсутствии ключа читаем имя:
+   иначе переименование строки в списке вернуло бы в campaign_name дату. */
+function sfdAutopromoOn(d){
+    if (d.autopromo != null) return !!d.autopromo;
+    return /(^|-)autopromo(-|$)/.test(String(d.comname || ''));
+}
 function sfdComputeCampaignName(d){
+    /* «выгрузка в КЦ» (в развёрнутой форме — cb-sms-cc / cb-email-cc): вместо канала в
+       campaign_name встаёт contact. Своей колонки у флага нет, поэтому при открытии
+       он восстанавливается из префикса — но раз человек может его переключить, решает
+       именно галка, и только при её отсутствии смотрим на сохранённое имя. */
+    var ccOn = (d.cc_cross != null ? !!d.cc_cross : /^contact_/.test(String(d.source || '')));
     var senderType = d.trigger;
     if (senderType !== 'promo' && senderType !== 'trigger') return '';
     var product = d.product || '', partner = d.partner || '', comname = d.comname || '', day = d.day || '';
-    var date = (typeof formatDateDDMMYY === 'function') ? formatDateDDMMYY() : '';
+    /* autopromo: дата из имени кампании уходит — такие рассылки не привязаны ко дню */
+    var date = sfdAutopromoOn(d) ? '' : ((typeof formatDateDDMMYY === 'function') ? formatDateDDMMYY() : '');
     if (d.channel === 'cc'){
         var segment = (d.segment != null && d.segment !== '') ? d.segment : (d.code || '');
         if (senderType === 'trigger') return 'contact_' + senderType + '_' + product + '_' + comname + '_' + segment + '_' + day + 'day';
@@ -81,19 +101,22 @@ function sfdComputeCampaignName(d){
        FA — как fin-assistent (единый нейминг с «Планированием промо») */
     var chTab = ({ sms:'sms', push:'mobile-push', 'mobile-push':'mobile-push', email:'email',
                    fa:'fin-assistent', vk:'vk' })[d.channel] || d.channel;
-    /* «выгрузка в КЦ» (в старой форме — cb-sms-cc / cb-email-cc): вместо канала в
-       campaign_name встаёт contact. Своей колонки у флага нет, поэтому при открытии
-       он восстанавливается из префикса — но раз человек может его переключить, решает
-       именно галка, и только при её отсутствии смотрим на сохранённое имя. */
-    var tab = (d.cc_cross != null ? !!d.cc_cross : /^contact_/.test(d.source || ''))
-              ? 'contact' : chTab;
-    if (senderType === 'promo') return tab + '_' + senderType + '_' + product + '_' + partner + '_' + comname + '_' + date;
+    var tab = ccOn ? 'contact' : chTab;
+    /* дата приклеивается отдельно: у autopromo её нет, и конкатенация оставила бы
+       висеть хвостовой разделитель — email_promo_kk_alfa_leto_.
+       Пустые product/partner при этом по-прежнему дают двойное подчёркивание:
+       так видно, что поле не заполнено, и правило нейминга это не меняет. */
+    if (senderType === 'promo'){
+        var head = tab + '_' + senderType + '_' + product + '_' + partner + '_' + comname;
+        return date ? head + '_' + date : head;
+    }
     return tab + '_' + senderType + '_' + product + '_' + comname + '_' + day + 'day';
 }
 /* touch здесь не ради comname/source (они его не используют), а ради адреса
    отправителя: renewal — первое условие в правиле. */
 var SFD_NAME_KEYS = { trigger:1, product:1, partner:1, comname:1, day:1, segment:1, touch:1,
-    marketplace:1, cross:1, cc_cross:1, dialog:1, loyalty:1, national_rating:1, news:1, mobile_app:1 };
+    marketplace:1, cross:1, cc_cross:1, dialog:1, loyalty:1, national_rating:1, news:1, mobile_app:1,
+    autopromo:1 };
 /* Адрес отправителя e-mail — копия generateEmail из v2. Порядок проверок значимый:
    renewal (по touch_point) → service → info (по business_communication_type) →
    trigger+adv → promo+adv (по trigger_type) → newsletter как общий случай. */
@@ -412,6 +435,9 @@ function sfdFieldDefs(d){
         { k:'news', label:'news', type:'bool' },
         { k:'mobile_app', label:'mobile_app', type:'bool' }
     ]);
+    /* is_autopromo — во всех каналах, кроме КЦ: у сегментов кол-центра имя кампании
+       строится по своим правилам (contact_…day), и суффикса там не предусмотрено */
+    if (!isCC) svc.push({ k:'autopromo', label:'is_autopromo', type:'bool' });
     /* night_send есть в таблицах push, sms и live_activity — но не в fa/vk */
     if (!isFa && !isVk) svc.push({ k:'night_send', label:'night_send', type:'bool' });
     secs.push({ sec:'Служебные параметры и флаги', rows: svc });
@@ -460,6 +486,7 @@ var SFD_DB = {
     marketplace:        { all:'marketplace' },
     cross:              { all:'—' },
     cc_cross:           { all:'—' },
+    autopromo:          { all:'—' },
     dialog:             { all:'dialog' },
     loyalty:            { all:'loyalty' },
     national_rating:    { all:'national_rating' },
@@ -518,6 +545,7 @@ var SFD_HELP = {
     marketplace:        'Продукт маркетплейса: в communication_name добавляется префикс marketplace-.',
     cross:              'Кросс-коммуникация: суффикс -cross. Отдельного поля в БД нет — признак живёт в communication_name.',
     cc_cross:           'Выгрузка в кол-центр: в campaign_name вместо канала встаёт contact (sms_promo_… → contact_promo_…). Отдельного поля в БД нет — признак виден только в самом имени.',
+    autopromo:          'Автопромо: к communication_name добавляется суффикс -autopromo, а из campaign_name уходит дата (sms_promo_kk_alfa_leto_110826 → sms_promo_kk_alfa_leto-autopromo). Отдельного поля в БД нет — признак живёт в имени коммуникации.',
     dialog:             'Ведёт на страницу диалога: суффикс -dialog.',
     loyalty:            'Ссылка на продукты лояльности: суффикс -loyalty.',
     national_rating:    'Народный рейтинг: суффикс -nr.',
@@ -665,7 +693,7 @@ function sfdBlank(channel){
              /* VK */ vk_template_name:'', ttl:'', ab_group:'', buttons:'',
              /* Live Activity */ activity_name:'', la_event:'', la_visualization:'',
              la_visualization_attributes:'', la_status:'', current_step:'',
-             marketplace:false, cross:false, cc_cross:false, dialog:false, loyalty:false,
+             marketplace:false, cross:false, cc_cross:false, autopromo:false, dialog:false, loyalty:false,
              national_rating:false, news:false, mobile_app:false, night_send:false };
 }
 function wizardCardOpen(channel){
@@ -1450,6 +1478,7 @@ function collectFormData(formEl, channel) {
         else if (classes.includes('cb-night_send')) data.night_send = val;
         else if (classes.includes('cb-mobile_app')) data.mobile_app = val;
         else if (classes.includes('cb-cross')) data.cross = val;
+        else if (classes.includes('cb-autopromo')) data.autopromo = val;
         else if (classes.includes('cb-chain')) data.chain = val;
         else if (classes.includes('chain-count')) data.chain_count = val;
         else if (classes.includes('cb-sms-cc') || classes.includes('cb-email-cc')) data.cc_cross = val;
