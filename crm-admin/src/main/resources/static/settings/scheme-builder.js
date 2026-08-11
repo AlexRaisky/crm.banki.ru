@@ -1611,7 +1611,18 @@ async function boot(){
   $("#sbZin").onclick = () => { state.scale = Math.min(2, state.scale * 1.15); transform(); };
   $("#sbZout").onclick = () => { state.scale = Math.max(.25, state.scale / 1.15); transform(); };
   $("#sbZreset").onclick = () => { state.scale = 1; state.tx = 20; state.ty = 20; transform(); };
-  $("#sbModal").onclick = ev => { if (ev.target.id === "sbModal") closeModal(); };
+  /* Клик мимо карточки закрывает окно — но только если он там же и начался.
+     Выделение текста в поле часто заканчивается за пределами формы: mouseup
+     приходит на подложку, click всплывает до общего предка (это сам #sbModal),
+     условие срабатывало, и окно закрывалось прямо во время выделения — вместе
+     со всем набранным. Запоминаем, где нажали, и по одному лишь отпусканию
+     не закрываем. */
+  let downOnBackdrop = false;
+  $("#sbModal").onmousedown = ev => { downOnBackdrop = ev.target.id === "sbModal"; };
+  $("#sbModal").onclick = ev => {
+    if (ev.target.id === "sbModal" && downOnBackdrop) closeModal();
+    downOnBackdrop = false;
+  };
 
   /* панорама и зум канваса */
   canvas.onmousedown = ev => {
