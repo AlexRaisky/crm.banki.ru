@@ -58,24 +58,36 @@ public class SmsCheckReportController {
         return service.configGet();
     }
 
+    /** Лист «по дням» как данные — для показа отчёта прямо на странице. */
+    @GetMapping("/daily")
+    public Map<String, Object> daily(@RequestParam String month,
+                                     @RequestParam(defaultValue = "sms") String channel) {
+        access.requireCapability(Capability.READ, Sections.REP_SMSCHECK);
+        return service.daily(parseMonth(month), channel);
+    }
+
     /** Скачать .xlsx за месяц (YYYY-MM) по каналу (sms|push|email). */
     @GetMapping("/download")
     public ResponseEntity<byte[]> download(@RequestParam String month,
                                            @RequestParam(defaultValue = "sms") String channel) {
         access.requireCapability(Capability.READ, Sections.REP_SMSCHECK);
-        YearMonth ym;
-        try {
-            ym = YearMonth.parse(month);
-        } catch (DateTimeParseException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Месяц должен быть в формате YYYY-MM.");
-        }
-        byte[] xlsx = service.build(ym, channel);
+        byte[] xlsx = service.build(parseMonth(month), channel);
         String name = "check-sms-" + channel.toLowerCase() + "-" + month + ".xlsx";
+        // (имя файла собираем из уже проверенных параметров)
         // RFC 5987: имя ASCII-безопасное, поэтому обычного filename достаточно
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
                 .contentType(MediaType.parseMediaType(
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(xlsx);
+    }
+
+    /** Месяц из строки YYYY-MM — общий разбор для выгрузки и для данных на странице. */
+    private static YearMonth parseMonth(String month) {
+        try {
+            return YearMonth.parse(month);
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Месяц должен быть в формате YYYY-MM.");
+        }
     }
 }

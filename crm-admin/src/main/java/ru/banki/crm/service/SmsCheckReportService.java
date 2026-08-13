@@ -83,6 +83,13 @@ public class SmsCheckReportService {
 
     private static final Map<String, String> CHANNELS = Map.of("sms", "sms", "push", "push", "email", "email");
 
+    /**
+     * Сервисный шаблон, чьи косты в листе «по дням» вынесены отдельной строкой
+     * (в шаблоне это {@code SUMIFS('день'!$L:$L,'день'!$D:$D,"180")} — столбец D листа-дня
+     * это template_id). Значение зашито в книге, поэтому и у нас константой.
+     */
+    private static final String SERVICE_TEMPLATE_ID = "180";
+
     /** Заголовки колонок A–T листа-дня (5 разрезов + 15 метрик). */
     private static final String[] HEADERS = {
             "Row gr 1", "Row gr 2", "Row gr 3", "Row gr 4", "Row gr 5",
@@ -157,6 +164,114 @@ public class SmsCheckReportService {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Не удалось сформировать Excel: " + rootMessage(e), e);
         }
+    }
+
+    // ------------------------------------------------------- лист «по дням»
+    /**
+     * Лист «по дням» — но на странице, без скачивания книги.
+     * <p>
+     * Считаем ровно то же, что формулы этого листа в шаблоне: он самодостаточен и берёт
+     * из каждого листа-дня только строку Grand Total (F2, K2, L2, M2) плюс один
+     * {@code SUMIFS} по сервисному шаблону. Данные те же самые, что уезжают в книгу
+     * (тот же {@link #query}), поэтому цифры на странице и в Excel сходятся по построению.
+     * <p>
+     * Две особенности шаблона намеренно НЕ повторяем:
+     * <ul>
+     *   <li>в строке «выдач» 11-й день там ссылается на лист «10» — опечатка автора,
+     *       из-за которой десятое число показано дважды;</li>
+     *   <li>динамика первого дня считается к 31-му числу ТОГО ЖЕ месяца
+     *       ({@code =B2/AF2-100%}); предыдущего дня у первого числа нет, оставляем пусто.</li>
+     * </ul>
+     */
+    public Map<String, Object> daily(YearMonth month, String channelKey) {
+        String channel = CHANNELS.get(channelKey == null ? "" : channelKey.toLowerCase());
+        if (channel == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный канал. Ожидается sms, push или email.");
+        Long connId = configuredConnectionId();
+        if (connId == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Источник данных (DWH) не выбран. Администратор задаёт его в разделе «Отчёты».");
+        }
+        Map<Integer, List<DayRow>> byDay = query(connId, month, channel);
+        int days = month.lengthOfMonth();
+
+        double[] sent = new double[days + 1], issued = new double[days + 1], rev = new double[days + 1],
+                 cost = new double[days + 1], costSvc = new double[days + 1];
+        for (int d = 1; d <= days; d++) {
+            for (DayRow r : byDay.getOrDefault(d, List.of())) {
+                sent[d] += r.m[0];
+                issued[d] += r.m[5];
+                cost[d] += r.m[6];
+                rev[d] += r.m[7];
+                if (SERVICE_TEMPLATE_ID.equals(r.templateId)) costSvc[d] += r.m[6];
+            }
+        }
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        rows.add(metricRow("sent", "отправлено", "int", sent, days));
+        rows.add(metricRow("issued", "выдач", "int", issued, days));
+        rows.add(ratioRow("cr", "CR", issued, sent, days));
+        rows.add(metricRow("revenue", "rew", "money", rev, days));
+        rows.add(metricRow("cost", "cost", "money", cost, days));
+        rows.add(metricRow("costService", "cost-сервис", "money", costSvc, days));
+
+        double[] costRest = new double[days + 1], gm = new double[days + 1];
+        for (int d = 1; d <= days; d++) {
+            costRest[d] = cost[d] - costSvc[d];
+            gm[d] = rev[d] - costRest[d];
+        }
+        rows.add(metricRow("costRest", "cost без сервисных", "money", costRest, days));
+        rows.add(metricRow("gm", "GM", "money", gm, days));
+        rows.add(ratioRow("gmRate", "GM, %", gm, rev, days));
+        rows.add(deltaRow("sentDelta", "динамика отправок", sent, days));
+        rows.add(deltaRow("revenueDelta", "динамика rew", rev, days));
+        rows.add(ratioRow("smsCost", "ст-ть СМС", cost, sent, days));
+        rows.add(ratioRow("eps", "EPS", rev, issued, days));
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("month", month.toString());
+        out.put("channel", channelKey.toLowerCase());
+        out.put("days", days);
+        out.put("rows", rows);
+        return out;
+    }
+
+    /** Строка-сумма: значения по дням и итог месяца как их сумма. */
+    private static Map<String, Object> metricRow(String key, String label, String unit, double[] v, int days) {
+        double total = 0;
+        List<Double> vals = new ArrayList<>(days);
+        for (int d = 1; d <= days; d++) { vals.add(v[d]); total += v[d]; }
+        return row(key, label, unit, vals, total);
+    }
+
+    /** Строка-отношение: и по дням, и в итоге считается от сумм, а не усредняется. */
+    private static Map<String, Object> ratioRow(String key, String label, double[] num, double[] den, int days) {
+        double n = 0, d0 = 0;
+        List<Double> vals = new ArrayList<>(days);
+        for (int d = 1; d <= days; d++) {
+            vals.add(den[d] == 0 ? null : num[d] / den[d]);
+            n += num[d];
+            d0 += den[d];
+        }
+        return row(key, label, "ratio", vals, d0 == 0 ? null : n / d0);
+    }
+
+    /** Строка-динамика: к предыдущему дню. У первого числа предыдущего дня нет — пусто. */
+    private static Map<String, Object> deltaRow(String key, String label, double[] v, int days) {
+        List<Double> vals = new ArrayList<>(days);
+        for (int d = 1; d <= days; d++) {
+            vals.add(d == 1 || v[d - 1] == 0 ? null : v[d] / v[d - 1] - 1);
+        }
+        return row(key, label, "percent", vals, null);
+    }
+
+    private static Map<String, Object> row(String key, String label, String unit, List<Double> vals, Double total) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("key", key);
+        m.put("label", label);
+        m.put("unit", unit);
+        m.put("values", vals);
+        m.put("total", total);
+        return m;
     }
 
     /** Zip-хирургия: перезаписать XML листов-дней, остальное скопировать байт-в-байт. */

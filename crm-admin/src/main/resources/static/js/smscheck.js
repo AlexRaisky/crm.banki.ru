@@ -117,6 +117,65 @@ function scDownload(){
     .finally(function(){ if (btn) btn.disabled = false; });
 }
 
+/* ---------- лист «по дням» прямо на странице ----------
+   Тот же лист, что в книге, но без скачивания. Считает его сервер по тем же данным,
+   что уезжают в Excel (/daily), поэтому цифры сходятся. Строки приходят готовыми —
+   здесь только вёрстка и форматирование чисел по признаку unit. */
+function scShowDaily(){
+  var month = (document.getElementById('scMonth') || {}).value || '';
+  var channel = (document.getElementById('scChannel') || {}).value || 'sms';
+  if (!month){ scArea('<div class="rp-embed-stub"><b>' + scT('Выберите месяц') + '</b></div>'); return; }
+  var btn = document.getElementById('scShow');
+  if (btn) btn.disabled = true;
+  scArea('<div class="rp-embed-stub">' + scT('Считаем — запрос к DWH…') + '</div>');
+  fetch('/api/reports/sms-check/daily?month=' + encodeURIComponent(month) + '&channel=' + encodeURIComponent(channel),
+        { credentials:'same-origin' })
+    .then(function(r){
+      if (!r.ok) return r.text().then(function(txt){ throw new Error(scMsg(txt, r.status)); });
+      return r.json();
+    })
+    .then(function(d){ scRenderDaily(d); })
+    .catch(function(e){
+      scArea('<div class="rp-embed-stub bad"><b>' + scT('Не удалось посчитать отчёт') + '</b>' +
+        scEsc((e && e.message) || '') + '</div>');
+    })
+    .finally(function(){ if (btn) btn.disabled = false; });
+}
+
+function scRenderDaily(d){
+  if (!d || !d.rows || !d.rows.length){ scArea('<div class="rp-embed-stub"><b>' + scT('Данных за этот месяц нет') + '</b></div>'); return; }
+  var days = d.days || 31;
+  var head = '<tr><th class="sc-h">' + scEsc(d.month) + ' · ' + scEsc(d.channel) + '</th>';
+  for (var i = 1; i <= days; i++) head += '<th>' + i + '</th>';
+  head += '<th class="sc-total">' + scT('месяц') + '</th></tr>';
+
+  var body = d.rows.map(function(r){
+    var cells = (r.values || []).map(function(v){
+      return '<td class="' + scNeg(v) + '">' + scNum(v, r.unit) + '</td>';
+    }).join('');
+    return '<tr><th class="sc-h">' + scEsc(r.label) + '</th>' + cells +
+           '<td class="sc-total ' + scNeg(r.total) + '">' + scNum(r.total, r.unit) + '</td></tr>';
+  }).join('');
+
+  scArea('<div class="sc-daily"><table>' +
+    '<thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
+    '<div class="rp-embed-hint">' +
+    scT('Лист «по дням» из книги, посчитанный на тех же данных. Пустая ячейка — делить не на что (нет отправок или выдач).') +
+    '</div>');
+}
+
+/* отрицательные значения подсвечиваем — в GM и динамике это главное, что ищут глазами */
+function scNeg(v){ return (typeof v === 'number' && v < 0) ? 'neg' : ''; }
+function scNum(v, unit){
+  if (v == null || v === '' || (typeof v === 'number' && !isFinite(v))) return '<span class="sc-dash">—</span>';
+  var n = Number(v);
+  if (unit === 'percent') return (n * 100).toFixed(0) + '%';
+  if (unit === 'ratio')   return n.toFixed(2);
+  if (unit === 'money')   return Math.round(n).toLocaleString('ru-RU');
+  if (unit === 'int')     return Math.round(n).toLocaleString('ru-RU');
+  return String(n);
+}
+
 /* ---------- утилиты ---------- */
 function scArea(html){ var a = document.getElementById('scArea'); if (a) a.innerHTML = html; }
 function scEsc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }

@@ -263,3 +263,29 @@
     .rp-embed-frame{min-height:100vh;min-height:100dvh}
   }
 }
+
+/* ===== ЧЕК СМС траффик: лист «по дням» на странице =====
+   Отдельный @scope: секция #view-report-smscheck в прелюдию выше не входит, и
+   расширять её сейчас нельзя — на неё разом упали бы все .rp-* правила и вид
+   раздела поехал бы. Здесь только таблица отчёта.
+   Таблица широкая по определению — 31 день плюс итог, — поэтому листается внутри
+   рамки, а не растягивает страницу; шапка и колонка названий при прокрутке
+   остаются на месте, иначе на 20-м числе непонятно, какая это строка. */
+@scope (#view-report-smscheck){
+  .sc-daily{overflow:auto;max-height:min(70vh,620px);max-height:min(70dvh,620px);
+    border:1px solid var(--line);border-radius:12px;background:var(--card)}
+  .sc-daily table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:12px}
+  .sc-daily th,.sc-daily td{padding:6px 10px;border-bottom:1px solid var(--line);
+    text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .sc-daily thead th{position:sticky;top:0;z-index:2;background:var(--card2);color:var(--faint);
+    font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  /* название строки — слева и «приклеено»: это единственная текстовая колонка */
+  .sc-daily th.sc-h{position:sticky;left:0;z-index:1;background:var(--card);text-align:left;
+    color:var(--ink);font-weight:600;text-transform:none;letter-spacing:0;font-size:12px}
+  .sc-daily thead th.sc-h{z-index:3;background:var(--card2)}
+  .sc-daily tbody tr:last-child th,.sc-daily tbody tr:last-child td{border-bottom:none}
+  .sc-daily tbody tr:hover td{background:rgba(80,195,255,.06)}
+  .sc-daily .sc-total{background:rgba(80,195,255,.07);font-weight:600;color:var(--ink)}
+  .sc-daily .neg{color:var(--coral)}
+  .sc-daily .sc-dash{color:var(--faint)}
+}
