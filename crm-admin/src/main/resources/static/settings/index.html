@@ -183,7 +183,9 @@
     font-family:var(--sans);font-size:14px;padding:9px 12px;width:100%}
   .dbc-in:focus{outline:none;border-color:var(--blue)}
   .dbc-in.mono{font-family:var(--mono);font-size:12.5px}
-  .badge{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;letter-spacing:.03em}
+  /* nowrap: «не проверялось» и «прод-синк» в узкой колонке рвались пополам, и половина
+     слова оставалась за скруглением плашки */
+  .badge{display:inline-block;white-space:nowrap;font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;letter-spacing:.03em}
   .badge.ok{background:var(--green-bg);color:var(--green)}
   .badge.err{background:var(--coral-bg);color:var(--coral)}
   .badge.off{background:var(--card2);color:var(--faint)}
@@ -1286,7 +1288,11 @@ function dbcRenderList(list){
       '<th>' + t2('Статус') + '</th><th style="text-align:right">' + t2('Действия') + '</th>' +
     '</tr></thead><tbody>' +
     DBC.map(function(c){
-      var lat = (c.latencyMs != null) ? ' <span class="mono">(' + c.latencyMs + ' ms)</span>' : '';
+      /* Задержка — строкой ПОД бейджем, как описание и текст ошибки ниже. Инлайном она
+         вставала рядом с «OK» и в узкой колонке ломалась пополам: «(13» на одной строке,
+         «ms)» на другой. Скобки при переносе на свою строку не нужны. */
+      var lat = (c.latencyMs != null)
+        ? '<div class="mono" style="margin-top:3px;white-space:nowrap">' + c.latencyMs + ' ms</div>' : '';
       var err = (c.status === 'ERROR' && c.error)
         ? '<div class="mono" style="color:var(--coral);font-size:11px;margin-top:3px" title="' + esc(c.error) + '">' + esc(String(c.error).slice(0,120)) + '</div>' : '';
       var purpose = c.purpose ? '<div class="mono" style="margin-top:3px">' + esc(c.purpose) + '</div>' : '';
