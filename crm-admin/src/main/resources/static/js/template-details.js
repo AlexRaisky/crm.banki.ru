@@ -55,13 +55,19 @@ function sfdStripComnameFlags(v){
             if (v.length > s.length && v.slice(-s.length) === s){ v = v.slice(0, -s.length); changed = true; break; }
         }
     }
-    return v || 'NoComName';
+    /* Пустое имя так и остаётся пустым: NoComName здесь подставлялся как заглушка, из-за
+       чего поле выглядело заполненным, а сохранить шаблон всё равно не давало. Теперь
+       NoComName — только плейсхолдер в поле, значением он не становится. */
+    return v;
 }
 function sfdComputeComname(d){
     var b = sfdStripComnameFlags(d.comname);
     /* база out-trigger- достраивается партнёром (правило updateComNameFromContext) */
     if (b.indexOf('out-trigger-') === 0) b = 'out-trigger-' + (d.partner || '');
-    var v = (d.marketplace ? 'marketplace-' : '') + (b || 'NoComName');
+    /* без имени суффиксы вешать не на что: собранное из одних флагов «-cross-nr»
+       именем не является и в campaign_name уехало бы мусором */
+    if (!b) return '';
+    var v = (d.marketplace ? 'marketplace-' : '') + b;
     if (d.cross) v += '-cross';
     if (d.dialog) v += '-dialog';
     if (d.loyalty) v += '-loyalty';
@@ -112,6 +118,64 @@ function sfdComputeCampaignName(d){
     }
     return tab + '_' + senderType + '_' + product + '_' + comname + '_' + day + 'day';
 }
+/* ---------- предзаполнение по типу отправителя ----------
+   У promo-рассылок эти четыре поля почти всегда одни и те же, и заполнять их руками
+   каждый раз незачем. Пишем ТОЛЬКО в пустые: если человек уже что-то выбрал, его выбор
+   важнее нашего умолчания — иначе смена типа отправителя молча затирала бы набранное. */
+var SFD_PROMO_DEFAULTS = { touch:'promo', day:'0', communication_type:'adv', biz_type:'adv' };
+function sfdApplyPromoDefaults(d){
+    if (d.trigger !== 'promo') return false;
+    var changed = false;
+    Object.keys(SFD_PROMO_DEFAULTS).forEach(function(k){
+        var v = d[k];
+        if (v == null || String(v).trim() === ''){ d[k] = SFD_PROMO_DEFAULTS[k]; changed = true; }
+    });
+    return changed;
+}
+
+/* ---------- Landing page из ссылки ----------
+   aff_sub3 — это путь посадочной страницы, и он всегда есть в самой ссылке. Берём всё,
+   что идёт после домена banki.ru (путь, query, якорь), вместе с ведущим слэшем:
+     https://www.banki.ru/promo/leto?utm=1  ->  /promo/leto?utm=1
+   Чужие домены не трогаем: там путь к нашей аналитике отношения не имеет. */
+function sfdLandingFromLink(url){
+    var s = String(url == null ? '' : url).trim();
+    if (!s) return '';
+    var m = /(?:^|\/\/|\.)((?:[a-z0-9-]+\.)*banki\.ru)(\/[^\s]*)?/i.exec(s);
+    if (!m) return '';
+    var tail = m[2] || '';
+    return tail === '/' ? '' : tail;
+}
+/* Ссылка, из которой берём посадочную: у пуша и Live Activity это webview (deep link
+   там служебный, с префиксом deepLink/webview?webviewUrl=), у финансового ассистента —
+   webview либо web_url. У остальных каналов ссылки в карточке нет. */
+function sfdLinkFieldsOf(channel){
+    if (channel === 'push' || channel === 'mobile-push' || channel === 'la') return ['webview'];
+    if (channel === 'fa') return ['webview', 'web_url'];
+    return [];
+}
+/**
+ * Подставить посадочную из ссылки.
+ * <p>
+ * Перетирать введённое руками нельзя, но и застревать на старом значении при смене
+ * ссылки тоже: помним последнее подставленное (st.landingAuto) и обновляем поле, только
+ * пока в нём стоит ровно оно либо пусто. Стоит своё — не трогаем совсем.
+ */
+function sfdApplyLandingFromLink(){
+    var st = SFD_STATE; if (!st) return false;
+    var d = st.work;
+    var fields = sfdLinkFieldsOf(d.channel);
+    var derived = '';
+    for (var i = 0; i < fields.length && !derived; i++) derived = sfdLandingFromLink(d[fields[i]]);
+    if (!derived) return false;
+    var cur = String(d.aff_sub3 == null ? '' : d.aff_sub3).trim();
+    if (cur !== '' && cur !== st.landingAuto) return false;   /* задано руками — оставляем */
+    if (cur === derived) return false;
+    d.aff_sub3 = derived;
+    st.landingAuto = derived;
+    return true;
+}
+
 /* touch здесь не ради comname/source (они его не используют), а ради адреса
    отправителя: renewal — первое условие в правиле. */
 var SFD_NAME_KEYS = { trigger:1, product:1, partner:1, comname:1, day:1, segment:1, touch:1,
@@ -286,8 +350,11 @@ function sfdFieldDefs(d){
         content.push({ k:'email_from', label:'Email from', ro:true });
         content.push({ k:'letteros_id', label:'Letteros ID' });
     } else if (!isCC){
-        content.push({ k:'message', label:'Message text', wide:true, type:'textarea' });
+        /* У пуша заголовок идёт первым, а текст под ним — так же, как их видит человек
+           в шторке уведомления. Раньше порядок был обратный, и карточка расходилась с
+           тем, что получится на экране телефона. */
         if (isPush) content.push({ k:'title', label:'Title' });
+        content.push({ k:'message', label:'Message text', wide:true, type:'textarea' });
         if (isSms) content.push({ k:'sender_name', label:'Sender name', type:'select', opts:['','Banki.ru','Bamm.ru'] });
     }
     if (isPush){
@@ -392,6 +459,7 @@ function sfdFieldDefs(d){
     /* combo, а не select: значение выбирается из справочника ИЛИ вписывается своё —
        новые имена коммуникаций заводятся регулярно, строгий список их бы отсёк. */
     mainRows.push({ k:'comname', label:'Communication name', wide:true, type:'combo',
+                    placeholder:'NoComName',
                     opts: sfdDictOpts(SFD_DICT.comm, null, false),
                     fmt:function(){ return SFD_STATE.work.comname; } });
 
@@ -629,6 +697,7 @@ function sfdRowHtml(f){
                видит подсказку не из справочника, а из своего же прошлого мусора. */
             var inpHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" list="' + lid + '"' +
                       ' autocomplete="off"' +
+                      (f.placeholder ? ' placeholder="' + sfdEsc(f.placeholder) + '"' : '') +
                       ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
             /* f.create: вписанное значение можно тут же занести в справочник — иначе оно
                осталось бы только в этом шаблоне и в следующий раз его снова набирали бы руками */
@@ -681,7 +750,9 @@ var SFD_PUSH_DEEPLINK = 'https://www.banki.ru/deepLink/webview?webviewUrl=';
    никто не выбирал. Пусть человек выберет сам; значения никуда не делись — они
    первые в своих списках. */
 function sfdBlank(channel){
-    return { channel: channel, code:'', active:true, comname:'NoComName', source:'',
+    /* comname пустой: NoComName стоит плейсхолдером в поле. Раньше он был значением,
+       и карточка выглядела заполненной, а завести шаблон не давала. */
+    return { channel: channel, code:'', active:true, comname:'', source:'',
              trigger:'', product:'', partner:'', touch:'', day:'',
              message:'', title:'', sender_name:'',
              /* только у пуша и Live Activity: у FA и VK свои правила ссылок */
@@ -833,12 +904,11 @@ function sfdCreateMissing(d){
        читается сверху вниз ровно так, как человек будет их заполнять. */
     Object.keys(shown).forEach(function(k){
         if (k === 'comname'){
-            /* NoComName — полноценное значение справочника, но им же заводится пустая
-               карточка (sfdBlank) и его же подставляет sfdComputeComname при пустой базе.
-               По значению «не трогали поле» и «выбрали NoComName осознанно» не различить —
-               различаем по флагу, который ставится при первой правке поля. */
-            if (!d.comname || (d.comname === 'NoComName'
-                && !(SFD_STATE && SFD_STATE.comnameTouched))) miss.push('communication_name');
+            /* Имя обязательно и проверяется как обычное поле: карточка теперь открывается
+               с пустым полем и плейсхолдером NoComName, так что «не трогали» и «выбрали
+               осознанно» различать больше не нужно — раньше ради этого держали флаг
+               comnameTouched, и из-за него шаблон не заводился с виду заполненным полем. */
+            if (!String(d.comname || '').trim()) miss.push('communication_name');
             return;
         }
         if (SFD_REQUIRED.indexOf(k) < 0) return;          /* поле не обязательное */
@@ -1016,7 +1086,7 @@ function sfdRender(){
     /* редактируемые поля: изменения пишутся в рабочую копию; поля, влияющие на имена,
        пересчитывают communication_name / campaign_name по нашим правилам нейминга */
     output.querySelectorAll('.sfd-edit, .sfd-edit-check').forEach(function(inp){
-        var handler = function(){
+        var handler = function(commit){
             var k = inp.dataset.k;
             /* числовое поле: вычищаем всё, кроме цифр, прямо в поле — иначе набранная
                буква осталась бы на экране и уехала бы в source_type как часть Nday.
@@ -1030,23 +1100,32 @@ function sfdRender(){
                 }
             }
             st.work[k] = inp.type === 'checkbox' ? inp.checked : inp.value;
-            /* поле тронули руками — дальше NoComName в нём считается осознанным выбором,
-               а не значением по умолчанию (см. sfdCreateMissing) */
-            if (k === 'comname') st.comnameTouched = true;
             /* тумблер Live Activity — не поле шаблона, а переключатель канала:
                набранное (текст, ссылки, сегментация) остаётся, меняется только
                набор канальных полей и таблица, в которую шаблон уедет */
             if (k === 'is_la') st.work.channel = inp.checked ? 'la' : 'push';
-            if (SFD_NAME_KEYS[k] || k === 'biz_type') sfdRecalcNames();
+            /* Подстановки, меняющие ДРУГИЕ поля карточки: типовые значения promo и
+               посадочная из ссылки. Разбор ссылки — только по commit (change/blur):
+               на каждый набранный символ он давал бы новое значение, а перерисовка
+               из-под рук уводит каретку из поля, в котором печатают. */
+            var filled = false;
+            if (k === 'trigger') filled = sfdApplyPromoDefaults(st.work);
+            if (commit && sfdLinkFieldsOf(st.work.channel).indexOf(k) >= 0) {
+                filled = sfdApplyLandingFromLink() || filled;
+            }
+            if (SFD_NAME_KEYS[k] || k === 'biz_type' || filled) sfdRecalcNames();
             sfdRenderPreview();
+            return filled;
         };
-        inp.addEventListener('input', function(){ handler(); if (isCreate) sfdSyncCreate(); });
+        inp.addEventListener('input', function(){ handler(false); if (isCreate) sfdSyncCreate(); });
         /* чекбоксы и селекты: после change перерисовываем карточку,
            чтобы пересчитанные comname/source сразу были видны.
            В мастере то же делаем по потере фокуса у текстовых полей */
         inp.addEventListener('change', function(){
-            handler();
-            if (inp.type === 'checkbox' || inp.tagName === 'SELECT' || isCreate) sfdRender();
+            var filled = handler(true);
+            /* filled: подставленное в другие поля видно только после перерисовки —
+               в режиме просмотра карточка сама по change не перерисовывается */
+            if (inp.type === 'checkbox' || inp.tagName === 'SELECT' || isCreate || filled) sfdRender();
         });
     });
     /* «+» рядом с combo: занести введённое значение в справочник */
