@@ -119,32 +119,41 @@ function sfdComputeCampaignName(d){
     return tab + '_' + senderType + '_' + product + '_' + comname + '_' + day + 'day';
 }
 /* ---------- предзаполнение по типу отправителя ----------
-   У promo-рассылок эти четыре поля почти всегда одни и те же, и заполнять их руками
-   каждый раз незачем. Пишем ТОЛЬКО в пустые: если человек уже что-то выбрал, его выбор
-   важнее нашего умолчания — иначе смена типа отправителя молча затирала бы набранное. */
+   У promo-рассылок эти четыре поля всегда одни и те же, и заполнять их руками каждый
+   раз незачем. Пишем во все четыре, а не только в пустые: правило жёсткое, и выбранное
+   раньше значение (например touch point из прошлой правки карточки) должно смениться на
+   promo — иначе выбор «promo» не приводил бы к обещанному состоянию полей. Срабатывает
+   только в момент выбора типа отправителя, при обычной правке других полей — нет. */
 var SFD_PROMO_DEFAULTS = { touch:'promo', day:'0', communication_type:'adv', biz_type:'adv' };
 function sfdApplyPromoDefaults(d){
     if (d.trigger !== 'promo') return false;
     var changed = false;
     Object.keys(SFD_PROMO_DEFAULTS).forEach(function(k){
-        var v = d[k];
-        if (v == null || String(v).trim() === ''){ d[k] = SFD_PROMO_DEFAULTS[k]; changed = true; }
+        if (String(d[k] == null ? '' : d[k]) === SFD_PROMO_DEFAULTS[k]) return;
+        d[k] = SFD_PROMO_DEFAULTS[k];
+        changed = true;
     });
     return changed;
 }
 
 /* ---------- Landing page из ссылки ----------
-   aff_sub3 — это путь посадочной страницы, и он всегда есть в самой ссылке. Берём всё,
-   что идёт после домена banki.ru (путь, query, якорь), вместе с ведущим слэшем:
-     https://www.banki.ru/promo/leto?utm=1  ->  /promo/leto?utm=1
+   aff_sub3 — путь посадочной страницы, и он всегда есть в самой ссылке. Берём то, что
+   идёт после домена banki.ru, и отбрасываем два вида шума:
+     · query и якорь — utm-метки к посадочной не относятся;
+     · служебный сегмент /webview/ — он про способ открытия, а не про страницу.
+   Примеры:
+     https://www.banki.ru/webview/promo/leto?utm_source=push  ->  /promo/leto
+     https://www.banki.ru/promo/leto                          ->  /promo/leto
    Чужие домены не трогаем: там путь к нашей аналитике отношения не имеет. */
 function sfdLandingFromLink(url){
     var s = String(url == null ? '' : url).trim();
     if (!s) return '';
     var m = /(?:^|\/\/|\.)((?:[a-z0-9-]+\.)*banki\.ru)(\/[^\s]*)?/i.exec(s);
     if (!m) return '';
-    var tail = m[2] || '';
-    return tail === '/' ? '' : tail;
+    var tail = (m[2] || '').split('#')[0].split('?')[0];
+    var wv = /\/webview\/(.*)$/i.exec(tail);
+    if (wv) tail = '/' + wv[1];
+    return (tail === '' || tail === '/') ? '' : tail;
 }
 /* Ссылка, из которой берём посадочную: у пуша и Live Activity это webview (deep link
    там служебный, с префиксом deepLink/webview?webviewUrl=), у финансового ассистента —
