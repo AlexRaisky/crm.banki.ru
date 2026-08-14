@@ -97,7 +97,14 @@ public class SmsCheckReportService {
             " group by report_date, communication_name, event_name, source_type, template_id, template_text" +
             " order by report_date";
 
-    private static final Map<String, String> CHANNELS = Map.of("sms", "sms", "push", "push", "email", "email");
+    /**
+     * Канал на странице → значение channel_name в витрине.
+     * <p>
+     * Совпадает не всё: пуш в DWH записан как {@code mobile-push}, и запрос с «push»
+     * молча возвращал пустоту — ошибки нет, просто ни одной строки не подошло.
+     * Тот же нейминг, что в campaign_name (см. sfdComputeCampaignName во фронте).
+     */
+    private static final Map<String, String> CHANNELS = Map.of("sms", "sms", "push", "mobile-push", "email", "email");
 
     /**
      * Сервисный шаблон, чьи косты в листе «по дням» вынесены отдельной строкой
