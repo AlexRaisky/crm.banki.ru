@@ -28,6 +28,13 @@ function renderTemplateDetails(data, templateId) {
     /* is_autopromo — тоже без своей колонки: виден суффиксом -autopromo в
        communication_name, оттуда и читаем при открытии сохранённого шаблона */
     if (work.autopromo == null) work.autopromo = sfdAutopromoOn(work);
+    /* дата в имени — не сегодняшняя: значит её задавали руками. Восстанавливаем и флаг,
+       и саму дату, иначе первая же правка пересчитала бы имя на сегодня. */
+    if (work.delayed == null){
+        var был = sfdDelayedFromSource(work);
+        work.delayed = !!был;
+        if (был && !work.promo_date) work.promo_date = был;
+    }
     SFD_STATE = {
         id: templateId || null,
         orig: data,
@@ -87,6 +94,46 @@ function sfdAutopromoOn(d){
     if (d.autopromo != null) return !!d.autopromo;
     return /(^|-)autopromo(-|$)/.test(String(d.comname || ''));
 }
+
+/* ---------- дата в имени кампании ----------
+   По умолчанию в campaign_name уходит сегодняшнее число: рассылку заводят в день
+   отправки. «Отложенное промо» — когда шаблон готовят заранее: дату задают руками,
+   и в имени оказывается она. Больше флаг ничего не меняет.
+   Своей колонки в БД у него нет — дата видна в самом имени, оттуда и читается при
+   открытии сохранённого шаблона (sfdDelayedFromSource). */
+function sfdPromoDate(d){
+    var today = (typeof formatDateDDMMYY === 'function') ? formatDateDDMMYY() : '';
+    if (!d) return today;
+    /* Ключа delayed нет вовсе — объект пришёл не из карточки, а из списка шаблонов
+       (dtoToV1 про флаг не знает). Тогда читаем дату из сохранённого имени: иначе
+       переименование строки в списке молча переставило бы её на сегодня. */
+    if (d.delayed == null){
+        var было = sfdDelayedFromSource(d);
+        if (!было) return today;
+        var q = было.split('-');
+        return q[2] + q[1] + q[0].slice(2);
+    }
+    var iso = String(d.promo_date ? d.promo_date : '').trim();
+    if (d.delayed && /^\d{4}-\d{2}-\d{2}$/.test(iso)){
+        var p = iso.split('-');
+        return p[2] + p[1] + p[0].slice(2);          /* 2026-08-20 -> 200826 */
+    }
+    return today;
+}
+/**
+ * Восстановить «отложенное промо» из сохранённого имени кампании.
+ * <p>
+ * Имя promo-кампании кончается на ддммгг. Стоит там не сегодняшнее число — значит дату
+ * задавали руками; иначе при первой же правке любого поля имя пересчиталось бы на
+ * сегодня и молча уехало от того, что согласовали.
+ */
+function sfdDelayedFromSource(d){
+    var m = /_(\d{2})(\d{2})(\d{2})(?:day)?$/.exec(String(d && d.source ? d.source : ''));
+    if (!m) return null;
+    var today = (typeof formatDateDDMMYY === 'function') ? formatDateDDMMYY() : '';
+    if ((m[1] + m[2] + m[3]) === today) return null;
+    return '20' + m[3] + '-' + m[2] + '-' + m[1];
+}
 function sfdComputeCampaignName(d){
     /* «выгрузка в КЦ» (в развёрнутой форме — cb-sms-cc / cb-email-cc): вместо канала в
        campaign_name встаёт contact. Своей колонки у флага нет, поэтому при открытии
@@ -97,7 +144,7 @@ function sfdComputeCampaignName(d){
     if (senderType !== 'promo' && senderType !== 'trigger') return '';
     var product = d.product || '', partner = d.partner || '', comname = d.comname || '', day = d.day || '';
     /* autopromo: дата из имени кампании уходит — такие рассылки не привязаны ко дню */
-    var date = sfdAutopromoOn(d) ? '' : ((typeof formatDateDDMMYY === 'function') ? formatDateDDMMYY() : '');
+    var date = sfdAutopromoOn(d) ? '' : sfdPromoDate(d);
     if (d.channel === 'cc'){
         var segment = (d.segment != null && d.segment !== '') ? d.segment : (d.code || '');
         if (senderType === 'trigger') return 'contact_' + senderType + '_' + product + '_' + comname + '_' + segment + '_' + day + 'day';
@@ -189,7 +236,7 @@ function sfdApplyLandingFromLink(){
    отправителя: renewal — первое условие в правиле. */
 var SFD_NAME_KEYS = { trigger:1, product:1, partner:1, comname:1, day:1, segment:1, touch:1,
     marketplace:1, cross:1, cc_cross:1, dialog:1, loyalty:1, national_rating:1, news:1, mobile_app:1,
-    autopromo:1 };
+    autopromo:1, delayed:1, promo_date:1 };
 /* Адрес отправителя e-mail — копия generateEmail из v2. Порядок проверок значимый:
    renewal (по touch_point) → service → info (по business_communication_type) →
    trigger+adv → promo+adv (по trigger_type) → newsletter как общий случай. */
@@ -465,6 +512,13 @@ function sfdFieldDefs(d){
        суффикс. Во всех каналах кроме КЦ: у сегментов кол-центра имя строится по
        своим правилам (contact_…day), суффикса там не предусмотрено. */
     if (!isCC) mainRows.push({ k:'autopromo', label:'is_autopromo', type:'bool' });
+    /* «Отложенное промо» — только у promo: дата есть лишь в имени promo-кампании,
+       у trigger-а в хвосте стоит Nday, и подставлять туда нечего. Поле даты
+       показываем лишь при включённом флаге, чтобы не занимать строку впустую. */
+    if (d.trigger === 'promo'){
+        mainRows.push({ k:'delayed', label:sfdT('Отложенное промо'), type:'bool' });
+        if (d.delayed) mainRows.push({ k:'promo_date', label:sfdT('Дата в имени кампании'), type:'date' });
+    }
     /* combo, а не select: значение выбирается из справочника ИЛИ вписывается своё —
        новые имена коммуникаций заводятся регулярно, строгий список их бы отсёк. */
     mainRows.push({ k:'comname', label:'Communication name', wide:true, type:'combo',
@@ -566,6 +620,8 @@ var SFD_DB = {
     cross:              { all:'—' },
     cc_cross:           { all:'—' },
     autopromo:          { all:'—' },
+    delayed:            { all:'—' },
+    promo_date:         { all:'—' },
     dialog:             { all:'dialog' },
     loyalty:            { all:'loyalty' },
     national_rating:    { all:'national_rating' },
@@ -624,6 +680,8 @@ var SFD_HELP = {
     marketplace:        'Продукт маркетплейса: в communication_name добавляется префикс marketplace-.',
     cross:              'Кросс-коммуникация: суффикс -cross. Отдельного поля в БД нет — признак живёт в communication_name.',
     cc_cross:           'Выгрузка в кол-центр: в campaign_name вместо канала встаёт contact (sms_promo_… → contact_promo_…). Отдельного поля в БД нет — признак виден только в самом имени.',
+    delayed:            'Отложенное промо: шаблон готовят заранее, и в конце campaign_name ставится не сегодняшняя дата, а выбранная. Больше ничего не меняется. Отдельного поля в БД нет — дата видна в самом имени, оттуда и восстанавливается при открытии.',
+    promo_date:         'Дата, которая уйдёт в конец campaign_name в виде ддммгг. Действует только при включённом «Отложенном промо».',
     autopromo:          'Автопромо: к communication_name добавляется суффикс -autopromo, а из campaign_name уходит дата (sms_promo_kk_alfa_leto_110826 → sms_promo_kk_alfa_leto-autopromo). Отдельного поля в БД нет — признак живёт в имени коммуникации.',
     dialog:             'Ведёт на страницу диалога: суффикс -dialog.',
     loyalty:            'Ссылка на продукты лояльности: суффикс -loyalty.',
@@ -688,6 +746,11 @@ function sfdRowHtml(f){
             valHtml = '<select class="sfd-edit" data-k="' + f.k + '">' + f.opts.map(function(o){
                 return '<option value="' + o + '"' + (String(d[f.k] || '') === o ? ' selected' : '') + '>' + (o || '—') + '</option>';
             }).join('') + '</select>';
+        } else if (f.type === 'date'){
+            /* нативный выбор даты: значение хранится как ГГГГ-ММ-ДД, в имя кампании
+               уходит ддммгг (sfdPromoDate) */
+            valHtml = '<input type="date" class="sfd-edit" data-k="' + f.k + '"' +
+                      ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
         } else if (f.type === 'num'){
             /* Не type=number: он в разных браузерах пропускает e, +, - и знаки экспоненты,
                а нам нужны строго цифры. Текстовое поле с числовой клавиатурой на телефоне,
@@ -775,7 +838,8 @@ function sfdBlank(channel){
              /* VK */ vk_template_name:'', ttl:'', ab_group:'', buttons:'',
              /* Live Activity */ activity_name:'', la_event:'', la_visualization:'',
              la_visualization_attributes:'', la_status:'', current_step:'',
-             marketplace:false, cross:false, cc_cross:false, autopromo:false, dialog:false, loyalty:false,
+             marketplace:false, cross:false, cc_cross:false, autopromo:false, delayed:false, promo_date:'',
+             dialog:false, loyalty:false,
              national_rating:false, news:false, mobile_app:false, night_send:false };
 }
 function wizardCardOpen(channel){
