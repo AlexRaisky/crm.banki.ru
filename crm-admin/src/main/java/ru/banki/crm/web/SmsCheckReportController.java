@@ -61,17 +61,27 @@ public class SmsCheckReportController {
     /** Лист «по дням» как данные — для показа отчёта прямо на странице. */
     @GetMapping("/daily")
     public Map<String, Object> daily(@RequestParam String month,
-                                     @RequestParam(defaultValue = "sms") String channel) {
+                                     @RequestParam(defaultValue = "sms") String channel,
+                                     @RequestParam(required = false) String product) {
         access.requireCapability(Capability.READ, Sections.REP_SMSCHECK);
-        return service.daily(parseMonth(month), channel);
+        return service.daily(parseMonth(month), channel, product);
+    }
+
+    /** Продукты, встречающиеся в выбранном месяце и канале — для выпадающего списка. */
+    @GetMapping("/products")
+    public Map<String, Object> products(@RequestParam String month,
+                                        @RequestParam(defaultValue = "sms") String channel) {
+        access.requireCapability(Capability.READ, Sections.REP_SMSCHECK);
+        return service.products(parseMonth(month), channel);
     }
 
     /** Скачать .xlsx за месяц (YYYY-MM) по каналу (sms|push|email). */
     @GetMapping("/download")
     public ResponseEntity<byte[]> download(@RequestParam String month,
-                                           @RequestParam(defaultValue = "sms") String channel) {
+                                           @RequestParam(defaultValue = "sms") String channel,
+                                           @RequestParam(required = false) String product) {
         access.requireCapability(Capability.READ, Sections.REP_SMSCHECK);
-        byte[] xlsx = service.build(parseMonth(month), channel);
+        byte[] xlsx = service.build(parseMonth(month), channel, product);
         String name = "check-sms-" + channel.toLowerCase() + "-" + month + ".xlsx";
         // (имя файла собираем из уже проверенных параметров)
         // RFC 5987: имя ASCII-безопасное, поэтому обычного filename достаточно

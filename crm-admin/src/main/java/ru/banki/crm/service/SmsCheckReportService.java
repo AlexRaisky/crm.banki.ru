@@ -1,5 +1,7 @@
 package ru.banki.crm.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -23,7 +25,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -55,11 +59,21 @@ import java.util.zip.ZipOutputStream;
 @Service
 public class SmsCheckReportService {
 
+    private static final Logger log = LoggerFactory.getLogger(SmsCheckReportService.class);
+
     private static final String SETTINGS_KEY = "smsCheckReport";
     private static final String TEMPLATE = "reports/sms-check-template.xlsx";
     private static final int QUERY_TIMEOUT_S = 120;
 
-    private static final String SQL =
+    /** Витрина DWH: имя нужно и запросу, и поиску колонки продукта. */
+    private static final String VIEW_SCHEMA = "crm";
+    private static final String VIEW_NAME = "v_crm_matrix_report";
+    private static final String VIEW = VIEW_SCHEMA + "." + VIEW_NAME;
+
+    /* Запрос разрезан надвое: между head и tail при выборе продукта встаёт ещё одно
+       условие. Имя колонки продукта в разных инсталляциях DWH своё, поэтому оно не
+       зашито, а определяется по information_schema (см. productColumn). */
+    private static final String SQL_HEAD =
             "select report_date, communication_name, event_name, source_type, template_id, template_text," +
             "  SUM(unique_sent) as unique_sent," +
             "  SUM(unique_delivered) as unique_delivered," +
@@ -76,8 +90,10 @@ public class SmsCheckReportService {
             "  COALESCE(SUM(revenue_fact)::float / NULLIF(SUM(ho_conversions_line), 0), 0) as epl," +
             "  COALESCE(SUM(revenue_fact)::float / NULLIF(SUM(ho_issued_line), 0), 0) as epi," +
             "  COALESCE(SUM(revenue_fact)::float / NULLIF(SUM(unique_delivered), 0) * 1000, 0) as epm" +
-            " from crm.v_crm_matrix_report" +
-            " where report_date >= ? and report_date < ? and channel_name ilike ?" +
+            " from " + VIEW +
+            " where report_date >= ? and report_date < ? and channel_name ilike ?";
+
+    private static final String SQL_TAIL =
             " group by report_date, communication_name, event_name, source_type, template_id, template_text" +
             " order by report_date";
 
@@ -89,6 +105,9 @@ public class SmsCheckReportService {
      * это template_id). Значение зашито в книге, поэтому и у нас константой.
      */
     private static final String SERVICE_TEMPLATE_ID = "180";
+
+    /** Найденная колонка продукта на подключение: витрина не меняется между запросами. */
+    private final Map<Long, Optional<String>> productColCache = new ConcurrentHashMap<>();
 
     /** Заголовки колонок A–T листа-дня (5 разрезов + 15 метрик). */
     private static final String[] HEADERS = {
@@ -147,7 +166,7 @@ public class SmsCheckReportService {
 
     // ------------------------------------------------------------- построение
     /** Собрать .xlsx за месяц по каналу. */
-    public byte[] build(YearMonth month, String channelKey) {
+    public byte[] build(YearMonth month, String channelKey, String product) {
         String channel = CHANNELS.get(channelKey == null ? "" : channelKey.toLowerCase());
         if (channel == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный канал. Ожидается sms, push или email.");
         Long connId = configuredConnectionId();
@@ -155,7 +174,7 @@ public class SmsCheckReportService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Источник данных (DWH) не выбран. Администратор задаёт его в разделе «Отчёты».");
         }
-        Map<Integer, List<DayRow>> byDay = query(connId, month, channel);
+        Map<Integer, List<DayRow>> byDay = query(connId, month, channel, product);
         try {
             return patchTemplate(byDay, month.lengthOfMonth());
         } catch (ResponseStatusException e) {
@@ -183,7 +202,7 @@ public class SmsCheckReportService {
      *       ({@code =B2/AF2-100%}); предыдущего дня у первого числа нет, оставляем пусто.</li>
      * </ul>
      */
-    public Map<String, Object> daily(YearMonth month, String channelKey) {
+    public Map<String, Object> daily(YearMonth month, String channelKey, String product) {
         String channel = CHANNELS.get(channelKey == null ? "" : channelKey.toLowerCase());
         if (channel == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный канал. Ожидается sms, push или email.");
         Long connId = configuredConnectionId();
@@ -191,7 +210,7 @@ public class SmsCheckReportService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Источник данных (DWH) не выбран. Администратор задаёт его в разделе «Отчёты».");
         }
-        Map<Integer, List<DayRow>> byDay = query(connId, month, channel);
+        Map<Integer, List<DayRow>> byDay = query(connId, month, channel, product);
         int days = month.lengthOfMonth();
 
         double[] sent = new double[days + 1], issued = new double[days + 1], rev = new double[days + 1],
@@ -230,6 +249,7 @@ public class SmsCheckReportService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("month", month.toString());
         out.put("channel", channelKey.toLowerCase());
+        out.put("product", product == null || product.isBlank() ? null : product);
         out.put("days", days);
         out.put("rows", rows);
         return out;
@@ -506,30 +526,126 @@ public class SmsCheckReportService {
         return b.toString();
     }
 
-    // ------------------------------------------------------------------ SQL
-    private Map<Integer, List<DayRow>> query(long connId, YearMonth month, String channel) {
+    // ------------------------------------------------------- подключение к DWH
+    /** Соединение с источником по записи из app.db_connection. Всегда read-only. */
+    private Connection connect(long connId) throws Exception {
         Map<String, Object> c;
         try {
             c = jdbc.queryForMap("SELECT jdbc_url, username, password FROM app.db_connection WHERE id = ?", connId);
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Подключение-источник удалено. Задайте его заново.");
         }
-        LocalDate from = month.atDay(1), to = month.plusMonths(1).atDay(1);
-        Map<Integer, List<DayRow>> byDay = new HashMap<>();
         Properties props = new Properties();
         String user = str(c.get("username")), pass = str(c.get("password"));
         if (!user.isEmpty()) props.setProperty("user", user);
         if (!pass.isEmpty()) props.setProperty("password", pass);
         props.setProperty("connectTimeout", "20");
         props.setProperty("socketTimeout", String.valueOf(QUERY_TIMEOUT_S + 10));
+        Connection conn = DriverManager.getConnection(str(c.get("jdbc_url")), props);
+        try { conn.setReadOnly(true); } catch (Exception ignore) {}
+        return conn;
+    }
 
-        try (Connection conn = DriverManager.getConnection(str(c.get("jdbc_url")), props)) {
-            try { conn.setReadOnly(true); } catch (Exception ignore) {}
-            try (PreparedStatement ps = conn.prepareStatement(SQL)) {
+    /**
+     * Колонка продукта в витрине — ищем, а не зашиваем.
+     * <p>
+     * В отчёте нужен разрез по продукту, но как эта колонка называется в конкретном
+     * DWH, мы не знаем: в разных инсталляциях встречаются и product_type, и
+     * product_name, и product. Спрашиваем каталог и берём первую подходящую;
+     * найденное имя потом идёт в SQL как идентификатор, поэтому оно не может быть
+     * произвольной строкой — только тем, что действительно есть в витрине.
+     * <p>
+     * Колонки нет вовсе — не беда: фильтр просто не предлагается, отчёт считается по
+     * всему каналу, как и раньше.
+     */
+    private String productColumn(Connection conn, long connId) {
+        Optional<String> cached = productColCache.get(connId);
+        if (cached != null) return cached.orElse(null);
+        String found = null;
+        String sql = "SELECT column_name FROM information_schema.columns" +
+                " WHERE table_schema = ? AND table_name = ? AND column_name ILIKE '%product%'" +
+                " ORDER BY CASE column_name WHEN 'product_type' THEN 0 WHEN 'product_name' THEN 1" +
+                "                           WHEN 'product' THEN 2 ELSE 3 END, ordinal_position";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setQueryTimeout(20);
+            ps.setString(1, VIEW_SCHEMA);
+            ps.setString(2, VIEW_NAME);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) found = rs.getString(1);
+            }
+        } catch (Exception e) {
+            log.warn("не удалось определить колонку продукта в {}: {}", VIEW, rootMessage(e));
+        }
+        productColCache.put(connId, Optional.ofNullable(found));
+        return found;
+    }
+
+    /** Идентификатор в кавычках: имя пришло из каталога, но в SQL оно всё равно должно быть цитировано. */
+    private static String quoteIdent(String name) {
+        return "\"" + name.replace("\"", "\"\"") + "\"";
+    }
+
+    /**
+     * Список продуктов за месяц по каналу — для выпадающего списка на странице.
+     * Берём только те значения, что реально встречаются в выбранном периоде: полный
+     * справочник продуктов DWH был бы длиннее и наполовину пустым.
+     */
+    public Map<String, Object> products(YearMonth month, String channelKey) {
+        String channel = CHANNELS.get(channelKey == null ? "" : channelKey.toLowerCase());
+        if (channel == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный канал. Ожидается sms, push или email.");
+        Long connId = configuredConnectionId();
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (connId == null) {
+            out.put("column", null);
+            out.put("products", List.of());
+            return out;
+        }
+        List<String> products = new ArrayList<>();
+        String col;
+        try (Connection conn = connect(connId)) {
+            col = productColumn(conn, connId);
+            if (col != null) {
+                String sql = "SELECT DISTINCT " + quoteIdent(col) + " AS p FROM " + VIEW +
+                        " WHERE report_date >= ? AND report_date < ? AND channel_name ilike ?" +
+                        " AND " + quoteIdent(col) + " IS NOT NULL ORDER BY 1";
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setQueryTimeout(QUERY_TIMEOUT_S);
+                    ps.setObject(1, month.atDay(1));
+                    ps.setObject(2, month.plusMonths(1).atDay(1));
+                    ps.setString(3, channel);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            String p = rs.getString("p");
+                            if (p != null && !p.isBlank()) products.add(p.trim());
+                        }
+                    }
+                }
+            }
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Ошибка запроса к источнику: " + rootMessage(e), e);
+        }
+        out.put("column", col);
+        out.put("products", products);
+        return out;
+    }
+
+    // ------------------------------------------------------------------ SQL
+    private Map<Integer, List<DayRow>> query(long connId, YearMonth month, String channel, String product) {
+        LocalDate from = month.atDay(1), to = month.plusMonths(1).atDay(1);
+        Map<Integer, List<DayRow>> byDay = new HashMap<>();
+
+        try (Connection conn = connect(connId)) {
+            String col = productColumn(conn, connId);
+            boolean byProduct = product != null && !product.isBlank() && col != null;
+            String sql = byProduct ? SQL_HEAD + " AND " + quoteIdent(col) + " = ?" + SQL_TAIL : SQL_HEAD + SQL_TAIL;
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setQueryTimeout(QUERY_TIMEOUT_S);
                 ps.setObject(1, from);
                 ps.setObject(2, to);
                 ps.setString(3, channel);
+                if (byProduct) ps.setString(4, product);
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         LocalDate d = rs.getObject("report_date", LocalDate.class);

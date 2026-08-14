@@ -362,18 +362,27 @@
 
       <div class="rp-toolbar">
         <div class="f"><label data-i18n="Месяц">Месяц</label>
-          <input type="month" id="scMonth"></div>
+          <input type="month" id="scMonth" onchange="scOnFilterChange()"></div>
         <div class="f"><label data-i18n="Канал">Канал</label>
-          <select id="scChannel">
+          <select id="scChannel" onchange="scOnFilterChange()">
             <option value="sms">SMS</option>
             <option value="push">Push</option>
             <option value="email">Email</option>
           </select></div>
+        <!-- Продукты подтягиваются из данных за выбранный месяц: список зависит от того,
+             что реально было в этом периоде, поэтому он не зашит в разметку. -->
+        <div class="f"><label data-i18n="Продукт">Продукт</label>
+          <select id="scProduct" onchange="scShowDaily()">
+            <option value="" data-i18n="Все продукты">Все продукты</option>
+          </select></div>
         <span class="spacer"></span>
-        <button class="btn" id="scShow" onclick="scShowDaily()" data-i18n="Показать «по дням»">Показать «по дням»</button>
+        <button class="btn" id="scShow" onclick="scShowDaily()" data-i18n="Обновить">Обновить</button>
         <button class="btn accent" id="scDownload" onclick="scDownload()" data-i18n="⭳ Скачать Excel">⭳ Скачать Excel</button>
       </div>
 
+      <!-- Ход выгрузки — отдельной строкой: раньше он писался в область отчёта и стирал
+           таблицу, ради которой человек сюда и пришёл. -->
+      <div class="rp-embed-wait" id="scStatus" style="display:none"></div>
       <div class="rp-embed" id="scArea"></div>
     </section>
 
