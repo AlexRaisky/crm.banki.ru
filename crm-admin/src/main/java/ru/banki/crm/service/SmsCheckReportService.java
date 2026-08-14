@@ -109,6 +109,21 @@ public class SmsCheckReportService {
     /** Найденная колонка продукта на подключение: витрина не меняется между запросами. */
     private final Map<Long, Optional<String>> productColCache = new ConcurrentHashMap<>();
 
+    /* Значения продуктов из витрины по ключу «подключение|месяц|канал»: заполняются
+       в фоне (см. refreshProducts), поэтому список на странице появляется мгновенно,
+       а данные витрины подмешиваются к следующему обращению. */
+    private final Map<String, List<String>> productValues = new ConcurrentHashMap<>();
+    private final Map<String, String> productNotes = new ConcurrentHashMap<>();
+    private final java.util.Set<String> productLoading = ConcurrentHashMap.newKeySet();
+    /* Один поток-демон: запросов мало, а очередь из них полезна — параллельно долбить
+       витрину списками продуктов незачем. Демон, чтобы не держать остановку приложения. */
+    private final java.util.concurrent.ExecutorService productPool =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "sms-check-products");
+                t.setDaemon(true);
+                return t;
+            });
+
     /** Заголовки колонок A–T листа-дня (5 разрезов + 15 метрик). */
     private static final String[] HEADERS = {
             "Row gr 1", "Row gr 2", "Row gr 3", "Row gr 4", "Row gr 5",
@@ -620,11 +635,45 @@ public class SmsCheckReportService {
         /* TreeSet: и порядок по алфавиту, и склейка известных значений с пришедшими */
         java.util.TreeSet<String> products = new java.util.TreeSet<>(KNOWN_PRODUCTS);
         Long connId = configuredConnectionId();
-        String col = null, note = null;
-        if (connId != null) {
+        String col = PRODUCT_COLUMNS.get(0);
+        String note = null;
+        boolean pending = false;
+        if (connId == null) {
+            col = null;                                   // источника нет — фильтровать нечем
+        } else {
+            Optional<String> probed = productColCache.get(connId);
+            if (probed != null) col = probed.orElse(null);
+            String key = connId + "|" + month + "|" + channel;
+            List<String> cached = productValues.get(key);
+            if (cached != null) products.addAll(cached);
+            else { refreshProducts(connId, month, channel, key); pending = true; }
+            note = productNotes.get(key);
+        }
+        out.put("column", col);
+        out.put("products", new ArrayList<>(products));
+        out.put("note", note);
+        out.put("pending", pending);   // ответ витрины ещё в пути — клиент перечитает список позже
+        return out;
+    }
+
+    /**
+     * Дотянуть значения продуктов из витрины — в фоне.
+     * <p>
+     * Синхронно этого делать нельзя: {@code SELECT DISTINCT} по месяцу на большой витрине
+     * идёт столько же, сколько сам отчёт, и выпадающий список стоял пустым, пока не
+     * досчитается таблица. Отдаём известные значения сразу, а ответ витрины подмешиваем
+     * к следующему обращению — из кэша, уже мгновенно.
+     */
+    private void refreshProducts(long connId, YearMonth month, String channel, String key) {
+        if (!productLoading.add(key)) return;             // уже тянем — второй раз не начинаем
+        productPool.execute(() -> {
+            List<String> found = new ArrayList<>();
+            String note = null;
             try (Connection conn = connect(connId)) {
-                col = productColumn(conn, connId);
-                if (col != null) {
+                String col = productColumn(conn, connId);
+                if (col == null) {
+                    note = "Колонку продукта в витрине найти не удалось — список показан по известным значениям.";
+                } else {
                     String sql = "SELECT DISTINCT " + quoteIdent(col) + " AS p FROM " + VIEW +
                             " WHERE report_date >= ? AND report_date < ? AND channel_name ilike ?" +
                             " AND " + quoteIdent(col) + " IS NOT NULL";
@@ -636,23 +685,23 @@ public class SmsCheckReportService {
                         try (ResultSet rs = ps.executeQuery()) {
                             while (rs.next()) {
                                 String p = rs.getString("p");
-                                if (p != null && !p.isBlank()) products.add(p.trim());
+                                if (p != null && !p.isBlank()) found.add(p.trim());
                             }
                         }
                     }
-                } else {
-                    note = "Колонку продукта в витрине найти не удалось — список показан по известным значениям.";
                 }
             } catch (Exception e) {
                 note = "Список продуктов из витрины получить не удалось (" + rootMessage(e)
                         + ") — показаны известные значения.";
                 log.warn("список продуктов из {} не получен: {}", VIEW, rootMessage(e));
+            } finally {
+                productLoading.remove(key);
             }
-        }
-        out.put("column", col);
-        out.put("products", new ArrayList<>(products));
-        out.put("note", note);
-        return out;
+            /* Кладём и пустой ответ: значит за этот месяц продуктов нет, и дёргать
+               витрину снова при каждом открытии раздела незачем. */
+            productValues.put(key, found);
+            if (note == null) productNotes.remove(key); else productNotes.put(key, note);
+        });
     }
 
     // ------------------------------------------------------------------ SQL
