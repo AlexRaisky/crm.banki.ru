@@ -371,9 +371,11 @@
           </select></div>
         <!-- Продукты подтягиваются из данных за выбранный месяц: список зависит от того,
              что реально было в этом периоде, поэтому он не зашит в разметку. -->
+        <!-- Выбор продукта отчёт не запускает: считает только «Обновить». Иначе
+             тяжёлый запрос к DWH уходил бы на каждое движение в списке. -->
         <div class="f"><label data-i18n="Продукт">Продукт</label>
-          <select id="scProduct" onchange="scShowDaily()">
-            <option value="" data-i18n="Все продукты">Все продукты</option>
+          <select id="scProduct">
+            <option value="" data-i18n="— выберите продукт —">— выберите продукт —</option>
           </select></div>
         <span class="spacer"></span>
         <button class="btn" id="scShow" onclick="scShowDaily()" data-i18n="Обновить">Обновить</button>

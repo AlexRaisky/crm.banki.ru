@@ -24,23 +24,32 @@ function scInit(){
     m.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
   }
   /* показываем, что было в прошлый раз, чтобы страница не встречала пустотой */
-  if (SC_LAST) scRenderDaily(SC_LAST.data); else scArea('');
+  if (SC_LAST) scRenderDaily(SC_LAST.data); else scPrompt();
   fetch('/api/reports/sms-check/config', { credentials:'same-origin' })
     .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(function(cfg){
       SC_CFG = cfg || {};
       scRenderSetup();
-      /* Источник настроен — сразу считаем отчёт: раздел открывают ради него,
-         а не ради кнопки. Нет источника — scRenderSetup уже объяснил, что делать. */
-      if (SC_CFG.connectionId){ scLoadProducts(); scShowDaily(); }
+      /* Сам отчёт не считаем: запрос к DWH тяжёлый, и гонять его на каждое открытие
+         раздела по всем продуктам незачем. Человек выбирает продукт и жмёт «Обновить». */
+      if (SC_CFG.connectionId) scLoadProducts();
     })
     .catch(function(){ /* конфиг не критичен для показа формы — молча игнорируем */ });
 }
 
-/* Смена месяца или канала: список продуктов зависит от периода, поэтому обновляем его,
-   а уже потом считаем отчёт (выбранный продукт мог в новом месяце не встречаться). */
+/* Приглашение вместо таблицы: пока продукт не выбран, показывать нечего. */
+function scPrompt(){
+  scArea('<div class="rp-embed-stub"><b>' + scT('Отчёт не построен') + '</b>' +
+    scT('Выберите продукт и нажмите «Обновить».') + '</div>');
+}
+
+/* Смена месяца или канала: список продуктов зависит от периода, поэтому обновляем его.
+   Отчёт не пересчитываем — показанные числа относятся к прежнему периоду, поэтому
+   убираем их: цифры за август под заголовком «сентябрь» хуже, чем их отсутствие. */
 function scOnFilterChange(){
-  scLoadProducts().then(scShowDaily);
+  SC_LAST = null;
+  scPrompt();
+  scLoadProducts();
 }
 
 function scLoadProducts(){
@@ -58,7 +67,7 @@ function scLoadProducts(){
     })
     .then(function(d){
       var list = (d && d.products) || [];
-      var opts = '<option value="">' + scT('Все продукты') + '</option>';
+      var opts = '<option value="">' + scT('— выберите продукт —') + '</option>';
       list.forEach(function(p){
         opts += '<option value="' + scEsc(p) + '"' + (p === was ? ' selected' : '') + '>' + scEsc(p) + '</option>';
       });
@@ -188,6 +197,10 @@ function scShowDaily(){
   var channel = (document.getElementById('scChannel') || {}).value || 'sms';
   var product = (document.getElementById('scProduct') || {}).value || '';
   if (!month){ scArea('<div class="rp-embed-stub"><b>' + scT('Выберите месяц') + '</b></div>'); return Promise.resolve(); }
+  /* Без продукта отчёт не строим: запрос по всем продуктам сразу — самый тяжёлый,
+     а смотрят всегда конкретный. Кнопка при этом остаётся нажимаемой, чтобы было
+     видно, чего не хватает. */
+  if (!product){ scPrompt(); return Promise.resolve(); }
   var btn = document.getElementById('scShow');
   if (btn) btn.disabled = true;
   /* Пока считаем, старую таблицу не стираем — если она есть, показываем строку
