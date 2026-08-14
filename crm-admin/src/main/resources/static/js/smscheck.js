@@ -50,7 +50,11 @@ function scLoadProducts(){
   var was = sel.value;
   return fetch('/api/reports/sms-check/products?month=' + encodeURIComponent(month) + '&channel=' + encodeURIComponent(channel),
                { credentials:'same-origin' })
-    .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    /* текст ошибки берём из тела: «HTTP 502» не говорит, что именно не понравилось источнику */
+    .then(function(r){
+      if (!r.ok) return r.text().then(function(txt){ throw new Error(scMsg(txt, r.status)); });
+      return r.json();
+    })
     .then(function(d){
       var list = (d && d.products) || [];
       var opts = '<option value="">' + scT('Все продукты') + '</option>';
@@ -62,7 +66,11 @@ function scLoadProducts(){
       var wrap = sel.closest ? sel.closest('.f') : null;
       if (wrap) wrap.style.display = (d && d.column) ? '' : 'none';
     })
-    .catch(function(){ /* список не критичен: отчёт всё равно считается по всему каналу */ });
+    .catch(function(e){
+      /* Молчать нельзя: пустой список ничем не отличается от сломанного запроса, и
+         непонятно, то ли продуктов нет, то ли отчёт не смог их спросить. */
+      scStatus(scT('Не удалось получить список продуктов') + ': ' + ((e && e.message) || ''), true);
+    });
 }
 
 /* блок выбора источника — только админу */

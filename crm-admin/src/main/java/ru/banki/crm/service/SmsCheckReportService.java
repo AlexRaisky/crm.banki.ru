@@ -547,40 +547,41 @@ public class SmsCheckReportService {
     }
 
     /**
-     * Колонка продукта в витрине — ищем, а не зашиваем.
+     * Колонка продукта в витрине. Основная — {@code product_type}, остальные на случай
+     * другой инсталляции DWH.
      * <p>
-     * В отчёте нужен разрез по продукту, но как эта колонка называется в конкретном
-     * DWH, мы не знаем: в разных инсталляциях встречаются и product_type, и
-     * product_name, и product. Спрашиваем каталог и берём первую подходящую;
-     * найденное имя потом идёт в SQL как идентификатор, поэтому оно не может быть
-     * произвольной строкой — только тем, что действительно есть в витрине.
+     * Проверяем не каталогом, а самой витриной: {@code SELECT <col> FROM view WHERE false}.
+     * Через {@code information_schema.columns} колонка может не увидеться — этот вид
+     * показывает только то, на что у текущей роли есть права, и при доступе через
+     * представление или групповую выдачу список приходит пустым, хотя SELECT работает.
+     * Ровно так фильтр и не заводился: колонка есть, а мы её «не нашли».
      * <p>
-     * Колонки нет вовсе — не беда: фильтр просто не предлагается, отчёт считается по
-     * всему каналу, как и раньше.
+     * Проба ничего не читает (планировщик отсекает всё по {@code WHERE false}), поэтому
+     * стоит она копейки, а результат кэшируется на подключение.
      */
+    private static final List<String> PRODUCT_COLUMNS = List.of("product_type", "product_name", "product");
+
     private String productColumn(Connection conn, long connId) {
         Optional<String> cached = productColCache.get(connId);
         if (cached != null) return cached.orElse(null);
         String found = null;
-        String sql = "SELECT column_name FROM information_schema.columns" +
-                " WHERE table_schema = ? AND table_name = ? AND column_name ILIKE '%product%'" +
-                " ORDER BY CASE column_name WHEN 'product_type' THEN 0 WHEN 'product_name' THEN 1" +
-                "                           WHEN 'product' THEN 2 ELSE 3 END, ordinal_position";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setQueryTimeout(20);
-            ps.setString(1, VIEW_SCHEMA);
-            ps.setString(2, VIEW_NAME);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) found = rs.getString(1);
+        for (String col : PRODUCT_COLUMNS) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT " + quoteIdent(col) + " FROM " + VIEW + " WHERE false")) {
+                ps.setQueryTimeout(20);
+                ps.executeQuery().close();
+                found = col;
+                break;
+            } catch (Exception e) {
+                /* нет такой колонки — пробуем следующую; до конца списка дошли молча */
             }
-        } catch (Exception e) {
-            log.warn("не удалось определить колонку продукта в {}: {}", VIEW, rootMessage(e));
         }
+        if (found == null) log.warn("в {} не нашлось колонки продукта ни под одним из имён {}", VIEW, PRODUCT_COLUMNS);
         productColCache.put(connId, Optional.ofNullable(found));
         return found;
     }
 
-    /** Идентификатор в кавычках: имя пришло из каталога, но в SQL оно всё равно должно быть цитировано. */
+    /** Идентификатор в кавычках: имя своё, из списка выше, но в SQL оно всё равно цитируется. */
     private static String quoteIdent(String name) {
         return "\"" + name.replace("\"", "\"\"") + "\"";
     }
