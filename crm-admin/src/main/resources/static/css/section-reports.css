@@ -1,5 +1,5 @@
 /* ===== Отчёты (Tableau): макет окна и страницы отчётов, изолированы ===== */
-@scope (#view-reports, #view-report-embed){
+@scope (#view-reports, #view-report-embed, #view-report-smscheck){
   /* Секция лежит внутри .view (position:absolute;inset:0;overflow-y:auto), то есть её
      высота УЖЕ равна высоте области контента. Поэтому вместо ручного вычитания
      «шапка + hero + настройки» делаем колонку-флекс: сколько бы ни занимали блоки
@@ -265,14 +265,18 @@
 }
 
 /* ===== ЧЕК СМС траффик: лист «по дням» на странице =====
-   Отдельный @scope: секция #view-report-smscheck в прелюдию выше не входит, и
-   расширять её сейчас нельзя — на неё разом упали бы все .rp-* правила и вид
-   раздела поехал бы. Здесь только таблица отчёта.
+   Раздел добавлен в прелюдию выше — иначе .rp-hero/.rp-toolbar/.rp-setup ему не
+   доставались вовсе, и панель инструментов разъезжалась: подписи, поля и кнопки
+   ложились друг на друга. Разметка там ровно та же, что у отчётов Tableau, под эти
+   правила она и писалась.
    Таблица широкая по определению — 31 день плюс итог, — поэтому листается внутри
    рамки, а не растягивает страницу; шапка и колонка названий при прокрутке
    остаются на месте, иначе на 20-м числе непонятно, какая это строка. */
 @scope (#view-report-smscheck){
-  .sc-daily{overflow:auto;max-height:min(70vh,620px);max-height:min(70dvh,620px);
+  /* flex:0 0 auto обязателен: .rp-embed — колонка-флекс, и по умолчанию элемент
+     сжимается под остаток свободного места. На невысоком экране остаток равен нулю,
+     и рамка схлопывалась в одну линию — таблицы не было видно вовсе. */
+  .sc-daily{flex:0 0 auto;overflow:auto;max-height:min(70vh,620px);max-height:min(70dvh,620px);
     border:1px solid var(--line);border-radius:12px;background:var(--card)}
   .sc-daily table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:12px}
   .sc-daily th,.sc-daily td{padding:6px 10px;border-bottom:1px solid var(--line);
@@ -288,15 +292,7 @@
   .sc-daily .sc-total{background:rgba(80,195,255,.07);font-weight:600;color:var(--ink)}
   .sc-daily .neg{color:var(--coral)}
   .sc-daily .sc-dash{color:var(--faint)}
-  /* строка состояния выгрузки: живёт над таблицей и её не перекрывает.
-     Класс тот же, что у отчётов Tableau, но их @scope сюда не достаёт. */
-  .rp-embed-wait{margin:0 0 10px;font-size:12.5px;color:var(--faint)}
-  .rp-embed-wait.bad{color:var(--coral);background:var(--coral-bg);
-    border:1px solid rgba(255,107,138,.3);border-radius:10px;padding:10px 12px;line-height:1.55}
-  .rp-embed-stub{border:1px dashed var(--line);border-radius:14px;padding:28px 22px;text-align:center;
-    color:var(--dim);font-size:13px;line-height:1.6;background:var(--card)}
-  .rp-embed-stub b{display:block;font-size:15px;color:var(--ink);margin-bottom:8px}
-  .rp-embed-stub.bad{border-color:rgba(255,107,138,.4);background:var(--coral-bg)}
-  .rp-embed-stub.bad b{color:var(--coral)}
-  .rp-embed-hint{display:block;margin-top:12px;font-size:11.5px;color:var(--faint)}
+  /* строка состояния выгрузки идёт над таблицей: у отчётов Tableau она ждёт снизу,
+     здесь — сверху, иначе прыгает вслед за высотой таблицы */
+  .rp-embed-wait{margin:0 0 10px}
 }
