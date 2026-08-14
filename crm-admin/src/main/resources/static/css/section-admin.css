@@ -819,6 +819,10 @@ button:hover{filter:brightness(1.08)}
 .sfd-row .sfd-edit{width:100%;background:var(--bg2);border:1px solid rgba(80,195,255,.45);border-radius:8px;
     color:var(--ink);font-family:var(--sans);font-size:13.5px;padding:7px 10px;outline:none}
 .sfd-row textarea.sfd-edit{resize:vertical;min-height:64px}
+/* Нативное поле даты рисует браузер, и по умолчанию — в светлой схеме: на тёмной
+   карточке получались чёрные цифры на тёмном и невидимый значок календаря.
+   color-scheme переключает всю внутреннюю отрисовку поля на тёмную. */
+.sfd-row input[type="date"].sfd-edit{color-scheme:dark;cursor:text}
 .sfd-row select.sfd-edit{cursor:pointer}
 .sfd-row select.sfd-edit option{background:#0D1826;color:#F2F7FD}
 .sfd-row .sfd-edit-check{width:17px;height:17px;accent-color:#3CFAB4;cursor:pointer}

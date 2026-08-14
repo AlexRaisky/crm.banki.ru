@@ -250,6 +250,38 @@ function sfdComputeEmailFrom(d){
     else email = 'newsletter@email.banki.ru';
     return 'Банки.ру<' + email + '>';
 }
+/* Поля, от которых зависит СОСТАВ строк карточки: только они требуют полной
+   перерисовки. Тип отправителя открывает «Отложенное промо», флаг — поле даты,
+   тумблер LA — набор канальных полей. */
+var SFD_RELAYOUT = { trigger:1, delayed:1, is_la:1 };
+
+/**
+ * Обновить значения строк «только на чтение» без перерисовки карточки.
+ * <p>
+ * Campaign name, communication name и адрес отправителя считаются от других полей,
+ * и раньше их показывал только полный sfdRender. Перерисовка пересоздаёт поля ввода:
+ * у обычного текста это незаметно, а у нативного поля даты сбрасывает набранный
+ * сегмент — число ввести не получалось вовсе.
+ */
+/* Обновляем только то, что пересчитывает sfdRecalcNames. Остальные строки трогать
+   нельзя: часть из них показывается через fmt (канал как «SMS», а не «sms»), и
+   подстановка сырого значения испортила бы вид. */
+var SFD_COMPUTED = { source:1, comname:1, email_from:1 };
+
+function sfdRefreshViews(){
+    var st = SFD_STATE; if (!st) return;
+    var out = document.getElementById(st.mode === 'create' ? 'wizardOutput' : 'settingsOutput');
+    if (!out) return;
+    out.querySelectorAll('[data-view]').forEach(function(el){
+        var k = el.dataset.view;
+        if (!SFD_COMPUTED[k]) return;
+        var v = st.work[k];
+        var empty = (v === undefined || v === null || v === '');
+        el.textContent = empty ? '—' : String(v);
+        el.className = empty ? 'v empty' : 'v';
+    });
+}
+
 function sfdRecalcNames(){
     var st = SFD_STATE; if (!st) return;
     var d = st.work;
@@ -793,9 +825,11 @@ function sfdRowHtml(f){
     } else if (f.type === 'bool'){
         valHtml = '<span class="v">' + (d[f.k] ? '<span class="flag-on">✓ ' + sfdT('да') + '</span>' : '<span class="flag-off">— ' + sfdT('нет') + '</span>') + '</span>';
     } else {
+        /* data-view: по нему значение обновляется на месте, без перерисовки карточки
+           (см. sfdRefreshViews) — иначе правка одного поля уводила бы курсор из другого */
         valHtml = (raw === undefined || raw === null || raw === '')
-            ? '<span class="v empty">—</span>'
-            : '<span class="v">' + sfdEsc(raw) + '</span>';
+            ? '<span class="v empty" data-view="' + f.k + '">—</span>'
+            : '<span class="v" data-view="' + f.k + '">' + sfdEsc(raw) + '</span>';
     }
     /* карандаш — только при праве edit; иначе поле остаётся, но правки нет (сервер отбил бы) */
     var pen = (!f.ro && !editing && sfdCan('edit'))
@@ -1188,6 +1222,9 @@ function sfdRender(){
             }
             if (SFD_NAME_KEYS[k] || k === 'biz_type' || filled) sfdRecalcNames();
             sfdRenderPreview();
+            /* пересчитанные имена показываем на месте: перерисовывать всю карточку
+               ради одной строки незачем, а курсор из поля она уводит */
+            sfdRefreshViews();
             return filled;
         };
         inp.addEventListener('input', function(){ handler(false); if (isCreate) sfdSyncCreate(); });
@@ -1196,9 +1233,12 @@ function sfdRender(){
            В мастере то же делаем по потере фокуса у текстовых полей */
         inp.addEventListener('change', function(){
             var filled = handler(true);
-            /* filled: подставленное в другие поля видно только после перерисовки —
-               в режиме просмотра карточка сама по change не перерисовывается */
-            if (inp.type === 'checkbox' || inp.tagName === 'SELECT' || isCreate || filled) sfdRender();
+            /* Перерисовываем только когда меняется НАБОР строк: тип отправителя открывает
+               «Отложенное промо», сам флаг — поле даты, тумблер LA — канальные поля.
+               Для остальных значений хватает обновления на месте, а перерисовка ломала
+               ввод: поле даты пересоздавалось после каждого сегмента, и число набрать
+               было невозможно. */
+            if (SFD_RELAYOUT[inp.dataset.k] || filled) sfdRender();
         });
     });
     /* «+» рядом с combo: занести введённое значение в справочник */
