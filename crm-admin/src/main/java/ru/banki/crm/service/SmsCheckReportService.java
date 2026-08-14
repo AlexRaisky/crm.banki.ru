@@ -561,6 +561,23 @@ public class SmsCheckReportService {
      */
     private static final List<String> PRODUCT_COLUMNS = List.of("product_type", "product_name", "product");
 
+    /**
+     * Значения product_type, какими они есть в витрине.
+     * <p>
+     * Список — основа, а не подсказка: он показывается всегда, даже если запрос за
+     * значениями за месяц ничего не вернул или упал. Причина простая — выпадающий
+     * список, в котором нет ни одного продукта, бесполезен, а причин у пустого
+     * ответа много (права, тайм-аут на тяжёлом DISTINCT, пустой период).
+     * <p>
+     * То, что реально пришло из витрины, добавляется сверху: новый продукт появится
+     * в фильтре сам, дописывать его сюда не придётся.
+     */
+    private static final List<String> KNOWN_PRODUCTS = List.of(
+            "autocredits", "business_credits", "business_microloans", "creditcards", "credits",
+            "debitcards", "deposits", "exchange_rate", "general", "insurance_combo",
+            "insurance_estate", "insurance_health", "investments", "kasko", "kpk", "lsre",
+            "microloans", "mortgages", "osago", "rko", "savings_account");
+
     private String productColumn(Connection conn, long connId) {
         Optional<String> cached = productColCache.get(connId);
         if (cached != null) return cached.orElse(null);
@@ -587,48 +604,54 @@ public class SmsCheckReportService {
     }
 
     /**
-     * Список продуктов за месяц по каналу — для выпадающего списка на странице.
-     * Берём только те значения, что реально встречаются в выбранном периоде: полный
-     * справочник продуктов DWH был бы длиннее и наполовину пустым.
+     * Продукты для выпадающего списка: известные значения плюс всё, что нашлось в
+     * витрине за выбранный месяц.
+     * <p>
+     * Список никогда не бывает пустым. Запрос за значениями — попытка, а не условие:
+     * он может не вернуть ничего по десятку причин (права, тяжёлый DISTINCT в тайм-аут,
+     * пустой период), и раньше в этом случае фильтр оказывался бесполезным. Ошибку
+     * запроса не поднимаем наверх, а кладём в ответ полем {@code note}: фильтр работает
+     * и без неё, а человеку видно, почему список мог не пополниться.
      */
     public Map<String, Object> products(YearMonth month, String channelKey) {
         String channel = CHANNELS.get(channelKey == null ? "" : channelKey.toLowerCase());
         if (channel == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный канал. Ожидается sms, push или email.");
-        Long connId = configuredConnectionId();
         Map<String, Object> out = new LinkedHashMap<>();
-        if (connId == null) {
-            out.put("column", null);
-            out.put("products", List.of());
-            return out;
-        }
-        List<String> products = new ArrayList<>();
-        String col;
-        try (Connection conn = connect(connId)) {
-            col = productColumn(conn, connId);
-            if (col != null) {
-                String sql = "SELECT DISTINCT " + quoteIdent(col) + " AS p FROM " + VIEW +
-                        " WHERE report_date >= ? AND report_date < ? AND channel_name ilike ?" +
-                        " AND " + quoteIdent(col) + " IS NOT NULL ORDER BY 1";
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setQueryTimeout(QUERY_TIMEOUT_S);
-                    ps.setObject(1, month.atDay(1));
-                    ps.setObject(2, month.plusMonths(1).atDay(1));
-                    ps.setString(3, channel);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String p = rs.getString("p");
-                            if (p != null && !p.isBlank()) products.add(p.trim());
+        /* TreeSet: и порядок по алфавиту, и склейка известных значений с пришедшими */
+        java.util.TreeSet<String> products = new java.util.TreeSet<>(KNOWN_PRODUCTS);
+        Long connId = configuredConnectionId();
+        String col = null, note = null;
+        if (connId != null) {
+            try (Connection conn = connect(connId)) {
+                col = productColumn(conn, connId);
+                if (col != null) {
+                    String sql = "SELECT DISTINCT " + quoteIdent(col) + " AS p FROM " + VIEW +
+                            " WHERE report_date >= ? AND report_date < ? AND channel_name ilike ?" +
+                            " AND " + quoteIdent(col) + " IS NOT NULL";
+                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                        ps.setQueryTimeout(QUERY_TIMEOUT_S);
+                        ps.setObject(1, month.atDay(1));
+                        ps.setObject(2, month.plusMonths(1).atDay(1));
+                        ps.setString(3, channel);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            while (rs.next()) {
+                                String p = rs.getString("p");
+                                if (p != null && !p.isBlank()) products.add(p.trim());
+                            }
                         }
                     }
+                } else {
+                    note = "Колонку продукта в витрине найти не удалось — список показан по известным значениям.";
                 }
+            } catch (Exception e) {
+                note = "Список продуктов из витрины получить не удалось (" + rootMessage(e)
+                        + ") — показаны известные значения.";
+                log.warn("список продуктов из {} не получен: {}", VIEW, rootMessage(e));
             }
-        } catch (ResponseStatusException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Ошибка запроса к источнику: " + rootMessage(e), e);
         }
         out.put("column", col);
-        out.put("products", products);
+        out.put("products", new ArrayList<>(products));
+        out.put("note", note);
         return out;
     }
 
