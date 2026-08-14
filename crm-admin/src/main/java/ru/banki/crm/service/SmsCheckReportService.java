@@ -453,8 +453,36 @@ public class SmsCheckReportService {
         else cellStr(sb, col0, row, v);
     }
 
+    /**
+     * Ключ связки для листов-представлений: {@code source_type + template_id}.
+     * <p>
+     * Префикс {@code CFE_} (и {@code CFE_MKP_}) с источника снимаем. Кампания одна и та же —
+     * {@code CFE_sms_trigger_microloans_issue_10day} и {@code sms_trigger_microloans_issue_10day}
+     * это одна строка отчёта, — но в витрине она теперь идёт с префиксом, а перечни кампаний
+     * в листах-категориях составлены без него. Без нормализации SUMIFS не находит ничего и
+     * все представления показывают нули.
+     * <p>
+     * В самом листе-дне источник остаётся как в витрине, с префиксом: это данные, и подменять
+     * их нельзя. Нормализуем только ключ, по которому идёт сопоставление.
+     */
+    private static final Pattern SOURCE_PREFIX = Pattern.compile("^CFE(?:_MKP)?_");
+
+    /**
+     * Источники, которые сами по себе и есть значение, а не кампания с префиксом.
+     * Без этой проверки {@code CFE_MKP} обрезался бы до {@code MKP}: строка начинается
+     * с {@code CFE_}, и правило срабатывало на ней же.
+     */
+    private static final java.util.Set<String> SOURCE_AS_IS = java.util.Set.of("CFE", "CFE_MKP");
+
     private static String key(String source, String templateId) {
-        return (source == null ? "" : source) + (templateId == null ? "" : templateId);
+        String s = source == null ? "" : source;
+        if (!SOURCE_AS_IS.contains(s)) {
+            Matcher m = SOURCE_PREFIX.matcher(s);
+            /* остаток проверяем отдельно: от «CFE_» без продолжения ключ стал бы
+               голым template_id и слипся бы с чужими строками */
+            if (m.find() && m.end() < s.length()) s = s.substring(m.end());
+        }
+        return s + (templateId == null ? "" : templateId);
     }
 
     // ---------------------------------------------------- правка служебных XML
