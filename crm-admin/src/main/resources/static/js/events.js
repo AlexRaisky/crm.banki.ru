@@ -60,13 +60,6 @@
     node.innerHTML = html;
   }
 
-  function fillDatalist(node, values) {
-    if (!node) return;
-    node.innerHTML = (values || []).map(function (v) {
-      return '<option value="' + esc(v) + '"></option>';
-    }).join("");
-  }
-
   function esc(s) {
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -144,8 +137,7 @@
       fillSelect(el("evoChannel"), d.notifyChannels);
       fillSelect(el("evoDefKey"), d.definitionKeys);
       fillSelect(el("evoPrefix"), d.businessKeyPrefixes);
-      fillDatalist(el("evoSystemList"), d.systems);
-      fillOptions(el("evoVariable"), d.variables, "id", function (v) { return v.name; });
+      fillSelect(el("evoSystem"), d.systems);
       fillOptions(el("evoComm"), d.commCreations, "id", function (c) {
         /* подпись собираем из параметров: по одному id набор не опознать */
         return "#" + c.id + " · " + (c.notify_channel || "—") +
@@ -156,10 +148,10 @@
   }
 
   function resetOnline() {
-    ["evoName", "evoSource", "evoTemplate", "evoSystem"].forEach(function (id) {
+    ["evoName", "evoSource", "evoTemplate"].forEach(function (id) {
       if (el(id)) el(id).value = id === "evoTemplate" ? "0" : "";
     });
-    ["evoChannel", "evoDefKey", "evoPrefix", "evoVariable", "evoComm"].forEach(function (id) {
+    ["evoChannel", "evoDefKey", "evoPrefix", "evoSystem", "evoComm"].forEach(function (id) {
       if (el(id)) el(id).value = "";
     });
     if (el("evoActive")) el("evoActive").checked = false;
@@ -177,7 +169,6 @@
       definitionKey: str("evoDefKey"),
       businessKeyPrefix: str("evoPrefix"),
       templateId: num("evoTemplate"),
-      variableId: num("evoVariable"),
       system: str("evoSystem"),
       isActive: chk("evoActive"),
       isBatch: false,
@@ -212,8 +203,7 @@
       fillSelect(el("evfChannel"), d.notifyChannels);
       fillSelect(el("evfDefKey"), d.definitionKeys);
       fillSelect(el("evfPrefix"), d.businessKeyPrefixes);
-      fillDatalist(el("evfSystemList"), d.systems);
-      fillOptions(el("evfVariable"), d.variables, "id", function (v) { return v.name; });
+      fillSelect(el("evfSystem"), d.systems);
       /* Базы — из справочника flow.d_database: на колонке database висит внешний ключ,
          и значение вне справочника упало бы уже на вставке. */
       fillSelect(el("evfDatabase"), d.databases, "Select option");
@@ -274,10 +264,10 @@
   }
 
   function resetOffline() {
-    ["evfName", "evfSelection", "evfSource", "evfSystem", "evfCrontab", "evfDateStart"]
+    ["evfName", "evfSelection", "evfSource", "evfCrontab", "evfDateStart"]
       .forEach(function (id) { if (el(id)) el(id).value = ""; });
     if (el("evfTemplate")) el("evfTemplate").value = "0";
-    ["evfChannel", "evfDefKey", "evfPrefix", "evfVariable"].forEach(function (id) {
+    ["evfChannel", "evfDefKey", "evfPrefix", "evfSystem"].forEach(function (id) {
       if (el(id)) el(id).value = "";
     });
     if (el("evfActive")) el("evfActive").checked = false;
@@ -305,7 +295,6 @@
       definitionKey: str("evfDefKey"),
       businessKeyPrefix: str("evfPrefix"),
       templateId: num("evfTemplate"),
-      variableId: num("evfVariable"),
       system: str("evfSystem"),
       isActive: chk("evfActive"),
       isBatch: chk("evfBatch"),

@@ -83,7 +83,8 @@ public class EventFormService {
            DISTINCT по данным мало — на чистом контуре список был бы пуст, и первую
            систему пришлось бы вспоминать по памяти. Регистр значений сохранён как в
            проде (insurance и mybankiBack со строчной — это не опечатка).
-           Поле остаётся редактируемым: новую систему всё равно надо чем-то заводить. */
+           В форме это строгий выпадающий список, поэтому новая система появляется в нём
+           только после того, как её допишут сюда: своего справочника у систем нет. */
         out.put("systems", merge(
                 List.of("MPK", "insurance", "URB", "LK", "DIALOG", "mybankiBack", "Marketplace"),
                 strings(
@@ -93,8 +94,6 @@ public class EventFormService {
                 " ORDER BY 1")));
         // базы — из справочника V33, а не из списка в коде: там же на них висит внешний ключ
         out.put("databases", strings("SELECT code FROM flow.d_database ORDER BY code"));
-        out.put("variables", jdbc.queryForList(
-                "SELECT id, name FROM template.d_variables ORDER BY lower(name)"));
         out.put("commCreations", jdbc.queryForList(
                 "SELECT id, notify_channel, send_delay, lifetime, allow_ml" +
                 " FROM tracker.d_comm_creation ORDER BY id DESC"));
@@ -150,7 +149,7 @@ public class EventFormService {
                             " VALUES (?, ?, ?, ?, ?, true)",
                     eventId, orderNum(s, i), selection, s.sql(), bool(s.returnsResultSet(), true));
         }
-        Long localTemplateId = linkTemplate(eventId, f.notifyChannel(), f.templateId(), f.variableId(), warnings);
+        Long localTemplateId = linkTemplate(eventId, f.notifyChannel(), f.templateId(), warnings);
 
         insertDefinition(eventId, f.notifyChannel(), f.definitionKey(), f.businessKeyPrefix());
 
@@ -225,7 +224,7 @@ public class EventFormService {
         // ---- слой A
         long eventId = insertEvent("income", eventName, system, f.source(), active, null);
         insertDelivery(eventId, f.notifyChannel());
-        Long localTemplateId = linkTemplate(eventId, f.notifyChannel(), f.templateId(), f.variableId(), warnings);
+        Long localTemplateId = linkTemplate(eventId, f.notifyChannel(), f.templateId(), warnings);
         insertDefinition(eventId, f.notifyChannel(), f.definitionKey(), f.businessKeyPrefix());
 
         // ---- слой B
@@ -312,7 +311,7 @@ public class EventFormService {
      * @return id шаблона в едином справочнике либо null, если такого шаблона у нас нет
      */
     private Long linkTemplate(long eventId, String notifyChannel, Long prodCode,
-                              Integer variableId, List<String> warnings) {
+                              List<String> warnings) {
         if (prodCode == null) {
             return null;
         }
@@ -329,13 +328,6 @@ public class EventFormService {
         }
         jdbc.update("INSERT INTO flow.d_event_template (event_id, template_id) VALUES (?, ?)",
                 eventId, localId);
-        if (localId != null && variableId != null) {
-            jdbc.update("INSERT INTO template.d_template_variable (template_id, variable_id)" +
-                            " VALUES (?, ?) ON CONFLICT (template_id, variable_id) DO NOTHING",
-                    localId, variableId);
-        } else if (variableId != null) {
-            warnings.add("Переменная не привязана: шаблон не найден в едином справочнике");
-        }
         return localId;
     }
 
