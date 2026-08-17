@@ -15,13 +15,17 @@
   //       | subflow (выбор цепочки + ↗) | steps (кол-во SQL-шагов + текст каждого)
   // Справочники значений — из прода (source подтягивается из шаблона первой comm-ноды)
   var NOTIFY_CHANNELS = ["", "SMS", "EMAIL", "PUSH", "CC", "FA", "VK", "WA", "WEBPUSH", "ROBOT"];
-  /* КЦ: callCenterChannelProcess — БЕЗ суффикса V2, в отличие от остальных ключей.
-     Так он заведён в проде, «дописать для единообразия» тут значит сломать. */
+  /* Суффикс V2 есть не у всех: КЦ, ФА, робот и группа *ChannelProcess живут в проде без
+     него, «дописать для единообразия» тут значит сломать. У vk и wa существуют ОБА
+     варианта — оставлены оба. Префикс robotChannelProcess не опечатка: у робота он
+     совпадает с именем процесса и пишется со строчной. */
   var DEFINITION_KEYS = ["", "smsChannelProcessV2", "pushChannelProcessV2", "smsChannelProccessV2",
                          "emailChannelProcessV2", "vkChannelProcessV2", "waChannelProcessV2",
-                         "callCenterChannelProcess"];
+                         "callCenterChannelProcess", "faChannelProcess", "vkChannelProcess",
+                         "waChannelProcess", "webPushChannelProcess", "robotChannelProcess"];
   var BUSINESS_KEY_PREFIXES = ["", "WaChannel", "VkChannel", "PushChannel", "webPushChannel",
-                               "pushChannel", "emailChannel", "smsChannel", "CallCenterChannel"];
+                               "pushChannel", "emailChannel", "smsChannel", "CallCenterChannel",
+                               "FaChannel", "WebPushChannel", "robotChannelProcess"];
   var DATABASES = ["crmdb", "greenplum"];
   var NODE_TYPES = {
     startIncome: {

@@ -66,17 +66,24 @@ public class EventFormService {
         /* definition_key и business_key_prefix: известный список плюс всё, что уже
            встречается в проде — иначе форма не даст завести событие с ключом, который
            кто-то завёл руками мимо панели. */
-        /* callCenterChannelProcess — БЕЗ суффикса V2, в отличие от остальных: так он
-           заведён в проде, и «дописать для единообразия» тут значит сломать. */
+        /* Суффикс V2 есть не у всех: часть каналов живёт в проде без него
+           (callCenterChannelProcess, faChannelProcess, robotChannelProcess и вся группа
+           ниже). «Дописать для единообразия» тут значит сломать. У vk и wa существуют
+           ОБА варианта — оставляем оба, выбирает человек. */
         out.put("definitionKeys", merge(
                 List.of("smsChannelProcessV2", "pushChannelProcessV2", "smsChannelProccessV2",
                         "emailChannelProcessV2", "vkChannelProcessV2", "waChannelProcessV2",
-                        "callCenterChannelProcess"),
+                        "callCenterChannelProcess", "faChannelProcess", "vkChannelProcess",
+                        "waChannelProcess", "webPushChannelProcess", "robotChannelProcess"),
                 strings("SELECT DISTINCT definition_key FROM commapi.d_definition_mapping" +
                         " WHERE definition_key IS NOT NULL AND definition_key <> ''")));
+        /* Парные префиксы к ключам выше. robotChannelProcess в этом списке не опечатка:
+           у робота префикс совпадает с именем процесса и пишется со строчной, тогда как
+           у остальных каналов префикс — с заглавной (FaChannel, WebPushChannel). */
         out.put("businessKeyPrefixes", merge(
                 List.of("smsChannel", "emailChannel", "pushChannel", "webPushChannel",
-                        "VkChannel", "WaChannel", "CallCenterChannel"),
+                        "VkChannel", "WaChannel", "CallCenterChannel", "FaChannel",
+                        "WebPushChannel", "robotChannelProcess"),
                 strings("SELECT DISTINCT business_key_prefix FROM commapi.d_definition_mapping" +
                         " WHERE business_key_prefix IS NOT NULL AND business_key_prefix <> ''")));
         /* Системы: известный список старой формы плюс всё, что уже заведено. Одного
