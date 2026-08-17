@@ -22,6 +22,17 @@ public final class Sections {
     public static final String HEATMAP = "heatmap";       // Тепловая карта (только просмотр)
     public static final String UPLOADS = "uploads";       // Загруженные инструменты (только просмотр)
 
+    /* «Сущности» — CRM-раздел по схеме Scheme Builder. Секции у него не было вовсе:
+       раздел гейтился флагом администратора и клиентским реестром доступа к сущностям
+       (crmpanel:entityAccess). Из-за этого его нельзя было выдать роли, как остальные
+       разделы, — он просто не показывался в матрице прав. */
+    public static final String ENTITIES = "entities";
+
+    /* Завод событий формой — две страницы, права на каждую отдельно: онлайновое событие
+       заводит одна команда, расписание с SQL-выборкой — другая. */
+    public static final String EV_ONLINE = "ev-online";
+    public static final String EV_OFFLINE = "ev-offline";
+
     /* Отчёты и мониторинг — не одна секция, а по секции на пункт меню (миграция V29).
        Иначе доступ выдавался всё-или-ничего: галка «Отчёты» открывала сразу все пять.
        Зонтичных секций reports/monitoring больше нет — группа сайдбара сама скрывается,
@@ -40,6 +51,8 @@ public final class Sections {
     public static final List<String> ALL = List.of(
             HOME,
             ONELINK, ADMIN, TEMPLATES, SRCBUILDER, PROMO, ABTESTS, HEATMAP,
+            EV_ONLINE, EV_OFFLINE,
+            ENTITIES,
             REP_PLANFACT, REP_MATRIX, REP_LEADGEN, REP_SMSCHECK, REP_DEMO,
             DASHBOARD, DEVIATIONS,
             MON_CAMPAIGNS,
@@ -58,6 +71,8 @@ public final class Sections {
             java.util.Map.entry(PROMO, "Управление коммуникациями"),
             java.util.Map.entry(ABTESTS, "Управление коммуникациями"),
             java.util.Map.entry(HEATMAP, "Управление коммуникациями"),
+            java.util.Map.entry(EV_ONLINE, "События"),
+            java.util.Map.entry(EV_OFFLINE, "События"),
             java.util.Map.entry(REP_PLANFACT, "Отчёты"),
             java.util.Map.entry(REP_MATRIX, "Отчёты"),
             java.util.Map.entry(REP_LEADGEN, "Отчёты"),
@@ -79,7 +94,8 @@ public final class Sections {
      * витрины; цепочки, доступ — только для админов (матрицу они обходят). В матрице прав
      * у не-writable разделов показываем лишь чекбокс Read.
      */
-    public static final Set<String> WRITABLE = Set.of(ADMIN, TEMPLATES, PROMO, ABTESTS);
+    public static final Set<String> WRITABLE = Set.of(ADMIN, TEMPLATES, PROMO, ABTESTS,
+            EV_ONLINE, EV_OFFLINE);
 
     /**
      * Разделы только для админов: доступ к ним даёт роль администратора, а не матрица

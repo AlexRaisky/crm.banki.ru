@@ -33,6 +33,7 @@
 <link rel="stylesheet" href="css/section-abtests.css">
 <link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-entities.css">
+<link rel="stylesheet" href="css/section-events.css">
 <link rel="stylesheet" href="css/section-admin.css">
 </head>
 <body>
@@ -469,6 +470,141 @@
     </section>
 
     <!-- ===== Обзор раздела «Мониторинг» ===== -->
+    <!-- ===== События → обзор группы ===== -->
+    <section class="view ov-view" id="view-events-overview">
+      <div class="ov-head"><h1>Завод <span class="grad">событий</span></h1></div>
+      <div class="ov-sub">Событие — это то, что запускает коммуникацию. Онлайновое приходит из внешней системы, событие по расписанию порождает планировщик по кронтабу. Выберите подраздел.</div>
+      <div class="ov-grid">
+        <div class="ov-card" data-nav-ref="ev-online" onclick="openSection('events','ev-online')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+          <h3>Онлайн-событие</h3>
+          <p>Событие приходит извне: имя, система, канал, шаблон и готовый набор параметров доставки.</p>
+          <span class="ov-go">Открыть →</span>
+        </div>
+        <div class="ov-card" data-nav-ref="ev-offline" onclick="openSection('events','ev-offline')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
+          <h3>Событие по расписанию</h3>
+          <p>Кронтаб, база выборки и SQL-шаги: планировщик выполняет их и порождает коммуникацию.</p>
+          <span class="ov-go">Открыть →</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== События → Онлайн-событие ===== -->
+    <section class="view" id="sec-event-online">
+      <div class="eyebrow">CRM · Events · Online</div>
+      <h1>Онлайн-<span class="grad">событие</span></h1>
+      <p class="sub">Событие приходит из внешней системы. Заводится сразу в двух слоях: в нашей модели (<code>flow.d_event</code> и обвязка) и в таблицах, которые читают боевые движки (<code>tracker.t_event_comm</code>, маппинги шаблона и метода отправки).</p>
+
+      <div class="ev-step">
+        <div class="t">Шаг 1</div>
+        <div class="ev-fields">
+          <div class="ev-f"><label for="evoName">Введите event_name</label><input type="text" id="evoName" autocomplete="off"></div>
+          <div class="ev-f"><label for="evoSource">Введите source</label><input type="text" id="evoSource" autocomplete="off"></div>
+        </div>
+      </div>
+
+      <div class="ev-step">
+        <div class="t">Шаг 2</div>
+        <div class="ev-fields">
+          <div class="ev-f"><label for="evoChannel">Выберите notify_channel</label><select id="evoChannel"></select></div>
+          <div class="ev-f"><label for="evoDefKey">Выберите definition_key</label><select id="evoDefKey"></select></div>
+          <div class="ev-f"><label for="evoPrefix">Выберите business_key_prefix</label><select id="evoPrefix"></select></div>
+          <div class="ev-f"><label for="evoTemplate">Введите template_id</label><input type="number" id="evoTemplate" value="0" min="0" step="1">
+            <span class="hint">Код шаблона в проде. Связь в нашей модели ставится, если такой шаблон у нас есть.</span></div>
+          <div class="ev-f"><label for="evoVariable">Выберите переменную</label><select id="evoVariable"></select></div>
+          <div class="ev-f"><label for="evoSystem">Выберите систему</label><input type="text" id="evoSystem" list="evoSystemList" autocomplete="off"><datalist id="evoSystemList"></datalist></div>
+        </div>
+        <div class="ev-checks">
+          <label class="ev-chk"><input type="checkbox" id="evoActive"> Is active</label>
+          <label class="ev-chk"><input type="checkbox" id="evoBatch" disabled> Is batch
+            <span class="hint">у онлайн-события не применяется</span></label>
+        </div>
+      </div>
+
+      <div class="ev-step">
+        <div class="t">Шаг 3</div>
+        <div class="ev-fields">
+          <div class="ev-f"><label for="evoComm">Выберите id_comm_creation</label><select id="evoComm"></select>
+            <span class="hint">Готовый набор параметров доставки (<code>tracker.d_comm_creation</code>). Форма его выбирает, а не создаёт.</span></div>
+        </div>
+      </div>
+
+      <div class="ev-foot">
+        <button class="ev-btn" id="evoSubmit" type="button">Запустить коммуникацию</button>
+        <button class="ev-btn ghost" id="evoReset" type="button">Отмена</button>
+        <span class="ev-msg" id="evoMsg"></span>
+      </div>
+      <div id="evoResult"></div>
+    </section>
+
+    <!-- ===== События → Событие по расписанию ===== -->
+    <section class="view" id="sec-event-offline">
+      <div class="eyebrow">CRM · Events · Schedule</div>
+      <h1>Событие <span class="grad">по расписанию</span></h1>
+      <p class="sub">Планировщик выполняет SQL-шаги по кронтабу и порождает коммуникацию. Заводится в нашей модели (<code>flow.d_event</code>, расписание и шаги) и в прод-таблицах (<code>scheduler.t_get_event</code>, <code>t_launch_settings</code>, <code>t_execution_steps</code>, маппинги).</p>
+
+      <div class="ev-step">
+        <div class="t">Шаг 1</div>
+        <div class="ev-fields">
+          <div class="ev-f"><label for="evfName">Введите event_name</label><input type="text" id="evfName" autocomplete="off"></div>
+          <div class="ev-f"><label for="evfSelection">Введите selection</label><input type="text" id="evfSelection" autocomplete="off">
+            <span class="hint">Имя процесса выборки. Связывает три прод-таблицы между собой — внешних ключей там нет, только совпадение строки.</span></div>
+          <div class="ev-f"><label for="evfSource">Введите source</label><input type="text" id="evfSource" autocomplete="off"></div>
+        </div>
+      </div>
+
+      <div class="ev-step">
+        <div class="t">Шаг 2</div>
+        <div class="ev-fields">
+          <div class="ev-f"><label for="evfChannel">Выберите notify_channel</label><select id="evfChannel"></select></div>
+          <div class="ev-f"><label for="evfDefKey">Выберите definition_key</label><select id="evfDefKey"></select></div>
+          <div class="ev-f"><label for="evfPrefix">Выберите business_key_prefix</label><select id="evfPrefix"></select></div>
+          <div class="ev-f"><label for="evfTemplate">Введите template_id</label><input type="number" id="evfTemplate" value="0" min="0" step="1"></div>
+          <div class="ev-f"><label for="evfVariable">Выберите переменную</label><select id="evfVariable"></select></div>
+          <div class="ev-f"><label for="evfSystem">Выберите систему</label><input type="text" id="evfSystem" list="evfSystemList" autocomplete="off"><datalist id="evfSystemList"></datalist></div>
+        </div>
+        <div class="ev-checks">
+          <label class="ev-chk"><input type="checkbox" id="evfActive"> Is active</label>
+          <label class="ev-chk"><input type="checkbox" id="evfBatch" checked> Is batch
+            <span class="hint">массовый метод отправки против единичного</span></label>
+          <label class="ev-chk"><input type="checkbox" id="evfChain"> Is chain
+            <span class="hint">маппинг шаблона уйдёт в d_template_mapping_mass</span></label>
+        </div>
+      </div>
+
+      <div class="ev-step">
+        <div class="t">Шаг 3</div>
+        <div class="ev-fields">
+          <div class="ev-f"><label for="evfDateStart">Выберите date_start</label><input type="datetime-local" id="evfDateStart">
+            <span class="hint">Пусто — возьмём момент сохранения.</span></div>
+        </div>
+      </div>
+
+      <div class="ev-step">
+        <div class="t">Шаг 4</div>
+        <div class="ev-fields">
+          <div class="ev-f"><label for="evfDatabase">Выберите database</label><select id="evfDatabase"></select></div>
+          <div class="ev-f"><label for="evfCrontab">Введите крон выражение</label><input type="text" id="evfCrontab" placeholder="0 9 * * *" autocomplete="off"></div>
+        </div>
+      </div>
+
+      <div class="ev-step">
+        <div class="t">Шаг 5</div>
+        <div class="ev-fields">
+          <div class="ev-f"><label for="evfStepCount">Введите количество шагов</label><input type="number" id="evfStepCount" value="1" min="1" max="20" step="1"></div>
+        </div>
+        <div id="evfSteps"></div>
+      </div>
+
+      <div class="ev-foot">
+        <button class="ev-btn" id="evfSubmit" type="button">Запустить коммуникацию</button>
+        <button class="ev-btn ghost" id="evfReset" type="button">Отмена</button>
+        <span class="ev-msg" id="evfMsg"></span>
+      </div>
+      <div id="evfResult"></div>
+    </section>
+
     <section class="view ov-view" id="view-mon-overview">
       <div class="ov-head"><h1 data-i18n-html="h1_mon">Мониторинг <span class="grad">процессов CRM</span></h1></div>
       <div class="ov-sub" data-i18n="Контроль работоспособности кампаний и интеграций. Выберите подраздел.">Контроль работоспособности кампаний и интеграций. Выберите подраздел.</div>
@@ -2289,6 +2425,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
+<script src="js/events.js"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->
 <!-- фиксированный попап подсказок полей (showFieldHelp): не обрезается краями карточек -->

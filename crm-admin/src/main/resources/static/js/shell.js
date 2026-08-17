@@ -34,6 +34,14 @@ const NAV = [
       { id:"abtests",   label:"А/Б тесты",           icon:"beaker", view:"sec-abtests" },
       { id:"heatmap",   label:"Тепловая карта",      icon:"grid2", view:"view-heatmap", appOnly:["Маркетинг"] },
   ]},
+  /* «События» — завод события формой, по образцу старой Appsmith-админки: онлайновое
+     приходит извне, событие по расписанию порождает планировщик по кронтабу. Вторая
+     дорога к тем же таблицам, что и «Цепочки», только без канвы. Права на каждую
+     страницу свои: id пункта И ЕСТЬ секция RBAC. */
+  { id:"events", label:"События", icon:"bolt", overviewView:"view-events-overview", children:[
+      { id:"ev-online",  label:"Онлайн-событие",       icon:"pulse", view:"sec-event-online" },
+      { id:"ev-offline", label:"Событие по расписанию", icon:"calendar", view:"sec-event-offline" },
+  ]},
   /* «Сущности» — данные CRM по схеме Scheme Builder. Подразделы НЕ задаются здесь:
      children заполняет js/entities.js (entSyncNav) по сущностям схемы, поэтому
      заведённая в Scheme Builder сущность появляется в панели сама.
@@ -42,6 +50,10 @@ const NAV = [
      снимается, только если пользователю доступна хотя бы одна сущность. По
      умолчанию не-админам не доступна ни одна — доступ выдаётся явно, через
      реестр crmpanel:entityAccess (entAccessSet). */
+  /* id группы совпадает с секцией RBAC entities: гейт стоит не здесь, а в entAllowed
+     (entities.js) — раздел показывается, когда доступна хотя бы одна сущность, а
+     доступность теперь решает секция. Держать ещё и гейт на самой группе нельзя:
+     он отобрал бы раздел у ролей, которым сущность выдали клиентским реестром. */
   { id:"entities", label:"Сущности", icon:"db", overviewView:"view-entities-overview",
     adminOnly:true, children:[] },
   /* «Отчёты» — встраивание отчётов Tableau: обзор с карточками, у каждого отчёта
@@ -95,6 +107,7 @@ const ICONS = {
   plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
   reports:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-4M12 17V8M16 17v-6"/></svg>',
+  bolt:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 4 14 11 14 10 22 20 10 13 10 13 2"/></svg>',
   /* «Сущности»: db — группа раздела, table — подраздел отдельной сущности */
   db:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/><path d="M4 11.5v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></svg>',
   table:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.5h18M9 9.5V20"/></svg>',
@@ -904,6 +917,9 @@ function openSection(sid, cid){
   /* «ЧЕК СМС траффик» — выгрузка Excel (smscheck.js) */
   if (target.view === "view-report-smscheck" && typeof scInit === "function") scInit();
   if (sid === "journeys" && typeof initJourneysSection === "function") initJourneysSection();
+  /* завод событий: справочники тянутся при первом открытии формы, не на старте панели */
+  if (target.view === "sec-event-online" && typeof initEventOnlineSection === "function") initEventOnlineSection();
+  if (target.view === "sec-event-offline" && typeof initEventOfflineSection === "function") initEventOfflineSection();
   if (target.view === "sec-deviations") setTimeout(() => {
     /* графики Chart.js, созданные в скрытой секции, имеют нулевой размер —
        при первом показе пересоздаём их через renderAll(). setTimeout, а не rAF:

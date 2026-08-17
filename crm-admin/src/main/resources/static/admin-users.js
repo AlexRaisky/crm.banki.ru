@@ -17,6 +17,8 @@
     journeys: "Цепочки", access: "Управление доступом",
     srcbuilder: "Конструктор source",
     heatmap: "Тепловая карта",
+    entities: "Сущности",
+    "ev-online": "Онлайн-событие", "ev-offline": "Событие по расписанию",
     "rep-planfact": "Plan-Fact", "rep-matrix": "CRM Matrix",
     "rep-leadgen": "CRM Leadgen", "rep-smscheck": "ЧЕК СМС траффик",
     "rep-demo": "Пример визуализации отчёта",

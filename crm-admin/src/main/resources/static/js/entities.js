@@ -184,7 +184,12 @@ function entAllowed(e){
   if (!me) return true;                       /* демо-режим без бэкенда */
   if (me.isAdmin) return true;
   var roles = entAcl()[e.id];
-  return Array.isArray(roles) && roles.indexOf(me.role) >= 0;
+  /* Реестр — инструмент СУЖЕНИЯ, а не единственный гейт: есть запись по сущности —
+     решает она; нет записи — работает обычный RBAC по секции entities (V34). Раньше
+     второй ветки не было, записи по умолчанию нет ни у одной сущности, и раздел не
+     открывался никакой роли — сколько прав ей ни выдай в матрице. */
+  if (Array.isArray(roles)) return roles.indexOf(me.role) >= 0;
+  return !!(me.sections && me.sections.indexOf("entities") >= 0);
 }
 /* точка выдачи доступа не-админам: entAccessSet('client', ['MARKETER']) */
 function entAccessSet(entityId, roles){

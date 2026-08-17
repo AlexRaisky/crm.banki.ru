@@ -1,0 +1,77 @@
+/* ===== Завод событий («Онлайн-событие» и «Событие по расписанию») — изолированы.
+   Форма пошаговая, как в старой Appsmith-админке: шаги идут сверху вниз, между ними
+   тонкая линия.
+   В прелюдии ОБЕ формы. Обзорной страницы группы (#view-events-overview) здесь нет
+   намеренно: она построена на общих классах .ov-* из shell.css, как все остальные
+   обзорные, и своих правил из этого файла не использует. Зато если в разделе появится
+   третья форма — её id обязан попасть сюда же: на #view-report-smscheck мы уже
+   наступали, забытая в прелюдии секция молча остаётся без всех правил файла. ===== */
+@scope (#sec-event-online, #sec-event-offline){
+  :scope{color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;padding:24px 22px 80px}
+
+  h1{font-size:26px;font-weight:700;letter-spacing:-.015em;margin:0}
+  h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:8px}
+  .sub{color:var(--dim);font-size:13.5px;margin:8px 0 22px;max-width:880px}
+
+  /* ---------- шаг формы ---------- */
+  .ev-step{border-top:1px solid var(--line);padding:18px 0 4px}
+  .ev-step:first-of-type{border-top:0;padding-top:0}
+  .ev-step > .t{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:12px}
+
+  /* Поля кладём в сетку с минимальной шириной колонки: на широком мониторе их
+     четыре в ряд, на ноутбуке два, на узком одно. Фиксированных колонок не ставим —
+     раздел настроек уже ломался на маленьком экране именно из-за них. */
+  .ev-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px 18px}
+  .ev-f{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .ev-f.wide{grid-column:1/-1}
+  .ev-f label{font-size:11.5px;color:var(--faint)}
+  .ev-f input[type=text],.ev-f input[type=number],.ev-f input[type=datetime-local],
+  .ev-f select,.ev-f textarea{
+    background:var(--card);border:1px solid var(--line);border-radius:10px;
+    color:var(--ink);font:inherit;padding:9px 11px;width:100%;
+    /* без этого системный календарь и стрелки списка остаются светлыми на тёмной теме */
+    color-scheme:light dark}
+  .ev-f textarea{min-height:96px;font-family:var(--mono);font-size:12.5px;resize:vertical}
+  .ev-f input:disabled,.ev-f select:disabled{opacity:.55;cursor:not-allowed}
+  .ev-f .hint{font-size:11px;color:var(--faint)}
+
+  /* чекбоксы в один ряд с полями */
+  .ev-checks{display:flex;flex-wrap:wrap;gap:18px 26px;margin-top:14px}
+  .ev-chk{display:flex;align-items:center;gap:8px;font-size:13px}
+  .ev-chk input{width:16px;height:16px;accent-color:var(--blue)}
+
+  /* ---------- SQL-шаги ---------- */
+  .ev-sql{border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px;background:var(--card)}
+  .ev-sql .h{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+  .ev-sql .h b{font-size:13px}
+  .ev-sql .rm{background:none;border:1px solid var(--line);border-radius:8px;color:var(--dim);
+    cursor:pointer;font:inherit;font-size:12px;padding:4px 10px}
+  .ev-sql .rm:hover{color:var(--ink);border-color:var(--dim)}
+
+  /* ---------- подвал: кнопки и результат ---------- */
+  .ev-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    border-top:1px solid var(--line);margin-top:20px;padding-top:18px}
+  .ev-btn{background:var(--grad);border:0;border-radius:10px;color:#fff;cursor:pointer;
+    font:inherit;font-weight:600;padding:11px 20px}
+  .ev-btn:disabled{opacity:.5;cursor:not-allowed}
+  .ev-btn.ghost{background:none;border:1px solid var(--line);color:var(--dim);font-weight:500}
+  .ev-btn.ghost:hover{color:var(--ink)}
+  .ev-msg{font-size:13px}
+  .ev-msg.err{color:var(--red,#e5484d)}
+  .ev-msg.ok{color:var(--green,#30a46c)}
+
+  /* что создалось: таблица слоя B */
+  .ev-rows{margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .ev-rows table{border-collapse:collapse;width:100%;font-size:12.5px}
+  .ev-rows th,.ev-rows td{border-bottom:1px solid var(--line);padding:8px 12px;text-align:left}
+  .ev-rows th{color:var(--faint);font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+    text-transform:uppercase;font-weight:500}
+  .ev-rows tr:last-child td{border-bottom:0}
+  .ev-rows td.tbl{font-family:var(--mono)}
+
+  .ev-warn{border:1px solid var(--amber,#f5a524);border-radius:10px;color:var(--amber,#f5a524);
+    font-size:12.5px;margin-top:12px;padding:10px 12px}
+}
