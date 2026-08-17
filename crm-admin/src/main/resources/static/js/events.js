@@ -264,7 +264,7 @@
   }
 
   function resetOffline() {
-    ["evfName", "evfSelection", "evfSource", "evfCrontab", "evfDateStart"]
+    ["evfName", "evfSource", "evfCrontab", "evfDateStart"]
       .forEach(function (id) { if (el(id)) el(id).value = ""; });
     if (el("evfTemplate")) el("evfTemplate").value = "0";
     ["evfChannel", "evfDefKey", "evfPrefix", "evfSystem"].forEach(function (id) {
@@ -288,8 +288,9 @@
     say("evfMsg", "Сохраняем…");
     renderResult("evfResult", null);
     var body = {
+      /* selection не передаём: он равен имени события, и сервер подставит его сам —
+         иначе форма несла бы два поля с одним и тем же значением. */
       eventName: str("evfName"),
-      selection: str("evfSelection"),
       source: str("evfSource"),
       notifyChannel: str("evfChannel"),
       definitionKey: str("evfDefKey"),
@@ -308,7 +309,6 @@
       say("evfMsg", "Событие «" + res.eventName + "» заведено (id " + res.eventId + ")", "ok");
       renderResult("evfResult", res);
       if (el("evfName")) el("evfName").value = "";
-      if (el("evfSelection")) el("evfSelection").value = "";
     }).catch(function (e) { fail("evfMsg", e); });
   }
 

@@ -135,7 +135,10 @@ public class EventFormService {
             }
         }
         String eventName = req(f.eventName(), "имя события");
-        String selection = req(f.selection(), "имя процесса (selection)");
+        /* selection всегда равен имени события — форма спрашивает одно поле, а в прод
+           уезжают оба значения. Присланный явно selection уважаем: если он когда-нибудь
+           начнёт отличаться, менять придётся только форму. */
+        String selection = nz(f.selection()).isEmpty() ? eventName : nz(f.selection());
         String system = nz(f.system());
         requireFreeName(eventName, system);
 

@@ -32,13 +32,16 @@ public final class EventFormDtos {
      *
      * @param selection имя процесса выборки. Связывает три прод-таблицы между собой
      *                  (t_get_event, t_launch_settings, t_execution_steps.process_name) —
-     *                  внешних ключей там нет, только совпадение строки.
+     *                  внешних ключей там нет, только совпадение строки. Всегда равен
+     *                  eventName, поэтому форма его НЕ шлёт: поле оставлено необязательным
+     *                  на случай, если значения когда-нибудь разойдутся, а пустое —
+     *                  сервер подставляет имя события.
      * @param isChain   маппинг шаблона пишется в d_template_mapping_mass вместо
      *                  d_template_mapping (в проде цепочка живёт отдельной таблицей).
      */
     public record OfflineEventForm(
             @NotBlank(message = "Не заполнено имя события") String eventName,
-            @NotBlank(message = "Не заполнено имя процесса (selection)") String selection,
+            String selection,
             String source,
             @NotBlank(message = "Не выбран канал (notify_channel)") String notifyChannel,
             String definitionKey,

@@ -546,9 +546,8 @@
       <div class="ev-step">
         <div class="t">Шаг 1</div>
         <div class="ev-fields">
-          <div class="ev-f"><label for="evfName">Введите event_name</label><input type="text" id="evfName" autocomplete="off"></div>
-          <div class="ev-f"><label for="evfSelection">Введите selection</label><input type="text" id="evfSelection" autocomplete="off">
-            <span class="hint">Имя процесса выборки. Связывает три прод-таблицы между собой — внешних ключей там нет, только совпадение строки.</span></div>
+          <div class="ev-f"><label for="evfName">Введите event_name</label><input type="text" id="evfName" autocomplete="off">
+            <span class="hint">Уходит и в event_name, и в selection — это одно и то же значение. selection связывает три прод-таблицы между собой: внешних ключей там нет, только совпадение строки.</span></div>
           <div class="ev-f"><label for="evfSource">Введите source</label><input type="text" id="evfSource" autocomplete="off"></div>
         </div>
       </div>
