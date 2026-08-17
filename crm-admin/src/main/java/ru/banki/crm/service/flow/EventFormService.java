@@ -79,13 +79,18 @@ public class EventFormService {
                         "VkChannel", "WaChannel", "CallCenterChannel"),
                 strings("SELECT DISTINCT business_key_prefix FROM commapi.d_definition_mapping" +
                         " WHERE business_key_prefix IS NOT NULL AND business_key_prefix <> ''")));
-        /* Системы справочника не имеют — собираем те, что уже заведены. Поле остаётся
-           редактируемым: первая система в новом контуре иначе была бы недоступна. */
-        out.put("systems", strings(
+        /* Системы: известный список старой формы плюс всё, что уже заведено. Одного
+           DISTINCT по данным мало — на чистом контуре список был бы пуст, и первую
+           систему пришлось бы вспоминать по памяти. Регистр значений сохранён как в
+           проде (insurance и mybankiBack со строчной — это не опечатка).
+           Поле остаётся редактируемым: новую систему всё равно надо чем-то заводить. */
+        out.put("systems", merge(
+                List.of("MPK", "insurance", "URB", "LK", "DIALOG", "mybankiBack", "Marketplace"),
+                strings(
                 "SELECT DISTINCT system FROM flow.d_event WHERE system IS NOT NULL AND system <> ''" +
                 " UNION SELECT DISTINCT system FROM scheduler.t_get_event WHERE system IS NOT NULL AND system <> ''" +
                 " UNION SELECT DISTINCT system FROM tracker.t_event_comm WHERE system IS NOT NULL AND system <> ''" +
-                " ORDER BY 1"));
+                " ORDER BY 1")));
         // базы — из справочника V33, а не из списка в коде: там же на них висит внешний ключ
         out.put("databases", strings("SELECT code FROM flow.d_database ORDER BY code"));
         out.put("variables", jdbc.queryForList(
