@@ -66,14 +66,17 @@ public class EventFormService {
         /* definition_key и business_key_prefix: известный список плюс всё, что уже
            встречается в проде — иначе форма не даст завести событие с ключом, который
            кто-то завёл руками мимо панели. */
+        /* callCenterChannelProcess — БЕЗ суффикса V2, в отличие от остальных: так он
+           заведён в проде, и «дописать для единообразия» тут значит сломать. */
         out.put("definitionKeys", merge(
                 List.of("smsChannelProcessV2", "pushChannelProcessV2", "smsChannelProccessV2",
-                        "emailChannelProcessV2", "vkChannelProcessV2", "waChannelProcessV2"),
+                        "emailChannelProcessV2", "vkChannelProcessV2", "waChannelProcessV2",
+                        "callCenterChannelProcess"),
                 strings("SELECT DISTINCT definition_key FROM commapi.d_definition_mapping" +
                         " WHERE definition_key IS NOT NULL AND definition_key <> ''")));
         out.put("businessKeyPrefixes", merge(
                 List.of("smsChannel", "emailChannel", "pushChannel", "webPushChannel",
-                        "VkChannel", "WaChannel"),
+                        "VkChannel", "WaChannel", "CallCenterChannel"),
                 strings("SELECT DISTINCT business_key_prefix FROM commapi.d_definition_mapping" +
                         " WHERE business_key_prefix IS NOT NULL AND business_key_prefix <> ''")));
         /* Системы справочника не имеют — собираем те, что уже заведены. Поле остаётся

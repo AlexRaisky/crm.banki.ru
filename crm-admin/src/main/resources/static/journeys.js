@@ -15,10 +15,13 @@
   //       | subflow (выбор цепочки + ↗) | steps (кол-во SQL-шагов + текст каждого)
   // Справочники значений — из прода (source подтягивается из шаблона первой comm-ноды)
   var NOTIFY_CHANNELS = ["", "SMS", "EMAIL", "PUSH", "CC", "FA", "VK", "WA", "WEBPUSH", "ROBOT"];
+  /* КЦ: callCenterChannelProcess — БЕЗ суффикса V2, в отличие от остальных ключей.
+     Так он заведён в проде, «дописать для единообразия» тут значит сломать. */
   var DEFINITION_KEYS = ["", "smsChannelProcessV2", "pushChannelProcessV2", "smsChannelProccessV2",
-                         "emailChannelProcessV2", "vkChannelProcessV2", "waChannelProcessV2"];
+                         "emailChannelProcessV2", "vkChannelProcessV2", "waChannelProcessV2",
+                         "callCenterChannelProcess"];
   var BUSINESS_KEY_PREFIXES = ["", "WaChannel", "VkChannel", "PushChannel", "webPushChannel",
-                               "pushChannel", "emailChannel", "smsChannel"];
+                               "pushChannel", "emailChannel", "smsChannel", "CallCenterChannel"];
   var DATABASES = ["crmdb", "greenplum"];
   var NODE_TYPES = {
     startIncome: {
