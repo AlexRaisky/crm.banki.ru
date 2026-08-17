@@ -118,6 +118,19 @@
   }
 
   function str(id) { return el(id) ? String(el(id).value).trim() : ""; }
+
+  /* date_start в форме только показывается: поле недоступно для правки, а реальную
+     метку ставит сервер в момент вставки. Держать здесь значение, набранное при
+     открытии раздела, нельзя — форму заполняют и по десять минут, и в t_launch_settings
+     уехало бы время открытия страницы, а не время заведения события. */
+  function stampNow(id) {
+    var node = el(id);
+    if (!node) return;
+    var d = new Date();
+    function p2(n) { return (n < 10 ? "0" : "") + n; }
+    node.value = d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()) +
+                 "T" + p2(d.getHours()) + ":" + p2(d.getMinutes()) + ":" + p2(d.getSeconds());
+  }
   function chk(id) { return !!(el(id) && el(id).checked); }
 
   // ============================================================ ОНЛАЙН-СОБЫТИЕ
@@ -198,6 +211,7 @@
       el("evfSubmit").title = "Нет права на заведение событий в этом разделе";
     }
     renderSteps();
+    stampNow("evfDateStart");
 
     dictionaries().then(function (d) {
       fillSelect(el("evfChannel"), d.notifyChannels);
@@ -264,8 +278,9 @@
   }
 
   function resetOffline() {
-    ["evfName", "evfSource", "evfCrontab", "evfDateStart"]
+    ["evfName", "evfSource", "evfCrontab"]
       .forEach(function (id) { if (el(id)) el(id).value = ""; });
+    stampNow("evfDateStart");
     if (el("evfTemplate")) el("evfTemplate").value = "0";
     ["evfChannel", "evfDefKey", "evfPrefix", "evfSystem"].forEach(function (id) {
       if (el(id)) el(id).value = "";
@@ -300,7 +315,6 @@
       isActive: chk("evfActive"),
       isBatch: chk("evfBatch"),
       isChain: chk("evfChain"),
-      dateStart: str("evfDateStart"),
       database: str("evfDatabase"),
       crontab: str("evfCrontab"),
       steps: steps
@@ -309,6 +323,7 @@
       say("evfMsg", "Событие «" + res.eventName + "» заведено (id " + res.eventId + ")", "ok");
       renderResult("evfResult", res);
       if (el("evfName")) el("evfName").value = "";
+      stampNow("evfDateStart");
     }).catch(function (e) { fail("evfMsg", e); });
   }
 
