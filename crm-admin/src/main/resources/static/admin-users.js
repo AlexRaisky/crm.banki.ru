@@ -19,6 +19,7 @@
     heatmap: "Тепловая карта",
     entities: "Сущности",
     "ev-online": "Онлайн-событие", "ev-offline": "Событие по расписанию",
+    "ev-export": "Перелив событий в прод",
     "rep-planfact": "Plan-Fact", "rep-matrix": "CRM Matrix",
     "rep-leadgen": "CRM Leadgen", "rep-smscheck": "ЧЕК СМС траффик",
     "rep-demo": "Пример визуализации отчёта",

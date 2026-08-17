@@ -6,7 +6,7 @@
    обзорные, и своих правил из этого файла не использует. Зато если в разделе появится
    третья форма — её id обязан попасть сюда же: на #view-report-smscheck мы уже
    наступали, забытая в прелюдии секция молча остаётся без всех правил файла. ===== */
-@scope (#sec-event-online, #sec-event-offline){
+@scope (#sec-event-online, #sec-event-offline, #sec-event-export){
   :scope{color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;padding:24px 22px 80px}
 
   h1{font-size:26px;font-weight:700;letter-spacing:-.015em;margin:0}

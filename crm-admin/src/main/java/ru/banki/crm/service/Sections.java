@@ -32,6 +32,9 @@ public final class Sections {
        заводит одна команда, расписание с SQL-выборкой — другая. */
     public static final String EV_ONLINE = "ev-online";
     public static final String EV_OFFLINE = "ev-offline";
+    /* Перелив события в прод-БД — отдельная секция от заведения: собрать событие у себя
+       и отправить его в боевые таблицы это разные полномочия. */
+    public static final String EV_EXPORT = "ev-export";
 
     /* Отчёты и мониторинг — не одна секция, а по секции на пункт меню (миграция V29).
        Иначе доступ выдавался всё-или-ничего: галка «Отчёты» открывала сразу все пять.
@@ -51,7 +54,7 @@ public final class Sections {
     public static final List<String> ALL = List.of(
             HOME,
             ONELINK, ADMIN, TEMPLATES, SRCBUILDER, PROMO, ABTESTS, HEATMAP,
-            EV_ONLINE, EV_OFFLINE,
+            EV_ONLINE, EV_OFFLINE, EV_EXPORT,
             ENTITIES,
             REP_PLANFACT, REP_MATRIX, REP_LEADGEN, REP_SMSCHECK, REP_DEMO,
             DASHBOARD, DEVIATIONS,
@@ -73,6 +76,7 @@ public final class Sections {
             java.util.Map.entry(HEATMAP, "Управление коммуникациями"),
             java.util.Map.entry(EV_ONLINE, "События"),
             java.util.Map.entry(EV_OFFLINE, "События"),
+            java.util.Map.entry(EV_EXPORT, "События"),
             java.util.Map.entry(REP_PLANFACT, "Отчёты"),
             java.util.Map.entry(REP_MATRIX, "Отчёты"),
             java.util.Map.entry(REP_LEADGEN, "Отчёты"),
@@ -95,7 +99,7 @@ public final class Sections {
      * у не-writable разделов показываем лишь чекбокс Read.
      */
     public static final Set<String> WRITABLE = Set.of(ADMIN, TEMPLATES, PROMO, ABTESTS,
-            EV_ONLINE, EV_OFFLINE);
+            EV_ONLINE, EV_OFFLINE, EV_EXPORT);
 
     /**
      * Разделы только для админов: доступ к ним даёт роль администратора, а не матрица
