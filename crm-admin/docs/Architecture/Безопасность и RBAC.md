@@ -6,7 +6,7 @@ tags: [architecture, security, rbac, auth]
 
 Единственная каноническая заметка про доступ: вход, роли, матрица прав, разделы, супер-админ, серверные проверки. Все остальные заметки ссылаются сюда, а не пересказывают.
 
-Проверено по `security/SecurityConfig.java`, `security/CustomUserDetailsService.java`, `security/AppUserPrincipal.java`, `security/CurrentUser.java`, `security/AccessGuard.java`, `domain/Role.java`, `domain/SectionAccess.java`, `domain/Capability.java`, `domain/AppUser.java`, `service/Sections.java`, `service/RoleService.java`, `service/UserService.java`, `config/AdminBootstrap.java`, `web/AuthController.java`, `web/AdminUserController.java`, `web/RoleController.java`, `web/TemplateController.java`, `web/PromoPlanController.java`, `web/SmsCheckReportController.java`, `web/JourneyController.java`, `web/FlowController.java`, `web/PanelSettingsController.java`, `web/ReportConnectionController.java` и миграциям `V2`, `V20`–`V23`, `V29`.
+Проверено по `security/SecurityConfig.java`, `security/CustomUserDetailsService.java`, `security/AppUserPrincipal.java`, `security/CurrentUser.java`, `security/AccessGuard.java`, `domain/Role.java`, `domain/SectionAccess.java`, `domain/Capability.java`, `domain/AppUser.java`, `service/Sections.java`, `service/RoleService.java`, `service/UserService.java`, `config/AdminBootstrap.java`, всем контроллерам `web/` и миграциям `V2`, `V20`–`V23`, `V29`.
 
 ## Главное изменение: роли — это данные
 
@@ -27,7 +27,7 @@ flowchart LR
     U -.->|"осиротела, не читается"| US["app.user_sections"]
 ```
 
-## Вход и сессия (`security/SecurityConfig`)
+## Вход и сессия (`src/main/java/ru/banki/crm/security/SecurityConfig.java:45`)
 
 Одна `SecurityFilterChain` + `@EnableMethodSecurity`.
 
@@ -43,7 +43,7 @@ flowchart LR
 | Пароли | `BCryptPasswordEncoder` |
 | CSRF | **отключён** (`csrf.disable()`) — внутренний инструмент за аутентификацией; см. «Ограничения» |
 
-Имена кук свои на каждую среду — три контура живут на одном хосте, а браузер скоупит куки без учёта порта; к `REMEMBER_ME_KEY` compose добавляет суффикс среды, поэтому токен одной среды недействителен в другой (см. [[Среды и деплой]]).
+Имена кук и ключ подписи remember-me — свои на каждом контуре, поэтому сессии и токены сред не пересекаются; почему так и какие именно значения — [[Среды и деплой]].
 
 Цепочка классов: `CustomUserDetailsService.loadUserByUsername(email)` → `AppUserRepository.findByEmailIgnoreCase` → `AppUserPrincipal`. Principal отдаёт `user()`, `email()`, `sections()`, `hasCapability(section, cap)`; `isEnabled()` берётся из флага `enabled` (выключенная учётка не входит). `CurrentUser` — статические хелперы поверх `SecurityContextHolder`, `CurrentUser.email()` с фолбэком `"system"` для действий вне HTTP-контекста.
 
@@ -73,7 +73,7 @@ flowchart LR
 
 Админ-роли обходят матрицу на сервере; строки в `role_section` им проставляются полностью только ради корректного показа в UI (`RoleService.buildAccess`).
 
-## Разделы (`service/Sections`)
+## Разделы (`src/main/java/ru/banki/crm/service/Sections.java:40`)
 
 `Sections.ALL` — 19 канонических id; список обязан совпадать с id пунктов NAV (`js/shell.js`, массив `NAV` — см. [[Оболочка панели (shell)]]).
 
@@ -117,8 +117,9 @@ flowchart LR
 
 `security/AccessGuard` — единственная точка проверки матрицы:
 
-- `requireCapability(cap, sectionIds...)`: нет principal → `401`; роль с `isAdminLevel()` (админ или супер-админ) → пропуск без проверки; есть право `cap` хотя бы в одном из перечисленных разделов → пропуск; иначе `403 «Нет доступа к разделу»`;
-- `requireAnySection(sectionIds...)` — то же самое с `Capability.READ`.
+- `requireCapability(cap, sectionIds...)` (`src/main/java/ru/banki/crm/security/AccessGuard.java:38`): нет principal → `401`; роль с `isAdminLevel()` (админ или супер-админ) → пропуск без проверки; есть право `cap` хотя бы в одном из перечисленных разделов → пропуск; иначе `403 «Нет доступа к разделу»`;
+- `requireAnySection(sectionIds...)` — то же самое с `Capability.READ`;
+- `can(cap, sectionId)` (`src/main/java/ru/banki/crm/security/AccessGuard.java:32`) — тот же вопрос, но ответом, а не исключением: нужен там, где по правам не запрещают запрос целиком, а фильтруют его результат (список подключений отчётов).
 
 Несколько разделов в одном вызове — потому что одни данные бывают за двумя разделами: шаблоны видны и из `admin` (мастер), и из `templates` (список), права достаточно иметь в любом. Гард вызывается явной первой строкой метода, а не аннотацией.
 
@@ -128,12 +129,17 @@ flowchart LR
 |---|---|
 | `TemplateController` | чтение — READ в `templates`/`admin`; `POST` — ADD; `PUT` — EDIT; `DELETE` — DELETE (в любом из двух разделов) |
 | `PromoPlanController` | READ / ADD / EDIT / DELETE в `promo` |
-| `SmsCheckReportController` | READ в `rep-smscheck` |
+| `AbTestController` | READ / ADD / EDIT / DELETE в `abtests` |
+| `DictionaryController` | чтение открыто любому аутентифицированному (справочники нужны формам нескольких разделов); `POST /partners` — ADD в `admin`, `templates` **или** `promo` |
+| `SmsCheckReportController` | READ в `rep-smscheck`; смена источника-DWH — дополнительная проверка админа уже в сервисе (`src/main/java/ru/banki/crm/service/SmsCheckReportService.java:165`), потому что READ на секцию у автора правки и так есть |
 | `JourneyController`, `FlowController` | `@PreAuthorize("hasRole('ADMIN')")` на классе + `requireAnySection(JOURNEYS)` в каждом методе |
+| `SchemaController` | `@PreAuthorize("hasRole('ADMIN')")` на классе (`src/main/java/ru/banki/crm/web/SchemaController.java:29`): ручки лежат вне `/api/admin/**`, и закрыть их аннотацией дешевле, чем править правила URL и задевать чужие маршруты |
 | `AdminUserController`, `RoleController`, `ProdSyncController`, `EtlController`, `DbConnectionController` | без аннотаций — весь префикс `/api/admin/**` закрыт правилом URL |
 | `PanelSettingsController` | `GET` — любой аутентифицированный (оболочке нужен конфиг приложений), `PUT` — `hasRole('ADMIN')`; ключи с секретами внутри значения обслуживать отказывается |
 | `ReportConnectionController` | `GET` — любой аутентифицированный, но токен Tableau уходит только админу (прочим — `hasToken`); `PUT`/`DELETE` — `hasRole('ADMIN')` |
 | `/settings/**` | статическая настроечная админка — `hasRole('ADMIN')` |
+
+Пути и права по каждому эндпоинту — [[REST API]].
 
 ## Что получает фронт: `GET /api/me`
 

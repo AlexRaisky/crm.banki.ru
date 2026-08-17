@@ -4,9 +4,9 @@ tags: [api, reference]
 
 # REST API
 
-Полный справочник HTTP-интерфейса crm-admin: **метод, путь, назначение, требуемое право**. Это единственное место со списком эндпоинтов — остальные заметки ссылаются сюда, а не перечисляют пути у себя. Доменные подробности каждой подсистемы — по ссылкам в заголовках разделов.
+Полный справочник HTTP-интерфейса crm-admin: **метод, путь, назначение, требуемое право**. Это единственное место со списком эндпоинтов — остальные заметки ссылаются сюда, а не перечисляют пути у себя. Доменные подробности каждой подсистемы — по ссылкам в заголовках разделов, модель доступа целиком — в [[Безопасность и RBAC]] (здесь только то, что нужно вызывающему).
 
-Все контроллеры лежат в `src/main/java/ru/banki/crm/web/`, по одному на подсистему.
+Контроллеры лежат в `src/main/java/ru/banki/crm/web/`, по одному на подсистему.
 
 | Контроллер | Префикс | Подсистема |
 |---|---|---|
@@ -18,66 +18,73 @@ tags: [api, reference]
 | `FlowController` | `/api/flow` | материализация — [[Материализация (Flow)]] |
 | `PromoPlanController` | `/api/promo/plan` | план промо — [[Планирование промо]] |
 | `AbTestController` | `/api/ab-tests` | журнал А/Б тестов — [[АБ тесты]] |
-| `SmsCheckReportController` | `/api/reports/sms-check` | выгрузка «ЧЕК СМС траффик» — [[Отчёты]] |
+| `SmsCheckReportController` | `/api/reports/sms-check` | отчёт «ЧЕК СМС траффик» — [[Отчёты]] |
 | `ReportConnectionController` | `/api/reports/connections` | подключения Tableau — [[Отчёты]] |
 | `PanelSettingsController` | `/api/panel-settings` | настройки панели key → jsonb |
+| `SchemaController` | `/api/schema` | Scheme Builder: модель схемы и DDL |
 | `AdminUserController` | `/api/admin` | пользователи и каталог разделов — [[Безопасность и RBAC]] |
 | `RoleController` | `/api/admin/roles` | роли и матрица прав — [[Безопасность и RBAC]] |
 | `DbConnectionController` | `/api/admin/db-connections` | реестр подключений к БД |
 | `EtlController` | `/api/admin/etl` | ETL «прод → мы» — [[Синхронизация с прод-БД]] |
 | `ProdSyncController` | `/api/admin/prod-db` | очередь синка и сверка — [[Синхронизация с прод-БД]] |
 
-Плюс два «сервисных» URL Spring Security (не контроллеры): `POST /api/login` и `POST /logout`.
+Плюс два «сервисных» URL Spring Security (не контроллеры): `POST /api/login` и `POST /logout` (`src/main/java/ru/banki/crm/security/SecurityConfig.java:58`, `src/main/java/ru/banki/crm/security/SecurityConfig.java:74`).
 
 ## Общие сведения
 
 - **Формат** — JSON везде, кроме `POST /api/login` (`application/x-www-form-urlencoded`) и `GET /api/reports/sms-check/download` (бинарный `.xlsx`).
 - **Аутентификация** — сессионная кука + remember-me кука, без токенов в заголовках. Фронтовый слой `static/api.js` шлёт запросы с `credentials: "same-origin"`.
-- **CSRF отключён** (внутренний инструмент за аутентификацией) — известный follow-up, см. [[Безопасность и RBAC]].
+- **CSRF отключён** (`src/main/java/ru/banki/crm/security/SecurityConfig.java:55`) — внутренний инструмент за аутентификацией; известный follow-up, см. [[Безопасность и RBAC]].
 - **Swagger** — `springdoc-openapi`: UI на `/swagger-ui.html`, описание на `/v3/api-docs`. Оба требуют залогиненной сессии.
-- **Ошибки** — стандартный error-ответ Spring Boot; `server.error.include-message: always` и `include-binding-errors: always`, поэтому поле `message` (и `errors` при ошибках `@Valid`) всегда на месте. Именно `message` показывает пользователю `api.js`.
+
+### Формат ошибок
+
+**Клиент читает одно поле — `message`** (`static/api.js`, функция `req`), поэтому весь текст ошибки обязан быть в нём. Обеспечивают это две вещи:
+
+1. `server.error.include-message: always` в `src/main/resources/application.yml:33` — стандартный error-ответ Spring Boot несёт текст `ResponseStatusException`, а не пустоту;
+2. `ValidationErrorHandler` (`src/main/java/ru/banki/crm/web/ValidationErrorHandler.java:31`) перехватывает `MethodArgumentNotValidException` и **сам собирает `message`**: тексты ограничений (они заданы по-русски в `UserDtos`/`RoleDtos`) склеиваются через `; ` в одну строку (`src/main/java/ru/banki/crm/web/ValidationErrorHandler.java:45`), ответ — `{status, error, message}` (`src/main/java/ru/banki/crm/web/ValidationErrorHandler.java:50`).
+
+Второе появилось не от любви к формату: без обработчика Spring отдавал `«Validation failed for object='createUser'. Error count: 1»`, и администратор, заводивший пользователя, на каждую попытку видел одно и то же сообщение, не понимая, что именно не так — короткий пароль, невыбранная роль или чужой домен почты. Дубли текстов схлопываются, порядок полей формы сохраняется (`LinkedHashSet`).
 
 | Код | Когда |
 |---|---|
-| `401` | нет сессии. XHR к `/api/**` получает чистый `401` (`HttpStatusEntryPoint`), браузерная навигация уводится на `/login.html` |
-| `403` | нет нужного права в разделе (`AccessGuard`) либо не хватает роли |
+| `401` | нет сессии. XHR к `/api/**` получает чистый `401` (`HttpStatusEntryPoint`, `src/main/java/ru/banki/crm/security/SecurityConfig.java:82`), браузерная навигация уводится на `/login.html` |
+| `403` | нет нужного права в разделе (`AccessGuard.requireCapability`, `src/main/java/ru/banki/crm/security/AccessGuard.java:51`) либо не хватает роли |
 | `400` | валидация `@Valid` или бизнес-проверка (тексты по-русски) |
 | `404` | сущность не найдена; а также «настройка обслуживается отдельным API» |
 | `409` | конфликт: дубль, удаление последнего админа, разошедшаяся версия строки, не настроен источник отчёта |
 | `502` | ошибка запроса к внешней БД (DWH) |
 
-## Модель прав
+## Как читать колонку «Право»
 
-Три независимых механизма, все три описаны в [[Безопасность и RBAC]]:
+Доступ дают три независимых механизма (подробно — [[Безопасность и RBAC]]):
 
-1. **URL-правила `SecurityFilterChain`.** Публичны `/login.html`, `/api/login`, `/logout`, `/favicon.ico`, `/error`. Префиксы **`/api/admin/**` и `/settings/**` требуют `ROLE_ADMIN`**. Остальное — просто аутентификация.
-2. **`@PreAuthorize` на классе/методе.** `JourneyController` и `FlowController` целиком под `hasRole('ADMIN')`; `PUT /api/panel-settings/{key}`, `PUT`/`DELETE /api/reports/connections/{report}` — `hasRole('ADMIN')`.
-3. **Матрица прав роли по разделам** — `AccessGuard.requireCapability(cap, sections…)`: у пары «роль × раздел» свои флаги `read / add / edit / delete` (`Capability`). Глагол проверяется отдельно: GET → READ, POST → ADD, PUT/PATCH → EDIT, DELETE → DELETE. **Роль с флагом `is_admin` (и супер-админ) матрицу обходит целиком.**
+1. **URL-правила `SecurityFilterChain`.** Публичны `/login.html`, `/api/login`, `/logout`, `/favicon.ico`, `/error` (`src/main/java/ru/banki/crm/security/SecurityConfig.java:20`). Префиксы **`/api/admin/**` и `/settings/**` требуют `ROLE_ADMIN`** (`src/main/java/ru/banki/crm/security/SecurityConfig.java:49`). Остальное — просто аутентификация.
+2. **`@PreAuthorize` на классе или методе.** Целиком под `hasRole('ADMIN')`: `src/main/java/ru/banki/crm/web/JourneyController.java:17`, `src/main/java/ru/banki/crm/web/FlowController.java:27`, `src/main/java/ru/banki/crm/web/SchemaController.java:29`. Точечно: `src/main/java/ru/banki/crm/web/PanelSettingsController.java:84`, `src/main/java/ru/banki/crm/web/ReportConnectionController.java:120`, `src/main/java/ru/banki/crm/web/ReportConnectionController.java:161`.
+3. **Матрица прав роли по разделам** — `AccessGuard.requireCapability(cap, sections…)` (`src/main/java/ru/banki/crm/security/AccessGuard.java:38`) первой строкой метода. У пары «роль × раздел» свои флаги `read / add / edit / delete`; глагол сопоставляется отдельно: GET → READ, POST → ADD, PUT/PATCH → EDIT, DELETE → DELETE.
 
-Роли — это **данные** (`app.role` + `app.role_section`), а не enum. В Spring Security наружу выводятся только authority по флагам роли: `ROLE_SUPER_ADMIN` + `ROLE_ADMIN` у супер-админа, `ROLE_ADMIN` у админ-роли, `ROLE_USER` у всех прочих. Практическое следствие: **сохранившиеся в коде аннотации `hasAnyRole('EDITOR','ADMIN')` (мутации цепочек) фактически означают «только ADMIN»** — authority `ROLE_EDITOR` больше не выдаётся никому.
+**Роль с флагом `is_admin` (и супер-админ) матрицу обходит целиком** (`src/main/java/ru/banki/crm/security/AccessGuard.java:43`) — для админа колонку «Право» везде можно читать как «доступно». Роли и разделы — данные в `app.role` / `app.role_section`, канонический список секций — `src/main/java/ru/banki/crm/service/Sections.java:40`.
 
-Канонический список разделов — `service/Sections`: `home`, `deviations`, `onelink`, `admin` (мастер коммуникаций), `templates`, `dashboard`, `journeys`, `access`, `promo`, `abtests`, `srcbuilder`, `reports`, `heatmap`, `monitoring`, `uploads`. Записи есть только у `admin`, `templates`, `promo`, `abtests` (`Sections.WRITABLE`) — у остальных значима лишь галка «Просмотр». `journeys` и `access` (`ADMIN_ONLY`) доступны по роли, а не по матрице.
-
-## Аутентификация (Spring Security, без контроллера)
+## Аутентификация
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
 | `POST /api/login` | вход; `application/x-www-form-urlencoded`, параметры `email` + `password` | публичный |
 | `POST /logout` | выход, удаляет обе куки | публичный |
 
-Успешный вход → `200` с пустым телом, ставятся сессионная кука и remember-me (30 дней, `alwaysRemember`); неверная пара → `401`. Имена кук свои на каждой среде — [[Среды и деплой]], [[Конфигурация]].
+Успешный вход → `200` с пустым телом, ставятся сессионная кука и remember-me (30 дней, `alwaysRemember`, `src/main/java/ru/banki/crm/security/SecurityConfig.java:67`); неверная пара → `401`. Имена кук свои на каждой среде — [[Среды и деплой]], [[Конфигурация]].
 
 ## Профиль и среда
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
-| `GET /api/me` | кто я: `email`, `displayName`, `role`, `canEdit`, `isAdmin`, `isSuperAdmin`, `sections`, `caps` | аутентификация |
+| `GET /api/me` | кто я: `email`, `displayName`, `role`, `canEdit`, `isAdmin`, `sections`, `isSuperAdmin`, `caps` | аутентификация |
 | `PUT /api/me/password` | сменить свой пароль: `{currentPassword, newPassword}` | аутентификация |
 | `GET /api/env` | `{name, devFeatures}` — среда инстанса и флаг dev-разделов | аутентификация |
 
-`caps` — карта «раздел → `{read, add, edit, delete}`», по ней фронт прячет кнопки. Две особенности `GET /api/me` (обе — комментарии в `AuthController`): админу отдаётся весь `Sections.ALL`, чтобы новые разделы появлялись без правки матрицы; **не-админу раздел `journeys` не отдаётся никогда**. Супер-роль наружу не светится даже своему носителю — в `role` подставляется «Админ», полномочия работают по флагу `isSuperAdmin`.
+`sections` — что показывать в NAV, `caps` — карта «раздел → `{read, add, edit, delete}`», по ней фронт прячет кнопки; правила их наполнения (админу — всё, `journeys` не-админу — никогда, супер-роль под именем «Админ») разобраны в [[Безопасность и RBAC]]. Код — `src/main/java/ru/banki/crm/web/AuthController.java:27`.
 
-`PUT /api/me/password`: `400 «Текущий пароль неверен»`, `400` валидации (`newPassword` — минимум 8 символов).
+`PUT /api/me/password` (`src/main/java/ru/banki/crm/web/AuthController.java:69`): `400 «Текущий пароль неверен»`, `400` валидации (`newPassword` — минимум 8 символов).
 
 ## Шаблоны коммуникаций → [[Шаблоны и мастер коммуникаций]]
 
@@ -85,7 +92,7 @@ tags: [api, reference]
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
-| `GET /api/templates` | единый список с фильтрами и пагинацией | READ в `templates` или `admin` |
+| `GET /api/templates` | единый список с фильтрами и пагинацией (`src/main/java/ru/banki/crm/web/TemplateController.java:30`) | READ в `templates` или `admin` |
 | `GET /api/templates/facets` | значения фильтров (продукт/точка/триггер) из реальных данных | READ в `templates` или `admin` |
 | `GET /api/templates/count` | `{total, active}` под теми же фильтрами | READ в `templates` или `admin` |
 | `GET /api/templates/{channel}/{code}` | полная карточка `TemplateDto` | READ в `templates` или `admin` |
@@ -94,7 +101,7 @@ tags: [api, reference]
 | `PUT /api/templates/{channel}/{code}` | обновить | EDIT в `admin` или `templates` |
 | `DELETE /api/templates/{channel}/{code}` | удалить | DELETE в `admin` или `templates` |
 
-Query-параметры списка (все опциональны, множественные — повторяемые): `channel`, `product`, `touch`, `trigger`, `partner`, `active` (`active` / любое другое непустое = неактивные), `q` (свободный поиск), `sort`, `dir`, `limit`, `offset`.
+Query-параметры списка (все опциональны, множественные — повторяемые): `channel`, `product`, `touch`, `trigger`, `partner`, `active` (`active` / любое другое непустое = неактивные), `q` (свободный поиск), `sort`, `dir`, `limit`, `offset`. У `count` тот же набор без `sort`/`dir`/`limit`/`offset`.
 
 Ошибки: `404 «Шаблон не найден: {channel}/{code}»`; `400 «Для КЦ обязателен номер сегмента»`; `409 «Сегмент уже заведён: …»`; `400 «Нужны base и непустой список days»`.
 
@@ -105,27 +112,29 @@ Query-параметры списка (все опциональны, множе
 | Метод и путь | Назначение | Право |
 |---|---|---|
 | `GET /api/dictionaries/partners` | `["A7", …]` — партнёры из `dictionary.d_partner` (`V25`), сортировка регистронезависимая | аутентификация |
-| `POST /api/dictionaries/partners` | `{"name":"…"}` → `{"name":"…"}` — добавить партнёра в справочник из формы мастера | `add` в `admin` или `templates` |
+| `POST /api/dictionaries/partners` | `{"name":"…"}` → `{"name":"…"}` — добавить партнёра из формы | ADD в `admin`, `templates` **или `promo`** |
 | `GET /api/dictionaries/cc-segments` | сегменты КЦ | аутентификация |
-| `GET /api/dictionaries/comm-names?channel=sms` | значения `communication_name` из `dictionary.d_communication_name` (параметр `channel` не влияет, оставлен для совместимости) | аутентификация |
+| `GET /api/dictionaries/comm-names?channel=sms` | значения `communication_name` (параметр `channel` не влияет, оставлен для совместимости) | аутентификация |
 | `GET /api/dictionaries/touch-points` | точки касания | аутентификация |
 | `GET /api/dictionaries/product-types` | типы продуктов (`d_product_type`, `V19`) | аутентификация |
 
 На чтении ни роль, ни разделы не проверяются: данные нужны формам нескольких разделов.
 
-`POST /api/dictionaries/partners` — единственная мутация среди справочников: право то же, что на заведение шаблона. Имя обрезается по краям, сравнение с существующими **регистронезависимое** (`UNIQUE(name)` в БД считает «Sber» и «sber» разными, а для списка это дубль) — если партнёр уже есть, возвращается его каноническое написание и новой строки не появляется. Ошибки: `400 «Название партнёра пустое»`, `400 «Название партнёра длиннее 200 символов»`. Вставка пишется в `arch.t_admin_log` (`table_name = dictionary.d_partner`, `operation = INSERT`).
+`POST /api/dictionaries/partners` — единственная мутация среди справочников. Раздел `promo` в списке (`src/main/java/ru/banki/crm/web/DictionaryController.java:41`) не случайно: справочник партнёров общий, и планировщик промо встречает нового партнёра не реже мастера — без этого кнопка «+» в плане упиралась бы в `403`. Имя обрезается по краям, сравнение с существующими **регистронезависимое** (`UNIQUE(name)` в БД считает «Sber» и «sber» разными, а для списка это дубль) — если партнёр уже есть, возвращается его каноническое написание и новой строки не появляется. Ошибки: `400 «Название партнёра пустое»`, `400 «Название партнёра длиннее 200 символов»`.
 
 ## Цепочки-схемы → [[Цепочки (Journeys)]]
 
-Контроллер целиком под `@PreAuthorize("hasRole('ADMIN')")`, каждый метод дополнительно требует READ на разделе `journeys`.
+Контроллер целиком под `@PreAuthorize("hasRole('ADMIN')")` (`src/main/java/ru/banki/crm/web/JourneyController.java:17`), каждый метод дополнительно требует READ на разделе `journeys`.
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
 | `GET /api/journeys` | список `{id, name, nodeCount, kind}` | ADMIN + раздел `journeys` |
 | `GET /api/journeys/{id}` | схема целиком (`JourneyDto`) | ADMIN + раздел |
-| `POST /api/journeys` | создать (тело без `id`) | ADMIN |
-| `PUT /api/journeys/{id}` | полная замена схемы | ADMIN |
-| `DELETE /api/journeys/{id}` | удалить | ADMIN |
+| `POST /api/journeys` | создать (тело без `id`) | ADMIN + раздел |
+| `PUT /api/journeys/{id}` | полная замена схемы | ADMIN + раздел |
+| `DELETE /api/journeys/{id}` | удалить | ADMIN + раздел |
+
+На мутациях висит ещё и `hasAnyRole('EDITOR','ADMIN')` (`src/main/java/ru/banki/crm/web/JourneyController.java:41`), но authority `ROLE_EDITOR` больше никому не выдаётся — фактически это «только ADMIN», и класс-гард всё равно строже.
 
 Ошибки: `404 «Цепочка не найдена: {id}»`, `500 «Повреждён JSON цепочки …»`, `400` валидации. Цепочка **без стартового узла** сохраняется штатно — это вложенная цепочка (Subflow).
 
@@ -133,19 +142,19 @@ Query-параметры списка (все опциональны, множе
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
-| `POST /api/flow/preview` | план вставок слоя B: `{problems[], rows[]}` | ADMIN + раздел `journeys` |
+| `POST /api/flow/preview` | план вставок слоя B: `{problems[], rows[]}` (`src/main/java/ru/banki/crm/web/FlowController.java:43`) | ADMIN + раздел `journeys` |
 | `POST /api/flow/materialize` | сохранить цепочку и записать слои A и B одной транзакцией → `{journeyId, created[]}` | ADMIN + раздел `journeys` |
 
-`preview` отдаёт `200` даже при непустом `problems` (проблемы — данные, не ошибка); FK показываются спецзначением `"(auto)"`. `materialize` при проблемах валидации → `400` с их перечнем; недопустимая таблица или колонка (белый список из 8 таблиц слоя B) → `400`.
+`preview` отдаёт `200` даже при непустом `problems` (проблемы — данные, не ошибка); FK показываются спецзначением `"(auto)"`. `materialize` при проблемах валидации → `400` с их перечнем; недопустимая таблица или колонка (белый список слоя B) → `400`.
 
 ## А/Б тесты → [[АБ тесты]]
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
-| `GET /api/ab-tests` | все тесты, свежие сверху | `read` в `abtests` |
-| `POST /api/ab-tests` | завести тест; пустой `tester` заполняется почтой учётки | `add` в `abtests` |
-| `PATCH /api/ab-tests/{id}` | правка одного поля: `{field, value, ver}` | `edit` в `abtests` |
-| `DELETE /api/ab-tests/{id}` | удалить запись | `delete` в `abtests` |
+| `GET /api/ab-tests` | все тесты, свежие сверху | READ в `abtests` |
+| `POST /api/ab-tests` | завести тест; пустой `tester` заполняется почтой учётки | ADD в `abtests` |
+| `PATCH /api/ab-tests/{id}` | правка одного поля: `{field, value, ver}` | EDIT в `abtests` |
+| `DELETE /api/ab-tests/{id}` | удалить запись | DELETE в `abtests` |
 
 Ошибки: `400 «Поле нельзя менять: …»` (поле вне белого списка), `400 «Не указана дата начала»`, `409 «Строку изменил другой пользователь»` (разошёлся `ver`), `404 «Строку уже удалили»`. Каждая мутация пишется в `arch.t_admin_log`.
 
@@ -157,6 +166,9 @@ Query-параметры списка (все опциональны, множе
 | `POST /api/promo/plan` | завести промо; мультиканал → столько строк, сколько каналов | ADD в `promo` |
 | `PATCH /api/promo/plan/{id}` | правка одного поля: `{field, value, ver}` | EDIT в `promo` |
 | `DELETE /api/promo/plan/{id}` | удалить строку | DELETE в `promo` |
+| `GET /api/promo/plan/owners` | имена пользователей панели для выпадающего «Ответственный» | READ в `promo` |
+
+`owners` живёт здесь, а не в `/api/admin/users` (`src/main/java/ru/banki/crm/web/PromoPlanController.java:69`): список нужен всем, кто ведёт план, а админская ручка отдаёт учётки целиком и только админу. Отдаются одни имена — ни почты, ни ролей.
 
 `ver` — `timestamp_upd`, который видел клиент: разошёлся → **`409 «Строку изменил другой пользователь»`**, строки уже нет → `404 «Строку уже удалили»`. Неизвестное поле → `400 «Поле нельзя менять: …»`; кривая дата → `400`.
 
@@ -164,23 +176,37 @@ Query-параметры списка (все опциональны, множе
 
 ### «ЧЕК СМС траффик»
 
+Все пять ручек требуют READ на секции **`rep-smscheck`** — у каждого отчёта своя секция (V29), доступ к этой выгрузке выдаётся отдельно от прочих отчётов.
+
 | Метод и путь | Назначение | Право |
 |---|---|---|
-| `GET /api/reports/sms-check/config` | текущий источник, список каналов, `canEdit` | READ в `reports` |
-| `PUT /api/reports/sms-check/config` | задать источник-DWH: `{connectionId}` | READ в `reports` **+ роль-админ** (проверяет сервис) |
-| `GET /api/reports/sms-check/download?month=YYYY-MM&channel=sms\|push\|email` | книга `.xlsx` за месяц | READ в `reports` |
+| `GET /api/reports/sms-check/config` | текущий источник, список каналов (`sms`, `push`, `email`), `canEdit` | READ в `rep-smscheck` |
+| `PUT /api/reports/sms-check/config` | задать источник-DWH: `{connectionId}` (`null` — сбросить) | READ в `rep-smscheck` **+ роль-админ** (проверяет сервис) |
+| `GET /api/reports/sms-check/daily` | лист «по дням» как данные — отчёт показывается прямо на странице | READ в `rep-smscheck` |
+| `GET /api/reports/sms-check/products` | продукты, встречающиеся в выбранных месяце и канале — для выпадающего списка | READ в `rep-smscheck` |
+| `GET /api/reports/sms-check/download` | книга `.xlsx` за месяц | READ в `rep-smscheck` |
 
-Ошибки: `400` на кривой месяц/канал/`connectionId`; `403 «Менять источник может только администратор.»`; `409`, если источник не выбран или подключение удалено; `502` при ошибке запроса к DWH. Ответ `download` — `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment`.
+Параметры `daily` (`src/main/java/ru/banki/crm/web/SmsCheckReportController.java:62`), `products` (`src/main/java/ru/banki/crm/web/SmsCheckReportController.java:71`) и `download` (`src/main/java/ru/banki/crm/web/SmsCheckReportController.java:79`):
+
+| Параметр | Обязателен | Значения |
+|---|---|---|
+| `month` | да | `YYYY-MM`; иначе `400 «Месяц должен быть в формате YYYY-MM.»` (`src/main/java/ru/banki/crm/web/SmsCheckReportController.java:96`) |
+| `channel` | нет, по умолчанию `sms` | `sms \| push \| email`; иначе `400 «Неизвестный канал. Ожидается sms, push или email.»` |
+| `product` | нет | фильтр по продукту; у `products` его нет — ручка сама возвращает список значений |
+
+Почему `daily` отдаёт те же данные, что и `download`: страница показывает отчёт без скачивания файла, но собирать таблицу второй раз на клиенте нельзя — расхождение экрана и книги было бы неотличимо от ошибки данных. Источник-DWH в обеих ручках берётся из серверной конфигурации, а не из запроса, — коннект наружу не отдаётся вовсе.
+
+Ошибки: `403 «Менять источник может только администратор.»` (`src/main/java/ru/banki/crm/service/SmsCheckReportService.java:165` — проверка в сервисе, потому что READ на секцию у автора правки уже есть); `400 «connectionId должен быть числом.»` и `400 «Нет такого подключения.»` на записи конфига; `409`, если источник не выбран или подключение удалено; `502` при ошибке запроса к DWH. Ответ `download` — `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment`, имя `check-sms-{channel}-{month}.xlsx`.
 
 ### Подключения Tableau
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
-| `GET /api/reports/connections` | `{canEdit, items}`; **не-админу вместо `token` только `hasToken`**, и в `items` попадают лишь отчёты с READ на свою секцию (`rep-*`, V29) — иначе спрятанный в меню отчёт открывался бы прямой ссылкой | аутентификация |
+| `GET /api/reports/connections` | `{canEdit, items}`; **не-админу вместо `token` только `hasToken`**, и в `items` попадают лишь отчёты с READ на свою секцию `rep-*` (`src/main/java/ru/banki/crm/web/ReportConnectionController.java:94`) — иначе спрятанный в меню отчёт открывался бы прямой ссылкой | аутентификация |
 | `PUT /api/reports/connections/{report}` | сохранить `{server, view, token}` | ADMIN |
 | `DELETE /api/reports/connections/{report}` | сбросить подключение (единственный способ удалить токен) | ADMIN |
 
-`report` — `[a-zA-Z][a-zA-Z0-9_-]{0,31}`, иначе `400`. `PUT` требует непустых `server` и `view` (`400`), пустой `token` не затирает сохранённый.
+`report` — `[a-zA-Z][a-zA-Z0-9_-]{0,31}`, иначе `400`. `PUT` требует непустых `server` и `view` (`400`), пустой `token` не затирает сохранённый: пустое поле слишком легко получить случайно, а токен нигде больше не хранится и его пришлось бы перевыпускать.
 
 ## Настройки панели
 
@@ -189,35 +215,62 @@ Query-параметры списка (все опциональны, множе
 | `GET /api/panel-settings/{key}` | значение настройки (`{key, value}`) | аутентификация |
 | `PUT /api/panel-settings/{key}` | upsert произвольного JSON | ADMIN |
 
-Ключ — `[a-zA-Z][a-zA-Z0-9_-]{0,63}`, иначе `400`. Основной потребитель — конфиг «приложение → разделы» под ключом `appSections`. **Ключ `tableauReports` этим эндпоинтом не обслуживается вовсе** (`404`, не `403`, регистр игнорируется) — внутри токен, обслуживает его `/api/reports/connections`. Каждая запись журналируется.
+Ключ — `[a-zA-Z][a-zA-Z0-9_-]{0,63}`, иначе `400`. Основной потребитель — конфиг «приложение → разделы» под ключом `appSections`. **Ключ `tableauReports` этим эндпоинтом не обслуживается вовсе** (`src/main/java/ru/banki/crm/web/PanelSettingsController.java:55`): внутри токен, а GET здесь открыт любой роли. Ответ — `404`, а не `403`, и регистр игнорируется, иначе код ответа превращался бы в детектор «секрет заведён». Каждая запись журналируется.
+
+## Scheme Builder → `/api/schema`
+
+Редактор модели схемы БД из настроечной админки `/settings`. Контроллер целиком под `@PreAuthorize("hasRole('ADMIN')")` (`src/main/java/ru/banki/crm/web/SchemaController.java:29`): ручки лежат **вне** `/api/admin/**`, поэтому право закрыто аннотацией, а не правилом URL — так не приходится трогать `SecurityConfig` и задевать чужие маршруты.
+
+| Метод и путь | Назначение | Право |
+|---|---|---|
+| `GET /api/schema` | текущая модель (первое обращение засевает её из файла в classpath) | ADMIN |
+| `PUT /api/schema` | сохранить модель целиком | ADMIN |
+| `POST /api/schema/changes` | записать только дельты из журнала редактора, модель не трогая | ADMIN |
+| `GET /api/schema/db` | что реально есть в базе: схемы с вложенными таблицами (только чтение) | ADMIN |
+| `GET /api/schema/versions?limit=100` | история версий, заголовки без самих моделей (клампится к 1…500) | ADMIN |
+| `GET /api/schema/audit?limit=200` | журнал действий: кто, что и когда (клампится к 1…1000) | ADMIN |
+| `POST /api/schema/ddl/preview` | что будет выполнено в базе — без выполнения | ADMIN |
+| `POST /api/schema/ddl/apply` | применить модель: схемы, таблицы, колонки, FK. Только аддитивно | ADMIN |
+| `POST /api/schema/ddl/drops` | колонки, которые есть в базе, но которых больше нет в модели (только чтение) | ADMIN |
+| `POST /api/schema/ddl/drop` | удалить колонки — единственная разрушительная ручка билдера | ADMIN |
+
+Особенности контракта:
+
+- **Тело `PUT` принимается в двух видах** — конверт `{model, changes}` (редактор шлёт модель вместе с дельтами своего журнала) или голая модель (`src/main/java/ru/banki/crm/web/SchemaController.java:67`). Второй вариант оставлен ради совместимости с изначальным контрактом редактора.
+- **Пустое тело у `ddl/*` — не ошибка**: `modelOf` подставляет сохранённую модель (`src/main/java/ru/banki/crm/web/SchemaController.java:141`), поэтому план по текущей модели можно посмотреть без пересылки её целиком.
+- **`ddl/drop` не верит телу запроса**: список кандидатов сервер пересчитывает сам, из тела берутся только решения по каждой колонке — что делать с данными и со связями (`src/main/java/ru/banki/crm/web/SchemaController.java:130`).
+- **Границы разрушительного**: править билдер имеет право только то, что сам и завёл (реестр `app.schema_owned`), схемы из `app.schema_reserved` не трогает ни при каких условиях (миграции `V30`, `V31`).
+- Отказ охраны и падение SQL наружу выглядят одинаково — `400` с текстом причины (`src/main/java/ru/banki/crm/web/SchemaController.java:110`); в журнале они разведены на `REJECTED` и `ERROR`.
 
 ## Администрирование: `/api/admin/**`
 
-Весь префикс закрыт `hasRole("ADMIN")` на уровне `SecurityFilterChain` — не-админ получает `403` до входа в контроллер, матрица разделов тут не участвует.
+Весь префикс закрыт `hasRole("ADMIN")` на уровне `SecurityFilterChain` (`src/main/java/ru/banki/crm/security/SecurityConfig.java:49`) — не-админ получает `403` до входа в контроллер, матрица разделов тут не участвует. Аннотаций в самих контроллерах поэтому нет.
 
 ### Пользователи и каталог разделов → [[Безопасность и RBAC]]
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
-| `GET /api/admin/sections` | каталог разделов: `{id, writable, adminOnly, group}` — для матрицы прав; `group` — подпись группы сайдбара, по ней матрица рисует заголовки | ADMIN |
+| `GET /api/admin/sections` | каталог разделов: `{id, writable, adminOnly, group}` для матрицы прав; `group` — подпись группы сайдбара, по ней матрица рисует заголовки (`src/main/java/ru/banki/crm/web/AdminUserController.java:28`) | ADMIN |
 | `GET /api/admin/users` | список `UserView` | ADMIN |
 | `POST /api/admin/users` | создать: `{email, displayName, roleId, password}` | ADMIN |
 | `PUT /api/admin/users/{id}` | частичное обновление: `{displayName, roleId, enabled}` | ADMIN |
 | `DELETE /api/admin/users/{id}` | удалить | ADMIN |
 | `PUT /api/admin/users/{id}/password` | сброс пароля админом: `{newPassword}` → `{status:"ok"}` | ADMIN |
 
-Ошибки: `409 «Пользователь уже существует: …»`, `409 «Нельзя удалить последнего администратора»`, `400 «Разрешены только адреса @…»` (при заданном `APP_EMAIL_DOMAIN`), `400 «Некорректная роль»`, `404 «Пользователь не найден»`. Назначать и снимать админ-роли может только супер-админ — иначе `403`; поле `manageable` в `UserView` показывает фронту, что запись правится текущим пользователем.
+**Обычный админ против супер-админа.** Обычный админ ведёт обычные учётки. Назначать и снимать админ-роли, а также трогать учётку с админ-ролью может **только супер-админ**, супер-роль не назначается через панель никому. Отказ всегда один и тот же — `403 «Недостаточно прав для этой операции»`, чтобы по тексту нельзя было выяснить, какие права у чужой учётки. Поле `manageable` в `UserView` заранее говорит фронту, что строка недоступна для правки, не раскрывая причину.
+
+Ошибки: `409 «Пользователь уже существует: …»`, `409 «Нельзя удалить последнего администратора»`, `400 «Разрешены только адреса @…»` (домен проверяется всегда: `APP_EMAIL_DOMAIN`, при пустом значении — `banki.ru`), `400 «Некорректная роль»`, `404 «Пользователь не найден»`.
 
 ### Роли → [[Безопасность и RBAC]]
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
-| `GET /api/admin/roles` | роли с матрицей прав, счётчиком носителей и `manageable` | ADMIN |
-| `POST /api/admin/roles` | создать: `{name, isAdmin, access[]}` | ADMIN (админ-роль — только супер-админ) |
-| `PUT /api/admin/roles/{id}` | переименовать / переписать матрицу | ADMIN (админ-роль — только супер-админ) |
+| `GET /api/admin/roles` | роли с матрицей прав, счётчиком носителей и `manageable` (супер-роль в список не попадает) | ADMIN |
+| `POST /api/admin/roles` | создать: `{name, isAdmin, access[]}` | ADMIN; роль с админ-флагом — только супер-админ |
+| `PUT /api/admin/roles/{id}` | переименовать / переписать матрицу | ADMIN; админ-флаг в любую сторону — только супер-админ |
 | `DELETE /api/admin/roles/{id}` | удалить | ADMIN |
 
-`access[]` — строки `{section, read, add, edit, delete}`. Ошибки: `409 «Роль с таким названием уже есть»`, `409 «Встроенную роль удалить нельзя»`, `409 «Роль назначена пользователям (N) — сначала переведите их на другую роль»`, `404 «Роль не найдена»`, `403 «Недостаточно прав для этой операции»`.
+`access[]` — строки `{section, read, add, edit, delete}`; у не-writable разделов лишние флаги гасятся при сохранении. Ошибки: `409 «Роль с таким названием уже есть»`, `409 «Встроенную роль удалить нельзя»`, `409 «Роль назначена пользователям (N) — сначала переведите их на другую роль»`, `404 «Роль не найдена»`, `403 «Недостаточно прав для этой операции»`.
 
 ### Реестр подключений к БД
 
@@ -230,50 +283,33 @@ Query-параметры списка (все опциональны, множе
 | `POST /api/admin/db-connections/{id}/test` | проверить одно (`SELECT 1`); `id` — число либо `our-db` / `prod-db` | ADMIN |
 | `POST /api/admin/db-connections/test-all` | проверить все и вернуть свежий список | ADMIN |
 
-Пароль наружу не отдаётся — только флаг `hasPassword`. Этот же реестр даёт приёмник синка (`prodSync`) и источник DWH для отчёта.
+Пароль наружу не отдаётся — только флаг `hasPassword`. Этот же реестр даёт приёмник синка и источник DWH для отчёта «ЧЕК СМС траффик».
 
 ### ETL «прод → мы» → [[Синхронизация с прод-БД]]
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
-| `GET /api/admin/etl/status` | включён / идёт ли прогон / водяные знаки / итоги последнего прогона | ADMIN |
-| `POST /api/admin/etl/run` | ручной инкремент (то же, что планировщик раз в 5 минут) | ADMIN |
-| `POST /api/admin/etl/run-full` | ручной полный прогон (то же, что в 22:00) | ADMIN |
+| `GET /api/admin/etl/status` | включён / идёт ли прогон / водяные знаки по каналам / итоги последнего прогона (`src/main/java/ru/banki/crm/web/EtlController.java:26`) | ADMIN |
+| `POST /api/admin/etl/run` | ручной инкремент — то же, что планировщик раз в 5 минут (`ETL_INTERVAL_MS`) | ADMIN |
+| `POST /api/admin/etl/run-full` | ручной полный прогон — то же, что ночью в 22:00 (`ETL_FULL_CRON`) | ADMIN |
+
+Обе ручки запуска синхронные и возвращают итог прогона; расписание задаётся переменными окружения — [[Среды и деплой]].
 
 ### Прод-БД: очередь и сверка → [[Синхронизация с прод-БД]]
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
 | `GET /api/admin/prod-db/health` | соединение, наличие канальных таблиц, счётчики очереди | ADMIN |
-| `GET /api/admin/prod-db/queue-stats` | только счётчики очереди (без коннекта к проду) | ADMIN |
-| `GET /api/admin/prod-db/queue?limit=50&status=` | записи очереди (по умолчанию `PENDING` и `ERROR`; `status=all` — все) | ADMIN |
-| `POST /api/admin/prod-db/process` | прогнать доставку прямо сейчас (до 200 записей) | ADMIN |
-| `POST /api/admin/prod-db/retry/{id}` | повторить проблемную запись (сброс попыток) | ADMIN |
-| `POST /api/admin/prod-db/cancel/{id}` | убрать запись из очереди (только `PENDING`/`ERROR`) | ADMIN |
+| `GET /api/admin/prod-db/queue-stats` | только счётчики очереди, без коннекта к проду | ADMIN |
+| `GET /api/admin/prod-db/queue?limit=50&status=` | записи очереди (`src/main/java/ru/banki/crm/web/ProdSyncController.java:81`) | ADMIN |
+| `POST /api/admin/prod-db/process` | прогнать доставку прямо сейчас, до 200 записей | ADMIN |
+| `POST /api/admin/prod-db/retry/{id}` | повторить проблемную запись (статус → `PENDING`, попытки → 0, ошибка стёрта) | ADMIN |
+| `POST /api/admin/prod-db/cancel/{id}` | убрать запись из очереди — **только `PENDING` и `ERROR`** | ADMIN |
 | `GET /api/admin/prod-db/reconcile` | сверка `d_template` с продом: «только в проде / разошлись / только у нас» | ADMIN |
 | `POST /api/admin/prod-db/reconcile/import` | импорт выбранных строк из прода (тело — список `{channel, code}`) | ADMIN |
 | `POST /api/admin/prod-db/reconcile/import-all` | фоновый импорт всей прод-базы (одна задача за раз) | ADMIN |
-| `GET /api/admin/prod-db/reconcile/import-all/status` | прогресс фонового импорта (для поллинга) | ADMIN |
+| `GET /api/admin/prod-db/reconcile/import-all/status` | прогресс фонового импорта, для поллинга | ADMIN |
 
-## Сводная карта прав
+Параметры `queue`: `limit` (по умолчанию 50, клампится к 1…500), `status` — пусто по умолчанию, `all` отдаёт все записи, любое другое значение фильтрует по конкретному статусу.
 
-| Эндпоинты | Аутентификация | Раздел и право | Роль |
-|---|---|---|---|
-| `POST /api/login`, `POST /logout` | публичные | — | — |
-| `GET /api/me`, `PUT /api/me/password`, `GET /api/env` | да | — | любая |
-| `GET /api/dictionaries/*` | да | — | любая |
-| `GET /api/templates*` | да | READ в `templates`\|`admin` | любая |
-| `POST/PUT/DELETE /api/templates*` | да | ADD/EDIT/DELETE в `admin`\|`templates` | любая |
-| `/api/journeys*`, `/api/flow/*` | да | READ в `journeys` | **только ADMIN** (класс-гард) |
-| `GET /api/promo/plan` | да | READ в `promo` | любая |
-| `POST/PATCH/DELETE /api/promo/plan*` | да | ADD/EDIT/DELETE в `promo` | любая |
-| `GET/PUT /api/reports/sms-check/config`, `GET …/download` | да | READ в `reports` | смена источника — только админ |
-| `GET /api/reports/connections` | да | — | любая (токен — только админу) |
-| `PUT/DELETE /api/reports/connections/*` | да | — | только ADMIN |
-| `GET /api/panel-settings/{key}` | да | — | любая |
-| `PUT /api/panel-settings/{key}` | да | — | только ADMIN |
-| `/api/admin/**` | да | — (админ обходит матрицу) | только ADMIN (фильтр) |
-| `/settings/**` (статика настроечной админки) | да | — | только ADMIN (фильтр) |
-| `/swagger-ui.html`, `/v3/api-docs` | да | — | любая |
-
-Напоминание: роль с флагом `is_admin` обходит матрицу разделов везде, поэтому колонку «Раздел и право» для админа можно читать как «всегда доступно».
+**Пустой `status` отдаёт `PENDING`, `SENDING` и `ERROR`** (`src/main/java/ru/banki/crm/web/ProdSyncController.java:88`). `SENDING` попал в набор по умолчанию сознательно: это записи «ушли в прод, ответа нет» — ровно тот случай, ради которого очередь и открывают. Из той же логики `cancel` их не удаляет: неизвестно, доехала строка или нет, и молча убрать такую запись значило бы потерять след. Зависший `SENDING` переводит в `ERROR` фоновая уборка, после чего доступны и `retry`, и `cancel`.
