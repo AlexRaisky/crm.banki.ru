@@ -135,6 +135,17 @@ public class RoleService {
             boolean w = Sections.isWritable(s);
             out.add(new SectionAccess(s, true, w && a.add(), w && a.edit(), w && a.delete()));
         }
+        /* Секции сущностей (ent:client) в Sections.ALL не лежат: их список задаёт схема,
+           а не константа. Поэтому проходим ещё раз по присланному — иначе матрица
+           показывала бы галки, а сохранение молча их выбрасывало. Права на запись у них
+           нет: данные сущностей пока живут в браузере, и обещать их защиту нечестно. */
+        if (!adminRole && access != null) {
+            for (SectionAccessDto a : access) {
+                if (!Sections.isEntity(a.section())) continue;
+                if (!(a.read() || a.add() || a.edit() || a.delete())) continue;
+                out.add(new SectionAccess(a.section(), true, false, false, false));
+            }
+        }
         return out;
     }
 

@@ -11,11 +11,10 @@
    storage — то есть заведённая в Scheme Builder сущность появляется
    в панели без перезагрузки страницы.
 
-   ДОСТУП. Раздел и все его подразделы помечены adminOnly: их видит
-   только роль ADMIN. Для выдачи доступа другим ролям заведён реестр
-   crmpanel:entityAccess = { <entity>: [роли…] }; новая сущность
-   попадает туда с пустым списком, то есть по умолчанию доступа нет
-   ни у кого, кроме администраторов (см. entAllowed).
+   ДОСТУП. Выдаётся в матрице прав, как у остальных страниц панели:
+   секция ent:<сущность> открывает одну сущность, зонтичная entities —
+   сразу все (см. entAllowed). Админ видит всё. По умолчанию не выдано
+   ничего: новая сущность появляется в матрице пустой строкой.
 
    ДАННЫЕ. Записи лежат в crmpanel:entityData = { <entity>: [записи…] };
    стартовый набор (по три записи на сущность с разными вариантами
@@ -28,7 +27,6 @@ var ENT_FILE      = "settings/schema/crm-schema.json";
 var ENT_DRAFT_KEY = "crmpanel:schemaDraft";
 var ENT_DATA_KEY  = "crmpanel:entityData";
 var ENT_SEED_KEY  = "crmpanel:entityDataSeed";
-var ENT_ACL_KEY   = "crmpanel:entityAccess";
 var ENT_SEED_VER  = 1;
 
 var ENT_MODEL = { entities: [], relations: [] };
@@ -82,18 +80,16 @@ function entStore(){ entWrite(ENT_DATA_KEY, ENT_DATA); }
 function entRows(id){ return ENT_DATA[id] || (ENT_DATA[id] = []); }
 
 /* ---------- доступ ----------
-   Админ видит всё. Остальным роль должна быть явно выдана в реестре
-   crmpanel:entityAccess — по умолчанию он пустой, то есть доступа нет.
+   Админ видит всё. Остальным сущность выдаётся в матрице прав — секцией ent:<сущность>
+   («Управление доступом» в настройках, группа «Сущности»). Зонтичная секция entities
+   открывает сразу все: у кого она есть, у того раздел работает как прежде.
+
+   Клиентский реестр crmpanel:entityAccess, который раздавал доступ ролям из консоли
+   браузера, снят: он жил в localStorage, до сервера не доходил, у каждого браузера был
+   свой — и молча сужал доступ там, где матрица его выдавала.
+
    Пока бэкенда нет (/api/me недоступен на GitHub Pages), раздел работает
    в демо-режиме — так же ведёт себя applyNavAcl в api.js. */
-function entAcl(){ return entRead(ENT_ACL_KEY, {}) || {}; }
-function entAclSeed(){
-  var acl = entAcl(), changed = false;
-  ENT_MODEL.entities.forEach(function(e){
-    if (!Array.isArray(acl[e.id])) { acl[e.id] = []; changed = true; }
-  });
-  if (changed) entWrite(ENT_ACL_KEY, acl);
-}
 /* Схема, которой принадлежит строка модели. Правило общее со Scheme Builder:
    поле schema, а у одноуровневых записей (заведённых до разделения) — сам id. */
 function entSchemaOf(e){ return (e && e.schema) || (e && e.id) || ""; }
@@ -183,23 +179,11 @@ function entAllowed(e){
   var me = window.CRM_ME;
   if (!me) return true;                       /* демо-режим без бэкенда */
   if (me.isAdmin) return true;
-  var roles = entAcl()[e.id];
-  /* Реестр — инструмент СУЖЕНИЯ, а не единственный гейт: перечислены роли — решает он,
-     не перечислены — работает обычный RBAC по секции entities.
-     Проверять надо именно НЕПУСТОЙ список. entAclSeed заводит запись каждой сущности
-     сразу при загрузке модели, и она пустая — то есть «есть ли запись» истинно всегда.
-     С проверкой через Array.isArray ветка с секцией была недостижима, пустой список
-     читался как «никому», и раздел не открывался ни одной роли, сколько прав ей ни
-     выдай в матрице. */
-  if (Array.isArray(roles) && roles.length) return roles.indexOf(me.role) >= 0;
-  return !!(me.sections && me.sections.indexOf("entities") >= 0);
-}
-/* точка выдачи доступа не-админам: entAccessSet('client', ['MARKETER']) */
-function entAccessSet(entityId, roles){
-  var acl = entAcl();
-  acl[entityId] = Array.isArray(roles) ? roles : [];
-  entWrite(ENT_ACL_KEY, acl);
-  entSyncNav();
+  var sec = me.sections || [];
+  /* Зонтик «Сущности» открывает все; секция сущности — только её. Сузить доступ =
+     снять зонтик и отметить нужные строки в группе «Сущности». */
+  if (sec.indexOf("entities") >= 0) return true;
+  return sec.indexOf("ent:" + entSchemaOf(e)) >= 0;
 }
 
 /* ---------- схема ---------- */
@@ -1539,8 +1523,8 @@ function entSyncNav(){
     };
   });
   /* Раздел прячем как админский, только если доступной сущности нет ни одной.
-     Иначе роль, которой доступ выдали явно (entAccessSet), видела бы карточку
-     на обзорной странице, но не сам пункт в сайдбаре. */
+     Иначе роль, которой сущность выдали в матрице, видела бы карточку на обзорной
+     странице, но не сам пункт в сайдбаре. */
   grp.adminOnly = !grp.children.length;
   if (typeof renderNav === "function") renderNav();
   entRenderOverview();
@@ -1698,7 +1682,6 @@ function entBoot(){
   return entLoadSchema().then(function(m){
     ENT_MODEL = { entities: (m && m.entities) || [], relations: (m && m.relations) || [] };
     ENT_DATA = entRead(ENT_DATA_KEY, {}) || {};
-    entAclSeed();
     entSeed();
     /* приводим зависимые поля в согласованное состояние: данные могли быть
        записаны до появления правила либо изменены в другой вкладке */
@@ -1716,7 +1699,7 @@ function entBoot(){
 }
 /* сущность завели/удалили в Scheme Builder (другая вкладка) — пересобираем подразделы */
 window.addEventListener("storage", function(ev){
-  if (ev.key !== ENT_DRAFT_KEY && ev.key !== ENT_ACL_KEY) return;
+  if (ev.key !== ENT_DRAFT_KEY) return;
   entBoot().then(function(){ if (ENT_CUR.id) entRender(); });
 });
 

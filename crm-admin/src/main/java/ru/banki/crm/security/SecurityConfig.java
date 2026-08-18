@@ -54,6 +54,25 @@ public class SecurityConfig {
         return (auth, ctx) -> new AuthorizationDecision(allowed(auth.get(), Sections.SETTINGS));
     }
 
+    /**
+     * Чтение модели схемы: перечисленные секции ИЛИ доступ к любой отдельной сущности.
+     * <p>
+     * Сущности выдаются поштучно (ent:client), и зонтичной секции entities у такой роли
+     * может не быть вовсе. Без этой ветки роль с одной выданной сущностью получала бы
+     * 403 на самой модели — а из неё строится всё: подразделы, колонки, карточки. Раздел
+     * просто исчезал бы из меню, ничего не сообщая.
+     */
+    private static AuthorizationManager<RequestAuthorizationContext> schemaRead(String... sectionIds) {
+        return (auth, ctx) -> new AuthorizationDecision(
+                allowed(auth.get(), Set.of(sectionIds)) || hasEntitySection(auth.get()));
+    }
+
+    private static boolean hasEntitySection(Authentication a) {
+        return a != null && a.isAuthenticated()
+                && a.getPrincipal() instanceof AppUserPrincipal p
+                && p.sections().stream().anyMatch(Sections::isEntity);
+    }
+
     private static boolean allowed(Authentication a, Set<String> sectionIds) {
         if (a == null || !a.isAuthenticated()) {
             return false;
@@ -95,7 +114,7 @@ public class SecurityConfig {
                    потому что группа прячется, когда у неё не осталось подразделов.
                    Всё остальное под /api/schema (структура базы, версии, аудит, запись
                    и DDL) остаётся за настройками. */
-                .requestMatchers(HttpMethod.GET, "/api/schema").access(section(Sections.ENTITIES,
+                .requestMatchers(HttpMethod.GET, "/api/schema").access(schemaRead(Sections.ENTITIES,
                         Sections.SET_SCHEME, Sections.SET_OBJECTS, Sections.SET_DBTREE))
                 .requestMatchers("/api/schema/**").access(section(Sections.SET_SCHEME, Sections.SET_OBJECTS,
                                                                  Sections.SET_DBTREE))

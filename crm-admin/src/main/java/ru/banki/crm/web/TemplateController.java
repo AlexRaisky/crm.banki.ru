@@ -39,14 +39,17 @@ public class TemplateController {
                                           @RequestParam(required = false) String dir,
                                           @RequestParam(required = false) Integer limit,
                                           @RequestParam(required = false) Integer offset) {
-        access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN);
+        /* VIEWER — «Просмотр настроек»: тот же экран мастера, но в режиме чтения. Секция
+           у него теперь своя (её выдают, не открывая сам мастер), поэтому читать шаблоны
+           ему можно — а ручки записи ниже требуют ADMIN или TEMPLATES, как и раньше. */
+        access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN, Sections.VIEWER);
         return service.list(channel, product, touch, trigger, partner, active, q, sort, dir, limit, offset);
     }
 
     /** Значения для выпадающих фильтров (продукт/точка/триггер) из реальных данных. */
     @GetMapping("/facets")
     public Map<String, List<String>> facets() {
-        access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN);
+        access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN, Sections.VIEWER);
         return service.facets();
     }
 
@@ -59,13 +62,13 @@ public class TemplateController {
                                    @RequestParam(required = false) List<String> partner,
                                    @RequestParam(required = false) String active,
                                    @RequestParam(required = false) String q) {
-        access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN);
+        access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN, Sections.VIEWER);
         return service.count(channel, product, touch, trigger, partner, active, q);
     }
 
     @GetMapping("/{channel}/{code}")
     public TemplateDto get(@PathVariable String channel, @PathVariable String code) {
-        access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN);
+        access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN, Sections.VIEWER);
         return service.get(channel, code);
     }
 

@@ -354,8 +354,12 @@
        раздаются поштучно — показываем всем, у кого есть хоть одна секция настроек. */
     var gear = document.getElementById("settingsLink");
     if (gear) {
+      /* ev-export перечислен отдельно: его панель («Перелив событий в прод») живёт
+         в настройках, но префикса set- у секции нет — id остался прежним с тех пор,
+         когда страница была в панели. Без этой ветки человек с одним переливом имел бы
+         доступ к странице на сервере и ни одной двери к ней в интерфейсе. */
       var hasSettings = me.isAdmin || (me.sections || []).some(function (s) {
-        return s === "access" || s.indexOf("set-") === 0;
+        return s === "access" || s === "ev-export" || s.indexOf("set-") === 0;
       });
       gear.style.display = hasSettings ? "" : "none";
     }

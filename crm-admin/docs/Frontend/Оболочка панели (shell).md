@@ -173,7 +173,7 @@ tags: [frontend, shell, navigation, i18n, theme]
 |---|---|
 | Оболочка | `theme`, `lang`, `app`, `appSections`, `subOrder`, `sidebarCollapsed`, `lastSection`, `layout`, `tasks`, `recent`, `uploadedTools` |
 | Список шаблонов | `listCols`, `listFilters`, `listColsAdded` |
-| Сущности | `schemaDraft`, `entityData`, `entityDataSeed`, `entityAccess`, `entityShowTech`, `entityListCols`, `entityListFilters` |
+| Сущности | `schemaDraft`, `entityData`, `entityDataSeed`, `entityShowTech`, `entityListCols`, `entityListFilters` (доступ переехал в матрицу прав, ключа `entityAccess` больше нет) |
 | Scheme Builder | `schemeView` |
 
 Исключение — [Панель отклонений](Панель%20отклонений.md): она пришла из v1 со своими ключами **без префикса**. Страница настроек дополнительно держит текущую панель в `sessionStorage`, чтобы пережить перезагрузку при смене языка.

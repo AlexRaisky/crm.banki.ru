@@ -634,6 +634,27 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
         </div>
       </section>
 
+      <!-- ===== Перелив событий в прод =====
+           Переехало из панели («События» → «Перелив в прод»). Обратное направление —
+           соседняя панель «Импорт событий из crmdb»: две половины одного процесса
+           наконец стоят рядом. -->
+      <section class="pane" id="pane-evexport">
+        <h1 data-i18n-html="h_evexport">Перелив событий <span class="grad">в прод</span></h1>
+        <div class="sub">Отправляет собранное у нас событие в боевые таблицы crmdb: <b>tracker</b>, <b>scheduler</b>, <b>template</b>, <b>commapi</b>. Идентификаторы прод присваивает свои, ссылки внутри пачки переставляются автоматически. Повторный перелив уже уехавшие строки пропускает — дублей не будет.</div>
+        <div class="sub" style="margin-top:8px">Куда именно переливать, задаёт галка «База событий» в разделе «Подключения к БД». Кнопка «Перелить» требует права на добавление в разделе «Перелив событий в прод».</div>
+
+        <div class="card">
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn" id="evxReload">Обновить список</button>
+            <button type="button" class="btn" id="evxHealth">Сверить колонки с продом</button>
+            <span class="save-note" id="evxMsg"></span>
+          </div>
+          <div id="evxList" class="empty" style="margin-top:12px">Загружаем…</div>
+        </div>
+
+        <div id="evxResult"></div>
+      </section>
+
       <!-- ===== Диагностика хранилища ===== -->
       <section class="pane" id="pane-diag">
         <h1 data-i18n-html="h_diag">Диагностика <span class="grad">хранилища</span></h1>
@@ -852,7 +873,8 @@ const S_HTML = {
         h_dbtree:'Схемы и <span class="grad">таблицы</span>',
         h_dbconn:'Подключения <span class="grad">к БД</span>',
         h_sync:'Синхронизация <span class="grad">шаблонов</span>',
-        h_events:'События <span class="grad">crmdb</span>' },
+        h_events:'События <span class="grad">crmdb</span>',
+        h_evexport:'Перелив событий <span class="grad">в прод</span>' },
   en: { h_over:'Admin <span class="grad">settings</span>', h_apps:'Apps <span class="grad">& sections</span>',
         h_mon:'Integration <span class="grad">monitoring</span>', h_up:'Uploaded <span class="grad">tools</span>',
         h_gen:'General <span class="grad">settings</span>', h_diag:'Storage <span class="grad">diagnostics</span>',
@@ -862,7 +884,8 @@ const S_HTML = {
         h_dbtree:'Schemas and <span class="grad">tables</span>',
         h_dbconn:'Database <span class="grad">connections</span>',
         h_sync:'Template <span class="grad">sync</span>',
-        h_events:'Events <span class="grad">crmdb</span>' }
+        h_events:'Events <span class="grad">crmdb</span>',
+        h_evexport:'Event export <span class="grad">to prod</span>' }
 };
 function translateStatic(){
   document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t2(el.dataset.i18n); });
@@ -872,13 +895,19 @@ function translateStatic(){
 
 /* Справочники — синхронизированы с пользовательской панелью */
 const APPS = ["Администрирование","Аналитика","Маркетинг","Бизнес","Контактный центр"];
+/* Порядок и состав повторяют NAV панели. Разделы, появившиеся позже («События»,
+   «Сущности», «Цепочки»), здесь отсутствовали — и приложение с заданным вручную
+   набором разделов их не показывало вовсе: отметить-то было нечего. */
 const SECTIONS = [
   { id:"home",       label:"Главная", locked:true },
   { id:"comms",      label:"Управление коммуникациями" },
+  { id:"events",     label:"События" },
+  { id:"entities",   label:"Сущности" },
   { id:"reports",    label:"Отчёты" },
   { id:"dash",       label:"Дашборд" },
   { id:"monitoring", label:"Мониторинг" },
-  { id:"uploads", label:"Загруженные инструменты" },
+  { id:"uploads",    label:"Загруженные инструменты" },
+  { id:"journeys",   label:"Цепочки" },
 ];
 
 /* ---------- меню настроек ---------- */
@@ -893,10 +922,16 @@ const PANES = [
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>' },
   { id:"dbconn", acl:"set-dbconn", group:"Интеграции", label:"Подключения к БД", desc:"Базы, к которым ходит панель. Здесь же отмечается, какая из них приёмник шаблонов, а какая — база событий crmdb.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>' },
-  { id:"sync", acl:"set-sync", group:"Интеграции", label:"Синхронизация шаблонов", desc:"Очередь доставки в базу шаблонов, состояние прод-приёмника и обратный ETL.",
+  { id:"sync", acl:"set-sync", group:"Переливы", label:"Синхронизация шаблонов", desc:"Очередь доставки в базу шаблонов, состояние прод-приёмника и обратный ETL.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>' },
-  { id:"events", acl:"set-events", group:"Интеграции", label:"События (crmdb)", desc:"Сравнить нашу модель событий с боевой базой и затянуть события из неё.",
+  { id:"events", acl:"set-events", group:"Переливы", label:"Импорт событий из crmdb", desc:"Сравнить нашу модель событий с боевой базой и затянуть события из неё.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 4 14 11 14 10 22 20 10 13 10 13 2"/></svg>' },
+  /* Перелив приехал из панели («События» → «Перелив в прод»). Его место здесь: рядом
+     стоят два других процесса доставки наружу, и человек, который следит за переливами,
+     держит их в одном разделе, а не ходит между панелью и настройками.
+     acl остался ev-export — та же секция, что и раньше, выданные права не потерялись. */
+  { id:"evexport", acl:"ev-export", group:"Переливы", label:"Перелив событий в прод", desc:"Отправка собранного у нас события в боевые таблицы crmdb и сверка колонок с продом.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' },
   { id:"apps", acl:"set-apps", group:"Панель", label:"Приложения и разделы", desc:"Какие разделы панели видит каждое приложение из App Launcher.",
     ico:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg>' },
   { id:"uploads", acl:"set-uploads", group:"Панель", label:"Загруженные инструменты", desc:"Переименование и удаление загруженных HTML-инструментов.",
@@ -921,6 +956,7 @@ function openPane(id){
   if (id === "uploads") renderTools();
   if (id === "diag") renderDiag();
   if (id === "events" && window.EventSync) EventSync.open();
+  if (id === "evexport" && window.EventExport) EventExport.open();
   if (id === "monitoring") monBack();
   if (id === "access" && typeof renderAccessSection === "function") renderAccessSection();
   /* Scheme Builder инициализируется лениво: схема грузится при первом открытии */
@@ -951,12 +987,15 @@ PANES.forEach(p => {
   snav.appendChild(el);
 });
 
-/* Панели гейтятся секциями матрицы прав (V38): «Подключения к БД» можно выдать, не
+/* Панели гейтятся секциями матрицы прав: «Подключения к БД» можно выдать, не
    открывая Scheme Builder. Серверная проверка стоит в SecurityConfig и в контроллерах —
    здесь только прячем то, чего всё равно не отдадут, чтобы человек не тыкал в 403. */
 fetch("../api/me", { credentials: "same-origin", headers: { Accept: "application/json" } })
   .then(function(r){ return r.ok ? r.json() : null; })
   .then(function(me){
+    /* Ответ держим: панелям нужны не только секции, но и права внутри секции —
+       «Перелив» гасит свою кнопку без права на добавление. */
+    window.SET_ME = me;
     if (!me || me.isAdmin) return;              // админ обходит матрицу
     var allowed = me.sections || [];
     var hiddenIds = [];
@@ -1204,10 +1243,13 @@ window.EventSync = (function(){
 
   function esc(v){ return String(v == null ? "" : v)
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  /* .save-note по умолчанию прозрачна (opacity:0) и проявляется классом show — без него
+     подпись писалась в невидимый элемент, и кнопка выглядела молчащей. */
   function note(id, text, bad){
     var n = $("#" + id);
     if (!n) return;
     n.textContent = text || "";
+    n.classList.toggle("show", !!text);
     n.style.color = bad ? "var(--red,#e5484d)" : "";
   }
 
@@ -1405,6 +1447,169 @@ window.EventSync = (function(){
     open: function(){
       bind();                // на случай, если разметку перерисовали
       if (!loaded) scan();   // при первом открытии считаем сразу: это и есть ответ «сколько их»
+    }
+  };
+})();
+
+/* ---------- Перелив событий в прод ----------
+   Приехало из панели (раздел «События» → «Перелив в прод»): наружу событие уезжает тем
+   же процессом, что и шаблоны, и место ему рядом с ними, а не в форме завода.
+   Ручки те же самые — /api/events/export*, секция та же — ev-export. */
+window.EventExport = (function(){
+  var bound = false, loaded = false;
+
+  function esc(v){ return String(v == null ? "" : v)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function note(text, bad){
+    var n = $("#evxMsg");
+    if (!n) return;
+    n.textContent = text || "";
+    n.classList.toggle("show", !!text);
+    n.style.color = bad ? "var(--coral)" : "";
+  }
+  function box(html, empty){
+    var b = $("#evxList");
+    if (!b) return;
+    b.className = empty ? "empty" : "";
+    b.innerHTML = html;
+    b.style.marginTop = "12px";
+  }
+  function result(html){
+    var b = $("#evxResult");
+    if (b) b.innerHTML = html || "";
+  }
+
+  /* Право на добавление в секции ev-export решает, живая кнопка «Перелить» или нет.
+     Админ проходит всегда: матрицу он обходит и на сервере. */
+  function canExport(){
+    var me = window.SET_ME;
+    if (!me) return true;                       // ответа ещё нет — сервер всё равно проверит
+    if (me.isAdmin) return true;
+    var c = me.caps && me.caps["ev-export"];
+    return !!(c && c.add);
+  }
+
+  function req(method, url){
+    return fetch(url, { method: method, credentials: "same-origin",
+                        headers: { Accept: "application/json" } })
+      .then(function(r){
+        if (r.ok) return r.status === 204 ? null : r.json();
+        return r.text().then(function(t){
+          /* Текст ошибки кладёт ValidationErrorHandler в поле message. Если ответ не
+             JSON (403 отдаёт HTML-страницу, а не объект), показываем строку состояния:
+             вываливать в блок целую HTML-страницу — это не сообщение об ошибке. */
+          var msg = "";
+          try { msg = JSON.parse(t).message || ""; } catch(e){ msg = ""; }
+          throw new Error(msg || (r.status + " " + r.statusText));
+        });
+      });
+  }
+
+  function load(){
+    loaded = true;
+    note("Загружаем…");
+    box("Загружаем…", true);
+    req("GET", "../api/events/export?limit=200").then(function(rows){
+      note("");
+      render(rows || []);
+    }).catch(function(e){ fail(e); });
+  }
+
+  function fail(e){
+    var msg = (e && e.message) || "Запрос не выполнен";
+    note("Ошибка", true);
+    box('<div style="color:var(--coral)">' + esc(msg) + "</div>");
+  }
+
+  /* Строка на событие: сколько строк слоя B оно сделало и сколько из них уже в проде.
+     Кнопка активна, пока переехало не всё; «переехало всё» — конечное состояние. */
+  function render(rows){
+    if (!rows.length) { box("Событий пока нет — заводятся они в панели, раздел «События».", true); return; }
+    var may = canExport();
+    var html = "<table><thead><tr><th>id</th><th>Событие</th><th>Система</th><th>Род</th>" +
+      "<th>Строк слоя B</th><th>В проде</th><th>Когда</th><th></th></tr></thead><tbody>";
+    rows.forEach(function(r){
+      var total = Number(r.rows_total || 0), done = Number(r.rows_exported || 0);
+      var full = total > 0 && done >= total;
+      html += "<tr><td>" + esc(r.id) + '</td><td class="t-name">' + esc(r.event_name) + "</td>" +
+        "<td>" + esc(r.system || "—") + "</td>" +
+        "<td>" + (r.kind === "time" ? "по расписанию" : "онлайн") + "</td>" +
+        "<td>" + total + "</td><td>" + done + "</td>" +
+        "<td>" + esc(r.exported_at ? String(r.exported_at).slice(0, 19).replace("T", " ") : "—") + "</td>" +
+        '<td style="text-align:right"><button class="btn' + (full || !total || !may ? "" : " accent") +
+          '" data-export="' + esc(r.id) + '"' + (full || !total || !may ? " disabled" : "") + ">" +
+          (full ? "уже в проде" : "Перелить") + "</button></td></tr>";
+    });
+    box(html + "</tbody></table>");
+    document.querySelectorAll("#evxList [data-export]").forEach(function(b){
+      b.onclick = function(){ run(b.getAttribute("data-export"), b); };
+    });
+  }
+
+  function run(eventId, btn){
+    if (btn) btn.disabled = true;
+    note("Переливаем…");
+    result("");
+    req("POST", "../api/events/export/" + encodeURIComponent(eventId)).then(function(res){
+      var sent = (res.sent || []).length, skip = (res.skipped || []).length;
+      note("«" + res.eventName + "»: отправлено строк " + sent +
+           (skip ? ", пропущено как уже уехавшие " + skip : ""));
+      showResult(res);
+      load();
+    }).catch(function(e){
+      fail(e);
+      if (btn) btn.disabled = false;
+    });
+  }
+
+  /* Показываем пары «наш id → id в проде»: по ним строку находят в crmdb руками. */
+  function showResult(res){
+    var all = (res.sent || []).map(function(r){ return { r:r, tag:"отправлено" }; })
+      .concat((res.skipped || []).map(function(r){ return { r:r, tag:"уже было" }; }));
+    if (!all.length) { result(""); return; }
+    result('<div class="card" style="margin-top:16px"><h3>Что уехало</h3><table><thead><tr>' +
+      "<th>Таблица</th><th>наш id</th><th>id в проде</th><th></th></tr></thead><tbody>" +
+      all.map(function(x){
+        return '<tr><td class="mono">' + esc(x.r.table) + "</td><td>" + esc(x.r.ourId) +
+               "</td><td>" + esc(x.r.prodId) + "</td><td>" + x.tag + "</td></tr>";
+      }).join("") + "</tbody></table></div>");
+  }
+
+  /* Сверка DDL: колонка, которой в проде нет, при вставке молча отбрасывается. */
+  function health(){
+    note("Сверяем…");
+    result("");
+    req("GET", "../api/events/export/health").then(function(h){
+      if (!h.configured) { note("База событий не выбрана — отметьте её в разделе «Подключения к БД»", true); return; }
+      if (h.error) { note(h.error, true); return; }
+      var bad = [];
+      Object.keys(h.tables || {}).forEach(function(t){
+        var d = h.tables[t];
+        if (d.error) bad.push(t + ": " + d.error);
+        else if ((d.missingInProd || []).length) bad.push(t + " — нет в проде: " + d.missingInProd.join(", "));
+      });
+      if (!bad.length) { note("Таблицы совпадают, расхождений нет"); return; }
+      note("Найдены расхождения", true);
+      result('<div class="card" style="margin-top:16px"><h3>Расхождения</h3>' +
+        bad.map(function(b){ return '<div class="empty" style="color:var(--coral)">' + esc(b) + "</div>"; }).join("") +
+        "</div>");
+    }).catch(function(e){ fail(e); });
+  }
+
+  function bind(){
+    if (bound) return;
+    var b1 = $("#evxReload"), b2 = $("#evxHealth");
+    if (!b1 || !b2) return;
+    bound = true;
+    b1.onclick = load;
+    b2.onclick = health;
+  }
+  bind();
+
+  return {
+    open: function(){
+      bind();
+      if (!loaded) load();   // список — это и есть содержимое панели, ждать нажатия незачем
     }
   };
 })();
@@ -1869,6 +2074,10 @@ const SUBSECTIONS = [
       ["viewer","Просмотр настроек"], ["srcbuilder","Конструктор source"], ["promo","Планирование промо"],
       ["abtests","А/Б тесты"],
       ["heatmap","Тепловая карта"] ]},
+  { sid:"events", label:"События", items:[
+      /* «Перелив в прод» из группы ушёл: он теперь панель настроек, а не подраздел */
+      ["ev-online","Онлайн-событие"], ["ev-offline","Событие по расписанию"],
+      ["ev-list","Список событий"] ]},
   { sid:"reports", label:"Отчёты", items:[
       ["rep-planfact","Plan-Fact"], ["rep-matrix","CRM Matrix"], ["rep-leadgen","CRM Leadgen"],
       ["rep-smscheck","ЧЕК СМС траффик"],

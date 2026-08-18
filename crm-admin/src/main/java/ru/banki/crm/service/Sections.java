@@ -12,6 +12,11 @@ public final class Sections {
     public static final String DEVIATIONS = "deviations";
     public static final String ONELINK = "onelink";
     public static final String ADMIN = "admin";       // Мастер коммуникаций
+    /* «Просмотр настроек» — тот же экран, что и «Мастер коммуникаций», но в режиме
+       чтения. Секции у него не было: пункт меню повторял права admin (aclSection).
+       Из-за этого нельзя было дать человеку смотреть настройки коммуникаций, не пуская
+       его в мастер, — а это ровно тот случай, ради которого режим просмотра и делали. */
+    public static final String VIEWER = "viewer";
     public static final String TEMPLATES = "templates"; // Список шаблонов
     public static final String DASHBOARD = "dashboard";
     public static final String JOURNEYS = "journeys";   // Цепочки (схема-конструктор)
@@ -27,6 +32,26 @@ public final class Sections {
        (crmpanel:entityAccess). Из-за этого его нельзя было выдать роли, как остальные
        разделы, — он просто не показывался в матрице прав. */
     public static final String ENTITIES = "entities";
+
+    /* Отдельная сущность — тоже страница панели, и выдаваться она должна там же, где
+       остальные: в матрице прав. Раньше это делал клиентский реестр crmpanel:entityAccess
+       — объект в localStorage браузера, который правился из консоли и до сервера не
+       доходил вовсе. Поэтому секции сущностей ДИНАМИЧЕСКИЕ: их список не константа, а
+       текущая схема (app.schema_model), и в ALL их нет — они приезжают в матрицу
+       отдельным блоком из /api/admin/sections.
+       ENTITIES при этом остаётся зонтиком «все сущности»: снимать его у ролей, которым
+       он уже выдан, миграцией нельзя — люди потеряли бы раздел. Точечная выдача просто
+       добавляет к нему сущности, а сузить доступ = снять зонтик и отметить нужные. */
+    public static final String ENTITY_PREFIX = "ent:";
+
+    /** Секция отдельной сущности: ent:client. */
+    public static String entity(String entityId) {
+        return ENTITY_PREFIX + entityId;
+    }
+
+    public static boolean isEntity(String id) {
+        return id != null && id.startsWith(ENTITY_PREFIX) && id.length() > ENTITY_PREFIX.length();
+    }
 
     /* Завод событий формой — две страницы, права на каждую отдельно: онлайновое событие
        заводит одна команда, расписание с SQL-выборкой — другая. */
@@ -74,14 +99,14 @@ public final class Sections {
        Порядок совпадает с порядком в меню: матрица прав рисуется в нём же. */
     public static final List<String> ALL = List.of(
             HOME,
-            ONELINK, ADMIN, TEMPLATES, SRCBUILDER, PROMO, ABTESTS, HEATMAP,
-            EV_ONLINE, EV_OFFLINE, EV_LIST, EV_EXPORT,
+            ONELINK, ADMIN, VIEWER, TEMPLATES, SRCBUILDER, PROMO, ABTESTS, HEATMAP,
+            EV_ONLINE, EV_OFFLINE, EV_LIST,
             ENTITIES,
             REP_PLANFACT, REP_MATRIX, REP_LEADGEN, REP_SMSCHECK, REP_DEMO,
             DASHBOARD, DEVIATIONS,
             MON_CAMPAIGNS,
             UPLOADS, JOURNEYS,
-            SET_DBCONN, SET_SYNC, SET_EVENTS, SET_SCHEME, SET_OBJECTS, SET_DBTREE,
+            SET_DBCONN, SET_SYNC, SET_EVENTS, EV_EXPORT, SET_SCHEME, SET_OBJECTS, SET_DBTREE,
             SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, SET_GENERAL, ACCESS);
 
     /**
@@ -92,6 +117,7 @@ public final class Sections {
     public static final java.util.Map<String, String> GROUP_OF = java.util.Map.ofEntries(
             java.util.Map.entry(ONELINK, "Управление коммуникациями"),
             java.util.Map.entry(ADMIN, "Управление коммуникациями"),
+            java.util.Map.entry(VIEWER, "Управление коммуникациями"),
             java.util.Map.entry(TEMPLATES, "Управление коммуникациями"),
             java.util.Map.entry(SRCBUILDER, "Управление коммуникациями"),
             java.util.Map.entry(PROMO, "Управление коммуникациями"),
@@ -100,7 +126,11 @@ public final class Sections {
             java.util.Map.entry(EV_ONLINE, "События"),
             java.util.Map.entry(EV_OFFLINE, "События"),
             java.util.Map.entry(EV_LIST, "События"),
-            java.util.Map.entry(EV_EXPORT, "События"),
+            /* Перелив уехал из панели в настройки: это не работа с событием, а процесс
+               доставки его в боевую базу — соседи ему синхронизация шаблонов и импорт из
+               crmdb, а не форма завода. Идентификатор секции остался прежним (ev-export),
+               поэтому выданные права никуда не делись. */
+            java.util.Map.entry(EV_EXPORT, "Настройки"),
             java.util.Map.entry(REP_PLANFACT, "Отчёты"),
             java.util.Map.entry(REP_MATRIX, "Отчёты"),
             java.util.Map.entry(REP_LEADGEN, "Отчёты"),
@@ -153,15 +183,16 @@ public final class Sections {
 
     /** Секции настроечной админки. По ним SecurityConfig решает, пускать ли на /settings. */
     public static final Set<String> SETTINGS = Set.of(
-            SET_DBCONN, SET_SYNC, SET_EVENTS, SET_SCHEME, SET_OBJECTS, SET_DBTREE,
+            SET_DBCONN, SET_SYNC, SET_EVENTS, EV_EXPORT, SET_SCHEME, SET_OBJECTS, SET_DBTREE,
             SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, SET_GENERAL, ACCESS);
 
     public static boolean isSettings(String id) {
         return SETTINGS.contains(id);
     }
 
+    /** Секции сущностей в VALID не лежат — их список задаёт схема, а не этот класс. */
     public static boolean isValid(String id) {
-        return VALID.contains(id);
+        return VALID.contains(id) || isEntity(id);
     }
 
     public static boolean isWritable(String id) {

@@ -21,8 +21,11 @@ const NAV = [
       /* «Список шаблонов» переехал в раздел «Сущности» как подраздел «Шаблоны и сегменты»
          (сущность template в схеме, source:"templates"). Пункт здесь не дублируем —
          id секции RBAC остался прежним (templates), права не менялись. */
-      /* «Просмотр настроек» — тот же раздел admin: ACL следует правам admin (data-acl-section) */
-      { id:"viewer",    label:"Просмотр настроек",   icon:"search", view:"sec-admin", adminMode:"view", aclSection:"admin" },
+      /* «Просмотр настроек» — тот же экран, что и мастер, но в режиме чтения. Секция
+         у пункта теперь своя (viewer), а не заимствованная у admin: смотреть настройки
+         коммуникаций часто нужно тем, кого в мастер не пускают. Миграция V38 выдала
+         viewer всем, у кого был admin, — пункт ни у кого не пропал. */
+      { id:"viewer",    label:"Просмотр настроек",   icon:"search", view:"sec-admin", adminMode:"view", aclSection:"viewer" },
       /* клиентские инструменты без серверной секции — не фильтруются по me.sections (data-no-acl) */
       { id:"srcbuilder",label:"Конструктор source",  icon:"pulse", view:"sec-srcbuilder" },
       /* promo: таблица давно переехала на сервер (app.promo_plan), noAcl снят в V29 —
@@ -42,7 +45,8 @@ const NAV = [
       { id:"ev-online",  label:"Онлайн-событие",       icon:"pulse", view:"sec-event-online" },
       { id:"ev-offline", label:"Событие по расписанию", icon:"calendar", view:"sec-event-offline" },
       { id:"ev-list",    label:"Список событий",        icon:"list", view:"sec-event-list" },
-      { id:"ev-export",  label:"Перелив в прод",        icon:"upload", view:"sec-event-export" },
+      /* «Перелив в прод» отсюда уехал в настройки (/settings → «Переливы»): секция
+         ev-export осталась той же, поменялось только место. */
   ]},
   /* «Сущности» — данные CRM по схеме Scheme Builder. Подразделы НЕ задаются здесь:
      children заполняет js/entities.js (entSyncNav) по сущностям схемы, поэтому
@@ -50,8 +54,8 @@ const NAV = [
      adminOnly:true — стартовое (безопасное) состояние: до ответа /api/me и загрузки
      схемы раздел считается админским. Дальше entSyncNav пересчитывает флаг: он
      снимается, только если пользователю доступна хотя бы одна сущность. По
-     умолчанию не-админам не доступна ни одна — доступ выдаётся явно, через
-     реестр crmpanel:entityAccess (entAccessSet). */
+     умолчанию не-админам не доступна ни одна — доступ выдаётся явно, в матрице
+     прав: секция ent:<сущность> на одну сущность, entities — на все сразу. */
   /* id группы совпадает с секцией RBAC entities: гейт стоит не здесь, а в entAllowed
      (entities.js) — раздел показывается, когда доступна хотя бы одна сущность, а
      доступность теперь решает секция. Держать ещё и гейт на самой группе нельзя:
@@ -923,7 +927,6 @@ function openSection(sid, cid){
   if (target.view === "sec-event-online" && typeof initEventOnlineSection === "function") initEventOnlineSection();
   if (target.view === "sec-event-offline" && typeof initEventOfflineSection === "function") initEventOfflineSection();
   if (target.view === "sec-event-list" && typeof initEventListSection === "function") initEventListSection();
-  if (target.view === "sec-event-export" && typeof initEventExportSection === "function") initEventExportSection();
   if (target.view === "sec-deviations") setTimeout(() => {
     /* графики Chart.js, созданные в скрытой секции, имеют нулевой размер —
        при первом показе пересоздаём их через renderAll(). setTimeout, а не rAF:

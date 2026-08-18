@@ -493,13 +493,10 @@
           <p>Каталог заведённых событий: род, канал, расписание, шаблоны и состояние планировщика.</p>
           <span class="ov-go">Открыть →</span>
         </div>
-        <div class="ov-card" data-nav-ref="ev-export" onclick="openSection('events','ev-export')">
-          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
-          <h3>Перелив в прод</h3>
-          <p>Отправить собранное событие в боевые таблицы crmdb. Повторный перелив дублей не создаёт.</p>
-          <span class="ov-go">Открыть →</span>
-        </div>
       </div>
+      <!-- «Перелив в прод» уехал в настройки (раздел «Переливы»): отправка события
+           в боевую базу — процесс доставки, а не работа с событием, и стоять он должен
+           рядом с синхронизацией шаблонов и импортом из crmdb. -->
     </section>
 
     <!-- ===== События → Онлайн-событие ===== -->
@@ -641,22 +638,6 @@
         <span class="ev-msg" id="evlPage"></span>
         <button class="ev-btn ghost" id="evlNext" type="button">Вперёд →</button>
       </div>
-    </section>
-
-    <!-- ===== События → Перелив в прод ===== -->
-    <section class="view" id="sec-event-export">
-      <div class="eyebrow">CRM · Events · Export</div>
-      <h1>Перелив <span class="grad">в прод</span></h1>
-      <p class="sub">Отправляет собранное у нас событие в боевые таблицы: <code>tracker</code>, <code>scheduler</code>, <code>template</code>, <code>commapi</code>. Идентификаторы прод присваивает свои, ссылки внутри пачки переставляются автоматически. Повторный перелив уже уехавшие строки пропускает — дублей не будет. Обратное направление (сравнить с боевой базой и затянуть события оттуда) живёт в настройках: раздел «События (crmdb)».</p>
-
-      <div class="ev-foot" style="border-top:0;margin-top:0;padding-top:0">
-        <button class="ev-btn ghost" id="evxReload" type="button">Обновить список</button>
-        <button class="ev-btn ghost" id="evxHealth" type="button">Сверить таблицы с продом</button>
-        <span class="ev-msg" id="evxMsg"></span>
-      </div>
-
-      <div id="evxList"></div>
-      <div id="evxResult"></div>
     </section>
 
     <section class="view ov-view" id="view-mon-overview">

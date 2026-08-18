@@ -13,7 +13,7 @@
 
   var dict = null;          // кэш справочников
   var dictPromise = null;   // защита от параллельных загрузок при быстром переключении
-  var inited = { online: false, offline: false, list: false, export_: false };
+  var inited = { online: false, offline: false, list: false };
 
   var API = "/api/events";
 
@@ -523,111 +523,13 @@
     return html;
   }
 
-  // ================================================================== ПЕРЕЛИВ
-
-  function initExport() {
-    if (inited.export_) return;
-    inited.export_ = true;
-    el("evxReload").onclick = loadExportList;
-    el("evxHealth").onclick = checkHealth;
-    loadExportList();
-  }
-
-  function loadExportList() {
-    say("evxMsg", "Загружаем…");
-    evReq("GET", "/export?limit=200").then(function (rows) {
-      say("evxMsg", rows.length ? "" : "Событий пока нет");
-      renderExportList(rows);
-    }).catch(function (e) { fail("evxMsg", e); });
-  }
-
-  /* Строка на событие: сколько строк слоя B оно сделало и сколько из них уже в проде.
-     Кнопка активна, пока переехало не всё; «переехало всё» — конечное состояние. */
-  function renderExportList(rows) {
-    var box = el("evxList");
-    if (!box) return;
-    if (!rows || !rows.length) { box.innerHTML = ""; return; }
-    var canExport = can("add", "ev-export");
-    var html = '<div class="ev-rows"><table><thead><tr>' +
-      "<th>id</th><th>Событие</th><th>Система</th><th>Род</th>" +
-      "<th>Строк слоя B</th><th>В проде</th><th>Когда</th><th></th></tr></thead><tbody>";
-    rows.forEach(function (r) {
-      var total = Number(r.rows_total || 0), done = Number(r.rows_exported || 0);
-      var full = total > 0 && done >= total;
-      html += "<tr>" +
-        "<td>" + esc(r.id) + "</td>" +
-        "<td>" + esc(r.event_name) + "</td>" +
-        "<td>" + esc(r.system || "—") + "</td>" +
-        "<td>" + (r.kind === "time" ? "по расписанию" : "онлайн") + "</td>" +
-        "<td>" + total + "</td>" +
-        "<td>" + done + "</td>" +
-        "<td>" + esc(r.exported_at ? String(r.exported_at).slice(0, 19).replace("T", " ") : "—") + "</td>" +
-        '<td><button class="ev-btn" data-export="' + esc(r.id) + '"' +
-          (full || !total || !canExport ? " disabled" : "") + ">" +
-          (full ? "уже в проде" : "Перелить") + "</button></td>" +
-        "</tr>";
-    });
-    box.innerHTML = html + "</tbody></table></div>";
-    box.querySelectorAll("[data-export]").forEach(function (b) {
-      b.onclick = function () { runExport(b.getAttribute("data-export"), b); };
-    });
-  }
-
-  function runExport(eventId, btn) {
-    if (btn) btn.disabled = true;
-    say("evxMsg", "Переливаем…");
-    renderResult("evxResult", null);
-    evReq("POST", "/export/" + encodeURIComponent(eventId)).then(function (res) {
-      var sent = (res.sent || []).length, skip = (res.skipped || []).length;
-      say("evxMsg", "«" + res.eventName + "»: отправлено строк " + sent +
-                    (skip ? ", пропущено как уже уехавшие " + skip : ""), "ok");
-      renderExportResult(res);
-      loadExportList();
-    }).catch(function (e) {
-      fail("evxMsg", e);
-      if (btn) btn.disabled = false;
-    });
-  }
-
-  /* Показываем пары «наш id → id в проде»: по ним строку находят в crmdb руками. */
-  function renderExportResult(res) {
-    var box = el("evxResult");
-    if (!box) return;
-    var all = (res.sent || []).map(function (r) { return { r: r, tag: "отправлено" }; })
-      .concat((res.skipped || []).map(function (r) { return { r: r, tag: "уже было" }; }));
-    if (!all.length) { box.innerHTML = ""; return; }
-    var html = '<div class="ev-rows"><table><thead><tr>' +
-      "<th>Таблица</th><th>наш id</th><th>id в проде</th><th></th></tr></thead><tbody>";
-    all.forEach(function (x) {
-      html += '<tr><td class="tbl">' + esc(x.r.table) + "</td><td>" + esc(x.r.ourId) +
-              "</td><td>" + esc(x.r.prodId) + "</td><td>" + x.tag + "</td></tr>";
-    });
-    box.innerHTML = html + "</tbody></table></div>";
-  }
-
-  /* Сверка DDL: колонка, которой в проде нет, при вставке молча отбрасывается. */
-  function checkHealth() {
-    say("evxMsg", "Сверяем…");
-    evReq("GET", "/export/health").then(function (h) {
-      if (!h.configured) { say("evxMsg", "Прод-БД не настроена (/settings → Прод-БД)", "err"); return; }
-      if (h.error) { say("evxMsg", h.error, "err"); return; }
-      var bad = [];
-      Object.keys(h.tables || {}).forEach(function (t) {
-        var d = h.tables[t];
-        if (d.error) bad.push(t + ": " + d.error);
-        else if ((d.missingInProd || []).length) bad.push(t + " — нет в проде: " + d.missingInProd.join(", "));
-      });
-      if (!bad.length) { say("evxMsg", "Таблицы совпадают, расхождений нет", "ok"); el("evxResult").innerHTML = ""; return; }
-      say("evxMsg", "Найдены расхождения", "err");
-      el("evxResult").innerHTML = bad.map(function (b) {
-        return '<div class="ev-warn">' + esc(b) + "</div>";
-      }).join("");
-    }).catch(function (e) { fail("evxMsg", e); });
-  }
+  /* Перелив события в боевую базу уехал в настройки (/settings → «Переливы» →
+     «Перелив событий в прод»). Раздел «События» остался про заведение и просмотр:
+     доставка наружу — процесс того же рода, что синхронизация шаблонов, и место
+     ему рядом с ней. Ручки не менялись, секция ev-export тоже. */
 
   // Инициализация ленивая, по первому открытию раздела (см. openSection в shell.js).
   window.initEventOnlineSection = initOnline;
   window.initEventOfflineSection = initOffline;
   window.initEventListSection = initList;
-  window.initEventExportSection = initExport;
 })();

@@ -11,7 +11,8 @@
      меню, поэтому здесь их пункты, а не зонтичные reports/monitoring. */
   var SECTION_LABELS = {
     home: "Главная", deviations: "Панель отклонений", onelink: "OneLink Builder",
-    admin: "Мастер коммуникаций", templates: "Список шаблонов",
+    admin: "Мастер коммуникаций", viewer: "Просмотр настроек",
+    templates: "Список шаблонов",
     dashboard: "Общая статистика", promo: "Планирование промо",
     abtests: "А/Б тесты",
     journeys: "Цепочки", access: "Управление доступом",
@@ -26,14 +27,21 @@
     "mon-campaigns": "Базовая работа кампаний",
     uploads: "Загруженные инструменты",
     "set-dbconn": "Подключения к БД", "set-sync": "Синхронизация шаблонов",
-    "set-events": "События (crmdb)", "set-scheme": "Scheme Builder",
+    "set-events": "Импорт событий из crmdb", "set-scheme": "Scheme Builder",
     "set-objects": "Сущности (настройка)", "set-dbtree": "Схемы и таблицы",
     "set-apps": "Приложения и разделы", "set-uploads": "Загруженные инструменты (настройка)",
     "set-mon": "Мониторинг интеграций", "set-diag": "Диагностика хранилища",
     "set-general": "Общие параметры"
   };
   function tr(s) { return (typeof window.t === "function") ? window.t(s) : s; }
-  function sectionLabel(s) { return tr(SECTION_LABELS[s] || s); }
+  /* Подписи сущностей (ent:client) в справочнике выше держать нельзя: сущности заводятся
+     в Scheme Builder, и список у каждой установки свой. Их подпись приходит с сервера
+     вместе со строкой матрицы — без неё в таблице стоял бы сырой ent:client. */
+  var serverLabels = {};
+  function sectionLabel(s) {
+    if (SECTION_LABELS[s]) return tr(SECTION_LABELS[s]);
+    return serverLabels[s] || s;
+  }
   var CAPS = [
     { k: "read", t: "Просмотр" },
     { k: "add", t: "Добавление" },
@@ -141,7 +149,15 @@
         if (group) {
           var gh = "padding:7px 8px;border-bottom:1px solid var(--line);background:var(--card2);" +
                    "color:var(--dim);font-size:11.5px;font-weight:600";
-          var gcells = [h("td", { style: gh }, [tr(group)])];
+          var gtitle = [tr(group)];
+          /* Сущности — единственная группа, где строка выше («Сущности» без группы)
+             перекрывает все строки внутри. Не сказать об этом — значит оставить
+             человека гадать, почему снятая галка ничего не изменила. */
+          if (group === "Сущности") {
+            gtitle.push(h("span", { style: "color:var(--faint);font-weight:400" },
+              [tr(" — поштучно; строка «Сущности» выше открывает сразу все")]));
+          }
+          var gcells = [h("td", { style: gh }, gtitle)];
           CAPS.forEach(function (c) {
             gcells.push(h("td", {
               style: gh + ";text-align:center;cursor:pointer",
@@ -425,6 +441,7 @@
     // сначала роли (нужны для выпадашки в форме пользователя), затем пользователи
     Promise.all([CRM.adminSections(), CRM.adminRoles()]).then(function (res) {
       matrixSections = (res[0] || []).filter(function (s) { return !s.adminOnly; });
+      matrixSections.forEach(function (s) { if (s.label) serverLabels[s.id] = s.label; });
       allRoles = res[1] || [];
       root.appendChild(sectionTitle("Пользователи"));
       root.appendChild(h("button", {
