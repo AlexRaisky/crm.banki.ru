@@ -36,6 +36,23 @@ public final class Sections {
        и отправить его в боевые таблицы это разные полномочия. */
     public static final String EV_EXPORT = "ev-export";
 
+    /* Панели настроечной админки (/settings). До этого вся страница была закрыта одним
+       правилом hasRole("ADMIN"), и выдать роли, например, только «Подключения к БД» было
+       нельзя в принципе. Теперь панель = секция, как и раздел панели.
+       Префикс set- не косметика: по нему SecurityConfig решает, пускать ли вообще на
+       /settings и /api/admin — это нижняя граница защиты, поверх которой каждый
+       контроллер проверяет свою конкретную секцию. */
+    public static final String SET_DBCONN = "set-dbconn";
+    public static final String SET_SYNC = "set-sync";
+    public static final String SET_EVENTS = "set-events";
+    public static final String SET_SCHEME = "set-scheme";
+    public static final String SET_OBJECTS = "set-objects";
+    public static final String SET_DBTREE = "set-dbtree";
+    public static final String SET_APPS = "set-apps";
+    public static final String SET_UPLOADS = "set-uploads";
+    public static final String SET_MON = "set-mon";
+    public static final String SET_DIAG = "set-diag";
+
     /* Отчёты и мониторинг — не одна секция, а по секции на пункт меню (миграция V29).
        Иначе доступ выдавался всё-или-ничего: галка «Отчёты» открывала сразу все пять.
        Зонтичных секций reports/monitoring больше нет — группа сайдбара сама скрывается,
@@ -59,7 +76,9 @@ public final class Sections {
             REP_PLANFACT, REP_MATRIX, REP_LEADGEN, REP_SMSCHECK, REP_DEMO,
             DASHBOARD, DEVIATIONS,
             MON_CAMPAIGNS,
-            UPLOADS, JOURNEYS, ACCESS);
+            UPLOADS, JOURNEYS,
+            SET_DBCONN, SET_SYNC, SET_EVENTS, SET_SCHEME, SET_OBJECTS, SET_DBTREE,
+            SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, ACCESS);
 
     /**
      * Группа сайдбара, в которой живёт раздел. Нужна матрице прав: строк стало больше двадцати,
@@ -84,7 +103,18 @@ public final class Sections {
             java.util.Map.entry(REP_DEMO, "Отчёты"),
             java.util.Map.entry(DASHBOARD, "Дашборд"),
             java.util.Map.entry(DEVIATIONS, "Дашборд"),
-            java.util.Map.entry(MON_CAMPAIGNS, "Мониторинг"));
+            java.util.Map.entry(MON_CAMPAIGNS, "Мониторинг"),
+            java.util.Map.entry(SET_DBCONN, "Настройки"),
+            java.util.Map.entry(SET_SYNC, "Настройки"),
+            java.util.Map.entry(SET_EVENTS, "Настройки"),
+            java.util.Map.entry(SET_SCHEME, "Настройки"),
+            java.util.Map.entry(SET_OBJECTS, "Настройки"),
+            java.util.Map.entry(SET_DBTREE, "Настройки"),
+            java.util.Map.entry(SET_APPS, "Настройки"),
+            java.util.Map.entry(SET_UPLOADS, "Настройки"),
+            java.util.Map.entry(SET_MON, "Настройки"),
+            java.util.Map.entry(SET_DIAG, "Настройки"),
+            java.util.Map.entry(ACCESS, "Настройки"));
 
     public static String groupOf(String id) {
         return GROUP_OF.getOrDefault(id, "");
@@ -99,14 +129,30 @@ public final class Sections {
      * у не-writable разделов показываем лишь чекбокс Read.
      */
     public static final Set<String> WRITABLE = Set.of(ADMIN, TEMPLATES, PROMO, ABTESTS,
-            EV_ONLINE, EV_OFFLINE, EV_EXPORT);
+            EV_ONLINE, EV_OFFLINE, EV_EXPORT, JOURNEYS, ACCESS,
+            SET_DBCONN, SET_SYNC, SET_EVENTS, SET_SCHEME, SET_OBJECTS, SET_APPS, SET_UPLOADS);
 
     /**
-     * Разделы только для админов: доступ к ним даёт роль администратора, а не матрица
-     * (JourneyController — hasRole ADMIN, «Доступ» — под /api/admin/** hasRole ADMIN).
-     * В матрице прав для не-админа их не показываем: галка там ничего бы не значила.
+     * Разделы, которые нельзя выдать матрицей — только флагом администратора.
+     * <p>
+     * Набор ПУСТ намеренно. Раньше сюда входили «Цепочки» и «Управление доступом»: их
+     * закрывал hasRole("ADMIN"), и галка в матрице ничего бы не значила. Теперь оба
+     * гейтятся секцией, как всё остальное, и в матрице появляются честно.
+     * <p>
+     * Осторожно с ACCESS: выдав его роли, вы разрешаете ей менять права — в том числе
+     * свои. Признак администратора при этом по-прежнему ставит только супер-админ, так
+     * что «повысить себя до админа» через матрицу нельзя.
      */
-    public static final Set<String> ADMIN_ONLY = Set.of(JOURNEYS, ACCESS);
+    public static final Set<String> ADMIN_ONLY = Set.of();
+
+    /** Секции настроечной админки. По ним SecurityConfig решает, пускать ли на /settings. */
+    public static final Set<String> SETTINGS = Set.of(
+            SET_DBCONN, SET_SYNC, SET_EVENTS, SET_SCHEME, SET_OBJECTS, SET_DBTREE,
+            SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, ACCESS);
+
+    public static boolean isSettings(String id) {
+        return SETTINGS.contains(id);
+    }
 
     public static boolean isValid(String id) {
         return VALID.contains(id);

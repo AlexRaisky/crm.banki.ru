@@ -76,7 +76,7 @@ public class EventController {
      */
     @GetMapping("/export/health")
     public Map<String, Object> exportHealth() {
-        access.requireAnySection(Sections.EV_EXPORT);
+        access.requireAnySection(Sections.SET_EVENTS, Sections.EV_EXPORT);
         return export.health();
     }
 
@@ -93,7 +93,9 @@ public class EventController {
     /** Разведка: сколько событий в crmdb и сколько из них уже у нас. Только чтение. */
     @GetMapping("/import/scan")
     public Map<String, Object> importScan() {
-        access.requireAnySection(Sections.EV_EXPORT);
+        // раздел живёт в настройках (set-events), но раньше был страницей панели —
+        // старую секцию оставляем действующей, чтобы никого не выбросить правкой
+        access.requireAnySection(Sections.SET_EVENTS, Sections.EV_EXPORT);
         return importer.scan();
     }
 
@@ -104,7 +106,7 @@ public class EventController {
      */
     @PostMapping("/import")
     public Map<String, Object> importFromProd(@RequestParam(defaultValue = "500") int limit) {
-        access.requireCapability(Capability.ADD, Sections.EV_EXPORT);
+        access.requireCapability(Capability.ADD, Sections.SET_EVENTS, Sections.EV_EXPORT);
         return importer.importAll(Math.max(1, Math.min(5000, limit)));
     }
 }

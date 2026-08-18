@@ -350,8 +350,15 @@
     var me = CRM.me;
     if (!me) return;
     // Шестерёнка настроечной админки (/settings) — только админам
+    /* Шестерёнка настроек: раньше её видели только админы, теперь панели /settings
+       раздаются поштучно — показываем всем, у кого есть хоть одна секция настроек. */
     var gear = document.getElementById("settingsLink");
-    if (gear) gear.style.display = me.isAdmin ? "" : "none";
+    if (gear) {
+      var hasSettings = me.isAdmin || (me.sections || []).some(function (s) {
+        return s === "access" || s.indexOf("set-") === 0;
+      });
+      gear.style.display = hasSettings ? "" : "none";
+    }
     document.body.setAttribute("data-role", displayRole(me.role));
     if (!me.canEdit) document.body.setAttribute("data-readonly", "1");
     var ue = document.getElementById("userEmail");

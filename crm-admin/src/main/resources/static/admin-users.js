@@ -24,7 +24,12 @@
     "rep-leadgen": "CRM Leadgen", "rep-smscheck": "ЧЕК СМС траффик",
     "rep-demo": "Пример визуализации отчёта",
     "mon-campaigns": "Базовая работа кампаний",
-    uploads: "Загруженные инструменты"
+    uploads: "Загруженные инструменты",
+    "set-dbconn": "Подключения к БД", "set-sync": "Синхронизация шаблонов",
+    "set-events": "События (crmdb)", "set-scheme": "Scheme Builder",
+    "set-objects": "Сущности (настройка)", "set-dbtree": "Схемы и таблицы",
+    "set-apps": "Приложения и разделы", "set-uploads": "Загруженные инструменты (настройка)",
+    "set-mon": "Мониторинг интеграций", "set-diag": "Диагностика хранилища"
   };
   function tr(s) { return (typeof window.t === "function") ? window.t(s) : s; }
   function sectionLabel(s) { return tr(SECTION_LABELS[s] || s); }

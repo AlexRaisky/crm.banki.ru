@@ -11,6 +11,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.authorization.AuthorizationManager;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
+import ru.banki.crm.service.Sections;
+
+import java.util.Set;
 
 @Configuration
 @EnableMethodSecurity
@@ -36,6 +43,31 @@ public class SecurityConfig {
     @Value("${server.servlet.session.cookie.name:JSESSIONID}")
     private String sessionCookie;
 
+    /** Доступ по ЛЮБОЙ из перечисленных секций (право просмотра). Админ проходит всегда. */
+    private static AuthorizationManager<RequestAuthorizationContext> section(String... sectionIds) {
+        return (auth, ctx) -> new AuthorizationDecision(allowed(auth.get(), Set.of(sectionIds)));
+    }
+
+    /** Доступ, если есть хоть одна секция настроечной админки. */
+    private static AuthorizationManager<RequestAuthorizationContext> anySettings() {
+        return (auth, ctx) -> new AuthorizationDecision(allowed(auth.get(), Sections.SETTINGS));
+    }
+
+    private static boolean allowed(Authentication a, Set<String> sectionIds) {
+        if (a == null || !a.isAuthenticated()) {
+            return false;
+        }
+        // админ обходит матрицу — иначе разделы, добавленные после создания учётки,
+        // были бы недоступны и ему (то же правило, что в AccessGuard)
+        boolean admin = a.getAuthorities().stream()
+                .anyMatch(g -> "ROLE_ADMIN".equals(g.getAuthority()));
+        if (admin) {
+            return true;
+        }
+        return a.getPrincipal() instanceof AppUserPrincipal p
+                && p.sections().stream().anyMatch(sectionIds::contains);
+    }
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -46,8 +78,22 @@ public class SecurityConfig {
         http
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC).permitAll()
+                /* Настроечная админка раздаётся ПОШТУЧНО: панель = секция матрицы прав.
+                   Правила идут от частного к общему, и последним стоит админский
+                   запасной вариант: любая ручка под /api/admin, которую здесь забыли
+                   перечислить, остаётся доступной только администратору. Забыть и молча
+                   открыть эндпоинт всем — так нельзя. */
+                .requestMatchers("/api/admin/db-connections/**").access(section(Sections.SET_DBCONN))
+                .requestMatchers("/api/admin/etl/**", "/api/admin/prod-db/**").access(section(Sections.SET_SYNC))
+                .requestMatchers("/api/admin/users/**", "/api/admin/roles/**",
+                                 "/api/admin/sections").access(section(Sections.ACCESS))
+                .requestMatchers("/api/schema/**").access(section(Sections.SET_SCHEME, Sections.SET_OBJECTS,
+                                                                 Sections.SET_DBTREE))
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                .requestMatchers("/settings/**").hasRole("ADMIN")   // настроечная админка — только админам
+                /* Сама страница /settings данных не содержит — это оболочка, каждая её
+                   панель ходит за своими данными и проверяется отдельно. Пускаем всех, у
+                   кого есть хоть одна секция настроек. */
+                .requestMatchers("/settings/**").access(anySettings())
                 .anyRequest().authenticated()
             )
             // Session-cookie SPA. CSRF is disabled for now (internal tool behind auth);

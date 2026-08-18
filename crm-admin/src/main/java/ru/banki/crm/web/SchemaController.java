@@ -2,7 +2,6 @@ package ru.banki.crm.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.http.MediaType;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -20,13 +19,12 @@ import java.util.Map;
  * Контракт задан на фронте (API_CONTRACT в settings/scheme-builder.js) — пути отсюда.
  * <p>
  * Весь раздел живёт в настроечной админке, которая и так под админом
- * (SecurityConfig: /settings/** → hasRole ADMIN). Ручки лежат вне /api/admin/**,
+ * (SecurityConfig: /api/schema/** → секции set-scheme / set-objects / set-dbtree).
  * поэтому право проверяем аннотацией на классе, а не правилом URL: так не приходится
  * трогать SecurityConfig и рисковать чужими маршрутами.
  */
 @RestController
 @RequestMapping("/api/schema")
-@PreAuthorize("hasRole('ADMIN')")
 public class SchemaController {
 
     private final SchemaModelService service;

@@ -1,7 +1,6 @@
 package ru.banki.crm.web;
 
 import jakarta.validation.Valid;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,7 +23,6 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/api/flow")
-@PreAuthorize("hasRole('ADMIN')")   // «Цепочки» и материализация — только админам
 public class FlowController {
 
     public record MaterializeRequest(@Valid JourneyDto journey, List<PlannedRow> rows) {}
@@ -46,9 +44,11 @@ public class FlowController {
         return materialization.preview(journey);
     }
 
+    /* Материализация пишет строки в боевые процессные таблицы, поэтому не просто
+       видимость раздела, а право на добавление в нём. Предпросмотр ниже — только чтение. */
     @PostMapping("/materialize")
     public MaterializeResponse materialize(@Valid @RequestBody MaterializeRequest req) {
-        guard.requireAnySection(Sections.JOURNEYS);
+        guard.requireCapability(ru.banki.crm.domain.Capability.ADD, Sections.JOURNEYS);
         // Сначала сохраняем саму цепочку (create/update), чтобы у материализации был стабильный journey_id.
         JourneyDto saved = (req.journey().id() == null || req.journey().id().isBlank())
                 ? journeys.create(req.journey())
