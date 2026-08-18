@@ -72,6 +72,10 @@ public final class Sections {
        контроллер проверяет свою конкретную секцию. */
     public static final String SET_DBCONN = "set-dbconn";
     public static final String SET_SYNC = "set-sync";
+    /* Управление процессами перелива: остановить и пустить снова. Секция своя, потому
+       что это другое полномочие — не «настроить синхронизацию», а «перекрыть поток
+       в прод». Смотреть состояние даёт read, нажимать кнопки — edit. */
+    public static final String SET_PROCS = "set-procs";
     public static final String SET_EVENTS = "set-events";
     public static final String SET_SCHEME = "set-scheme";
     public static final String SET_OBJECTS = "set-objects";
@@ -106,8 +110,8 @@ public final class Sections {
             DASHBOARD, DEVIATIONS,
             MON_CAMPAIGNS,
             UPLOADS, JOURNEYS,
-            SET_DBCONN, SET_SYNC, SET_EVENTS, EV_EXPORT, SET_SCHEME, SET_OBJECTS, SET_DBTREE,
-            SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, SET_GENERAL, ACCESS);
+            SET_DBCONN, SET_PROCS, SET_SYNC, SET_EVENTS, EV_EXPORT, SET_SCHEME, SET_OBJECTS,
+            SET_DBTREE, SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, SET_GENERAL, ACCESS);
 
     /**
      * Группа сайдбара, в которой живёт раздел. Нужна матрице прав: строк стало больше двадцати,
@@ -140,6 +144,7 @@ public final class Sections {
             java.util.Map.entry(DEVIATIONS, "Дашборд"),
             java.util.Map.entry(MON_CAMPAIGNS, "Мониторинг"),
             java.util.Map.entry(SET_DBCONN, "Настройки"),
+            java.util.Map.entry(SET_PROCS, "Настройки"),
             java.util.Map.entry(SET_SYNC, "Настройки"),
             java.util.Map.entry(SET_EVENTS, "Настройки"),
             java.util.Map.entry(SET_SCHEME, "Настройки"),
@@ -166,7 +171,8 @@ public final class Sections {
      */
     public static final Set<String> WRITABLE = Set.of(ADMIN, TEMPLATES, PROMO, ABTESTS,
             EV_ONLINE, EV_OFFLINE, EV_EXPORT, JOURNEYS, ACCESS,
-            SET_DBCONN, SET_SYNC, SET_EVENTS, SET_SCHEME, SET_OBJECTS, SET_APPS, SET_UPLOADS);
+            SET_DBCONN, SET_PROCS, SET_SYNC, SET_EVENTS, SET_SCHEME, SET_OBJECTS, SET_APPS,
+            SET_UPLOADS);
 
     /**
      * Разделы, которые нельзя выдать матрицей — только флагом администратора.
@@ -183,8 +189,8 @@ public final class Sections {
 
     /** Секции настроечной админки. По ним SecurityConfig решает, пускать ли на /settings. */
     public static final Set<String> SETTINGS = Set.of(
-            SET_DBCONN, SET_SYNC, SET_EVENTS, EV_EXPORT, SET_SCHEME, SET_OBJECTS, SET_DBTREE,
-            SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, SET_GENERAL, ACCESS);
+            SET_DBCONN, SET_PROCS, SET_SYNC, SET_EVENTS, EV_EXPORT, SET_SCHEME, SET_OBJECTS,
+            SET_DBTREE, SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, SET_GENERAL, ACCESS);
 
     public static boolean isSettings(String id) {
         return SETTINGS.contains(id);

@@ -76,12 +76,16 @@ public class EventImportService {
     private final ObjectMapper om;
     private final Map<String, List<String>> colCache = new HashMap<>();
 
+    private final ProcessControlService control;
+
     public EventImportService(JdbcTemplate jdbc, EventDbService eventDb,
-                              AdminLogService adminLog, ObjectMapper om) {
+                              AdminLogService adminLog, ObjectMapper om,
+                              ProcessControlService control) {
         this.jdbc = jdbc;
         this.eventDb = eventDb;
         this.adminLog = adminLog;
         this.om = om;
+        this.control = control;
     }
 
     // ==================================================================== разведка
@@ -173,13 +177,25 @@ public class EventImportService {
         /* Сводка строкой на таблицу: что затянулось, что пропущено и почему. Отдельные
            словари «получилось» и «не получилось» пришлось бы сопоставлять глазами, а
            вопрос у человека один — откуда взялось, а откуда нет. */
+        /* Импорт идёт проходами, и цикл «пока more» крутит браузер. Значит выключатель
+           обязан отвечать и здесь: иначе «остановить» работало бы, только пока открыта
+           вкладка того, кто нажал. */
+        control.requireEnabled(ProcessControlService.EVENT_IMPORT);
         List<Map<String, Object>> summary = new ArrayList<>();
         long total = 0;
         int skipped = 0;
         long pendingTotal = 0;
         boolean more = false;
+        boolean stopped = false;
         try (Connection c = eventDb.connection()) {
             for (String table : ORDER) {
+                /* Безопасная граница — между таблицами: строки одной таблицы копируются
+                   пачкой со своими ссылками, и обрыв посередине оставил бы половину
+                   пачки без пар в журнале связей. */
+                if (control.stopRequested(ProcessControlService.EVENT_IMPORT)) {
+                    stopped = true;
+                    break;
+                }
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("table", table);
                 /* Недоступная таблица не отменяет весь импорт: тянем всё, что можем.
@@ -231,7 +247,12 @@ public class EventImportService {
         /* Отложенные строки — тоже повод для следующего прогона: их зависимости приехали
            в этом. Условие «и что-то скопировалось» защищает от вечного цикла на сиротах,
            у которых ссылки нет и в проде: такие не разрешатся никогда. */
-        out.put("more", more || (pendingTotal > 0 && total > 0));
+        /* Остановлен — значит и клиенту незачем идти на следующий проход: more гасим,
+           иначе браузер продолжал бы стучаться и получать 409 на каждом заходе. */
+        out.put("more", !stopped && (more || (pendingTotal > 0 && total > 0)));
+        if (stopped) out.put("stopped", "Импорт остановлен по запросу, часть таблиц не читалась");
+        control.noteRun(ProcessControlService.EVENT_IMPORT,
+                "строк " + total + ", событий " + built + (stopped ? ", остановлен по запросу" : ""));
         return out;
     }
 

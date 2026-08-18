@@ -43,6 +43,7 @@ public class ProdSyncService {
     private final ProdDbService prod;
     private final UnifiedTemplateService unified;
     private final TransactionTemplate tx;
+    private final ProcessControlService control;
 
     /** Сколько минут держать доставленные (OK) записи, потом удалять из очереди. */
     @Value("${app.prodsync.ok-ttl-minutes:10}")
@@ -53,17 +54,23 @@ public class ProdSyncService {
     private int stuckMinutes;
 
     public ProdSyncService(JdbcTemplate jdbc, ProdDbService prod,
-                           UnifiedTemplateService unified, TransactionTemplate tx) {
+                           UnifiedTemplateService unified, TransactionTemplate tx,
+                           ProcessControlService control) {
         this.jdbc = jdbc;
         this.prod = prod;
         this.unified = unified;
         this.tx = tx;
+        this.control = control;
     }
 
-    /** Фоновая доставка каждые 20 секунд (только когда прод настроен). */
+    /** Фоновая доставка каждые 20 секунд (только когда прод настроен и процесс не остановлен). */
     @Scheduled(fixedDelay = 20000, initialDelay = 15000)
     public void tick() {
         if (!prod.configured()) return;
+        /* Остановлен в «Процессах переливов» — тик просто выходит. Очередь при этом
+           продолжает копиться: остановка перекрывает доставку, а не приём правок,
+           иначе изменения терялись бы молча. */
+        if (!control.canStart(ProcessControlService.PROD_SYNC)) return;
         try {
             process(50);
         } catch (Exception e) {
@@ -109,6 +116,14 @@ public class ProdSyncService {
                 MAX_ATTEMPTS, limit);
         int ok = 0;
         for (Map<String, Object> e : entries) {
+            /* Безопасная граница остановки: между записями. Каждая запись — своя
+               доставка со своим захватом, поэтому выйти отсюда можно, не оставив
+               в проде половину пачки. Проверка на каждой итерации дешёвая: флаг
+               держится в кэше секунду. */
+            if (control.stopRequested(ProcessControlService.PROD_SYNC)) {
+                log.info("prod-sync: остановлен по запросу, доставлено в этом заходе {}", ok);
+                break;
+            }
             long id = ((Number) e.get("id")).longValue();
             String channel = String.valueOf(e.get("channel"));
             String operation = String.valueOf(e.get("operation"));
@@ -162,6 +177,10 @@ public class ProdSyncService {
                             "Доставлено, но локальный код не переименован в " + prodCode + ": " + msg, id);
                 }
             }
+        }
+        if (ok > 0 || !entries.isEmpty()) {
+            control.noteRun(ProcessControlService.PROD_SYNC,
+                    "доставлено " + ok + " из " + entries.size());
         }
         return ok;
     }

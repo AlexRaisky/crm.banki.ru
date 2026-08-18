@@ -634,6 +634,22 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
         </div>
       </section>
 
+      <!-- ===== Процессы переливов: остановить и пустить снова ===== -->
+      <section class="pane" id="pane-procs">
+        <h1 data-i18n-html="h_procs">Процессы <span class="grad">переливов</span></h1>
+        <div class="sub">Выключатель для каждого процесса, который переносит данные между нашей базой и боевыми. Нужен, когда в проде что-то идёт не так: перекрыть поток, разобраться, пустить снова.</div>
+        <div class="sub" style="margin-top:8px"><b>«Остановить»</b> делает две вещи: новые прогоны не начинаются, а текущий заканчивается на ближайшей безопасной границе — между записями очереди, между каналами, между таблицами. Посередине пачки процесс не рвётся: в проде осталась бы половина. Поэтому после нажатия прогон может ещё несколько секунд доработать.</div>
+        <div class="sub" style="margin-top:8px">Остановка переживает перезапуск приложения — состояние лежит в базе, а не в памяти. Приём правок она не перекрывает: очередь продолжает копиться и уедет, когда процесс запустят снова.</div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn" id="procReload">Обновить</button>
+            <span class="save-note" id="procMsg"></span>
+          </div>
+          <div id="procBox" class="empty" style="margin-top:12px">Загружаем…</div>
+        </div>
+      </section>
+
       <!-- ===== Перелив событий в прод =====
            Переехало из панели («События» → «Перелив в прод»). Обратное направление —
            соседняя панель «Импорт событий из crmdb»: две половины одного процесса
@@ -874,7 +890,8 @@ const S_HTML = {
         h_dbconn:'Подключения <span class="grad">к БД</span>',
         h_sync:'Синхронизация <span class="grad">шаблонов</span>',
         h_events:'События <span class="grad">crmdb</span>',
-        h_evexport:'Перелив событий <span class="grad">в прод</span>' },
+        h_evexport:'Перелив событий <span class="grad">в прод</span>',
+        h_procs:'Процессы <span class="grad">переливов</span>' },
   en: { h_over:'Admin <span class="grad">settings</span>', h_apps:'Apps <span class="grad">& sections</span>',
         h_mon:'Integration <span class="grad">monitoring</span>', h_up:'Uploaded <span class="grad">tools</span>',
         h_gen:'General <span class="grad">settings</span>', h_diag:'Storage <span class="grad">diagnostics</span>',
@@ -885,7 +902,8 @@ const S_HTML = {
         h_dbconn:'Database <span class="grad">connections</span>',
         h_sync:'Template <span class="grad">sync</span>',
         h_events:'Events <span class="grad">crmdb</span>',
-        h_evexport:'Event export <span class="grad">to prod</span>' }
+        h_evexport:'Event export <span class="grad">to prod</span>',
+        h_procs:'Transfer <span class="grad">processes</span>' }
 };
 function translateStatic(){
   document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t2(el.dataset.i18n); });
@@ -922,6 +940,10 @@ const PANES = [
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>' },
   { id:"dbconn", acl:"set-dbconn", group:"Интеграции", label:"Подключения к БД", desc:"Базы, к которым ходит панель. Здесь же отмечается, какая из них приёмник шаблонов, а какая — база событий crmdb.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>' },
+  /* Первым в группе — выключатель: когда в проде что-то горит, ищут именно его,
+     а не очередь и не сверку. */
+  { id:"procs", acl:"set-procs", group:"Переливы", label:"Процессы переливов", desc:"Остановить перелив и пустить снова: доставка шаблонов, обратный ETL, импорт и перелив событий.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' },
   { id:"sync", acl:"set-sync", group:"Переливы", label:"Синхронизация шаблонов", desc:"Очередь доставки в базу шаблонов, состояние прод-приёмника и обратный ETL.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>' },
   { id:"events", acl:"set-events", group:"Переливы", label:"Импорт событий из crmdb", desc:"Сравнить нашу модель событий с боевой базой и затянуть события из неё.",
@@ -957,6 +979,7 @@ function openPane(id){
   if (id === "diag") renderDiag();
   if (id === "events" && window.EventSync) EventSync.open();
   if (id === "evexport" && window.EventExport) EventExport.open();
+  if (id === "procs" && window.ProcessControl) ProcessControl.open();
   if (id === "monitoring") monBack();
   if (id === "access" && typeof renderAccessSection === "function") renderAccessSection();
   /* Scheme Builder инициализируется лениво: схема грузится при первом открытии */
@@ -1364,6 +1387,10 @@ window.EventSync = (function(){
     var btn = $("#evImportBtn");
     btn.disabled = true;
     var total = 0, pass = 0, byTable = {}, failed = {}, evBuilt = 0, evOnline = 0, evOffline = 0, evErrors = [], pending = 0;
+    /* Процесс могли остановить в «Процессах переливов» — прямо посреди наших проходов.
+       Сервер гасит more, цикл заканчивается сам, но человеку надо сказать почему:
+       иначе «готово, тянуть больше нечего» соврало бы. */
+    var stopped = null;
 
     function render(done, more){
       var rows = "";
@@ -1384,6 +1411,8 @@ window.EventSync = (function(){
         : "";
       $("#evImportBox").className = "";
       $("#evImportBox").innerHTML =
+        (stopped ? "<div style=\"margin-bottom:10px;color:var(--amber,#f5a524)\">" + esc(stopped) +
+                   ". Запустите процесс в разделе «Процессы переливов» и повторите.</div>" : "") +
         "<div style=\"margin-bottom:10px\">" + (done ? "Готово. " : "Проход " + pass + "… ") +
         "Затянуто строк <b>" + total + "</b>, собрано событий <b>" + evBuilt + "</b> (онлайновых " +
         evOnline + ", по расписанию " + evOffline + ")." +
@@ -1414,13 +1443,15 @@ window.EventSync = (function(){
           byTable[r.table] = (byTable[r.table] || 0) + Number(r.rows || 0);
           if (r.error) failed[r.table] = r.error; else delete failed[r.table];
         });
+        stopped = d.stopped || null;
         render(false, d.more);
         if (d.more && pass < MAX_PASSES) return step();
         render(true, d.more);
         note("evImportNote",
-          (d.more ? "Остановились на потолке проходов" : "Готово, тянуть больше нечего") +
+          (stopped ? "Импорт остановлен в «Процессах переливов»"
+                   : d.more ? "Остановились на потолке проходов" : "Готово, тянуть больше нечего") +
           (Object.keys(failed).length || evErrors.length ? " · есть пропуски, смотрите сводку" : ""),
-          (Object.keys(failed).length || evErrors.length) > 0);
+          !!stopped || (Object.keys(failed).length || evErrors.length) > 0);
         scan();
       });
     }
@@ -1447,6 +1478,144 @@ window.EventSync = (function(){
     open: function(){
       bind();                // на случай, если разметку перерисовали
       if (!loaded) scan();   // при первом открытии считаем сразу: это и есть ответ «сколько их»
+    }
+  };
+})();
+
+/* ---------- Процессы переливов: остановить и пустить снова ----------
+   Состояние живёт в app.sync_process, а не в памяти приложения: остановка должна
+   переживать перезапуск, иначе рестарт молча возвращал бы поток в прод. */
+window.ProcessControl = (function(){
+  var bound = false, loaded = false, busy = false;
+
+  function esc(v){ return String(v == null ? "" : v)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function note(text, bad){
+    var n = $("#procMsg");
+    if (!n) return;
+    n.textContent = text || "";
+    n.classList.toggle("show", !!text);
+    n.style.color = bad ? "var(--coral)" : "";
+  }
+  function box(html, empty){
+    var b = $("#procBox");
+    if (!b) return;
+    b.className = empty ? "empty" : "";
+    b.innerHTML = html;
+  }
+  function when(iso){
+    if (!iso) return "—";
+    return String(iso).slice(0, 19).replace("T", " ");
+  }
+
+  /* Нажимать может тот, у кого право на редактирование в разделе; остальным раздел
+     остаётся витриной — видеть, что поток перекрыт, полезно всей команде. */
+  function mayToggle(){
+    var me = window.SET_ME;
+    if (!me) return true;                       // ответа ещё нет — сервер всё равно проверит
+    if (me.isAdmin) return true;
+    var c = me.caps && me.caps["set-procs"];
+    return !!(c && c.edit);
+  }
+
+  function req(method, url, body){
+    var opts = { method: method, credentials: "same-origin",
+                 headers: { Accept: "application/json" } };
+    if (body !== undefined){
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(body);
+    }
+    return fetch(url, opts).then(function(r){
+      if (r.ok) return r.status === 204 ? null : r.json();
+      return r.text().then(function(t){
+        var msg = "";
+        try { msg = JSON.parse(t).message || ""; } catch(e){ msg = ""; }
+        throw new Error(msg || (r.status + " " + r.statusText));
+      });
+    });
+  }
+
+  /* keepNote — что показать после перерисовки. Без него подпись «Процесс остановлен»
+     жила доли секунды: следом приходил свежий список и гасил её. */
+  function load(keepNote){
+    loaded = true;
+    note(keepNote || "Загружаем…");
+    req("GET", "../api/admin/processes").then(function(rows){
+      note(keepNote || "");
+      render(rows || []);
+    }).catch(function(e){
+      note("Ошибка", true);
+      box('<div style="color:var(--coral)">' + esc((e && e.message) || "Запрос не выполнен") + "</div>");
+    });
+  }
+
+  /* Состояние словами. «Запрещён настройкой сервера» — отдельный случай: у обратного
+     ETL есть ещё свойство app.etl.enabled, и без этой подписи кнопка «Запустить»
+     выглядела бы сломанной — нажал, а процесс всё равно стоит. */
+  function state(p){
+    if (p.configEnabled === false) return { text: "выключен настройкой сервера", cls: "var(--faint)" };
+    if (!p.enabled) return { text: "остановлен", cls: "var(--coral)" };
+    if (p.running) return { text: "идёт прогон", cls: "var(--green)" };
+    return { text: "работает", cls: "var(--green)" };
+  }
+
+  function render(rows){
+    if (!rows.length) { box("Процессы не заведены — не прогнали миграцию V39?", true); return; }
+    var may = mayToggle();
+    var html = "<table><thead><tr><th>Процесс</th><th>Состояние</th><th>Последний прогон</th>" +
+      "<th>Кто переключил</th><th></th></tr></thead><tbody>";
+    rows.forEach(function(p){
+      var st = state(p);
+      html += '<tr><td class="t-name">' + esc(p.title) + '<div class="mono">' + esc(p.code) + "</div></td>" +
+        '<td style="color:' + st.cls + '">' + st.text + "</td>" +
+        "<td>" + when(p.lastRunAt) + '<div class="mono">' + esc(p.lastResult || "—") + "</div></td>" +
+        "<td>" + esc(p.updatedBy || "—") + '<div class="mono">' + when(p.updatedAt) + "</div></td>" +
+        '<td style="text-align:right"><button class="btn' + (p.enabled ? " ghost-danger" : " accent") +
+          '" data-proc="' + esc(p.code) + '" data-on="' + (p.enabled ? "0" : "1") + '"' +
+          (may ? "" : " disabled") + ">" + (p.enabled ? "Остановить" : "Запустить") + "</button></td></tr>";
+    });
+    box(html + "</tbody></table>");
+    document.querySelectorAll("#procBox [data-proc]").forEach(function(b){
+      b.onclick = function(){ toggle(b.getAttribute("data-proc"), b.getAttribute("data-on") === "1", b); };
+    });
+  }
+
+  function toggle(code, enable, btn){
+    if (busy) return;
+    /* Остановка перекрывает поток в прод — переспрашиваем. Обратное действие (пустить)
+       подтверждения не требует: оно возвращает штатное состояние. */
+    if (!enable && !confirm("Остановить процесс «" + code + "»? Текущий прогон закончится на ближайшей безопасной границе.")) return;
+    busy = true;
+    if (btn) btn.disabled = true;
+    note(enable ? "Запускаем…" : "Останавливаем…");
+    req("PUT", "../api/admin/processes/" + encodeURIComponent(code), { enabled: enable })
+      .then(function(){
+        busy = false;
+        load(enable ? "Процесс запущен" : "Процесс остановлен, текущий прогон дорабатывает");
+      })
+      .catch(function(e){
+        busy = false;
+        if (btn) btn.disabled = false;
+        note((e && e.message) || "Не удалось переключить", true);
+      });
+  }
+
+  function bind(){
+    if (bound) return;
+    var b = $("#procReload");
+    if (!b) return;
+    bound = true;
+    b.onclick = load;
+  }
+  bind();
+
+  return {
+    open: function(){
+      bind();
+      /* Перечитываем при каждом открытии, а не только при первом: состояние меняет
+         не только эта вкладка — процесс мог остановить коллега. */
+      load();
+      loaded = true;
     }
   };
 })();

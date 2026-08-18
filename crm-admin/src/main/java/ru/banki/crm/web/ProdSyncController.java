@@ -28,13 +28,16 @@ public class ProdSyncController {
     private final ProdSyncService sync;
     private final JdbcTemplate jdbc;
     private final ProdReconcileService reconcile;
+    private final ru.banki.crm.service.prod.ProcessControlService control;
 
     public ProdSyncController(ProdDbService prod, ProdSyncService sync, JdbcTemplate jdbc,
-                             ProdReconcileService reconcile) {
+                             ProdReconcileService reconcile,
+                             ru.banki.crm.service.prod.ProcessControlService control) {
         this.prod = prod;
         this.sync = sync;
         this.jdbc = jdbc;
         this.reconcile = reconcile;
+        this.control = control;
     }
 
     /** Сверка d_template с внешним продом: корзины «только в проде / разошлись / только у нас». */
@@ -97,6 +100,10 @@ public class ProdSyncController {
     /** Запустить доставку очереди прямо сейчас (не ждать шедулер). */
     @PostMapping("/process")
     public Map<String, Object> process() {
+        /* Остановленный процесс не должен оживать от ручной кнопки: иначе «остановил»
+           означало бы «остановил до первого нажатия». Отвечаем 409 с текстом, а не
+           тихим нулём доставленных. */
+        control.requireEnabled(ru.banki.crm.service.prod.ProcessControlService.PROD_SYNC);
         int delivered = sync.process(200);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("delivered", delivered);

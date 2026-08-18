@@ -105,6 +105,9 @@ public class SecurityConfig {
                    открыть эндпоинт всем — так нельзя. */
                 .requestMatchers("/api/admin/db-connections/**").access(section(Sections.SET_DBCONN))
                 .requestMatchers("/api/admin/etl/**", "/api/admin/prod-db/**").access(section(Sections.SET_SYNC))
+                /* Выключатель процессов: читать состояние — по секции, нажимать кнопки —
+                   по праву edit внутри неё (проверяет сам контроллер). */
+                .requestMatchers("/api/admin/processes/**").access(section(Sections.SET_PROCS))
                 .requestMatchers("/api/admin/users/**", "/api/admin/roles/**",
                                  "/api/admin/sections").access(section(Sections.ACCESS))
                 /* Саму МОДЕЛЬ схемы читает не только конструктор в настройках, но и

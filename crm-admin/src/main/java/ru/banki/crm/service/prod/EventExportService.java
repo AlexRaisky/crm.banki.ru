@@ -89,12 +89,16 @@ public class EventExportService {
     private final AdminLogService adminLog;
     private final ObjectMapper om;
 
+    private final ProcessControlService control;
+
     public EventExportService(JdbcTemplate jdbc, EventDbService eventDb,
-                              AdminLogService adminLog, ObjectMapper om) {
+                              AdminLogService adminLog, ObjectMapper om,
+                              ProcessControlService control) {
         this.jdbc = jdbc;
         this.eventDb = eventDb;
         this.adminLog = adminLog;
         this.om = om;
+        this.control = control;
     }
 
     // ================================================================== состояние
@@ -120,6 +124,10 @@ public class EventExportService {
 
     /** Перелить одно событие. Возвращает, что уехало и что пропущено как уехавшее ранее. */
     public Map<String, Object> export(long eventId) {
+        /* Одно событие уезжает целиком за один вызов, поэтому «остановить на границе»
+           здесь не про что: граница — сам вызов. Выключатель решает только, начинать ли
+           его вообще. Именно так перекрывают запись в прод во время инцидента. */
+        control.requireEnabled(ProcessControlService.EVENT_EXPORT);
         if (!eventDb.configured()) {
             throw bad("База событий (crmdb) не выбрана: /settings → Подключения к БД, галка «база событий».");
         }
@@ -218,6 +226,8 @@ public class EventExportService {
         out.put("eventName", eventName);
         out.put("sent", sent);
         out.put("skipped", skipped);
+        control.noteRun(ProcessControlService.EVENT_EXPORT,
+                "«" + eventName + "»: отправлено " + sent.size() + ", пропущено " + skipped.size());
         return out;
     }
 
