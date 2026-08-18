@@ -7,7 +7,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ru.banki.crm.security.CurrentUser;
 import ru.banki.crm.service.AdminLogService;
@@ -158,51 +157,72 @@ public class EventImportService {
      *                      большими, а импорт идёт одной транзакцией. Прогон повторяют,
      *                      пока в ответе {@code more} не станет false.
      */
-    @Transactional
+    /*
+     * БЕЗ @Transactional, и это не упущение. В Postgres любая ошибка внутри транзакции
+     * переводит её в aborted: все следующие команды отвечают «current transaction is
+     * aborted» до самого конца блока. То есть «одна транзакция на весь импорт» и «тянем
+     * всё, что можем, пропуская недоступное» — взаимоисключающие требования, и выбрано
+     * второе. Атомарность отдельного события обеспечивается вручную: не собралось —
+     * удаляем его целиком (обвязка уходит по ON DELETE CASCADE), чтобы не осталось
+     * полусобранное, которое следующий прогон посчитает готовым.
+     */
     public Map<String, Object> importAll(int limitPerTable) {
         if (!eventDb.configured()) {
             throw bad("База событий (crmdb) не выбрана: /settings -> Подключения к БД, галка «база событий».");
         }
-        Map<String, Object> copied = new LinkedHashMap<>();
-        Map<String, Object> failed = new LinkedHashMap<>();
+        /* Сводка строкой на таблицу: что затянулось, что пропущено и почему. Отдельные
+           словари «получилось» и «не получилось» пришлось бы сопоставлять глазами, а
+           вопрос у человека один — откуда взялось, а откуда нет. */
+        List<Map<String, Object>> summary = new ArrayList<>();
         long total = 0;
+        int skipped = 0;
         boolean more = false;
         try (Connection c = eventDb.connection()) {
             for (String table : ORDER) {
-                /* Как и в разведке: недоступная таблица не должна отменять весь импорт.
-                   Записываем её в отдельный список и идём дальше — то, что доступно,
-                   затянется, а по остальному человек увидит, каких прав не хватает.
-                   Учтите: без части таблиц ссылки внутри пачки останутся пустыми. */
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("table", table);
+                /* Недоступная таблица не отменяет весь импорт: тянем всё, что можем.
+                   Учтите — без части таблиц ссылки внутри пачки останутся пустыми, и это
+                   написано в ответе прямым текстом, а не подразумевается. */
                 try {
                     int n = copyTable(c, table, limitPerTable);
-                    copied.put(table, n);
+                    row.put("status", "ok");
+                    row.put("rows", n);
                     total += n;
                     if (n >= limitPerTable) {
                         more = true;
                     }
                 } catch (Exception e) {
-                    failed.put(table, rootMessage(e));
+                    row.put("status", "skipped");
+                    row.put("rows", 0);
+                    row.put("error", rootMessage(e));
+                    skipped++;
                     log.warn("импорт из crmdb: таблица {} пропущена: {}", table, rootMessage(e));
                 }
+                summary.add(row);
             }
         } catch (Exception e) {
             log.warn("импорт событий из crmdb не удался: {}", rootMessage(e));
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Импорт не выполнен: " + rootMessage(e));
+                    "Импорт не выполнен, соединение с crmdb не открылось: " + rootMessage(e));
         }
 
-        int online = buildOnlineEvents();
-        int offline = buildOfflineEvents();
+        Map<String, Object> online = buildOnlineEvents();
+        Map<String, Object> offline = buildOfflineEvents();
+        int built = intOf(online.get("built")) + intOf(offline.get("built"));
+        int eventErrors = intOf(online.get("failed")) + intOf(offline.get("failed"));
         adminLog.logTable("flow.d_event", "INSERT",
-                "{\"imported_rows\":" + total + ",\"events\":" + (online + offline) + "}");
+                "{\"imported_rows\":" + total + ",\"events\":" + built + "}");
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("copiedRows", total);
-        out.put("copiedByTable", copied);
-        out.put("failedByTable", failed);
-        out.put("eventsBuilt", online + offline);
-        out.put("eventsOnline", online);
-        out.put("eventsOffline", offline);
+        out.put("summary", summary);
+        out.put("tablesSkipped", skipped);
+        out.put("eventsBuilt", built);
+        out.put("eventsOnline", online.get("built"));
+        out.put("eventsOffline", offline.get("built"));
+        out.put("eventsFailed", eventErrors);
+        out.put("eventErrors", concat(online.get("errors"), offline.get("errors")));
         out.put("more", more);
         return out;
     }
@@ -309,8 +329,13 @@ public class EventImportService {
 
     // -------------------------------------------------------------- слой A: сборка
 
-    /** Онлайновые события: t_event_comm плюс его набор параметров доставки. */
-    private int buildOnlineEvents() {
+    /**
+     * Онлайновые события: t_event_comm плюс его набор параметров доставки.
+     * <p>
+     * Сбой на одном событии не отменяет остальные: причина обычно локальная (не сошёлся
+     * канал, нет шаблона), и терять из-за неё девяносто девять собранных событий незачем.
+     */
+    private Map<String, Object> buildOnlineEvents() {
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT ec.*, cc.notify_channel AS cc_channel, cc.send_delay AS cc_delay," +
                 "       cc.lifetime AS cc_lifetime, cc.allow_ml AS cc_ml," +
@@ -322,7 +347,9 @@ public class EventImportService {
                 "                      AND m.prod_table = 'tracker.t_event_comm'" +
                 "                      AND m.prod_id = ec.id::text)");
         int built = 0;
+        List<String> errors = new ArrayList<>();
         for (Map<String, Object> r : rows) {
+          try {
             Long eventId = insertEvent("income", str(r, "event_name"), str(r, "system"), null,
                     str(r, "group_event_descr"), bool(r, "is_active"), null);
             if (eventId == null) {
@@ -340,12 +367,16 @@ public class EventImportService {
             link(eventId, "tracker.d_comm_creation", num(r.get("id_comm_creation")));
             attachMappings(eventId, str(r, "event_name"), str(r, "system"));
             built++;
+          } catch (Exception e) {
+            errors.add("онлайн «" + str(r, "event_name") + "»: " + rootMessage(e));
+            dropEvent(str(r, "event_name"), str(r, "system"));
+          }
         }
-        return built;
+        return Map.of("built", built, "failed", errors.size(), "errors", errors);
     }
 
     /** События по расписанию: t_get_event + настройки запуска + шаги выборки. */
-    private int buildOfflineEvents() {
+    private Map<String, Object> buildOfflineEvents() {
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT * FROM scheduler.t_get_event ge" +
                 " WHERE NOT EXISTS (SELECT 1 FROM flow.t_materialization m" +
@@ -353,7 +384,9 @@ public class EventImportService {
                 "                      AND m.prod_table = 'scheduler.t_get_event'" +
                 "                      AND m.prod_id = ge.id::text)");
         int built = 0;
+        List<String> errors = new ArrayList<>();
         for (Map<String, Object> r : rows) {
+          try {
             String selection = str(r, "selection");
             Long eventId = insertEvent("time", str(r, "event_name"), str(r, "system"),
                     str(r, "source"), str(r, "group_event_descr"), bool(r, "is_active"), selection);
@@ -371,8 +404,12 @@ public class EventImportService {
             attachSchedule(eventId, selection);
             attachMappings(eventId, str(r, "event_name"), str(r, "system"));
             built++;
+          } catch (Exception e) {
+            errors.add("расписание «" + str(r, "event_name") + "»: " + rootMessage(e));
+            dropEvent(str(r, "event_name"), str(r, "system"));
+          }
         }
-        return built;
+        return Map.of("built", built, "failed", errors.size(), "errors", errors);
     }
 
     /**
@@ -517,6 +554,36 @@ public class EventImportService {
                 " ON CONFLICT (code) DO NOTHING", code, "Заведена импортом из crmdb");
     }
 
+    /**
+     * Снести недособранное событие. Без этого полусобранная запись осталась бы навсегда:
+     * следующий прогон увидел бы её в d_event, получил бы null из insertEvent
+     * (ON CONFLICT DO NOTHING) и молча прошёл мимо. Обвязка уходит по ON DELETE CASCADE,
+     * отметки принадлежности строк — руками, внешнего ключа у них нет.
+     */
+    private void dropEvent(String eventName, String system) {
+        try {
+            List<Long> ids = jdbc.queryForList(
+                    "SELECT id FROM flow.d_event WHERE event_name = ? AND coalesce(system,'') = ?",
+                    Long.class, eventName, nz(system, ""));
+            for (Long id : ids) {
+                jdbc.update("DELETE FROM flow.t_materialization" +
+                        " WHERE our_entity = 'flow.d_event' AND our_id = ?", String.valueOf(id));
+                jdbc.update("UPDATE flow.t_event_link SET event_id = NULL WHERE event_id = ?", id);
+                jdbc.update("DELETE FROM flow.d_event WHERE id = ?", id);
+            }
+        } catch (Exception e) {
+            log.warn("не удалось снести недособранное событие «{}»: {}", eventName, rootMessage(e));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> concat(Object a, Object b) {
+        List<String> out = new ArrayList<>();
+        if (a instanceof List<?> l) out.addAll((List<String>) l);
+        if (b instanceof List<?> l) out.addAll((List<String>) l);
+        return out;
+    }
+
     private static String str(Map<String, Object> r, String k) {
         Object v = r.get(k);
         return v == null ? null : String.valueOf(v);
@@ -524,6 +591,10 @@ public class EventImportService {
 
     private static boolean bool(Map<String, Object> r, String k) {
         return r.get(k) instanceof Boolean b && b;
+    }
+
+    private static int intOf(Object v) {
+        return v instanceof Number n ? n.intValue() : 0;
     }
 
     private static Long num(Object v) {

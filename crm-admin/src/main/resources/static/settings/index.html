@@ -1287,26 +1287,41 @@ window.EventSync = (function(){
     btn.disabled = true;
     busy("evImportNote", "evImportBox", "Тянем строки из crmdb… это может занять минуту.");
     req("POST", "/api/events/import?limit=500").then(function(d){
-      note("evImportNote", d.more ? "Порция затянута — нажмите ещё раз" : "Готово, тянуть больше нечего");
+      note("evImportNote",
+        (d.more ? "Порция затянута — нажмите ещё раз" : "Готово, тянуть больше нечего") +
+        (d.tablesSkipped || d.eventsFailed ? " · есть пропуски, смотрите сводку" : ""),
+        (d.tablesSkipped || d.eventsFailed) > 0);
+      /* Сводка строкой на таблицу: откуда затянулось, откуда нет и почему. Это главный
+         ответ страницы, поэтому таблица одна, а не два списка «получилось» и «нет». */
       var rows = "";
-      Object.keys(d.copiedByTable || {}).forEach(function(t){
-        rows += "<tr><td class=\"mono\">" + esc(t) + "</td><td>" + esc(d.copiedByTable[t]) + "</td></tr>";
+      (d.summary || []).forEach(function(r){
+        var ok = r.status === "ok";
+        rows += "<tr><td class=\"mono\">" + esc(r.table) + "</td>" +
+                "<td style=\"color:" + (ok ? "var(--green,#30a46c)" : "var(--red,#e5484d)") + "\">" +
+                (ok ? "затянуто" : "пропущено") + "</td>" +
+                "<td>" + esc(r.rows) + "</td>" +
+                "<td style=\"color:var(--red,#e5484d)\">" + esc(r.error || "") + "</td></tr>";
       });
-      var bad = "";
-      Object.keys(d.failedByTable || {}).forEach(function(t){
-        bad += "<div style=\"color:var(--red,#e5484d)\">" + esc(t) + ": " + esc(d.failedByTable[t]) + "</div>";
-      });
+      var evErr = "";
+      if (d.eventsFailed){
+        evErr = "<div style=\"margin-top:10px\"><b>Не собралось событий: " + esc(d.eventsFailed) +
+                "</b>" + (d.eventErrors || []).map(function(x){
+                  return "<div style=\"color:var(--red,#e5484d)\">" + esc(x) + "</div>"; }).join("") +
+                "<div style=\"opacity:.8\">Такие события удалены целиком, полусобранных записей не остаётся — " +
+                "после устранения причины повторите импорт.</div></div>";
+      }
       $("#evImportBox").className = "";
       $("#evImportBox").innerHTML =
         "<div style=\"margin-bottom:10px\">Затянуто строк <b>" + esc(d.copiedRows) +
         "</b>, собрано событий <b>" + esc(d.eventsBuilt) + "</b> (онлайновых " +
-        esc(d.eventsOnline) + ", по расписанию " + esc(d.eventsOffline) + ").</div>" +
-        "<table class=\"tbl\"><thead><tr><th>Таблица</th><th>затянуто</th></tr></thead><tbody>" +
-        rows + "</tbody></table>" +
-        (bad ? "<div style=\"margin-top:10px\"><b>Пропущены из-за ошибок:</b>" + bad +
-               "<div style=\"opacity:.8\">Ссылки на строки из этих таблиц останутся пустыми, " +
-               "пока не выдадут права и не повторят импорт.</div></div>" : "");
-      scan();
+        esc(d.eventsOnline) + ", по расписанию " + esc(d.eventsOffline) + ")." +
+        (d.tablesSkipped ? " Таблиц пропущено: <b>" + esc(d.tablesSkipped) + "</b>." : "") + "</div>" +
+        "<table class=\"tbl\"><thead><tr><th>Таблица</th><th>Итог</th><th>Строк</th>" +
+        "<th>Причина</th></tr></thead><tbody>" + rows + "</tbody></table>" +
+        (d.tablesSkipped ? "<div style=\"margin-top:10px;opacity:.85\">Ссылки на строки из пропущенных " +
+          "таблиц останутся пустыми, пока не выдадут права и не повторят импорт.</div>" : "") +
+        evErr;
+            scan();
     }).catch(function(e){ showError("evImportNote", "evImportBox", e); })
       .then(function(){ btn.disabled = false; });
   }
