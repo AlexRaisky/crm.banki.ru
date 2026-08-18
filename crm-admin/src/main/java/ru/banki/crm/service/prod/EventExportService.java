@@ -24,8 +24,13 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Перелив события в прод-БД (crmdb): строки НАШЕГО слоя B переносятся в одноимённые
- * таблицы прода, которые читают боевые движки.
+ * Перелив события в crmdb: строки НАШЕГО слоя B переносятся в одноимённые таблицы
+ * боевой базы, которые читают движки рассылок.
+ * <p>
+ * Приёмник здесь СВОЙ, не тот, куда уезжают шаблоны. Шаблоны идут в базу со схемами
+ * notice/callcenter (флаг is_prod_sync), события — в crmdb со схемами tracker,
+ * scheduler, template, commapi (флаг is_event_db). Обе строки лежат в одном реестре
+ * app.db_connection и различаются только флагом.
  * <p>
  * Зачем отдельный шаг, а не запись сразу в прод: заведение события — это до восьми строк
  * в пяти таблицах со ссылками друг на друга, и половина из них имеет смысл только вместе.
@@ -45,7 +50,7 @@ import java.util.Set;
  *       перекладывать между двумя соединениями руками, а {@code java.sql.Array} к чужому
  *       соединению не привяжешь.</li>
  *   <li><b>Повторный перелив ничего не дублирует.</b> Каждая уехавшая строка
- *       записывается в {@code flow.t_event_export} с UNIQUE (our_table, our_id); строка,
+ *       записывается в {@code flow.t_event_link} с UNIQUE (our_table, our_id); строка,
  *       которая уже там есть, второй раз не отправляется. Ровно на этом мы обожглись с
  *       очередью шаблонов, когда откат транзакции уносил отметку «доставлено» и запись
  *       уезжала в прод дважды.</li>
@@ -80,14 +85,14 @@ public class EventExportService {
     private static final String MASS_TABLE = "template.d_template_mapping_mass";
 
     private final JdbcTemplate jdbc;
-    private final ProdDbService prod;
+    private final EventDbService eventDb;
     private final AdminLogService adminLog;
     private final ObjectMapper om;
 
-    public EventExportService(JdbcTemplate jdbc, ProdDbService prod,
+    public EventExportService(JdbcTemplate jdbc, EventDbService eventDb,
                               AdminLogService adminLog, ObjectMapper om) {
         this.jdbc = jdbc;
-        this.prod = prod;
+        this.eventDb = eventDb;
         this.adminLog = adminLog;
         this.om = om;
     }
@@ -100,12 +105,12 @@ public class EventExportService {
                 "SELECT e.id, e.kind, e.event_name, e.system, e.is_active, e.timestamp_cr," +
                 "       count(m.id) AS rows_total," +
                 "       count(x.id) AS rows_exported," +
-                "       max(x.exported_at) AS exported_at," +
-                "       max(x.exported_by) AS exported_by" +
+                "       max(x.linked_at) AS exported_at," +
+                "       max(x.linked_by) AS exported_by" +
                 "  FROM flow.d_event e" +
                 "  LEFT JOIN flow.t_materialization m" +
                 "         ON m.our_entity = 'flow.d_event' AND m.our_id = e.id::text" +
-                "  LEFT JOIN flow.t_event_export x" +
+                "  LEFT JOIN flow.t_event_link x" +
                 "         ON x.our_table = m.prod_table AND x.our_id::text = m.prod_id" +
                 " GROUP BY e.id" +
                 " ORDER BY e.id DESC LIMIT ?", limit);
@@ -115,8 +120,8 @@ public class EventExportService {
 
     /** Перелить одно событие. Возвращает, что уехало и что пропущено как уехавшее ранее. */
     public Map<String, Object> export(long eventId) {
-        if (!prod.configured()) {
-            throw bad("Прод-БД не настроена: в /settings выберите подключение-приёмник.");
+        if (!eventDb.configured()) {
+            throw bad("База событий (crmdb) не выбрана: /settings → Подключения к БД, галка «база событий».");
         }
         List<String> names = jdbc.queryForList(
                 "SELECT event_name FROM flow.d_event WHERE id = ?", String.class, eventId);
@@ -145,7 +150,7 @@ public class EventExportService {
         // что уже уехало: и как пропуск, и как источник продовых id для ссылок
         Map<String, Long> prodIdOf = new LinkedHashMap<>();   // таблица -> id в проде
         Map<String, Long> already = new HashMap<>();          // таблица#наш_id -> id в проде
-        jdbc.queryForList("SELECT our_table, our_id, prod_id FROM flow.t_event_export" +
+        jdbc.queryForList("SELECT our_table, our_id, prod_id FROM flow.t_event_link" +
                         " WHERE event_id = ?", eventId)
                 .forEach(r -> {
                     String tbl = String.valueOf(r.get("our_table"));
@@ -158,7 +163,7 @@ public class EventExportService {
         List<Map<String, Object>> skipped = new ArrayList<>();
         List<Object[]> journal = new ArrayList<>();
 
-        try (Connection c = prod.connection()) {
+        try (Connection c = eventDb.connection()) {
             c.setAutoCommit(false);
             try {
                 for (Map<String, Object> row : ours) {
@@ -194,8 +199,9 @@ public class EventExportService {
            об этом прямо, молчать тут нельзя. */
         if (!journal.isEmpty()) {
             try {
-                jdbc.batchUpdate("INSERT INTO flow.t_event_export" +
-                        " (event_id, our_table, our_id, prod_id, exported_by) VALUES (?, ?, ?, ?, ?)",
+                jdbc.batchUpdate("INSERT INTO flow.t_event_link" +
+                        " (event_id, our_table, our_id, prod_id, linked_by, direction)" +
+                        " VALUES (?, ?, ?, ?, ?, 'EXPORT')",
                         journal);
             } catch (Exception e) {
                 log.error("событие {} уехало в прод, но журнал перелива не записан: {}", eventId, e.toString());
@@ -203,7 +209,7 @@ public class EventExportService {
                         "Строки созданы в проде, но журнал перелива не записан. НЕ повторяйте перелив — " +
                         "будут дубли. Созданное: " + sent);
             }
-            adminLog.logTable("flow.t_event_export", "INSERT",
+            adminLog.logTable("flow.t_event_link", "INSERT",
                     "{\"event_id\":" + eventId + ",\"rows\":" + sent.size() + "}");
         }
 
@@ -305,12 +311,12 @@ public class EventExportService {
      */
     public Map<String, Object> health() {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("configured", prod.configured());
-        if (!prod.configured()) {
+        out.put("configured", eventDb.configured());
+        if (!eventDb.configured()) {
             return out;
         }
         Map<String, Object> tables = new LinkedHashMap<>();
-        try (Connection c = prod.connection()) {
+        try (Connection c = eventDb.connection()) {
             for (String t : ORDER) {
                 tables.put(t, columnDiff(c, t));
             }

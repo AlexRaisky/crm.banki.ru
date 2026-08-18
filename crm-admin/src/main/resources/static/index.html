@@ -612,11 +612,13 @@
     <section class="view" id="sec-event-export">
       <div class="eyebrow">CRM · Events · Export</div>
       <h1>Перелив <span class="grad">в прод</span></h1>
-      <p class="sub">Событие собирается у нас целиком, а потом одним действием уезжает в боевые таблицы crmdb: <code>tracker</code>, <code>scheduler</code>, <code>template</code>, <code>commapi</code>. Идентификаторы прод присваивает свои, ссылки внутри пачки переставляются автоматически. Повторный перелив уже уехавшие строки пропускает — дублей не будет.</p>
+      <p class="sub">Две стороны одного моста. «Затянуть из crmdb» забирает события, которые уже заведены в боевой базе, и раскладывает их по нашей модели. «Перелить» отправляет туда собранное у нас. Боевые таблицы: <code>tracker</code>, <code>scheduler</code>, <code>template</code>, <code>commapi</code>. Идентификаторы прод присваивает свои, ссылки внутри пачки переставляются автоматически. Повторный перелив уже уехавшие строки пропускает — дублей не будет.</p>
 
       <div class="ev-foot" style="border-top:0;margin-top:0;padding-top:0">
         <button class="ev-btn ghost" id="evxReload" type="button">Обновить список</button>
         <button class="ev-btn ghost" id="evxHealth" type="button">Сверить таблицы с продом</button>
+        <button class="ev-btn ghost" id="evxScan" type="button">Что есть в crmdb</button>
+        <button class="ev-btn" id="evxImport" type="button">Затянуть из crmdb</button>
         <span class="ev-msg" id="evxMsg"></span>
       </div>
 

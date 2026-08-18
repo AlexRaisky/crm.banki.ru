@@ -16,6 +16,7 @@ import ru.banki.crm.security.AccessGuard;
 import ru.banki.crm.service.Sections;
 import ru.banki.crm.service.flow.EventFormService;
 import ru.banki.crm.service.prod.EventExportService;
+import ru.banki.crm.service.prod.EventImportService;
 
 import java.util.List;
 import java.util.Map;
@@ -33,11 +34,14 @@ public class EventController {
 
     private final EventFormService service;
     private final EventExportService export;
+    private final EventImportService importer;
     private final AccessGuard access;
 
-    public EventController(EventFormService service, EventExportService export, AccessGuard access) {
+    public EventController(EventFormService service, EventExportService export,
+                           EventImportService importer, AccessGuard access) {
         this.service = service;
         this.export = export;
+        this.importer = importer;
         this.access = access;
     }
 
@@ -84,5 +88,23 @@ public class EventController {
     public Map<String, Object> exportEvent(@PathVariable long eventId) {
         access.requireCapability(Capability.ADD, Sections.EV_EXPORT);
         return export.export(eventId);
+    }
+
+    /** Разведка: сколько событий в crmdb и сколько из них уже у нас. Только чтение. */
+    @GetMapping("/import/scan")
+    public Map<String, Object> importScan() {
+        access.requireAnySection(Sections.EV_EXPORT);
+        return importer.scan();
+    }
+
+    /**
+     * Затянуть события из crmdb к себе. limit — потолок строк на таблицу за прогон:
+     * импорт идёт одной транзакцией, и тянуть разом всю большую таблицу незачем.
+     * Прогон повторяют, пока в ответе more не станет false.
+     */
+    @PostMapping("/import")
+    public Map<String, Object> importFromProd(@RequestParam(defaultValue = "500") int limit) {
+        access.requireCapability(Capability.ADD, Sections.EV_EXPORT);
+        return importer.importAll(Math.max(1, Math.min(5000, limit)));
     }
 }
