@@ -1321,7 +1321,7 @@ window.EventSync = (function(){
   function importFromProd(){
     var btn = $("#evImportBtn");
     btn.disabled = true;
-    var total = 0, pass = 0, byTable = {}, failed = {}, evBuilt = 0, evOnline = 0, evOffline = 0, evErrors = [];
+    var total = 0, pass = 0, byTable = {}, failed = {}, evBuilt = 0, evOnline = 0, evOffline = 0, evErrors = [], pending = 0;
 
     function render(done, more){
       var rows = "";
@@ -1351,6 +1351,10 @@ window.EventSync = (function(){
         "<th>Причина</th></tr></thead><tbody>" + rows + "</tbody></table>" +
         (Object.keys(failed).length ? "<div style=\"margin-top:10px;opacity:.85\">Ссылки на строки " +
           "из пропущенных таблиц останутся пустыми, пока не выдадут права и не повторят импорт.</div>" : "") +
+        /* Отложенные на последнем проходе разрешиться уже некому: их ссылок нет и в проде. */
+        (done && pending ? "<div style=\"margin-top:10px;color:var(--amber,#f5a524)\">Отложено строк: " +
+          pending + ". Ссылка на связанную запись у них есть, а самой записи в crmdb нет — " +
+          "осиротевшие строки. Импортировать их не получится, пока это не поправят в источнике.</div>" : "") +
         evErr;
     }
 
@@ -1359,6 +1363,7 @@ window.EventSync = (function(){
       note("evImportNote", "Проход " + pass + ", затянуто строк " + total + "…");
       return req("POST", "/api/events/import?limit=" + LIMIT).then(function(d){
         total += Number(d.copiedRows || 0);
+        pending = Number(d.pending || 0);   // не копим: отложенное разрешается следующим проходом
         evBuilt += Number(d.eventsBuilt || 0);
         evOnline += Number(d.eventsOnline || 0);
         evOffline += Number(d.eventsOffline || 0);

@@ -176,6 +176,7 @@ public class EventImportService {
         List<Map<String, Object>> summary = new ArrayList<>();
         long total = 0;
         int skipped = 0;
+        long pendingTotal = 0;
         boolean more = false;
         try (Connection c = eventDb.connection()) {
             for (String table : ORDER) {
@@ -185,9 +186,12 @@ public class EventImportService {
                    Учтите — без части таблиц ссылки внутри пачки останутся пустыми, и это
                    написано в ответе прямым текстом, а не подразумевается. */
                 try {
-                    int n = copyTable(c, table, limitPerTable);
+                    int[] pending = {0};
+                    int n = copyTable(c, table, limitPerTable, pending);
                     row.put("status", "ok");
                     row.put("rows", n);
+                    if (pending[0] > 0) row.put("pending", pending[0]);
+                    pendingTotal += pending[0];
                     total += n;
                     if (n >= limitPerTable) {
                         more = true;
@@ -223,14 +227,18 @@ public class EventImportService {
         out.put("eventsOffline", offline.get("built"));
         out.put("eventsFailed", eventErrors);
         out.put("eventErrors", concat(online.get("errors"), offline.get("errors")));
-        out.put("more", more);
+        out.put("pending", pendingTotal);
+        /* Отложенные строки — тоже повод для следующего прогона: их зависимости приехали
+           в этом. Условие «и что-то скопировалось» защищает от вечного цикла на сиротах,
+           у которых ссылки нет и в проде: такие не разрешатся никогда. */
+        out.put("more", more || (pendingTotal > 0 && total > 0));
         return out;
     }
 
     // ------------------------------------------------------------ слой B: копирование
 
     /** Копирует строки одной прод-таблицы, которых у нас ещё нет. Возвращает их число. */
-    private int copyTable(Connection c, String table, int limit) throws Exception {
+    private int copyTable(Connection c, String table, int limit, int[] pending) throws Exception {
         Set<Long> known = new HashSet<>(jdbc.queryForList(
                 "SELECT prod_id FROM flow.t_event_link WHERE our_table = ?", Long.class, table));
         Map<String, Map<Long, Long>> maps = new HashMap<>();
@@ -247,7 +255,10 @@ public class EventImportService {
                 }
                 ObjectNode values = (ObjectNode) om.readTree(rs.getString(2));
                 values.remove("id");                  // id у нас свой, identity
-                remapForeignKeys(table, values, maps);
+                if (!remapForeignKeys(table, values, maps)) {
+                    pending[0]++;                     // зависимость ещё не приехала — ждём прогона
+                    continue;
+                }
                 Long ourId = insertOurs(table, values);
                 if (ourId == null) {
                     continue;
@@ -265,22 +276,35 @@ public class EventImportService {
     }
 
     /**
-     * Ссылки прода переставляем на наши id по журналу соответствий. Пары нет — значит
-     * строка, на которую ссылаются, ещё не затянута (упёрлись в потолок прогона). Тогда
-     * ссылку оставляем пустой: она восстановится следующим прогоном, а чужой id молча
-     * испортил бы связь.
+     * Ссылки прода переставляем на наши id по журналу соответствий.
+     * <p>
+     * Пары нет — значит строка, на которую ссылаются, ещё не затянута: прогон берёт не
+     * больше limit строк на таблицу, и зависимость легко оказывается за этой границей.
+     * Тогда строку НЕ вставляем вовсе и ждём следующего прогона.
+     * <p>
+     * Раньше в этом случае ссылка обнулялась — и это было прямой ошибкой: у
+     * t_execution_steps.t_launch_settings_id стоит NOT NULL, вставка падала, а вместе с
+     * ней пропускалась вся таблица за прогон. Испортить связь тише, чем потерять строку,
+     * тоже не вариант: шаг выборки без своего расписания бессмыслен.
+     *
+     * @return false, если хоть одну ссылку сопоставить не удалось
      */
-    private void remapForeignKeys(String table, ObjectNode values, Map<String, Map<Long, Long>> maps) {
-        FK_OF.forEach((col, refTable) -> remapOne(values, col, refTable, maps));
-        if (MASS_TABLE.equals(table)) {
-            remapOne(values, "event_id", "scheduler.t_get_event", maps);
+    private boolean remapForeignKeys(String table, ObjectNode values, Map<String, Map<Long, Long>> maps) {
+        boolean ok = true;
+        for (Map.Entry<String, String> e : FK_OF.entrySet()) {
+            if (!remapOne(values, e.getKey(), e.getValue(), maps)) ok = false;
         }
+        if (MASS_TABLE.equals(table) && !remapOne(values, "event_id", "scheduler.t_get_event", maps)) {
+            ok = false;
+        }
+        return ok;
     }
 
-    private void remapOne(ObjectNode values, String col, String refTable,
-                          Map<String, Map<Long, Long>> maps) {
+    /** @return false, если значение есть, а пары к нему в журнале ещё нет */
+    private boolean remapOne(ObjectNode values, String col, String refTable,
+                             Map<String, Map<Long, Long>> maps) {
         if (!values.hasNonNull(col)) {
-            return;
+            return true;                      // пустая ссылка — это нормально, переставлять нечего
         }
         Map<Long, Long> map = maps.computeIfAbsent(refTable, t -> {
             Map<Long, Long> m = new HashMap<>();
@@ -291,10 +315,10 @@ public class EventImportService {
         });
         Long ours = map.get(values.get(col).asLong());
         if (ours == null) {
-            values.putNull(col);
-        } else {
-            values.put(col, ours);
+            return false;
         }
+        values.put(col, ours);
+        return true;
     }
 
     /** Вставка в НАШУ таблицу: id даёт identity, типы приводит jsonb_populate_record. */
