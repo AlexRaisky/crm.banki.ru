@@ -41,6 +41,7 @@ const NAV = [
   { id:"events", label:"События", icon:"bolt", overviewView:"view-events-overview", children:[
       { id:"ev-online",  label:"Онлайн-событие",       icon:"pulse", view:"sec-event-online" },
       { id:"ev-offline", label:"Событие по расписанию", icon:"calendar", view:"sec-event-offline" },
+      { id:"ev-list",    label:"Список событий",        icon:"list", view:"sec-event-list" },
       { id:"ev-export",  label:"Перелив в прод",        icon:"upload", view:"sec-event-export" },
   ]},
   /* «Сущности» — данные CRM по схеме Scheme Builder. Подразделы НЕ задаются здесь:
@@ -921,6 +922,7 @@ function openSection(sid, cid){
   /* завод событий: справочники тянутся при первом открытии формы, не на старте панели */
   if (target.view === "sec-event-online" && typeof initEventOnlineSection === "function") initEventOnlineSection();
   if (target.view === "sec-event-offline" && typeof initEventOfflineSection === "function") initEventOfflineSection();
+  if (target.view === "sec-event-list" && typeof initEventListSection === "function") initEventListSection();
   if (target.view === "sec-event-export" && typeof initEventExportSection === "function") initEventExportSection();
   if (target.view === "sec-deviations") setTimeout(() => {
     /* графики Chart.js, созданные в скрытой секции, имеют нулевой размер —

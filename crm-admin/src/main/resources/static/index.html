@@ -487,6 +487,12 @@
           <p>Кронтаб, база выборки и SQL-шаги: планировщик выполняет их и порождает коммуникацию.</p>
           <span class="ov-go">Открыть →</span>
         </div>
+        <div class="ov-card" data-nav-ref="ev-list" onclick="openSection('events','ev-list')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
+          <h3>Список событий</h3>
+          <p>Каталог заведённых событий: род, канал, расписание, шаблоны и состояние планировщика.</p>
+          <span class="ov-go">Открыть →</span>
+        </div>
         <div class="ov-card" data-nav-ref="ev-export" onclick="openSection('events','ev-export')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
           <h3>Перелив в прод</h3>
@@ -606,6 +612,35 @@
         <span class="ev-msg" id="evfMsg"></span>
       </div>
       <div id="evfResult"></div>
+    </section>
+
+    <!-- ===== События → Список событий ===== -->
+    <section class="view" id="sec-event-list">
+      <div class="eyebrow">CRM · Events · Catalog</div>
+      <h1>Список <span class="grad">событий</span></h1>
+      <p class="sub">Всё, что заведено в нашей модели: и созданное формой, и затянутое из crmdb. Поиск, фильтры и подсчёт идут на сервере — событий тысячи, и целиком в браузер они не грузятся. Клик по строке раскрывает карточку с расписанием, шагами выборки и связями с боевой базой.</p>
+
+      <div class="ev-step">
+        <div class="ev-fields">
+          <div class="ev-f"><label for="evlQ">Поиск</label><input type="text" id="evlQ" placeholder="имя события, система или source" autocomplete="off"></div>
+          <div class="ev-f"><label for="evlKind">Род</label><select id="evlKind"><option value="">любой</option><option value="income">онлайновое</option><option value="time">по расписанию</option></select></div>
+          <div class="ev-f"><label for="evlChannel">Канал</label><select id="evlChannel"><option value="">любой</option></select></div>
+          <div class="ev-f"><label for="evlActive">Активность</label><select id="evlActive"><option value="">любая</option><option value="true">только активные</option><option value="false">только выключенные</option></select></div>
+          <div class="ev-f"><label for="evlExported">В боевой базе</label><select id="evlExported"><option value="">неважно</option><option value="true">переливали</option><option value="false">не переливали</option></select></div>
+        </div>
+        <div class="ev-foot" style="border-top:0;margin-top:14px;padding-top:0">
+          <button class="ev-btn" id="evlApply" type="button">Показать</button>
+          <button class="ev-btn ghost" id="evlReset" type="button">Сбросить</button>
+          <span class="ev-msg" id="evlMsg"></span>
+        </div>
+      </div>
+
+      <div id="evlBox"></div>
+      <div class="ev-foot" id="evlPager" style="display:none">
+        <button class="ev-btn ghost" id="evlPrev" type="button">← Назад</button>
+        <span class="ev-msg" id="evlPage"></span>
+        <button class="ev-btn ghost" id="evlNext" type="button">Вперёд →</button>
+      </div>
     </section>
 
     <!-- ===== События → Перелив в прод ===== -->

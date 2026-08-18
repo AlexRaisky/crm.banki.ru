@@ -13,7 +13,7 @@
 
   var dict = null;          // кэш справочников
   var dictPromise = null;   // защита от параллельных загрузок при быстром переключении
-  var inited = { online: false, offline: false, export_: false };
+  var inited = { online: false, offline: false, list: false, export_: false };
 
   var API = "/api/events";
 
@@ -336,6 +336,193 @@
     }).catch(function (e) { fail("evfMsg", e); });
   }
 
+  // ============================================================ СПИСОК СОБЫТИЙ
+
+  var evl = { offset: 0, limit: 50, total: 0 };
+
+  function initList() {
+    if (inited.list) return;
+    inited.list = true;
+    el("evlApply").onclick = function () { evl.offset = 0; loadList(); };
+    el("evlReset").onclick = function () {
+      ["evlQ", "evlKind", "evlChannel", "evlActive", "evlExported"].forEach(function (id) {
+        if (el(id)) el(id).value = "";
+      });
+      evl.offset = 0;
+      loadList();
+    };
+    el("evlPrev").onclick = function () {
+      evl.offset = Math.max(0, evl.offset - evl.limit);
+      loadList();
+    };
+    el("evlNext").onclick = function () {
+      if (evl.offset + evl.limit < evl.total) { evl.offset += evl.limit; loadList(); }
+    };
+    /* Enter в поиске — то же, что «Показать»: набрал и нажал, без похода к кнопке. */
+    el("evlQ").onkeydown = function (e) {
+      if (e.key === "Enter") { evl.offset = 0; loadList(); }
+    };
+    evReq("GET", "/list/facets").then(function (f) {
+      fillSelect(el("evlChannel"), f.channels, "любой");
+    }).catch(function () { /* фильтр по каналу останется пустым, список от этого не зависит */ });
+    loadList();
+  }
+
+  function listQuery() {
+    var p = [];
+    function add(k, v) { if (v) p.push(k + "=" + encodeURIComponent(v)); }
+    add("q", str("evlQ"));
+    add("kind", str("evlKind"));
+    add("channel", str("evlChannel"));
+    add("active", str("evlActive"));
+    add("exported", str("evlExported"));
+    p.push("limit=" + evl.limit);
+    p.push("offset=" + evl.offset);
+    return "?" + p.join("&");
+  }
+
+  function loadList() {
+    say("evlMsg", "Загружаем…");
+    evReq("GET", "/list" + listQuery()).then(function (d) {
+      evl.total = Number(d.total || 0);
+      say("evlMsg", evl.total ? "Найдено событий: " + evl.total : "Ничего не нашлось", "");
+      renderList(d.rows || []);
+      var pager = el("evlPager");
+      pager.style.display = evl.total > evl.limit ? "" : "none";
+      el("evlPrev").disabled = evl.offset === 0;
+      el("evlNext").disabled = evl.offset + evl.limit >= evl.total;
+      el("evlPage").textContent = evl.total
+        ? (evl.offset + 1) + "-" + Math.min(evl.offset + evl.limit, evl.total) + " из " + evl.total
+        : "";
+    }).catch(function (e) { fail("evlMsg", e); });
+  }
+
+  function kindLabel(k) { return k === "time" ? "по расписанию" : "онлайновое"; }
+
+  /* Состояние планировщика словами: три колонки прода со словом status разложены по
+     трём с честными именами, и показывать их сырыми значениями незачем. */
+  function stateLabel(r) {
+    if (!r.phase && !r.cron_state && !r.last_result) return "—";
+    var parts = [];
+    if (r.phase) parts.push({ NEW: "новое", WAITING: "ждёт", PROCESSING: "идёт" }[r.phase] || r.phase);
+    if (r.cron_state) parts.push(r.cron_state === "STARTED" ? "крон знает" : "крон не знает");
+    if (r.last_result) parts.push(r.last_result === "SUCCESS" ? "прошлый успешно" : "прошлый с ошибкой");
+    return parts.join(" · ");
+  }
+
+  function renderList(rows) {
+    var box = el("evlBox");
+    if (!box) return;
+    if (!rows.length) { box.innerHTML = ""; return; }
+    var html = '<div class="ev-rows"><table><thead><tr>' +
+      "<th>id</th><th>Событие</th><th>Система</th><th>Род</th><th>Канал</th>" +
+      "<th>Расписание</th><th>Шаблоны</th><th>Состояние</th><th>Активно</th><th>В проде</th>" +
+      "</tr></thead><tbody>";
+    rows.forEach(function (r) {
+      var tplCell = r.templates
+        ? esc(r.templates)
+        : (Number(r.templates_total || 0) ? "не опознаны (" + r.templates_total + ")" : "—");
+      html += '<tr class="clickable" data-ev="' + esc(r.id) + '">' +
+        "<td>" + esc(r.id) + "</td>" +
+        "<td>" + esc(r.event_name) + "</td>" +
+        "<td>" + esc(r.system || "—") + "</td>" +
+        "<td>" + kindLabel(r.kind) + "</td>" +
+        "<td>" + esc(r.notify_channel || "—") + "</td>" +
+        "<td>" + esc(r.crontab || "—") + "</td>" +
+        "<td>" + tplCell + "</td>" +
+        "<td>" + esc(stateLabel(r)) + "</td>" +
+        "<td>" + (r.is_active ? "да" : "нет") + "</td>" +
+        "<td>" + (Number(r.exported || 0) ? "да" : "нет") + "</td>" +
+        "</tr>" +
+        '<tr data-card="' + esc(r.id) + '" style="display:none"><td colspan="10"></td></tr>';
+    });
+    box.innerHTML = html + "</tbody></table></div>";
+    box.querySelectorAll("[data-ev]").forEach(function (tr) {
+      tr.onclick = function () { toggleCard(tr.getAttribute("data-ev")); };
+    });
+  }
+
+  /* Карточка грузится по клику, а не вместе со списком: полная обвязка это ещё шесть
+     запросов на строку, и на странице в пятьдесят строк вышло бы триста запросов. */
+  function toggleCard(id) {
+    var row = el("evlBox").querySelector('[data-card="' + id + '"]');
+    if (!row) return;
+    if (row.style.display !== "none") { row.style.display = "none"; return; }
+    var cell = row.firstChild;
+    cell.innerHTML = '<div class="ev-card">Загружаем…</div>';
+    row.style.display = "";
+    evReq("GET", "/list/" + encodeURIComponent(id)).then(function (d) {
+      cell.innerHTML = renderCard(d);
+    }).catch(function (e) {
+      cell.innerHTML = '<div class="ev-card" style="color:var(--red,#e5484d)">' +
+        esc((e && e.message) || "Не удалось загрузить карточку") + "</div>";
+    });
+  }
+
+  function dlist(pairs) {
+    var out = "";
+    pairs.forEach(function (p) {
+      if (p[1] === null || p[1] === undefined || p[1] === "") return;
+      out += "<dt>" + esc(p[0]) + "</dt><dd>" + esc(p[1]) + "</dd>";
+    });
+    return out ? "<dl>" + out + "</dl>" : '<div style="color:var(--faint)">пусто</div>';
+  }
+
+  function renderCard(d) {
+    var e = d.event || {}, dv = d.delivery || {}, s = d.schedule || {}, st = d.state || {};
+    var html = '<div class="ev-card"><h4>Событие</h4>' + dlist([
+      ["source", e.source], ["группа", e.group_event_descr], ["описание", e.description],
+      ["заведено", String(e.timestamp_cr || "").slice(0, 19).replace("T", " ")]
+    ]) + "</div>";
+
+    html += '<div class="ev-card"><h4>Доставка</h4>' + dlist([
+      ["канал", dv.notify_channel], ["sub_channel", dv.sub_channel], ["платформа", dv.platform],
+      ["задержка", dv.send_delay], ["время жизни", dv.life_time], ["ML", dv.allow_ml ? "да" : null]
+    ]) + "</div>";
+
+    if (e.kind === "time") {
+      html += '<div class="ev-card"><h4>Расписание</h4>' + dlist([
+        ["кронтаб", s.crontab], ["база выборки", s.database],
+        ["массовая отправка", s.is_batch ? "да" : "нет"],
+        ["попыток", s.max_retry_attempts], ["группа заданий", s.job_group],
+        ["фаза", st.phase], ["крон", st.cron_state], ["прошлый прогон", st.last_result],
+        ["следующий запуск", st.date_next]
+      ]) + "</div>";
+
+      var steps = d.steps || [];
+      html += '<div class="ev-card"><h4>Шаги выборки (' + steps.length + ")</h4>";
+      html += steps.length ? steps.map(function (x) {
+        return '<div style="margin-bottom:8px"><b>' + esc(x.order_num) + ". " + esc(x.process_name || "") + "</b>" +
+          (x.returns_result_set ? " · возвращает результат" : "") +
+          (x.is_active ? "" : " · выключен") +
+          "<pre>" + esc(x.sql_text || "") + "</pre></div>";
+      }).join("") : '<div style="color:var(--faint)">нет</div>';
+      html += "</div>";
+    }
+
+    var tpl = d.templates || [];
+    html += '<div class="ev-card"><h4>Шаблоны (' + tpl.length + ")</h4>";
+    html += tpl.length ? '<div class="ev-rows"><table><tbody>' + tpl.map(function (x) {
+      return "<tr><td>" + (x.step_no == null ? "одиночный" : "шаг " + esc(x.step_no)) + "</td>" +
+        "<td>" + (x.code ? esc(x.channel) + ":" + esc(x.code) : "не найден у нас") + "</td>" +
+        "<td>" + esc(x.communication_name || "") + "</td></tr>";
+    }).join("") + "</tbody></table></div>" : '<div style="color:var(--faint)">нет</div>';
+    html += "</div>";
+
+    var links = d.links || [];
+    if (links.length) {
+      html += '<div class="ev-card"><h4>Связи с crmdb (' + links.length + ")</h4>" +
+        '<div class="ev-rows"><table><thead><tr><th>Таблица</th><th>наш id</th>' +
+        "<th>id в crmdb</th><th>Направление</th></tr></thead><tbody>" +
+        links.map(function (x) {
+          return '<tr><td class="tbl">' + esc(x.our_table) + "</td><td>" + esc(x.our_id) +
+            "</td><td>" + esc(x.prod_id) + "</td><td>" +
+            (x.direction === "IMPORT" ? "затянуто из crmdb" : "отправлено в crmdb") + "</td></tr>";
+        }).join("") + "</tbody></table></div></div>";
+    }
+    return html;
+  }
+
   // ================================================================== ПЕРЕЛИВ
 
   function initExport() {
@@ -441,5 +628,6 @@
   // Инициализация ленивая, по первому открытию раздела (см. openSection в shell.js).
   window.initEventOnlineSection = initOnline;
   window.initEventOfflineSection = initOffline;
+  window.initEventListSection = initList;
   window.initEventExportSection = initExport;
 })();

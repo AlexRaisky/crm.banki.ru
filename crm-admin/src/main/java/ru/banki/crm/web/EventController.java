@@ -15,6 +15,7 @@ import ru.banki.crm.dto.EventFormDtos.OnlineEventForm;
 import ru.banki.crm.security.AccessGuard;
 import ru.banki.crm.service.Sections;
 import ru.banki.crm.service.flow.EventFormService;
+import ru.banki.crm.service.flow.EventListService;
 import ru.banki.crm.service.prod.EventExportService;
 import ru.banki.crm.service.prod.EventImportService;
 
@@ -35,13 +36,16 @@ public class EventController {
     private final EventFormService service;
     private final EventExportService export;
     private final EventImportService importer;
+    private final EventListService catalog;
     private final AccessGuard access;
 
     public EventController(EventFormService service, EventExportService export,
-                           EventImportService importer, AccessGuard access) {
+                           EventImportService importer, EventListService catalog,
+                           AccessGuard access) {
         this.service = service;
         this.export = export;
         this.importer = importer;
+        this.catalog = catalog;
         this.access = access;
     }
 
@@ -61,6 +65,37 @@ public class EventController {
     public EventCreated createOffline(@Valid @RequestBody OfflineEventForm form) {
         access.requireCapability(Capability.ADD, Sections.EV_OFFLINE);
         return service.createOffline(form);
+    }
+
+    /**
+     * Каталог событий: страница строк плюс общее число под фильтр. Фильтрация и подсчёт
+     * на сервере — событий после импорта из crmdb тысячи, и отдавать их целиком ради
+     * двадцати строк на экране незачем.
+     */
+    @GetMapping("/list")
+    public Map<String, Object> list(@RequestParam(required = false) String q,
+                                    @RequestParam(required = false) String kind,
+                                    @RequestParam(required = false) String channel,
+                                    @RequestParam(required = false) Boolean active,
+                                    @RequestParam(required = false) Boolean exported,
+                                    @RequestParam(defaultValue = "50") int limit,
+                                    @RequestParam(defaultValue = "0") int offset) {
+        access.requireAnySection(Sections.EV_LIST);
+        return catalog.list(new EventListService.Filter(q, kind, channel, active, exported), limit, offset);
+    }
+
+    /** Значения фильтров — только те, что реально встречаются в заведённых событиях. */
+    @GetMapping("/list/facets")
+    public Map<String, Object> listFacets() {
+        access.requireAnySection(Sections.EV_LIST);
+        return catalog.facets();
+    }
+
+    /** Карточка события: обвязка целиком, включая шаги выборки и связи с crmdb. */
+    @GetMapping("/list/{id}")
+    public Map<String, Object> one(@PathVariable long id) {
+        access.requireAnySection(Sections.EV_LIST);
+        return catalog.one(id);
     }
 
     /** Список событий с состоянием перелива (сколько строк слоя B уже в проде). */

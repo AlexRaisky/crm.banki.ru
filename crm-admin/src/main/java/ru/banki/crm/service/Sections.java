@@ -35,6 +35,9 @@ public final class Sections {
     /* Перелив события в прод-БД — отдельная секция от заведения: собрать событие у себя
        и отправить его в боевые таблицы это разные полномочия. */
     public static final String EV_EXPORT = "ev-export";
+    /* Список событий — витрина. Смотреть каталог и отправлять события в боевую базу это
+       разные полномочия, поэтому секция своя и НЕ входит в WRITABLE: правок тут нет. */
+    public static final String EV_LIST = "ev-list";
 
     /* Панели настроечной админки (/settings). До этого вся страница была закрыта одним
        правилом hasRole("ADMIN"), и выдать роли, например, только «Подключения к БД» было
@@ -72,7 +75,7 @@ public final class Sections {
     public static final List<String> ALL = List.of(
             HOME,
             ONELINK, ADMIN, TEMPLATES, SRCBUILDER, PROMO, ABTESTS, HEATMAP,
-            EV_ONLINE, EV_OFFLINE, EV_EXPORT,
+            EV_ONLINE, EV_OFFLINE, EV_LIST, EV_EXPORT,
             ENTITIES,
             REP_PLANFACT, REP_MATRIX, REP_LEADGEN, REP_SMSCHECK, REP_DEMO,
             DASHBOARD, DEVIATIONS,
@@ -96,6 +99,7 @@ public final class Sections {
             java.util.Map.entry(HEATMAP, "Управление коммуникациями"),
             java.util.Map.entry(EV_ONLINE, "События"),
             java.util.Map.entry(EV_OFFLINE, "События"),
+            java.util.Map.entry(EV_LIST, "События"),
             java.util.Map.entry(EV_EXPORT, "События"),
             java.util.Map.entry(REP_PLANFACT, "Отчёты"),
             java.util.Map.entry(REP_MATRIX, "Отчёты"),

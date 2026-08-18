@@ -6,7 +6,7 @@
    обзорные, и своих правил из этого файла не использует. Зато если в разделе появится
    третья форма — её id обязан попасть сюда же: на #view-report-smscheck мы уже
    наступали, забытая в прелюдии секция молча остаётся без всех правил файла. ===== */
-@scope (#sec-event-online, #sec-event-offline, #sec-event-export){
+@scope (#sec-event-online, #sec-event-offline, #sec-event-list, #sec-event-export){
   :scope{color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;padding:24px 22px 80px}
 
   h1{font-size:26px;font-weight:700;letter-spacing:-.015em;margin:0}
@@ -71,6 +71,17 @@
     text-transform:uppercase;font-weight:500}
   .ev-rows tr:last-child td{border-bottom:0}
   .ev-rows td.tbl{font-family:var(--mono)}
+
+  /* строка списка раскрывается карточкой — курсор об этом говорит */
+  .ev-rows tr.clickable{cursor:pointer}
+  .ev-rows tr.clickable:hover td{background:var(--card2,rgba(127,127,127,.08))}
+  .ev-card{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:10px 0;padding:14px}
+  .ev-card h4{font-size:13px;margin:0 0 8px}
+  .ev-card dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0;font-size:12.5px}
+  .ev-card dt{color:var(--faint)}
+  .ev-card dd{margin:0}
+  .ev-card pre{background:var(--bg2,rgba(127,127,127,.06));border-radius:8px;font-size:12px;margin:6px 0 0;
+    overflow-x:auto;padding:10px;white-space:pre-wrap;word-break:break-word}
 
   .ev-warn{border:1px solid var(--amber,#f5a524);border-radius:10px;color:var(--amber,#f5a524);
     font-size:12.5px;margin-top:12px;padding:10px 12px}
