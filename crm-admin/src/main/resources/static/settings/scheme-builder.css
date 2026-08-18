@@ -35,7 +35,10 @@
    Высоту в пикселях проставляет JS (layoutShell) — она равна остатку экрана
    под тулбаром, поэтому раздел занимает всю доступную высоту без пустот и
    без прокрутки страницы. clamp ниже — запасной вариант, пока JS не отработал. */
-.sb-shell{display:grid;grid-template-columns:minmax(190px,15%) minmax(0,1fr) minmax(300px,22%);gap:12px;
+/* Левая колонка со списком сущностей была самой узкой из трёх, и длинные имена таблиц
+   в ней обрезались на середине. Даём ей больше ширины: канвас теряет немного, но по нему
+   и так ходят зумом, а список читают глазами. */
+.sb-shell{display:grid;grid-template-columns:minmax(240px,19%) minmax(0,1fr) minmax(300px,22%);gap:12px;
   height:clamp(460px,calc(100vh - 270px),1200px)}
 .sb-col{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;
   display:flex;flex-direction:column;min-width:0}

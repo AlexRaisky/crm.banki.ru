@@ -13,7 +13,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- ?v — метка версии: без неё браузер держит старый файл из HTTP-кеша
      и правки раздела доезжают к пользователю с задержкой. Поднимать при изменениях. -->
-<link rel="stylesheet" href="scheme-builder.css?v=17">
+<link rel="stylesheet" href="scheme-builder.css?v=18">
 <link rel="stylesheet" href="object-manager.css?v=4">
 <style>
   /* ============================================================
@@ -72,7 +72,26 @@
   .back:hover{background:var(--card2);color:var(--ink)}
 
   .shell{display:flex;flex:1;min-height:0}
-  .sidebar{width:262px;flex:0 0 auto;background:var(--bg2);border-right:1px solid var(--line);padding:12px 9px;overflow-y:auto}
+  .sidebar{width:262px;flex:0 0 auto;background:var(--bg2);border-right:1px solid var(--line);
+    padding:12px 9px;display:flex;flex-direction:column;min-height:0}
+  .snav-scroll{flex:1;min-height:0;overflow-y:auto}
+  /* Кнопка сворачивания прижата к низу и не уезжает вместе со списком пунктов. */
+  .snav-toggle{flex:0 0 auto;margin-top:8px;display:flex;align-items:center;gap:12px;width:100%;
+    padding:10px 11px;border-radius:10px;border:1px solid transparent;background:none;cursor:pointer;
+    color:var(--faint);font:inherit;font-size:13px;text-align:left}
+  .snav-toggle:hover{background:var(--card);color:var(--ink)}
+  .snav-toggle .ico{transition:transform .15s}
+
+  /* Свёрнутое меню: остаются иконки, подписи и заголовки групп уходят. Ширину меряем
+     по иконке с отступами, чтобы пункт не прыгал при переключении. */
+  body.snav-collapsed .sidebar{width:60px;padding:12px 7px}
+  body.snav-collapsed .nav-item .lbl,
+  body.snav-collapsed .snav-toggle .lbl{display:none}
+  body.snav-collapsed .snav-group{height:1px;margin:12px 6px;padding:0;overflow:hidden;
+    background:var(--line);color:transparent}
+  body.snav-collapsed .nav-item,
+  body.snav-collapsed .snav-toggle{justify-content:center;padding:10px 0}
+  body.snav-collapsed .snav-toggle .ico{transform:rotate(180deg)}
   .snav-group{font-family:var(--mono,monospace);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--faint);margin:16px 0 6px;padding:0 10px}
   .snav-group:first-child{margin-top:4px}
@@ -90,10 +109,16 @@
      полосу с прокруткой, а контент отдаём во всю ширину. */
   @media(max-width:900px){
     .shell{flex-direction:column}
-    .sidebar{width:100%;height:auto;flex:0 0 auto;display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;
+    .sidebar{width:100%;height:auto;flex:0 0 auto;display:flex;flex-direction:row;gap:6px;
       padding:9px 10px;border-right:none;border-bottom:1px solid var(--line)}
+    .snav-scroll{display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;flex:1}
     .sidebar h3{display:none}
     .nav-item{flex:0 0 auto;margin-bottom:0;white-space:nowrap}
+    /* На узком экране меню и так полоса — сворачивать нечего, кнопка только мешает. */
+    .snav-toggle{display:none}
+    body.snav-collapsed .sidebar{width:100%;padding:9px 10px}
+    body.snav-collapsed .nav-item .lbl{display:inline}
+    body.snav-collapsed .snav-group{display:none}
     .content{padding:16px 14px}
     .top{padding:0 12px}
   }
@@ -177,7 +202,17 @@
   .empty{color:var(--faint);font-size:13.5px;padding:8px 2px}
   /* Пояснения к кнопкам: что именно делает каждая. Отступ слева у описания —
      чтобы список читался парами, а не сплошным текстом. */
-  .btn-help{margin:0 0 14px;font-size:12.5px;line-height:1.55}
+  /* Подсказка к кнопкам — раскрывающийся блок: нужна редко, а места занимала столько,
+     что списка под ней было не видно. */
+  .help-box{margin:0 0 14px}
+  .help-box>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px;
+    font-size:12.5px;color:var(--faint);padding:2px 0;user-select:none}
+  .help-box>summary::-webkit-details-marker{display:none}
+  .help-box>summary::before{content:"";width:0;height:0;border:5px solid transparent;
+    border-left-color:currentColor;transition:transform .15s;transform-origin:3px 50%}
+  .help-box[open]>summary::before{transform:rotate(90deg)}
+  .help-box>summary:hover{color:var(--ink)}
+  .btn-help{margin:8px 0 0;font-size:12.5px;line-height:1.55}
   .btn-help dt{color:var(--ink);font-weight:600;margin-top:8px}
   .btn-help dt:first-child{margin-top:0}
   .btn-help dd{margin:2px 0 0 14px;color:var(--dim)}
@@ -237,7 +272,15 @@
   </header>
 
   <div class="shell">
-    <aside class="sidebar" id="snav"></aside>
+    <!-- Сайдбар сворачивается до иконок: Scheme Builder и «Схемам и таблицам» экрана
+         не хватает, и 262 пикселя меню там дороже, чем список сущностей. -->
+    <aside class="sidebar" id="sside">
+      <div class="snav-scroll" id="snav"></div>
+      <button class="snav-toggle" id="snavToggle" type="button" title="Свернуть меню">
+        <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></span>
+        <span class="lbl">Свернуть меню</span>
+      </button>
+    </aside>
 
     <main class="content">
 
@@ -394,7 +437,10 @@
             <div class="sb-col-head"><span data-i18n="Схемы и таблицы">Схемы и таблицы</span><span class="n" id="sbEntityCount">0</span></div>
             <div class="sb-col-body" id="sbEntityList"></div>
             <div class="sb-col-head"><span data-i18n="Связи">Связи</span><span class="n" id="sbRelationCount">0</span></div>
-            <div class="sb-col-body" id="sbRelationList" style="flex:0 0 34%"></div>
+            <!-- Связей всегда меньше, чем таблиц, а треть колонки они занимали наравне.
+                 Отдаём место списку сущностей — его читают постоянно, связи от случая
+                 к случаю; свой скролл у блока остаётся. -->
+            <div class="sb-col-body" id="sbRelationList" style="flex:0 0 24%;min-height:96px"></div>
           </div>
 
           <div class="sb-col sb-canvas-col">
@@ -877,6 +923,8 @@ const S_EN = {
   "Самозапрет на кредиты":"Self-imposed credit ban", "Реквизиты":"Company details",
   "Доступность":"Reachability", "Конфигурация":"Configuration", "Связи":"Relations",
   "Флаги":"Flags", "Показатели":"Metrics", "Служебные":"System fields",
+  "Что делают кнопки":"What the buttons do",
+  "Свернуть меню":"Collapse menu", "Развернуть меню":"Expand menu",
 };
 function t2(s){ return (LANG === "en" && S_EN[s]) ? S_EN[s] : s; }
 const S_HTML = {
@@ -977,6 +1025,12 @@ function openPane(id){
   document.getElementById("pane-" + id).classList.add("active");
   if (id === "uploads") renderTools();
   if (id === "diag") renderDiag();
+  /* Список подключений и состояние синка грузились ХВОСТОМ renderDiag — пережиток тех
+     времён, когда все пять блоков жили внутри «Диагностики». После разделения на панели
+     связь осталась, и «Подключения к БД» показывали многоточие до тех пор, пока кто-то
+     не откроет «Диагностику хранилища». Теперь каждая панель грузит своё. */
+  if (id === "dbconn") renderDbConnections();
+  if (id === "sync") { renderQueueStats(); etlStatus(); }
   if (id === "events" && window.EventSync) EventSync.open();
   if (id === "evexport" && window.EventExport) EventExport.open();
   if (id === "procs" && window.ProcessControl) ProcessControl.open();
@@ -1005,9 +1059,68 @@ PANES.forEach(p => {
   const el = document.createElement("div");
   el.className = "nav-item" + (p.id === "over" ? " active" : "");
   el.dataset.id = p.id;
-  el.innerHTML = `<span class="ico">${p.ico}</span>${t2(p.label)}`;
+  /* Подпись в отдельном span, а не голым текстом: свёрнутое меню прячет её правилом
+     CSS, а текстовый узел спрятать нечем. title — чтобы в свёрнутом виде название
+     всё-таки читалось наведением. */
+  el.innerHTML = `<span class="ico">${p.ico}</span><span class="lbl">${t2(p.label)}</span>`;
+  el.title = t2(p.label);
   el.onclick = () => openPane(p.id);
   snav.appendChild(el);
+});
+
+/* ---------- сворачивание меню ----------
+   Состояние держим в localStorage: свернул один раз — и оно таким остаётся, иначе
+   при каждом заходе в Scheme Builder пришлось бы сворачивать заново. */
+const SNAV_KEY = "crmpanel:setNavCollapsed";
+function snavApply(on){
+  document.body.classList.toggle("snav-collapsed", !!on);
+  const btn = $("#snavToggle");
+  if (btn) btn.title = t2(on ? "Развернуть меню" : "Свернуть меню");
+  /* Ширина сайдбара изменилась — раскладке Scheme Builder это важно, а события resize
+     от смены класса не приходит. Шлём его сами: на него подписан layoutShell. */
+  window.dispatchEvent(new Event("resize"));
+}
+(function(){
+  const btn = $("#snavToggle");
+  if (!btn) return;
+  let on = false;
+  try { on = localStorage.getItem(SNAV_KEY) === "1"; } catch(e){ on = false; }
+  snavApply(on);
+  btn.onclick = () => {
+    on = !document.body.classList.contains("snav-collapsed");
+    try { localStorage.setItem(SNAV_KEY, on ? "1" : "0"); } catch(e){ /* приватный режим — переживём */ }
+    snavApply(on);
+  };
+})();
+
+/* ---------- подсказки к кнопкам сворачиваются ----------
+   Блоки «что делает каждая кнопка» полезны один раз, а места занимают столько, что
+   на «Подключениях к БД» из-за них не было видно самого списка баз. Обёртку строим
+   здесь, а не в разметке каждого раздела: блоков девять, и новый должен получать
+   это поведение сам, без правки в двух местах. */
+const HELP_KEY = "crmpanel:helpOpen";
+function helpOpenSet(){
+  try { return new Set(JSON.parse(localStorage.getItem(HELP_KEY)) || []); } catch(e){ return new Set(); }
+}
+document.querySelectorAll("dl.btn-help").forEach(dl => {
+  const pane = dl.closest(".pane");
+  const key = pane ? pane.id : "";
+  const box = document.createElement("details");
+  box.className = "help-box";
+  box.open = helpOpenSet().has(key);
+  const sum = document.createElement("summary");
+  sum.textContent = t2("Что делают кнопки");
+  sum.dataset.i18n = "Что делают кнопки";   /* смена языка перерисовывает подпись */
+  dl.parentNode.insertBefore(box, dl);
+  box.appendChild(sum);
+  box.appendChild(dl);
+  box.addEventListener("toggle", () => {
+    const set = helpOpenSet();
+    if (box.open) set.add(key); else set.delete(key);
+    try { localStorage.setItem(HELP_KEY, JSON.stringify([...set])); } catch(e){ /* переживём */ }
+    /* Высота содержимого изменилась — Scheme Builder считает свою по остатку экрана. */
+    window.dispatchEvent(new Event("resize"));
+  });
 });
 
 /* Панели гейтятся секциями матрицы прав: «Подключения к БД» можно выдать, не
@@ -1801,9 +1914,6 @@ function renderDiag(){
         <td style="text-align:right"><span class="mono">${(r.size/1024).toFixed(1)} ${LANG==='en'?'KB':'КБ'}</span></td></tr>`).join("") +
       `</tbody></table><div class="empty" style="margin-top:10px">${t2('Итого:')} ${(total/1024).toFixed(1)} ${LANG==='en'?'KB':'КБ'} ${t2('(лимит браузера ≈ 5 МБ на сайт)')}</div>`
     : `<div class="empty">${t2('Панель ещё ничего не сохранила.')}</div>`;
-  renderDbConnections();
-  renderQueueStats();
-  etlStatus();
 }
 
 /* Счётчики очереди синка — лёгкий запрос без коннекта к проду, авто-показ под диагностикой. */
@@ -2029,6 +2139,9 @@ function dbcRenderList(list){
   var box = $("#dbcBox");
   if (!box) return;
   if (!DBC.length){ box.innerHTML = '<div class="empty">' + t2('Нет подключений.') + '</div>'; return; }
+  /* Класс empty остаётся на контейнере с разметки («…» до загрузки) и красит таблицу
+     в бледный мелкий шрифт — снимаем, раз показываем уже не заглушку. */
+  box.className = "";
   box.innerHTML =
     '<table><thead><tr>' +
       '<th>' + t2('Имя') + '</th><th>JDBC URL</th><th>' + t2('Пользователь') + '</th>' +
