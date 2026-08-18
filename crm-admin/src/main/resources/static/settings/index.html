@@ -624,7 +624,7 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
         </div>
 
         <h2 style="margin-top:26px">Импортировать из прода</h2>
-        <div class="sub">Затягивает события из crmdb и раскладывает их по нашей модели: справочник событий, доставка, расписание, шаги выборки, шаблоны, метод отправки и состояние планировщика. В crmdb ничего не пишет. Идёт порциями: пока в ответе остаётся «ещё есть что тянуть», жмите повторно.</div>
+        <div class="sub">Затягивает события из crmdb и раскладывает их по нашей модели: справочник событий, доставка, расписание, шаги выборки, шаблоны, метод отправки и состояние планировщика. В crmdb ничего не пишет. Идёт порциями по тысяче строк на таблицу и продолжается сам, пока не вытянет всё; сводка обновляется после каждого прохода.</div>
         <div class="card">
           <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
             <button type="button" class="btn primary" id="evImportBtn">Импортировать из прода</button>
@@ -1310,48 +1310,79 @@ window.EventSync = (function(){
     }).catch(function(e){ showError("evScanNote", "evScanBox", e); });
   }
 
+  /* Импорт идёт порциями: сервер за прогон берёт не больше LIMIT строк на таблицу и
+     сообщает в more, осталось ли что-то. Раньше кнопка делала ровно один проход, и на
+     пяти тысячах событий её пришлось бы жать десяток раз подряд — теперь проходы идут
+     сами, пока сервер не скажет, что тянуть больше нечего.
+     Потолок проходов — страховка от бесконечного цикла, если сервер вдруг всегда будет
+     отвечать more=true: лучше остановиться и показать, сколько успели. */
+  var LIMIT = 1000, MAX_PASSES = 60;
+
   function importFromProd(){
     var btn = $("#evImportBtn");
     btn.disabled = true;
-    busy("evImportNote", "evImportBox", "Тянем строки из crmdb… это может занять минуту.");
-    req("POST", "/api/events/import?limit=500").then(function(d){
-      note("evImportNote",
-        (d.more ? "Порция затянута — нажмите ещё раз" : "Готово, тянуть больше нечего") +
-        (d.tablesSkipped || d.eventsFailed ? " · есть пропуски, смотрите сводку" : ""),
-        (d.tablesSkipped || d.eventsFailed) > 0);
-      /* Сводка строкой на таблицу: откуда затянулось, откуда нет и почему. Это главный
-         ответ страницы, поэтому таблица одна, а не два списка «получилось» и «нет». */
+    var total = 0, pass = 0, byTable = {}, failed = {}, evBuilt = 0, evOnline = 0, evOffline = 0, evErrors = [];
+
+    function render(done, more){
       var rows = "";
-      (d.summary || []).forEach(function(r){
-        var ok = r.status === "ok";
-        rows += "<tr><td class=\"mono\">" + esc(r.table) + "</td>" +
-                "<td style=\"color:" + (ok ? "var(--green,#30a46c)" : "var(--red,#e5484d)") + "\">" +
-                (ok ? "затянуто" : "пропущено") + "</td>" +
-                "<td>" + esc(r.rows) + "</td>" +
-                "<td style=\"color:var(--red,#e5484d)\">" + esc(r.error || "") + "</td></tr>";
+      Object.keys(byTable).forEach(function(t){
+        var err = failed[t];
+        rows += "<tr><td class=\"mono\">" + esc(t) + "</td>" +
+                "<td style=\"color:" + (err ? "var(--red,#e5484d)" : "var(--green,#30a46c)") + "\">" +
+                (err ? "пропущено" : "затянуто") + "</td>" +
+                "<td>" + esc(byTable[t]) + "</td>" +
+                "<td style=\"color:var(--red,#e5484d)\">" + esc(err || "") + "</td></tr>";
       });
-      var evErr = "";
-      if (d.eventsFailed){
-        evErr = "<div style=\"margin-top:10px\"><b>Не собралось событий: " + esc(d.eventsFailed) +
-                "</b>" + (d.eventErrors || []).map(function(x){
-                  return "<div style=\"color:var(--red,#e5484d)\">" + esc(x) + "</div>"; }).join("") +
-                "<div style=\"opacity:.8\">Такие события удалены целиком, полусобранных записей не остаётся — " +
-                "после устранения причины повторите импорт.</div></div>";
-      }
+      var evErr = evErrors.length
+        ? "<div style=\"margin-top:10px\"><b>Не собралось событий: " + evErrors.length + "</b>" +
+          evErrors.slice(0, 20).map(function(x){
+            return "<div style=\"color:var(--red,#e5484d)\">" + esc(x) + "</div>"; }).join("") +
+          "<div style=\"opacity:.8\">Такие события удалены целиком, полусобранных записей не " +
+          "остаётся — после устранения причины повторите импорт.</div></div>"
+        : "";
       $("#evImportBox").className = "";
       $("#evImportBox").innerHTML =
-        "<div style=\"margin-bottom:10px\">Затянуто строк <b>" + esc(d.copiedRows) +
-        "</b>, собрано событий <b>" + esc(d.eventsBuilt) + "</b> (онлайновых " +
-        esc(d.eventsOnline) + ", по расписанию " + esc(d.eventsOffline) + ")." +
-        (d.tablesSkipped ? " Таблиц пропущено: <b>" + esc(d.tablesSkipped) + "</b>." : "") + "</div>" +
+        "<div style=\"margin-bottom:10px\">" + (done ? "Готово. " : "Проход " + pass + "… ") +
+        "Затянуто строк <b>" + total + "</b>, собрано событий <b>" + evBuilt + "</b> (онлайновых " +
+        evOnline + ", по расписанию " + evOffline + ")." +
+        (done && more ? " Остановились на потолке в " + MAX_PASSES + " проходов — нажмите ещё раз." : "") +
+        "</div>" +
         "<table class=\"tbl\"><thead><tr><th>Таблица</th><th>Итог</th><th>Строк</th>" +
         "<th>Причина</th></tr></thead><tbody>" + rows + "</tbody></table>" +
-        (d.tablesSkipped ? "<div style=\"margin-top:10px;opacity:.85\">Ссылки на строки из пропущенных " +
-          "таблиц останутся пустыми, пока не выдадут права и не повторят импорт.</div>" : "") +
+        (Object.keys(failed).length ? "<div style=\"margin-top:10px;opacity:.85\">Ссылки на строки " +
+          "из пропущенных таблиц останутся пустыми, пока не выдадут права и не повторят импорт.</div>" : "") +
         evErr;
-            scan();
-    }).catch(function(e){ showError("evImportNote", "evImportBox", e); })
-      .then(function(){ btn.disabled = false; });
+    }
+
+    function step(){
+      pass++;
+      note("evImportNote", "Проход " + pass + ", затянуто строк " + total + "…");
+      return req("POST", "/api/events/import?limit=" + LIMIT).then(function(d){
+        total += Number(d.copiedRows || 0);
+        evBuilt += Number(d.eventsBuilt || 0);
+        evOnline += Number(d.eventsOnline || 0);
+        evOffline += Number(d.eventsOffline || 0);
+        (d.eventErrors || []).forEach(function(x){ if (evErrors.length < 100) evErrors.push(x); });
+        (d.summary || []).forEach(function(r){
+          byTable[r.table] = (byTable[r.table] || 0) + Number(r.rows || 0);
+          if (r.error) failed[r.table] = r.error; else delete failed[r.table];
+        });
+        render(false, d.more);
+        if (d.more && pass < MAX_PASSES) return step();
+        render(true, d.more);
+        note("evImportNote",
+          (d.more ? "Остановились на потолке проходов" : "Готово, тянуть больше нечего") +
+          (Object.keys(failed).length || evErrors.length ? " · есть пропуски, смотрите сводку" : ""),
+          (Object.keys(failed).length || evErrors.length) > 0);
+        scan();
+      });
+    }
+
+    busy("evImportNote", "evImportBox", "Тянем строки из crmdb… идёт первый проход.");
+    step().catch(function(e){
+      render(true, false);
+      showError("evImportNote", "evImportBox", e);
+    }).then(function(){ btn.disabled = false; });
   }
 
   /* Обработчики вешаем сразу при разборе скрипта, а не при открытии панели. Разметка к
