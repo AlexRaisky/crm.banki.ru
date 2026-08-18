@@ -29,7 +29,8 @@
     "set-events": "События (crmdb)", "set-scheme": "Scheme Builder",
     "set-objects": "Сущности (настройка)", "set-dbtree": "Схемы и таблицы",
     "set-apps": "Приложения и разделы", "set-uploads": "Загруженные инструменты (настройка)",
-    "set-mon": "Мониторинг интеграций", "set-diag": "Диагностика хранилища"
+    "set-mon": "Мониторинг интеграций", "set-diag": "Диагностика хранилища",
+    "set-general": "Общие параметры"
   };
   function tr(s) { return (typeof window.t === "function") ? window.t(s) : s; }
   function sectionLabel(s) { return tr(SECTION_LABELS[s] || s); }

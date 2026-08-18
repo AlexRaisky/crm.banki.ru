@@ -52,6 +52,7 @@ public final class Sections {
     public static final String SET_UPLOADS = "set-uploads";
     public static final String SET_MON = "set-mon";
     public static final String SET_DIAG = "set-diag";
+    public static final String SET_GENERAL = "set-general";
 
     /* Отчёты и мониторинг — не одна секция, а по секции на пункт меню (миграция V29).
        Иначе доступ выдавался всё-или-ничего: галка «Отчёты» открывала сразу все пять.
@@ -78,7 +79,7 @@ public final class Sections {
             MON_CAMPAIGNS,
             UPLOADS, JOURNEYS,
             SET_DBCONN, SET_SYNC, SET_EVENTS, SET_SCHEME, SET_OBJECTS, SET_DBTREE,
-            SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, ACCESS);
+            SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, SET_GENERAL, ACCESS);
 
     /**
      * Группа сайдбара, в которой живёт раздел. Нужна матрице прав: строк стало больше двадцати,
@@ -114,6 +115,7 @@ public final class Sections {
             java.util.Map.entry(SET_UPLOADS, "Настройки"),
             java.util.Map.entry(SET_MON, "Настройки"),
             java.util.Map.entry(SET_DIAG, "Настройки"),
+            java.util.Map.entry(SET_GENERAL, "Настройки"),
             java.util.Map.entry(ACCESS, "Настройки"));
 
     public static String groupOf(String id) {
@@ -148,7 +150,7 @@ public final class Sections {
     /** Секции настроечной админки. По ним SecurityConfig решает, пускать ли на /settings. */
     public static final Set<String> SETTINGS = Set.of(
             SET_DBCONN, SET_SYNC, SET_EVENTS, SET_SCHEME, SET_OBJECTS, SET_DBTREE,
-            SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, ACCESS);
+            SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, SET_GENERAL, ACCESS);
 
     public static boolean isSettings(String id) {
         return SETTINGS.contains(id);
