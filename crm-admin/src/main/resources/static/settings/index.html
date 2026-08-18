@@ -842,14 +842,20 @@ const S_HTML = {
         h_access:'Управление <span class="grad">доступом</span>',
         h_objects:'Сущности <span class="grad">CRM</span>',
         h_scheme:'Scheme <span class="grad">Builder</span>',
-        h_dbtree:'Схемы и <span class="grad">таблицы</span>' },
+        h_dbtree:'Схемы и <span class="grad">таблицы</span>',
+        h_dbconn:'Подключения <span class="grad">к БД</span>',
+        h_sync:'Синхронизация <span class="grad">шаблонов</span>',
+        h_events:'События <span class="grad">crmdb</span>' },
   en: { h_over:'Admin <span class="grad">settings</span>', h_apps:'Apps <span class="grad">& sections</span>',
         h_mon:'Integration <span class="grad">monitoring</span>', h_up:'Uploaded <span class="grad">tools</span>',
         h_gen:'General <span class="grad">settings</span>', h_diag:'Storage <span class="grad">diagnostics</span>',
         h_access:'Access <span class="grad">management</span>',
         h_objects:'CRM <span class="grad">objects</span>',
         h_scheme:'Scheme <span class="grad">Builder</span>',
-        h_dbtree:'Schemas and <span class="grad">tables</span>' }
+        h_dbtree:'Schemas and <span class="grad">tables</span>',
+        h_dbconn:'Database <span class="grad">connections</span>',
+        h_sync:'Template <span class="grad">sync</span>',
+        h_events:'Events <span class="grad">crmdb</span>' }
 };
 function translateStatic(){
   document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t2(el.dataset.i18n); });
@@ -1170,6 +1176,15 @@ window.EventSync = (function(){
     n.style.color = bad ? "var(--red,#e5484d)" : "";
   }
 
+  /* Текст ошибки дублируем в блок: подпись сбоку мелкая и легко теряется, а «ничего не
+     происходит» — худшее, что может показать кнопка. */
+  function showError(noteId, boxId, e){
+    var msg = (e && e.message) || "Запрос не выполнен";
+    note(noteId, "Ошибка", true);
+    var box = $("#" + boxId);
+    if (box){ box.className = ""; box.innerHTML = "<div style=\"color:var(--red,#e5484d)\">" + esc(msg) + "</div>"; }
+  }
+
   function req(method, url){
     return fetch(url, { method: method, credentials: "same-origin",
                         headers: { Accept: "application/json" } })
@@ -1209,7 +1224,7 @@ window.EventSync = (function(){
         "<table class=\"tbl\"><thead><tr><th>Таблица</th><th>в crmdb</th><th>у нас</th>" +
         "<th>связано</th><th>не затянуто</th></tr></thead><tbody>" + rows + "</tbody></table>";
       loaded = true;
-    }).catch(function(e){ note("evScanNote", e.message, true); });
+    }).catch(function(e){ showError("evScanNote", "evScanBox", e); });
   }
 
   /* Сверка DDL отдельной кнопкой: колонка, которой в проде нет, при переливе молча
@@ -1231,7 +1246,7 @@ window.EventSync = (function(){
       $("#evScanBox").innerHTML = bad.length
         ? bad.map(function(b){ return "<div>" + esc(b) + "</div>"; }).join("")
         : "Все восемь таблиц совпадают с боевыми по составу колонок.";
-    }).catch(function(e){ note("evScanNote", e.message, true); });
+    }).catch(function(e){ showError("evScanNote", "evScanBox", e); });
   }
 
   function importFromProd(){
@@ -1252,17 +1267,24 @@ window.EventSync = (function(){
         "<table class=\"tbl\"><thead><tr><th>Таблица</th><th>затянуто</th></tr></thead><tbody>" +
         rows + "</tbody></table>";
       scan();
-    }).catch(function(e){ note("evImportNote", e.message, true); })
+    }).catch(function(e){ showError("evImportNote", "evImportBox", e); })
       .then(function(){ btn.disabled = false; });
   }
 
+  /* Обработчики вешаем сразу при разборе скрипта, а не при открытии панели. Разметка к
+     этому моменту уже есть (скрипт идёт после неё), и кнопки перестают зависеть от того,
+     дошло ли до них ленивое open(): один промах в openPane делал их мёртвыми молча. */
+  function bind(){
+    var b1 = $("#evScanBtn"), b2 = $("#evDdlBtn"), b3 = $("#evImportBtn");
+    if (b1) b1.onclick = scan;
+    if (b2) b2.onclick = ddl;
+    if (b3) b3.onclick = importFromProd;
+  }
+  bind();
+
   return {
     open: function(){
-      if (!$("#evScanBtn").onclick){
-        $("#evScanBtn").onclick = scan;
-        $("#evDdlBtn").onclick = ddl;
-        $("#evImportBtn").onclick = importFromProd;
-      }
+      bind();                // на случай, если разметку перерисовали
       if (!loaded) scan();   // при первом открытии считаем сразу: это и есть ответ «сколько их»
     }
   };
