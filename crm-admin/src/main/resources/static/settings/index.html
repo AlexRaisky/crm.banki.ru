@@ -73,6 +73,9 @@
 
   .shell{display:flex;flex:1;min-height:0}
   .sidebar{width:262px;flex:0 0 auto;background:var(--bg2);border-right:1px solid var(--line);padding:12px 9px;overflow-y:auto}
+  .snav-group{font-family:var(--mono,monospace);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faint);margin:16px 0 6px;padding:0 10px}
+  .snav-group:first-child{margin-top:4px}
   .nav-item{display:flex;align-items:center;gap:12px;padding:10px 11px;border-radius:10px;cursor:pointer;
     color:var(--dim);white-space:nowrap;border:1px solid transparent;margin-bottom:2px;user-select:none;font-size:14px;font-weight:500}
   .nav-item:hover{background:var(--card);color:var(--ink)}
@@ -464,9 +467,9 @@
       </section>
 
       <!-- ===== Диагностика ===== -->
-      <section class="pane" id="pane-diag">
-        <h1 data-i18n-html="h_diag">Диагностика <span class="grad">хранилища</span></h1>
-
+      <!-- ===== Подключения к БД ===== -->
+      <section class="pane" id="pane-dbconn">
+        <h1 data-i18n-html="h_dbconn">Подключения <span class="grad">к БД</span></h1>
         <!-- ===== Подключения к БД ===== -->
         <h2 style="margin-top:2px" data-i18n="Подключения к БД">Подключения к БД</h2>
         <div class="sub" data-i18n="Базы, к которым подключается панель. Встроенные (наша и прод) — только для чтения; свои можно добавлять. Пароль хранится на сервере и в списке не показывается.">Базы, к которым подключается панель. Встроенные (наша и прод) — только для чтения; свои можно добавлять. Пароль хранится на сервере и в списке не показывается.</div>
@@ -535,10 +538,12 @@
             </div>
           </form>
         </div>
+      </section>
 
-        <div class="sub" style="margin-top:22px">Что панель хранит в localStorage браузера (префикс crmpanel:).</div>
-        <div class="card"><div id="diagBox"></div></div>
-
+      <!-- ===== Синхронизация шаблонов ===== -->
+      <section class="pane" id="pane-sync">
+        <h1 data-i18n-html="h_sync">Синхронизация <span class="grad">шаблонов</span></h1>
+        <div class="sub">Очередь доставки в базу шаблонов (схемы notice и callcenter) и обратный ETL. События сюда не относятся: у них своя база и свой раздел.</div>
         <!-- Очередь синка шаблонов: авто-показ счётчиков (снизу под диагностикой хранилища) -->
         <h2 style="margin-top:26px" data-i18n="Очередь синка шаблонов">Очередь синка шаблонов</h2>
         <div class="sub" data-i18n="Операции мастера, ожидающие доставки во внешнюю прод-базу.">Операции мастера, ожидающие доставки во внешнюю прод-базу.</div>
@@ -593,6 +598,40 @@
           </dl>
           <div id="etlBox" class="empty">…</div>
         </div>
+      </section>
+
+      <!-- ===== События (crmdb) ===== -->
+      <section class="pane" id="pane-events">
+        <h1 data-i18n-html="h_events">События <span class="grad">crmdb</span></h1>
+        <div class="sub">Боевые события живут в отдельной базе — crmdb, схемы tracker, scheduler, template, commapi. Это НЕ приёмник шаблонов: у того свои схемы, notice и callcenter. Какое подключение считать базой событий, задаёт галка «База событий» в разделе «Подключения к БД».</div>
+
+        <h2 style="margin-top:22px">Сравнить с продовой базой</h2>
+        <div class="sub">Сколько событий и строк обвязки лежит в crmdb и сколько из этого уже затянуто к нам. Ничего не меняет — только считает.</div>
+        <div class="card">
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn" id="evScanBtn">Сравнить с продом</button>
+            <button type="button" class="btn" id="evDdlBtn">Сверить колонки таблиц</button>
+            <span class="save-note" id="evScanNote"></span>
+          </div>
+          <div id="evScanBox" class="empty" style="margin-top:12px">Нажмите «Сравнить с продом».</div>
+        </div>
+
+        <h2 style="margin-top:26px">Импортировать из прода</h2>
+        <div class="sub">Затягивает события из crmdb и раскладывает их по нашей модели: справочник событий, доставка, расписание, шаги выборки, шаблоны, метод отправки и состояние планировщика. В crmdb ничего не пишет. Идёт порциями: пока в ответе остаётся «ещё есть что тянуть», жмите повторно.</div>
+        <div class="card">
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn primary" id="evImportBtn">Импортировать из прода</button>
+            <span class="save-note" id="evImportNote"></span>
+          </div>
+          <div id="evImportBox" class="empty" style="margin-top:12px">Сначала сравните с продом — так видно, сколько предстоит затянуть.</div>
+        </div>
+      </section>
+
+      <!-- ===== Диагностика хранилища ===== -->
+      <section class="pane" id="pane-diag">
+        <h1 data-i18n-html="h_diag">Диагностика <span class="grad">хранилища</span></h1>
+        <div class="sub" style="margin-top:22px">Что панель хранит в localStorage браузера (префикс crmpanel:).</div>
+        <div class="card"><div id="diagBox"></div></div>
       </section>
 
     </main>
@@ -826,30 +865,36 @@ const SECTIONS = [
   { id:"reports",    label:"Отчёты" },
   { id:"dash",       label:"Дашборд" },
   { id:"monitoring", label:"Мониторинг" },
-  { id:"uploads",    label:"Загруженные инструменты" },
+  { id:"uploads", label:"Загруженные инструменты" },
 ];
 
 /* ---------- меню настроек ---------- */
 const PANES = [
   { id:"over",       label:"Обзор", desc:"Все настройки на одной странице.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>' },
-  { id:"apps",       label:"Приложения и разделы", desc:"Какие разделы панели видит каждое приложение из App Launcher.",
-    ico:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg>' },
-  { id:"monitoring", label:"Мониторинг", desc:"Работа с партнёрами: статусы, зависшие отправки, Context API.",
-    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>' },
-  { id:"uploads",    label:"Загруженные инструменты", desc:"Переименование и удаление загруженных HTML-инструментов.",
-    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' },
-  { id:"access",     label:"Управление доступом", desc:"Пользователи панели: роли и доступные разделы. Требуется запущенный crm-admin.",
-    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
-  { id:"objects",    label:"Сущности", desc:"Список объектов CRM: блоки карточки, порядок полей, поля в шапке и флаг «Техническая».",
+  { id:"objects", group:"Данные", label:"Сущности", desc:"Список объектов CRM: блоки карточки, порядок полей, поля в шапке и флаг «Техническая».",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.5h18M9 9.5V20"/></svg>' },
-  { id:"scheme",     label:"Scheme Builder", desc:"Конструктор схемы данных CRM: сущности, поля, типы и связи.",
+  { id:"scheme", group:"Данные", label:"Scheme Builder", desc:"Конструктор схемы данных CRM: сущности, поля, типы и связи.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><rect x="3" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v6M17.5 15V12H6.5"/></svg>' },
-  { id:"dbtree",     label:"Схемы и таблицы", desc:"Что реально есть в базе: схемы, внутри — таблицы с описанием, числом колонок и оценкой строк.",
+  { id:"dbtree", group:"Данные", label:"Схемы и таблицы", desc:"Что реально есть в базе: схемы, внутри — таблицы с описанием, числом колонок и оценкой строк.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>' },
-  { id:"general",    label:"Общие параметры", desc:"Тема оформления (светлая, тёмная, системная) и язык интерфейса.",
+  { id:"dbconn",     group:"Интеграции", label:"Подключения к БД", desc:"Базы, к которым ходит панель. Здесь же отмечается, какая из них приёмник шаблонов, а какая — база событий crmdb.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>' },
+  { id:"sync",       group:"Интеграции", label:"Синхронизация шаблонов", desc:"Очередь доставки в базу шаблонов, состояние прод-приёмника и обратный ETL.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>' },
+  { id:"events",     group:"Интеграции", label:"События (crmdb)", desc:"Сравнить нашу модель событий с боевой базой и затянуть события из неё.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 4 14 11 14 10 22 20 10 13 10 13 2"/></svg>' },
+  { id:"apps", group:"Панель", label:"Приложения и разделы", desc:"Какие разделы панели видит каждое приложение из App Launcher.",
+    ico:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg>' },
+  { id:"uploads", group:"Панель", label:"Загруженные инструменты", desc:"Переименование и удаление загруженных HTML-инструментов.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' },
+  { id:"general", group:"Панель", label:"Общие параметры", desc:"Тема оформления (светлая, тёмная, системная) и язык интерфейса.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>' },
-  { id:"diag",       label:"Диагностика", desc:"Занятость localStorage браузера данными панели.",
+  { id:"access", group:"Доступ", label:"Управление доступом", desc:"Пользователи панели: роли и доступные разделы. Требуется запущенный crm-admin.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
+  { id:"monitoring", group:"Служебное", label:"Мониторинг", desc:"Работа с партнёрами: статусы, зависшие отправки, Context API.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>' },
+  { id:"diag",       group:"Служебное", label:"Диагностика хранилища", desc:"Занятость localStorage браузера данными панели.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>' },
 ];
 
@@ -862,6 +907,7 @@ function openPane(id){
   document.getElementById("pane-" + id).classList.add("active");
   if (id === "uploads") renderTools();
   if (id === "diag") renderDiag();
+  if (id === "events" && window.EventSync) EventSync.open();
   if (id === "monitoring") monBack();
   if (id === "access" && typeof renderAccessSection === "function") renderAccessSection();
   /* Scheme Builder инициализируется лениво: схема грузится при первом открытии */
@@ -871,7 +917,19 @@ function openPane(id){
   /* Структура базы меняется мимо панели (миграции, применение DDL) — читаем заново */
   if (id === "dbtree" && window.DbExplorer) window.DbExplorer.open();
 }
+/* Пунктов стало тринадцать, и плоским списком они читались плохо: «Подключения к БД»
+   стояли между «Общими параметрами» и «Диагностикой». Рисуем заголовок группы перед
+   первым её пунктом — порядок задаётся самим массивом PANES, отдельного реестра нет. */
+let lastGroup = null;
 PANES.forEach(p => {
+  const group = p.group || "";
+  if (group && group !== lastGroup) {
+    const h = document.createElement("div");
+    h.className = "snav-group";
+    h.textContent = t2(group);
+    snav.appendChild(h);
+  }
+  lastGroup = group;
   const el = document.createElement("div");
   el.className = "nav-item" + (p.id === "over" ? " active" : "");
   el.dataset.id = p.id;
@@ -1096,6 +1154,120 @@ window.addEventListener("storage", e => { if (e.key === "crmpanel:theme") applyT
 applyTheme();
 
 /* ---------- Диагностика ---------- */
+/* ---------- События (crmdb): сравнение с боевой базой и импорт ----------
+   Живёт в настройках, а не в самой панели: это операция над базой, соседняя с
+   подключениями и синком шаблонов, а не повседневная работа с событиями.
+   Ходит в /api/events/import/* — те же ручки, что и у раздела «Перелив в прод». */
+window.EventSync = (function(){
+  var loaded = false;
+
+  function esc(v){ return String(v == null ? "" : v)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function note(id, text, bad){
+    var n = $("#" + id);
+    if (!n) return;
+    n.textContent = text || "";
+    n.style.color = bad ? "var(--red,#e5484d)" : "";
+  }
+
+  function req(method, url){
+    return fetch(url, { method: method, credentials: "same-origin",
+                        headers: { Accept: "application/json" } })
+      .then(function(r){
+        if (r.ok) return r.json();
+        return r.text().then(function(t){
+          var m = t;
+          try { m = JSON.parse(t).message || t; } catch(e){}
+          throw new Error(m || (r.status + " " + r.statusText));
+        });
+      });
+  }
+
+  function scan(){
+    note("evScanNote", "Считаем…");
+    req("GET", "/api/events/import/scan").then(function(d){
+      if (!d.configured){
+        note("evScanNote", "Подключение с галкой «База событий» не выбрано", true);
+        $("#evScanBox").innerHTML = "Отметьте нужное подключение в разделе «Подключения к БД».";
+        return;
+      }
+      if (d.error){ note("evScanNote", d.error, true); return; }
+      note("evScanNote", "");
+      var head = "<div style=\"margin-bottom:10px\"><b>В crmdb событий: " + esc(d.eventsInProd) +
+                 "</b> (онлайновых " + esc(d.eventsOnline) + ", по расписанию " + esc(d.eventsOffline) +
+                 "). У нас заведено: " + esc(d.eventsOurs) + ".</div>";
+      var rows = "";
+      Object.keys(d.tables || {}).forEach(function(t){
+        var r = d.tables[t];
+        var behind = Number(r.prod || 0) - Number(r.linked || 0);
+        rows += "<tr><td class=\"mono\">" + esc(t) + "</td><td>" + esc(r.prod) +
+                "</td><td>" + esc(r.ours) + "</td><td>" + esc(r.linked) + "</td><td>" +
+                (behind > 0 ? "<b>" + behind + "</b>" : "0") + "</td></tr>";
+      });
+      $("#evScanBox").className = "";
+      $("#evScanBox").innerHTML = head +
+        "<table class=\"tbl\"><thead><tr><th>Таблица</th><th>в crmdb</th><th>у нас</th>" +
+        "<th>связано</th><th>не затянуто</th></tr></thead><tbody>" + rows + "</tbody></table>";
+      loaded = true;
+    }).catch(function(e){ note("evScanNote", e.message, true); });
+  }
+
+  /* Сверка DDL отдельной кнопкой: колонка, которой в проде нет, при переливе молча
+     отбрасывается, и знать об этом лучше до, а не после. */
+  function ddl(){
+    note("evScanNote", "Сверяем колонки…");
+    req("GET", "/api/events/export/health").then(function(h){
+      if (!h.configured){ note("evScanNote", "База событий не выбрана", true); return; }
+      if (h.error){ note("evScanNote", h.error, true); return; }
+      var bad = [];
+      Object.keys(h.tables || {}).forEach(function(t){
+        var d = h.tables[t];
+        if (d.error) bad.push(t + ": " + d.error);
+        else if ((d.missingInProd || []).length)
+          bad.push(t + " — в проде нет колонок: " + d.missingInProd.join(", "));
+      });
+      note("evScanNote", bad.length ? "Есть расхождения" : "Колонки совпадают", bad.length > 0);
+      $("#evScanBox").className = "";
+      $("#evScanBox").innerHTML = bad.length
+        ? bad.map(function(b){ return "<div>" + esc(b) + "</div>"; }).join("")
+        : "Все восемь таблиц совпадают с боевыми по составу колонок.";
+    }).catch(function(e){ note("evScanNote", e.message, true); });
+  }
+
+  function importFromProd(){
+    var btn = $("#evImportBtn");
+    btn.disabled = true;
+    note("evImportNote", "Тянем из crmdb…");
+    req("POST", "/api/events/import?limit=500").then(function(d){
+      note("evImportNote", d.more ? "Порция затянута — нажмите ещё раз" : "Готово, тянуть больше нечего");
+      var rows = "";
+      Object.keys(d.copiedByTable || {}).forEach(function(t){
+        rows += "<tr><td class=\"mono\">" + esc(t) + "</td><td>" + esc(d.copiedByTable[t]) + "</td></tr>";
+      });
+      $("#evImportBox").className = "";
+      $("#evImportBox").innerHTML =
+        "<div style=\"margin-bottom:10px\">Затянуто строк <b>" + esc(d.copiedRows) +
+        "</b>, собрано событий <b>" + esc(d.eventsBuilt) + "</b> (онлайновых " +
+        esc(d.eventsOnline) + ", по расписанию " + esc(d.eventsOffline) + ").</div>" +
+        "<table class=\"tbl\"><thead><tr><th>Таблица</th><th>затянуто</th></tr></thead><tbody>" +
+        rows + "</tbody></table>";
+      scan();
+    }).catch(function(e){ note("evImportNote", e.message, true); })
+      .then(function(){ btn.disabled = false; });
+  }
+
+  return {
+    open: function(){
+      if (!$("#evScanBtn").onclick){
+        $("#evScanBtn").onclick = scan;
+        $("#evDdlBtn").onclick = ddl;
+        $("#evImportBtn").onclick = importFromProd;
+      }
+      if (!loaded) scan();   // при первом открытии считаем сразу: это и есть ответ «сколько их»
+    }
+  };
+})();
+
 function renderDiag(){
   const box = $("#diagBox");
   const rows = [];

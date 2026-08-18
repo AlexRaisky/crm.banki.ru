@@ -343,12 +343,6 @@
     inited.export_ = true;
     el("evxReload").onclick = loadExportList;
     el("evxHealth").onclick = checkHealth;
-    el("evxScan").onclick = scanProd;
-    el("evxImport").onclick = importFromProd;
-    if (!can("add", "ev-export")) {
-      el("evxImport").disabled = true;
-      el("evxImport").title = "Нет права на импорт в этом разделе";
-    }
     loadExportList();
   }
 
@@ -422,50 +416,6 @@
               "</td><td>" + esc(x.r.prodId) + "</td><td>" + x.tag + "</td></tr>";
     });
     box.innerHTML = html + "</tbody></table></div>";
-  }
-
-  /* Разведка перед импортом: сколько событий в crmdb и сколько уже у нас. Только чтение. */
-  function scanProd() {
-    say("evxMsg", "Считаем…");
-    evReq("GET", "/import/scan").then(function (d) {
-      if (!d.configured) {
-        say("evxMsg", "База событий (crmdb) не выбрана: /settings → Подключения к БД", "err");
-        return;
-      }
-      if (d.error) { say("evxMsg", d.error, "err"); return; }
-      say("evxMsg", "В crmdb событий " + d.eventsInProd +
-                    " (онлайн " + d.eventsOnline + ", по расписанию " + d.eventsOffline +
-                    "), у нас " + d.eventsOurs, "ok");
-      var html = '<div class="ev-rows"><table><thead><tr>' +
-        "<th>Таблица</th><th>в crmdb</th><th>у нас</th><th>связано</th></tr></thead><tbody>";
-      Object.keys(d.tables || {}).forEach(function (t) {
-        var r = d.tables[t];
-        html += '<tr><td class="tbl">' + esc(t) + "</td><td>" + esc(r.prod) +
-                "</td><td>" + esc(r.ours) + "</td><td>" + esc(r.linked) + "</td></tr>";
-      });
-      el("evxResult").innerHTML = html + "</tbody></table></div>";
-    }).catch(function (e) { fail("evxMsg", e); });
-  }
-
-  /* Импорт идёт порциями: одна транзакция на прогон, потолок строк на таблицу.
-     Пока сервер отвечает more=true, есть что дотягивать — жмут ещё раз. */
-  function importFromProd() {
-    say("evxMsg", "Тянем из crmdb…");
-    el("evxImport").disabled = true;
-    evReq("POST", "/import?limit=500").then(function (d) {
-      say("evxMsg", "Затянуто строк " + d.copiedRows + ", собрано событий " + d.eventsBuilt +
-                    " (онлайн " + d.eventsOnline + ", по расписанию " + d.eventsOffline + ")" +
-                    (d.more ? " — упёрлись в потолок прогона, нажмите ещё раз" : ""),
-          d.more ? "" : "ok");
-      var html = '<div class="ev-rows"><table><thead><tr><th>Таблица</th><th>затянуто</th>' +
-                 "</tr></thead><tbody>";
-      Object.keys(d.copiedByTable || {}).forEach(function (t) {
-        html += '<tr><td class="tbl">' + esc(t) + "</td><td>" + esc(d.copiedByTable[t]) + "</td></tr>";
-      });
-      el("evxResult").innerHTML = html + "</tbody></table></div>";
-      loadExportList();
-    }).catch(function (e) { fail("evxMsg", e); })
-      .then(function () { if (can("add", "ev-export")) el("evxImport").disabled = false; });
   }
 
   /* Сверка DDL: колонка, которой в проде нет, при вставке молча отбрасывается. */
