@@ -10,6 +10,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.AuthorizationManager;
@@ -87,6 +88,15 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/etl/**", "/api/admin/prod-db/**").access(section(Sections.SET_SYNC))
                 .requestMatchers("/api/admin/users/**", "/api/admin/roles/**",
                                  "/api/admin/sections").access(section(Sections.ACCESS))
+                /* Саму МОДЕЛЬ схемы читает не только конструктор в настройках, но и
+                   раздел «Сущности» в панели: из неё он строит подразделы, колонки
+                   списков и поля карточек. Закрыв её настроечными секциями, мы отняли
+                   раздел у всех, кому выдали entities, — и он молча исчезал из меню,
+                   потому что группа прячется, когда у неё не осталось подразделов.
+                   Всё остальное под /api/schema (структура базы, версии, аудит, запись
+                   и DDL) остаётся за настройками. */
+                .requestMatchers(HttpMethod.GET, "/api/schema").access(section(Sections.ENTITIES,
+                        Sections.SET_SCHEME, Sections.SET_OBJECTS, Sections.SET_DBTREE))
                 .requestMatchers("/api/schema/**").access(section(Sections.SET_SCHEME, Sections.SET_OBJECTS,
                                                                  Sections.SET_DBTREE))
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
