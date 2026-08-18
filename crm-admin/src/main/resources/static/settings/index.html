@@ -604,6 +604,13 @@
       <section class="pane" id="pane-events">
         <h1 data-i18n-html="h_events">События <span class="grad">crmdb</span></h1>
         <div class="sub">Боевые события живут в отдельной базе — crmdb, схемы tracker, scheduler, template, commapi. Это НЕ приёмник шаблонов: у того свои схемы, notice и callcenter. Какое подключение считать базой событий, задаёт галка «База событий» в разделе «Подключения к БД».</div>
+        <div class="sub" style="margin-top:8px">Пользователю подключения нужен <b>SELECT</b> на все восемь таблиц. Права выдаются поштучно, и нехватка на одной видна в сверке отдельной строкой. Выдать разом (выполняется в crmdb под владельцем схем):
+          <div class="card mono" style="margin-top:6px;font-size:12px;white-space:pre-wrap">GRANT USAGE ON SCHEMA tracker, scheduler, template, commapi TO &lt;пользователь&gt;;
+GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
+  scheduler.t_get_event, scheduler.t_launch_settings, scheduler.t_execution_steps,
+  template.d_template_mapping, template.d_template_mapping_mass,
+  commapi.d_definition_mapping TO &lt;пользователь&gt;;</div>
+        </div>
 
         <h2 style="margin-top:22px">Сравнить с продовой базой</h2>
         <div class="sub">Сколько событий и строк обвязки лежит в crmdb и сколько из этого уже затянуто к нам. Ничего не меняет — только считает.</div>
@@ -1176,6 +1183,14 @@ window.EventSync = (function(){
     n.style.color = bad ? "var(--red,#e5484d)" : "";
   }
 
+  /* Пока запрос идёт, блок ДОЛЖЕН это показывать. Раньше состояние жило в мелкой
+     подписи сбоку, и нажатие выглядело как «ничего не происходит». */
+  function busy(noteId, boxId, text){
+    note(noteId, text);
+    var box = $("#" + boxId);
+    if (box){ box.className = ""; box.innerHTML = "<div style=\"opacity:.7\">" + esc(text) + "</div>"; }
+  }
+
   /* Текст ошибки дублируем в блок: подпись сбоку мелкая и легко теряется, а «ничего не
      происходит» — худшее, что может показать кнопка. */
   function showError(noteId, boxId, e){
@@ -1199,30 +1214,48 @@ window.EventSync = (function(){
   }
 
   function scan(){
-    note("evScanNote", "Считаем…");
+    busy("evScanNote", "evScanBox", "Считаем строки в crmdb…");
     req("GET", "/api/events/import/scan").then(function(d){
       if (!d.configured){
-        note("evScanNote", "Подключение с галкой «База событий» не выбрано", true);
-        $("#evScanBox").innerHTML = "Отметьте нужное подключение в разделе «Подключения к БД».";
+        note("evScanNote", "Подключение не выбрано", true);
+        $("#evScanBox").className = "";
+        $("#evScanBox").innerHTML = "Отметьте нужное подключение галкой «База событий» в разделе «Подключения к БД».";
         return;
       }
-      if (d.error){ note("evScanNote", d.error, true); return; }
-      note("evScanNote", "");
-      var head = "<div style=\"margin-bottom:10px\"><b>В crmdb событий: " + esc(d.eventsInProd) +
-                 "</b> (онлайновых " + esc(d.eventsOnline) + ", по расписанию " + esc(d.eventsOffline) +
-                 "). У нас заведено: " + esc(d.eventsOurs) + ".</div>";
+      var errs = [];
       var rows = "";
       Object.keys(d.tables || {}).forEach(function(t){
         var r = d.tables[t];
+        if (r.error){
+          errs.push(t + ": " + r.error);
+          rows += "<tr><td class=\"mono\">" + esc(t) + "</td>" +
+                  "<td colspan=\"4\" style=\"color:var(--red,#e5484d)\">" + esc(r.error) + "</td></tr>";
+          return;
+        }
         var behind = Number(r.prod || 0) - Number(r.linked || 0);
         rows += "<tr><td class=\"mono\">" + esc(t) + "</td><td>" + esc(r.prod) +
                 "</td><td>" + esc(r.ours) + "</td><td>" + esc(r.linked) + "</td><td>" +
                 (behind > 0 ? "<b>" + behind + "</b>" : "0") + "</td></tr>";
       });
+      /* Итог по событиям показываем, только если обе ключевые таблицы посчитались:
+         иначе число было бы неполным, а выглядело бы как полное. */
+      var head = d.eventsInProd == null
+        ? "<div style=\"margin-bottom:10px\">Общее число событий не посчитано: часть таблиц недоступна. " +
+          "У нас заведено: " + esc(d.eventsOurs) + ".</div>"
+        : "<div style=\"margin-bottom:10px\"><b>В crmdb событий: " + esc(d.eventsInProd) +
+          "</b> (онлайновых " + esc(d.eventsOnline) + ", по расписанию " + esc(d.eventsOffline) +
+          "). У нас заведено: " + esc(d.eventsOurs) + ".</div>";
+      var foot = errs.length
+        ? "<div style=\"margin-top:10px;color:var(--red,#e5484d)\">Недоступных таблиц: " + errs.length +
+          ". Нужен SELECT для пользователя подключения — команду смотрите ниже в описании раздела.</div>"
+        : "";
+      note("evScanNote", errs.length ? "Готово, но с ошибками доступа" : "Готово", errs.length > 0);
       $("#evScanBox").className = "";
       $("#evScanBox").innerHTML = head +
         "<table class=\"tbl\"><thead><tr><th>Таблица</th><th>в crmdb</th><th>у нас</th>" +
-        "<th>связано</th><th>не затянуто</th></tr></thead><tbody>" + rows + "</tbody></table>";
+        "<th>связано</th><th>не затянуто</th></tr></thead><tbody>" + rows + "</tbody></table>" +
+        (d.error ? "<div style=\"margin-top:10px;color:var(--red,#e5484d)\">" + esc(d.error) + "</div>" : "") +
+        foot;
       loaded = true;
     }).catch(function(e){ showError("evScanNote", "evScanBox", e); });
   }
@@ -1230,7 +1263,7 @@ window.EventSync = (function(){
   /* Сверка DDL отдельной кнопкой: колонка, которой в проде нет, при переливе молча
      отбрасывается, и знать об этом лучше до, а не после. */
   function ddl(){
-    note("evScanNote", "Сверяем колонки…");
+    busy("evScanNote", "evScanBox", "Сверяем колонки таблиц с crmdb…");
     req("GET", "/api/events/export/health").then(function(h){
       if (!h.configured){ note("evScanNote", "База событий не выбрана", true); return; }
       if (h.error){ note("evScanNote", h.error, true); return; }
@@ -1252,12 +1285,16 @@ window.EventSync = (function(){
   function importFromProd(){
     var btn = $("#evImportBtn");
     btn.disabled = true;
-    note("evImportNote", "Тянем из crmdb…");
+    busy("evImportNote", "evImportBox", "Тянем строки из crmdb… это может занять минуту.");
     req("POST", "/api/events/import?limit=500").then(function(d){
       note("evImportNote", d.more ? "Порция затянута — нажмите ещё раз" : "Готово, тянуть больше нечего");
       var rows = "";
       Object.keys(d.copiedByTable || {}).forEach(function(t){
         rows += "<tr><td class=\"mono\">" + esc(t) + "</td><td>" + esc(d.copiedByTable[t]) + "</td></tr>";
+      });
+      var bad = "";
+      Object.keys(d.failedByTable || {}).forEach(function(t){
+        bad += "<div style=\"color:var(--red,#e5484d)\">" + esc(t) + ": " + esc(d.failedByTable[t]) + "</div>";
       });
       $("#evImportBox").className = "";
       $("#evImportBox").innerHTML =
@@ -1265,7 +1302,10 @@ window.EventSync = (function(){
         "</b>, собрано событий <b>" + esc(d.eventsBuilt) + "</b> (онлайновых " +
         esc(d.eventsOnline) + ", по расписанию " + esc(d.eventsOffline) + ").</div>" +
         "<table class=\"tbl\"><thead><tr><th>Таблица</th><th>затянуто</th></tr></thead><tbody>" +
-        rows + "</tbody></table>";
+        rows + "</tbody></table>" +
+        (bad ? "<div style=\"margin-top:10px\"><b>Пропущены из-за ошибок:</b>" + bad +
+               "<div style=\"opacity:.8\">Ссылки на строки из этих таблиц останутся пустыми, " +
+               "пока не выдадут права и не повторят импорт.</div></div>" : "");
       scan();
     }).catch(function(e){ showError("evImportNote", "evImportBox", e); })
       .then(function(){ btn.disabled = false; });

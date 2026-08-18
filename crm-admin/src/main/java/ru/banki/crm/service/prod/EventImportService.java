@@ -100,9 +100,17 @@ public class EventImportService {
         }
         Map<String, Object> tables = new LinkedHashMap<>();
         try (Connection c = eventDb.connection()) {
+            /* Каждая таблица считается ОТДЕЛЬНО и со своей обработкой ошибки. Одна
+               недоступная таблица — обычное дело: права в crmdb выдаются поштучно, и
+               «permission denied» на одной не должен превращать всю сверку в пустой
+               экран. Ошибку показываем в её строке, остальные строки при этом честные. */
             for (String t : ORDER) {
                 Map<String, Object> row = new LinkedHashMap<>();
-                row.put("prod", countIn(c, t));
+                try {
+                    row.put("prod", countIn(c, t));
+                } catch (Exception e) {
+                    row.put("error", rootMessage(e));
+                }
                 row.put("ours", jdbc.queryForObject("SELECT count(*) FROM " + t, Long.class));
                 row.put("linked", jdbc.queryForObject(
                         "SELECT count(*) FROM flow.t_event_link WHERE our_table = ?", Long.class, t));
@@ -110,17 +118,28 @@ public class EventImportService {
             }
             /* Событий в проде столько, сколько строк в ДВУХ справочниках: онлайновые в
                t_event_comm, по расписанию в t_get_event. Остальные таблицы — обвязка,
-               считать их как события нельзя. */
-            long online = countIn(c, "tracker.t_event_comm");
-            long offline = countIn(c, "scheduler.t_get_event");
+               считать их как события нельзя. Берём уже посчитанное выше, чтобы не
+               спрашивать базу дважды и не падать второй раз на тех же правах. */
+            Long online = countOf(tables, "tracker.t_event_comm");
+            Long offline = countOf(tables, "scheduler.t_get_event");
             out.put("eventsOnline", online);
             out.put("eventsOffline", offline);
-            out.put("eventsInProd", online + offline);
+            out.put("eventsInProd", online == null || offline == null ? null : online + offline);
         } catch (Exception e) {
+            // сюда попадаем только если не открылось само соединение
             out.put("error", rootMessage(e));
         }
         out.put("tables", tables);
         return out;
+    }
+
+    /** Счётчик из уже собранной сводки: null, если по этой таблице была ошибка. */
+    private static Long countOf(Map<String, Object> tables, String table) {
+        Object row = tables.get(table);
+        if (row instanceof Map<?, ?> m && m.get("prod") instanceof Number n) {
+            return n.longValue();
+        }
+        return null;
     }
 
     private static long countIn(Connection c, String table) throws Exception {
@@ -145,15 +164,25 @@ public class EventImportService {
             throw bad("База событий (crmdb) не выбрана: /settings -> Подключения к БД, галка «база событий».");
         }
         Map<String, Object> copied = new LinkedHashMap<>();
+        Map<String, Object> failed = new LinkedHashMap<>();
         long total = 0;
         boolean more = false;
         try (Connection c = eventDb.connection()) {
             for (String table : ORDER) {
-                int n = copyTable(c, table, limitPerTable);
-                copied.put(table, n);
-                total += n;
-                if (n >= limitPerTable) {
-                    more = true;
+                /* Как и в разведке: недоступная таблица не должна отменять весь импорт.
+                   Записываем её в отдельный список и идём дальше — то, что доступно,
+                   затянется, а по остальному человек увидит, каких прав не хватает.
+                   Учтите: без части таблиц ссылки внутри пачки останутся пустыми. */
+                try {
+                    int n = copyTable(c, table, limitPerTable);
+                    copied.put(table, n);
+                    total += n;
+                    if (n >= limitPerTable) {
+                        more = true;
+                    }
+                } catch (Exception e) {
+                    failed.put(table, rootMessage(e));
+                    log.warn("импорт из crmdb: таблица {} пропущена: {}", table, rootMessage(e));
                 }
             }
         } catch (Exception e) {
@@ -170,6 +199,7 @@ public class EventImportService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("copiedRows", total);
         out.put("copiedByTable", copied);
+        out.put("failedByTable", failed);
         out.put("eventsBuilt", online + offline);
         out.put("eventsOnline", online);
         out.put("eventsOffline", offline);
