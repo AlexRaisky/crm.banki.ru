@@ -659,7 +659,27 @@ function renderLauncher(){
   });
 }
 /* элементы, доступные только в отдельных приложениях (appOnly) */
-function childVisible(k){ return !k.appOnly || k.appOnly.includes(currentApp); }
+/* Приложение может ограничивать не только разделы, но и отдельные подразделы:
+   набор задаётся в настройках («Приложения и разделы») и лежит в crmpanel:appSections
+   одним плоским списком id — родителя оболочка находит сама, по NAV.
+
+   Особый случай — набор, в котором нет НИ ОДНОГО подраздела этой группы: так выглядят
+   наборы, сохранённые до появления подразделов. Читать их как «все подразделы скрыты»
+   нельзя — выкат молча опустошил бы меню тем, у кого набор настроен. Считаем такую
+   группу разрешённой целиком; первое же сохранение из формы запишет подразделы явно. */
+function appAllowsChild(k){
+  const a = allowedSections();
+  if (!a) return true;
+  const parent = NAV.find(n => n.children && n.children.some(c => c.id === k.id));
+  if (!parent) return true;
+  const kids = parent.children.map(c => c.id);
+  if (!kids.some(id => a.includes(id))) return true;
+  return a.includes(k.id);
+}
+function childVisible(k){
+  if (k.appOnly && !k.appOnly.includes(currentApp)) return false;
+  return appAllowsChild(k);
+}
 
 /* ---------- очерёдность подразделов ----------
    Настраивается в настроечной админке («Приложения и разделы») и хранится
@@ -742,6 +762,11 @@ function renderNav(){
   navEl.innerHTML = "";
   NAV.forEach(item => {
     if (!appAllows(item.id)) return;
+    /* Группа, у которой приложение погасило все подразделы, сама превращается в пустой
+       флайаут — прячем её целиком. Динамические группы («Сущности», «Загруженные
+       инструменты») сюда не попадают: их children на момент отрисовки могут быть ещё
+       пусты, и правило скрывало бы раздел до загрузки схемы. */
+    if (item.children && item.children.length && !item.children.some(childVisible)) return;
     const el = document.createElement("div");
     el.className = "nav-item" + (item.id === cur.sid ? " active" : "");
     el.dataset.id = item.id; el.title = t(item.label);

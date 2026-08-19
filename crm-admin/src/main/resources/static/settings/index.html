@@ -161,6 +161,11 @@
   .check-row:last-child{border-bottom:none}
   .check-row input{accent-color:#3CFAB4;width:17px;height:17px;cursor:pointer}
   .check-row input:disabled{cursor:not-allowed}
+  /* Подраздел — отступом и приглушённой подписью: строк в карточке стало под тридцать,
+     и без визуальной вложенности группа от своего пункта не отличалась. */
+  .check-row.sub{padding-left:30px;font-size:13px;color:var(--dim);border-bottom-style:dashed}
+  .check-row.sub input{width:15px;height:15px}
+  .check-row.sub input:disabled{opacity:.4}
   .check-row .muted{color:var(--faint);font-size:12px;margin-left:auto;font-family:var(--mono)}
 
   /* радио/селекты общих параметров */
@@ -294,8 +299,9 @@
       <!-- ===== Приложения и разделы ===== -->
       <section class="pane" id="pane-apps">
         <h1 data-i18n-html="h_apps">Приложения <span class="grad">и разделы</span></h1>
-        <div class="sub" data-i18n="Какие разделы панели доступны в каждом приложении (App Launcher). Пока всем приложениям разрешены все разделы — набор будет корректироваться. «Главная» доступна всегда.">Какие разделы панели доступны в каждом приложении (App Launcher). Пока всем приложениям
-          разрешены все разделы — набор будет корректироваться. «Главная» доступна всегда.</div>
+        <div class="sub" data-i18n="Какие разделы и подразделы панели доступны в каждом приложении (App Launcher). Снятая группа скрывает всё, что внутри неё. «Главная» доступна всегда.">Какие разделы и подразделы панели доступны в каждом приложении (App Launcher).
+          Снятая группа скрывает всё, что внутри неё. «Главная» доступна всегда.</div>
+        <div class="sub" style="margin-top:8px">Это не права доступа: набор приложения решает, что видно в меню при выбранном приложении, а кому раздел вообще доступен — «Управление доступом». Скрытый здесь раздел остаётся доступным в другом приложении и по прямой ссылке.</div>
         <div id="appsBox"></div>
         <div class="actions">
           <button class="btn accent" id="saveApps" data-i18n="Сохранить">Сохранить</button>
@@ -823,7 +829,9 @@ const S_EN = {
   "Занятость localStorage браузера данными панели.":"Panel data usage of the browser localStorage.",
   "Служебные настройки панели CRM Team. Выберите блок или воспользуйтесь меню слева.":"Service settings of the CRM Team panel. Pick a block or use the left menu.",
   "Открыть →":"Open →", "Статистика →":"Statistics →",
-  "Какие разделы панели доступны в каждом приложении (App Launcher). Пока всем приложениям разрешены все разделы — набор будет корректироваться. «Главная» доступна всегда.":"Which panel sections are available in each app (App Launcher). For now all apps have all sections — the set will be adjusted. Home is always available.",
+  "Какие разделы и подразделы панели доступны в каждом приложении (App Launcher). Снятая группа скрывает всё, что внутри неё. «Главная» доступна всегда.":"Which panel sections and subsections are available in each app (App Launcher). Unchecking a group hides everything inside it. Home is always available.",
+  "подразделы берутся из схемы":"subsections come from the schema",
+  "подразделы — сами загруженные файлы":"subsections are the uploaded files",
   "Сохранить":"Save", "Сбросить (все разделы всем)":"Reset (all sections for all)",
   "✓ Сохранено — панель применит при загрузке":"✓ Saved — the panel applies it on load",
   "✓ Сохранено":"✓ Saved",
@@ -966,13 +974,33 @@ const APPS = ["Администрирование","Аналитика","Мар�
    набором разделов их не показывало вовсе: отметить-то было нечего. */
 const SECTIONS = [
   { id:"home",       label:"Главная", locked:true },
-  { id:"comms",      label:"Управление коммуникациями" },
-  { id:"events",     label:"События" },
-  { id:"entities",   label:"Сущности" },
-  { id:"reports",    label:"Отчёты" },
-  { id:"dash",       label:"Дашборд" },
-  { id:"monitoring", label:"Мониторинг" },
-  { id:"uploads",    label:"Загруженные инструменты" },
+  { id:"comms",      label:"Управление коммуникациями", children:[
+      { id:"onelink",    label:"OneLink Builder" },
+      { id:"admin",      label:"Мастер коммуникаций" },
+      { id:"viewer",     label:"Просмотр настроек" },
+      { id:"srcbuilder", label:"Конструктор source" },
+      { id:"promo",      label:"Планирование промо" },
+      { id:"abtests",    label:"А/Б тесты" },
+      { id:"heatmap",    label:"Тепловая карта" } ]},
+  { id:"events",     label:"События", children:[
+      { id:"ev-online",  label:"Онлайн-событие" },
+      { id:"ev-offline", label:"Событие по расписанию" },
+      { id:"ev-list",    label:"Список событий" } ]},
+  /* Подразделы «Сущностей» и «Загруженных инструментов» строятся на лету — из схемы и из
+     списка загруженных файлов. Перечислить их здесь нельзя: у каждой установки свои. */
+  { id:"entities",   label:"Сущности", dynamic:"подразделы берутся из схемы" },
+  { id:"reports",    label:"Отчёты", children:[
+      { id:"rep-planfact", label:"Plan-Fact" },
+      { id:"rep-matrix",   label:"CRM Matrix" },
+      { id:"rep-leadgen",  label:"CRM Leadgen" },
+      { id:"rep-smscheck", label:"ЧЕК СМС траффик" },
+      { id:"rep-demo",     label:"Пример визуализации отчёта" } ]},
+  { id:"dash",       label:"Дашборд", children:[
+      { id:"dashboard",  label:"Общая статистика" },
+      { id:"deviations", label:"Панель отклонений" } ]},
+  { id:"monitoring", label:"Мониторинг", children:[
+      { id:"mon-campaigns", label:"Базовая работа кампаний" } ]},
+  { id:"uploads",    label:"Загруженные инструменты", dynamic:"подразделы — сами загруженные файлы" },
   { id:"journeys",   label:"Цепочки" },
 ];
 
@@ -1202,6 +1230,19 @@ function appsSavedNote(){
   setTimeout(() => n.classList.remove("show"), 2500);
 }
 
+/* Подраздел отмечен, если он перечислен в наборе приложения. Особый случай — набор,
+   в котором нет НИ ОДНОГО подраздела этой группы: так выглядят наборы, сохранённые
+   до появления подразделов (в них были только разделы верхнего уровня). Считать их
+   «все подразделы скрыты» нельзя — выкат молча опустошил бы меню; читаем как «группа
+   разрешена целиком». Первое же сохранение из этой формы запишет подразделы явно.
+   То же правило работает и в оболочке панели (appAllowsChild в js/shell.js). */
+function appChildChecked(allowed, group, kid){
+  if (!allowed) return true;
+  const kids = (group.children || []).map(k => k.id);
+  if (!kids.some(id => allowed.includes(id))) return true;
+  return allowed.includes(kid.id);
+}
+
 function renderApps(){
   const cfg = appsCfg || {};
   const box = $("#appsBox"); box.innerHTML = "";
@@ -1212,13 +1253,44 @@ function renderApps(){
     card.dataset.app = app;
     card.innerHTML = `<h3><span class="app-badge">${app[0]}</span>${t2(app)}</h3>
       <div class="note">${allowed ? t2("Настроенный набор разделов") : t2("Все разделы (по умолчанию)")}</div>` +
-      SECTIONS.map(s => `
+      SECTIONS.map(s => {
+        const on = s.locked || !allowed || allowed.includes(s.id);
+        const head = `
         <label class="check-row">
-          <input type="checkbox" data-sec="${s.id}" ${s.locked ? "checked disabled" : (!allowed || allowed.includes(s.id)) ? "checked" : ""}>
+          <input type="checkbox" data-sec="${s.id}" ${s.locked ? "checked disabled" : on ? "checked" : ""}>
           ${t2(s.label)}
           ${s.locked ? '<span class="muted">' + t2("всегда доступна") + '</span>' : ""}
+          ${s.dynamic ? '<span class="muted">' + t2(s.dynamic) + '</span>' : ""}
+        </label>`;
+        const kids = (s.children || []).map(k => `
+        <label class="check-row sub">
+          <input type="checkbox" data-sec="${k.id}" data-parent="${s.id}"
+                 ${appChildChecked(allowed, s, k) ? "checked" : ""} ${on ? "" : "disabled"}>
+          ${t2(k.label)}
         </label>`).join("");
+        return head + kids;
+      }).join("");
     box.appendChild(card);
+  });
+  /* Снятая группа гасит свои подразделы: отмечать пункты внутри скрытого раздела
+     бессмысленно, и включённая галка там читалась бы как «доступно». */
+  box.querySelectorAll('input[data-sec]:not([data-parent])').forEach(top => {
+    const kidsOf = () => [...top.closest(".card").querySelectorAll('input[data-parent="' + top.dataset.sec + '"]')];
+    top.addEventListener("change", () => {
+      kidsOf().forEach(k => {
+        k.disabled = !top.checked;
+        if (top.checked) k.checked = true;
+      });
+    });
+    /* Сняли последний подраздел — снимаем и саму группу. Иначе набор содержал бы
+       раздел без единого своего пункта, а это читается как «ограничений нет» (см.
+       appChildChecked): человек снял все три галки, а после перезагрузки они вернулись бы. */
+    kidsOf().forEach(k => k.addEventListener("change", () => {
+      if (!kidsOf().some(x => x.checked)) {
+        top.checked = false;
+        top.dispatchEvent(new Event("change"));
+      }
+    }));
   });
 }
 
@@ -1264,6 +1336,9 @@ $("#saveApps").onclick = async () => {
   const cfg = {};
   document.querySelectorAll("#appsBox .card").forEach(card => {
     const ids = ["home"];
+    /* Пишем и разделы, и подразделы одним списком: оболочка панели различает их сама,
+       по родителю из NAV. Погашенные подразделы снятой группы не пишем — раздел и так
+       скрыт целиком. */
     card.querySelectorAll("input[data-sec]:not(:disabled)").forEach(ch => { if (ch.checked) ids.push(ch.dataset.sec); });
     cfg[card.dataset.app] = ids;
   });
