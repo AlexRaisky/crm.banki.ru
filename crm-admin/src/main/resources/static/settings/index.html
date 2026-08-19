@@ -986,9 +986,10 @@ const SECTIONS = [
       { id:"ev-online",  label:"Онлайн-событие" },
       { id:"ev-offline", label:"Событие по расписанию" },
       { id:"ev-list",    label:"Список событий" } ]},
-  /* Подразделы «Сущностей» и «Загруженных инструментов» строятся на лету — из схемы и из
-     списка загруженных файлов. Перечислить их здесь нельзя: у каждой установки свои. */
-  { id:"entities",   label:"Сущности", dynamic:"подразделы берутся из схемы" },
+  /* Подразделы «Сущностей» и «Загруженных инструментов» захардкодить нельзя — они
+     строятся на лету, из схемы и из списка загруженных файлов, и у каждой установки
+     свои. Поэтому список подтягивается при открытии панели (loadAppDynKids). */
+  { id:"entities",   label:"Сущности", dyn:"entities", dynNote:"подразделы берутся из схемы" },
   { id:"reports",    label:"Отчёты", children:[
       { id:"rep-planfact", label:"Plan-Fact" },
       { id:"rep-matrix",   label:"CRM Matrix" },
@@ -1000,7 +1001,7 @@ const SECTIONS = [
       { id:"deviations", label:"Панель отклонений" } ]},
   { id:"monitoring", label:"Мониторинг", children:[
       { id:"mon-campaigns", label:"Базовая работа кампаний" } ]},
-  { id:"uploads",    label:"Загруженные инструменты", dynamic:"подразделы — сами загруженные файлы" },
+  { id:"uploads",    label:"Загруженные инструменты", dyn:"uploads", dynNote:"подразделы — сами загруженные файлы" },
   { id:"journeys",   label:"Цепочки" },
 ];
 
@@ -1062,6 +1063,8 @@ function openPane(id){
   if (id === "events" && window.EventSync) EventSync.open();
   if (id === "evexport" && window.EventExport) EventExport.open();
   if (id === "procs" && window.ProcessControl) ProcessControl.open();
+  /* Сущности и загруженные инструменты меняются мимо этой страницы — перечитываем */
+  if (id === "apps") loadAppDynKids();
   if (id === "monitoring") monBack();
   if (id === "access" && typeof renderAccessSection === "function") renderAccessSection();
   /* Scheme Builder инициализируется лениво: схема грузится при первом открытии */
@@ -1236,9 +1239,45 @@ function appsSavedNote(){
    «все подразделы скрыты» нельзя — выкат молча опустошил бы меню; читаем как «группа
    разрешена целиком». Первое же сохранение из этой формы запишет подразделы явно.
    То же правило работает и в оболочке панели (appAllowsChild в js/shell.js). */
+/* Подразделы, которых нет в коде: сущности берём из схемы, инструменты — из того же
+   localStorage, откуда их читает панель. Идентификаторы обязаны совпадать с id пунктов
+   меню (ent-<схема>, up-<файл>) — по ним оболочка и фильтрует.
+   Пустой список не беда: группа покажется одной строкой, как раньше. */
+let appDynKids = { entities: [], uploads: [] };
+
+function appEntityKids(model){
+  const schemas = (model && model.schemas) || [];
+  const tables = (model && model.entities) || [];
+  const head = id => tables.find(t => (t.schema || t.id) === id && t.id === id)
+                  || tables.find(t => (t.schema || t.id) === id);
+  return schemas.map(s => {
+    const h = head(s.id);
+    if (!h) return null;
+    /* Служебные сущности панель по умолчанию не показывает — и здесь не показываем:
+       строка, которой в меню всё равно нет, только запутает. */
+    if (h.technical) return null;
+    return { id: "ent-" + h.id, label: h.plural_label || h.label || s.label || s.id };
+  }).filter(Boolean);
+}
+
+function loadAppDynKids(){
+  const tools = store.get("uploadedTools", []) || [];
+  appDynKids.uploads = [{ id:"up-new", label:"Загрузить инструмент" }]
+    .concat(tools.map(t => ({ id:"up-" + t.id, label:t.name || t.id })));
+  return fetch("../api/schema", { credentials:"same-origin", headers:{ Accept:"application/json" } })
+    .then(r => r.ok ? r.json() : null)
+    .then(m => { appDynKids.entities = appEntityKids(m); })
+    .catch(() => { /* схема недоступна — покажем группу без раскрытия, как раньше */ })
+    .then(() => renderApps());
+}
+
+function appKids(s){
+  return s.children || (s.dyn ? appDynKids[s.dyn] : null) || [];
+}
+
 function appChildChecked(allowed, group, kid){
   if (!allowed) return true;
-  const kids = (group.children || []).map(k => k.id);
+  const kids = appKids(group).map(k => k.id);
   if (!kids.some(id => allowed.includes(id))) return true;
   return allowed.includes(kid.id);
 }
@@ -1260,9 +1299,9 @@ function renderApps(){
           <input type="checkbox" data-sec="${s.id}" ${s.locked ? "checked disabled" : on ? "checked" : ""}>
           ${t2(s.label)}
           ${s.locked ? '<span class="muted">' + t2("всегда доступна") + '</span>' : ""}
-          ${s.dynamic ? '<span class="muted">' + t2(s.dynamic) + '</span>' : ""}
+          ${s.dyn && !appKids(s).length ? '<span class="muted">' + t2(s.dynNote) + '</span>' : ""}
         </label>`;
-        const kids = (s.children || []).map(k => `
+        const kids = appKids(s).map(k => `
         <label class="check-row sub">
           <input type="checkbox" data-sec="${k.id}" data-parent="${s.id}"
                  ${appChildChecked(allowed, s, k) ? "checked" : ""} ${on ? "" : "disabled"}>
@@ -1285,6 +1324,7 @@ function renderApps(){
     /* Сняли последний подраздел — снимаем и саму группу. Иначе набор содержал бы
        раздел без единого своего пункта, а это читается как «ограничений нет» (см.
        appChildChecked): человек снял все три галки, а после перезагрузки они вернулись бы. */
+    if (!kidsOf().length) return;
     kidsOf().forEach(k => k.addEventListener("change", () => {
       if (!kidsOf().some(x => x.checked)) {
         top.checked = false;
