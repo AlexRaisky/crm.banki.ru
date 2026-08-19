@@ -95,6 +95,18 @@
   .snav-group{font-family:var(--mono,monospace);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--faint);margin:16px 0 6px;padding:0 10px}
   .snav-group:first-child{margin-top:4px}
+
+  /* Бейдж контура — те же цвета, что в панели (css/shell.css): зелёный прод,
+     жёлтый препрод, синий тест. Узнаваемость важнее экономии на дублировании. */
+  .env-pill{align-self:center;margin-left:12px;font-family:var(--mono);font-size:10px;font-weight:700;
+    letter-spacing:.12em;padding:4px 9px;border-radius:12px;white-space:nowrap}
+  .env-pill.prod{color:var(--green);background:var(--green-bg,rgba(60,250,180,.12));border:1px solid rgba(60,250,180,.3)}
+  .env-pill.preprod{color:var(--amber,#f5a524);background:rgba(255,184,77,.12);border:1px solid rgba(255,184,77,.35)}
+  .env-pill.test{color:var(--blue);background:var(--blue-bg);border:1px solid rgba(80,195,255,.35)}
+  /* Строка среды на панели доступа: там ошибка «выдал не в том контуре» дороже всего. */
+  .env-line{display:flex;align-items:center;gap:10px;margin:14px 0 0;padding:10px 12px;border-radius:10px;
+    border:1px solid var(--line);background:var(--card2);font-size:13px;color:var(--dim)}
+  .env-line .env-pill{margin-left:0}
   .nav-item{display:flex;align-items:center;gap:12px;padding:10px 11px;border-radius:10px;cursor:pointer;
     color:var(--dim);white-space:nowrap;border:1px solid transparent;margin-bottom:2px;user-select:none;font-size:14px;font-weight:500}
   .nav-item:hover{background:var(--card);color:var(--ink)}
@@ -271,6 +283,9 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
       <span data-i18n="Настройки">Настройки</span>
     </div>
+    <!-- Бейдж среды: настройки трёх контуров выглядят одинаково, а базы у них разные —
+         роли, выданные «не там», ищут потом долго. Имя приходит из GET /api/env. -->
+    <span class="env-pill" id="envPill" style="display:none"></span>
     <!-- относительный путь: работает и локально (/settings/ → /), и на GitHub Pages
          (/crm.banki.ru/settings/ → /crm.banki.ru/); абсолютный "/" уводил на корень домена -->
     <a class="back" href="../" data-i18n="← В панель управления">← В панель управления</a>
@@ -373,6 +388,13 @@
         <h1 data-i18n-html="h_access">Управление <span class="grad">доступом</span></h1>
         <div class="sub" data-i18n="Пользователи панели: роль задаёт уровень возможностей, набор разделов — что видит пользователь. Требуется запущенный crm-admin и роль ADMIN.">Пользователи панели: роль задаёт уровень возможностей, набор разделов — что видит
           пользователь. Требуется запущенный crm-admin и роль ADMIN.</div>
+        <!-- Среда прописана и здесь, а не только в шапке: пользователи и роли у каждого
+             контура свои, и «выдал права, а у человека ничего не появилось» почти всегда
+             означает, что выдали в другом. Пусть это будет видно там, где нажимают. -->
+        <div class="env-line" id="envLineAccess" style="display:none">
+          <span class="env-pill" id="envPillAccess"></span>
+          <span data-i18n="Права выдаются в этой среде. У прода, препрода и теста базы разные — роли и пользователи не общие.">Права выдаются в этой среде. У прода, препрода и теста базы разные — роли и пользователи не общие.</span>
+        </div>
         <!-- admin-users.js рендерит сюда (контейнер по историческому id) -->
         <div id="sec-access"></div>
       </section>
@@ -931,7 +953,8 @@ const S_EN = {
   "Самозапрет на кредиты":"Self-imposed credit ban", "Реквизиты":"Company details",
   "Доступность":"Reachability", "Конфигурация":"Configuration", "Связи":"Relations",
   "Флаги":"Flags", "Показатели":"Metrics", "Служебные":"System fields",
-  "Что делают кнопки":"What the buttons do",
+  "Что делают кнопки":"What the buttons do", "Среда":"Environment",
+  "Права выдаются в этой среде. У прода, препрода и теста базы разные — роли и пользователи не общие.":"Permissions are granted in this environment. Prod, preprod and test have separate databases — roles and users are not shared.",
   "Свернуть меню":"Collapse menu", "Развернуть меню":"Expand menu",
 };
 function t2(s){ return (LANG === "en" && S_EN[s]) ? S_EN[s] : s; }
@@ -1098,6 +1121,33 @@ PANES.forEach(p => {
   el.onclick = () => openPane(p.id);
   snav.appendChild(el);
 });
+
+/* ---------- бейдж среды (prod / preprod / test) ----------
+   Три контура открываются одинаковыми страницами, и перепутать их легко: адрес
+   отличается номером порта. Имя среды отдаёт бэкенд; нет ответа — бейдж не рисуем
+   вовсе, врать про контур хуже, чем промолчать. */
+const ENV_LABEL = { prod:"ПРОД", preprod:"ПРЕПРОД", test:"ТЕСТ" };
+fetch("../api/env", { credentials:"same-origin", headers:{ Accept:"application/json" } })
+  .then(r => r.ok ? r.json() : null)
+  .then(env => {
+    if (!env || !env.name) return;
+    const name = String(env.name).toLowerCase();
+    const label = ENV_LABEL[name] || name.toUpperCase();
+    ["envPill", "envPillAccess"].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.className = "env-pill " + name;
+      el.textContent = label;
+      el.title = t2("Среда") + ": " + name;
+      el.style.display = "";
+    });
+    /* Строку на панели доступа показываем только вместе с известной средой: пустая
+       рамка со словами «в этой среде» без имени бесполезна. */
+    const line = document.getElementById("envLineAccess");
+    if (line) line.style.display = "";
+    document.title = "CRM Team · " + t2("Настройки") + " · " + label;
+  })
+  .catch(() => { /* статика без бэкенда — раздел работает, бейджа просто нет */ });
 
 /* ---------- сворачивание меню ----------
    Состояние держим в localStorage: свернул один раз — и оно таким остаётся, иначе
@@ -2600,7 +2650,7 @@ window.CRM = window.CRM || (function(){
   border:1px solid var(--line);color:var(--ink);padding:11px 15px;border-radius:11px;font-size:13px;
   box-shadow:0 14px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(8px);transition:.18s;pointer-events:none"></div>
 <style>#sbToast.show{opacity:1;transform:none}</style>
-<script src="scheme-builder.js?v=27"></script>
+<script src="scheme-builder.js?v=28"></script>
 <!-- «Сущности»: общий с панелью расчёт раскладки + сам раздел. Порядок важен:
      object-manager.js работает с хранилищем схемы из scheme-builder.js. -->
 <script src="../js/entity-layout.js?v=4"></script>

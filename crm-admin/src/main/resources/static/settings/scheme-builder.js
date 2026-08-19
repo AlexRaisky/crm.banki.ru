@@ -796,17 +796,31 @@ function fieldFormHtml(f, isNew){
     <div class="sb-acts">
       <button class="btn accent" id="sbF_save">${isNew ? T("Добавить") : T("Сохранить")}</button>
       ${isNew ? `<button class="btn" id="sbF_cancel">${T("Отмена")}</button>`
-              : `<button class="btn" id="sbF_up">↑</button><button class="btn" id="sbF_down">↓</button>
+              : `<button class="btn" id="sbF_add">+ ${T("Колонка")}</button>
+                 <button class="btn" id="sbF_up">↑</button><button class="btn" id="sbF_down">↓</button>
                  <button class="btn ghost-danger" id="sbF_del">${T("Удалить")}</button>`}
     </div></div>`;
 }
+/* Форма поля живёт в ДВУХ местах: модалка «новое поле» и инспектор справа. Разметка
+   у них общая (fieldFormHtml), значит и id одинаковые — sbF_name, sbF_desc и прочие.
+   Пока обе формы в документе, document.querySelector отдаёт первую по разметке, а это
+   инспектор (он объявлен выше модалки). Из-за этого «Добавить» в модалке читал поля
+   ВЫБРАННОГО поля, а не того, что набрали: имя совпадало с существующим, срабатывала
+   проверка «поле с таким именем уже есть», и колонка не создавалась. Перезагрузка
+   страницы сбрасывала выбор — и следующее создание проходило. Отсюда и «глючит, надо
+   обновлять после каждого».
+   fieldRoot — та форма, с которой работаем сейчас. Ставится ровно в двух точках:
+   openFieldModal (модалка) и renderFieldForm (инспектор). */
+let fieldRoot = null;
+function fq(sel){ return (fieldRoot || document).querySelector(sel); }
+
 function readFieldForm(){
-  return { name: slug($("#sbF_name").value), label: $("#sbF_label").value || $("#sbF_name").value,
-    db_type: $("#sbF_db").value, ui_type: $("#sbF_ui").value,
-    required: $("#sbF_req").checked, read_only: $("#sbF_ro").checked,
-    description: $("#sbF_desc").value, target_entity: $("#sbF_target").value,
-    relation_kind: $("#sbF_rel").value, default_value: $("#sbF_default").value,
-    options: $("#sbF_options").value.split(",").map(x => x.trim()).filter(Boolean) };
+  return { name: slug(fq("#sbF_name").value), label: fq("#sbF_label").value || fq("#sbF_name").value,
+    db_type: fq("#sbF_db").value, ui_type: fq("#sbF_ui").value,
+    required: fq("#sbF_req").checked, read_only: fq("#sbF_ro").checked,
+    description: fq("#sbF_desc").value, target_entity: fq("#sbF_target").value,
+    relation_kind: fq("#sbF_rel").value, default_value: fq("#sbF_default").value,
+    options: fq("#sbF_options").value.split(",").map(x => x.trim()).filter(Boolean) };
 }
 function fieldPreviewHtml(f){
   const ro = f.read_only ? "disabled" : "", dv = esc(f.default_value ?? "");
@@ -849,22 +863,22 @@ function fieldHintHtml(f){
   return parts.length ? `<div class="sb-hint ${parts.some(p => p.startsWith("⚠")) ? "bad" : ""}">${parts.join("<br>")}</div>` : "";
 }
 function refreshFieldAux(){
-  if (!$("#sbF_preview")) return;
+  if (!fq("#sbF_preview")) return;
   const f = readFieldForm();
-  $("#sbF_preview").innerHTML = fieldPreviewHtml(f);
-  $("#sbF_hint").innerHTML = fieldHintHtml(f);
-  const a = $("#sbF_applyUi");
-  if (a) a.onclick = ev => { ev.preventDefault(); $("#sbF_ui").value = dbToUi($("#sbF_db").value); refreshFieldAux(); };
+  fq("#sbF_preview").innerHTML = fieldPreviewHtml(f);
+  fq("#sbF_hint").innerHTML = fieldHintHtml(f);
+  const a = fq("#sbF_applyUi");
+  if (a) a.onclick = ev => { ev.preventDefault(); fq("#sbF_ui").value = dbToUi(fq("#sbF_db").value); refreshFieldAux(); };
 }
 /* isNew: у нового поля тип БД следует за UI-типом, пока его не правили руками.
    У существующего поля тип БД не трогаем автоматически — это данные в проде,
    для смены есть явная ссылка «применить» в подсказке. */
 function wireFieldAux(isNew){
-  ["sbF_name","sbF_label","sbF_default","sbF_options","sbF_desc"].forEach(id => { const el = $("#"+id); if (el) el.oninput = refreshFieldAux; });
-  ["sbF_target","sbF_rel","sbF_req","sbF_ro"].forEach(id => { const el = $("#"+id); if (el) el.onchange = refreshFieldAux; });
-  const db = $("#sbF_db");
+  ["sbF_name","sbF_label","sbF_default","sbF_options","sbF_desc"].forEach(id => { const el = fq("#"+id); if (el) el.oninput = refreshFieldAux; });
+  ["sbF_target","sbF_rel","sbF_req","sbF_ro"].forEach(id => { const el = fq("#"+id); if (el) el.onchange = refreshFieldAux; });
+  const db = fq("#sbF_db");
   if (db) db.onchange = () => { db.dataset.touched = "1"; refreshFieldAux(); };
-  const ui = $("#sbF_ui");
+  const ui = fq("#sbF_ui");
   if (ui) ui.onchange = () => {
     if (db && (isNew ? !db.dataset.touched : !db.value.trim())) db.value = uiMeta(ui.value).db;
     refreshFieldAux();
@@ -875,17 +889,22 @@ function renderFieldForm(out){
   const e = entityById(state.entity), f = e && e.fields[state.field];
   if (!f){ out.innerHTML = `<div class="sb-form"><div class="sb-empty">${T("Выберите поле внутри таблицы на схеме.")}</div></div>`; return; }
   out.innerHTML = fieldFormHtml(f, false);
+  fieldRoot = out;
   wireFieldAux();
-  $("#sbF_save").onclick = () => {
+  fq("#sbF_save").onclick = () => {
     const v = readFieldForm();
     if (!v.name) return toast(T("Нужно системное имя"));
     if (e.fields.some((x, j) => j !== state.field && x.name === v.name)) return toast(T("Поле с таким именем уже есть"));
     Object.assign(f, v);
     commit("update", "field", `${e.id}.${v.name}`, v); toast(T("Поле сохранено"));
   };
-  $("#sbF_up").onclick = () => moveField(e, state.field, -1);
-  $("#sbF_down").onclick = () => moveField(e, state.field, 1);
-  $("#sbF_del").onclick = () => {
+  /* Колонки заводят пачками, а после создания панель показывает созданное поле —
+     и кнопка «+ Колонка» с формы таблицы пропадала из виду. Дублируем её здесь. */
+  const add = fq("#sbF_add");
+  if (add) add.onclick = openFieldModal;
+  fq("#sbF_up").onclick = () => moveField(e, state.field, -1);
+  fq("#sbF_down").onclick = () => moveField(e, state.field, 1);
+  fq("#sbF_del").onclick = () => {
     if (!confirm(T("Удалить поле?"))) return;
     const name = f.name;
     e.fields.splice(state.field, 1);
@@ -1268,7 +1287,14 @@ function openModal(html){
   $("#sbModalCard").innerHTML = html;
   m.classList.add("open");
 }
-function closeModal(){ $("#sbModal").classList.remove("open"); }
+/* Разметку модалки вычищаем, а не только прячем: иначе её поля остаются в документе
+   и продолжают перехватывать чтение по id у формы в инспекторе. */
+function closeModal(){
+  $("#sbModal").classList.remove("open");
+  const card = $("#sbModalCard");
+  if (card) card.innerHTML = "";
+  if (fieldRoot === card) fieldRoot = null;
+}
 
 /* Новая СУЩНОСТЬ: заводим схему и сразу таблицу с тем же именем.
    Пустая сущность бесполезна — в базе схема без таблиц ничего не значит,
@@ -1402,9 +1428,15 @@ function openEntityModal(preset){
 function openFieldModal(){
   const e = entityById(state.entity);
   if (!e) return toast(T("Сначала выберите таблицу"));
+  /* Снимаем выбор поля ДО открытия модалки: пока в инспекторе открыта форма поля,
+     в документе живут две формы с одинаковыми id. Плюс так видно, куда добавляем —
+     инспектор показывает саму таблицу. */
+  state.field = null;
+  renderInspector();
   const f = { name:"", label:"", db_type:"varchar(255)", ui_type:"text", required:false, read_only:false,
     description:"", target_entity:"", relation_kind:"", default_value:"", options:[] };
   openModal(`<h3>${T("Новое поле")} · ${esc(e.label)}</h3>` + fieldFormHtml(f, true));
+  fieldRoot = $("#sbModalCard");
   wireFieldAux(true);
   $("#sbF_cancel").onclick = closeModal;
   $("#sbF_save").onclick = () => {
@@ -1412,6 +1444,10 @@ function openFieldModal(){
     if (!v.name) return toast(T("Нужно системное имя"));
     if (e.fields.some(x => x.name === v.name)) return toast(T("Поле с таким именем уже есть"));
     e.fields.push(v);
+    /* Раскрываем таблицу на холсте: узел показывает первые MAX_ROWS полей, а новое
+       становится последним — оно оказывалось за «Показать ещё N полей», и создание
+       выглядело как «ничего не произошло». */
+    state.expanded[e.id] = true;
     state.field = e.fields.length - 1; setTab("field");
     closeModal(); commit("create", "field", `${e.id}.${v.name}`, v); toast(T("Поле добавлено"));
   };
