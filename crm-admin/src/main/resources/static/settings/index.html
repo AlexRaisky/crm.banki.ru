@@ -2643,7 +2643,10 @@ window.CRM = window.CRM || (function(){
     adminRoles:        () => req("GET", "/admin/roles"),
     adminCreateRole:   r => req("POST", "/admin/roles", r),
     adminUpdateRole:   (id, r) => req("PUT", "/admin/roles/" + id, r),
-    adminDeleteRole:   id => req("DELETE", "/admin/roles/" + id)
+    adminDeleteRole:   id => req("DELETE", "/admin/roles/" + id),
+    /* Панель больше не удаляет роли, а отключает их: удаление отказывало на встроенных
+       и на ролях с носителями — то есть на всех, ради которых его и звали. */
+    adminSetRoleActive:(id, active) => req("PUT", "/admin/roles/" + id + "/active", { active: active })
   };
   req("GET", "/me").then(me => { C.me = me; }).catch(() => {});
   return C;
@@ -2651,7 +2654,7 @@ window.CRM = window.CRM || (function(){
 </script>
 <!-- версия в адресе: файл правится часто, а без неё браузер держит старую копию
      и правка «не приезжает» ни после раската, ни после обычной перезагрузки -->
-<script src="../admin-users.js?v=2"></script>
+<script src="../admin-users.js?v=3"></script>
 
 <!-- Scheme Builder: модалка и всплывающее уведомление раздела -->
 <div class="sb-modal" id="sbModal"><div class="sb-modal-card" id="sbModalCard"></div></div>

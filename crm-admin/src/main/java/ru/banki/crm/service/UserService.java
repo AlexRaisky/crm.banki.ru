@@ -109,8 +109,15 @@ public class UserService {
         if (roleId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Не указана роль");
         }
-        return roles.findById(roleId)
+        Role role = roles.findById(roleId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Некорректная роль"));
+        /* Неактивная роль не пускает своих носителей в панель, поэтому назначать её —
+           значит завести учётку, которая сразу не работает. Отказываем внятно. */
+        if (!role.isActive()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Роль «" + role.getName() + "» отключена — назначить её нельзя. Включите роль или выберите другую.");
+        }
+        return role;
     }
 
     private long countAdmins() {

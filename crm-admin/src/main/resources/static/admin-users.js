@@ -268,18 +268,24 @@
   /* ================= ПОЛЬЗОВАТЕЛИ ================= */
   /* Роли, которые текущий пользователь может назначить: без супер-роли; админ-роли —
      только супер-админ. */
-  function assignableRoles() {
+  function assignableRoles(currentRoleId) {
     return allRoles.filter(function (r) {
-      return !r.isSuperAdmin && (!r.isAdmin || isSuperAdmin());
+      if (r.isSuperAdmin) return false;
+      if (r.isAdmin && !isSuperAdmin()) return false;
+      /* Отключённую роль назначать нельзя — сервер такой запрос и не примет. Но если она
+         уже стоит у правимой учётки, оставляем её в списке: иначе выпадашка молча
+         подменила бы роль соседней, и человек сохранил бы не то, что видел. */
+      return r.active !== false || (currentRoleId != null && r.id === currentRoleId);
     });
   }
   function roleSelect(currentRoleId) {
     var sel = h("select", { style: fieldStyle() });
-    var list = assignableRoles();
+    var list = assignableRoles(currentRoleId);
     // роль редактируемой учётки может быть не в assignable (напр. её нельзя переназначить) —
     // но такие записи не редактируются (manageable=false), так что сюда не попадают.
     list.forEach(function (r) {
-      var o = h("option", { value: String(r.id) }, [r.name + (r.isAdmin ? " · админ" : "")]);
+      var o = h("option", { value: String(r.id) },
+        [r.name + (r.isAdmin ? " · админ" : "") + (r.active === false ? " · " + tr("отключена") : "")]);
       if (currentRoleId != null && r.id === currentRoleId) o.selected = true;
       sel.appendChild(o);
     });
@@ -395,8 +401,16 @@
         var cell = "padding:8px;border-bottom:1px solid var(--line)";
         var type = r.isSuperAdmin ? tr("супер-админ") : (r.isAdmin ? tr("админ") : tr("обычная"))
           + (r.isSystem ? " · " + tr("встроенная") : "");
-        table.appendChild(h("tr", null, [
-          h("td", { style: cell }, [r.name]),
+        var off = r.active === false;
+        /* Отключённая роль — вся строка приглушена: она остаётся в справочнике, но
+           никого никуда не пускает, и путать её с рабочей нельзя. */
+        var nameCell = [h("span", null, [r.name])];
+        if (off) nameCell.push(h("span", {
+          style: "margin-left:8px;font-size:11px;color:var(--coral,#ff6b8a);border:1px solid rgba(255,107,138,.4);" +
+                 "border-radius:10px;padding:2px 7px;white-space:nowrap"
+        }, [tr("отключена")]));
+        table.appendChild(h("tr", { style: off ? "opacity:.55" : "" }, [
+          h("td", { style: cell }, nameCell),
           h("td", { style: cell + ";color:var(--dim)" }, [type]),
           h("td", { style: cell + ";color:var(--dim);max-width:320px" }, [roleSummary(r)]),
           h("td", { style: cell }, [String(r.users)]),
@@ -406,8 +420,16 @@
               : [
                   h("button", { style: btnStyle("#334155"), onclick: function () { roleForm(r, container); } }, [tr("Изменить")]),
                   h("span", null, [" "]),
-                  r.isSystem ? h("span", { style: "color:var(--faint);font-size:12px" }, [tr("встроенная")])
-                    : h("button", { style: btnStyle("#991b1b"), onclick: function () { delRole(r, container); } }, [tr("Удалить")])
+                  /* Вместо «Удалить»: удаление отказывало на роли с носителями и на
+                     встроенной, то есть почти всегда. Деактивация делает то, что от
+                     удаления и хотели, — роль перестаёт использоваться, — и ничего не
+                     теряет: матрица остаётся, историю можно поднять. */
+                  h("button", {
+                    style: btnStyle(off ? "#166534" : "#991b1b"),
+                    title: off ? tr("Роль снова можно назначать, её носители смогут входить")
+                               : tr("Роль останется в списке, но назначать её будет нельзя, а её носители не смогут войти")
+                  , onclick: function () { toggleRole(r, container); } },
+                    [off ? tr("Включить") : tr("Отключить")])
                 ])
         ]));
       });
@@ -456,9 +478,20 @@
     container.insertBefore(box, container.firstChild);
   }
 
-  function delRole(r, container) {
-    if (!confirm(tr("Удалить роль") + " «" + r.name + "»?")) return;
-    CRM.adminDeleteRole(r.id).then(function () { renderRoles(container); }).catch(function (e) { alert(e.message); });
+  /* Отключение спрашиваем подтверждением и говорим, скольких оно коснётся: у роли с
+     носителями это отказ во входе, и узнать об этом лучше до нажатия, а не от коллег.
+     Включение обратно подтверждения не требует — оно возвращает штатное состояние. */
+  function toggleRole(r, container) {
+    var off = r.active === false;
+    if (!off) {
+      var who = r.users > 0
+        ? tr("Учёток на этой роли") + ": " + r.users + ". " + tr("Войти в панель они не смогут.")
+        : tr("Учёток на этой роли нет.");
+      if (!confirm(tr("Отключить роль") + " «" + r.name + "»? " + who + " " +
+                   tr("Роль и её права сохранятся, назначать её будет нельзя."))) return;
+    }
+    CRM.adminSetRoleActive(r.id, off).then(function () { renderRoles(container); })
+      .catch(function (e) { alert(e.message); });
   }
 
   /* ---------- вход в раздел ---------- */

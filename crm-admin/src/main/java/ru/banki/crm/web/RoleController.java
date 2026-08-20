@@ -34,6 +34,17 @@ public class RoleController {
         return roles.update(id, req);
     }
 
+    /**
+     * Включить/отключить роль. В панели это заменило удаление: удалить роль можно было
+     * только пока на ней нет ни одной учётки, а нужда «эта роль больше не используется»
+     * возникает как раз у ролей с людьми.
+     */
+    @PutMapping("/{id}/active")
+    public RoleView setActive(@PathVariable Long id, @RequestBody java.util.Map<String, Object> body) {
+        return roles.setActive(id, Boolean.TRUE.equals(body.get("active")));
+    }
+
+    /** Удаление осталось для полностью ошибочных записей; панель им больше не пользуется. */
     @DeleteMapping("/{id}")
     public void delete(@PathVariable Long id) {
         roles.delete(id);
