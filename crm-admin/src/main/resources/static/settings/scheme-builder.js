@@ -1282,6 +1282,19 @@ function openViewModal(){
   $("#sbView_close").onclick = closeModal;
 }
 
+/* Сообщение об отказе внутри модалки: рядом с кнопкой, по которой человек только что
+   нажал. Тост в углу для этого не годится — он и мелкий, и на другом краю экрана.
+   Возвращает false, чтобы обработчик мог написать `return modalErr(...)`. */
+function modalErr(id, msg){
+  const el = $("#" + id);
+  if (el){ el.textContent = msg; el.classList.add("on"); }
+  toast(msg);   /* тост оставляем: кто-то смотрит именно туда */
+  return false;
+}
+
+/** Допустимый идентификатор Postgres — то же правило, что у планировщика DDL. */
+function validIdent(s){ return /^[a-z_][a-z0-9_]{0,62}$/.test(String(s || "")); }
+
 function openModal(html){
   const m = $("#sbModal");
   $("#sbModalCard").innerHTML = html;
@@ -1317,6 +1330,7 @@ function openSchemaModal(){
     </div>
     <div class="sb-fg"><label>${T("Описание")}</label><textarea id="sbNS_desc"></textarea></div>
     <div class="sb-modal-note" id="sbNS_hint"></div>
+    <div class="sb-modal-err" id="sbNS_err"></div>
     <div class="sb-acts"><button class="btn accent" id="sbNS_create">${T("Создать")}</button>
       <button class="btn" id="sbNS_cancel">${T("Отмена")}</button></div></div>`);
   /* Что реально уедет в базу: схема и таблица по отдельности, каждая со своим полем
@@ -1357,8 +1371,20 @@ function openSchemaModal(){
   $("#sbNS_create").onclick = () => {
     const p = parts();
     const id = p.id;
-    if (!$("#sbNS_id").value && !$("#sbNS_label").value) return toast(T("Введите название"));
-    if (entityById(id)) return toast(T("Такое системное имя уже есть"));
+    if (!$("#sbNS_id").value && !$("#sbNS_label").value) {
+      return modalErr("sbNS_err", T("Введите название или системное имя"));
+    }
+    if (entityById(id)) {
+      return modalErr("sbNS_err", T("Таблица с системным именем") + " «" + id + "» " +
+        T("уже есть в модели — выберите другое имя"));
+    }
+    const twinS = model.entities.find(x => schemaOf(x) === p.schema && tableOf(x) === p.table);
+    if (twinS) {
+      return modalErr("sbNS_err", T("В схеме") + " " + p.schema + " " + T("уже есть таблица") + " " +
+        p.table + " (" + T("сущность") + " " + twinS.id + ")");
+    }
+    if (!validIdent(p.schema)) return modalErr("sbNS_err", T("Недопустимое имя схемы") + ": " + p.schema);
+    if (!validIdent(p.table)) return modalErr("sbNS_err", T("Недопустимое имя таблицы") + ": " + p.table);
     /* Схему, которой ещё нет, заводим; существующую переиспользуем — это и есть
        «добавить таблицу в имеющуюся сущность», отдельной кнопки для того не нужно. */
     const label = $("#sbNS_label").value || id;
@@ -1392,6 +1418,7 @@ function openEntityModal(preset){
           `<option value="${esc(x.id)}">${esc(x.label || x.id)}</option>`).join("")}</datalist></div>
     </div>
     <div class="sb-fg"><label>${T("Описание")}</label><textarea id="sbNE_desc"></textarea></div>
+    <div class="sb-modal-err" id="sbNE_err"></div>
     <div class="sb-acts"><button class="btn accent" id="sbNE_create">${T("Создать")}</button>
       <button class="btn" id="sbNE_cancel">${T("Отмена")}</button></div></div>`);
   $("#sbNE_label").oninput = () => {
@@ -1403,9 +1430,27 @@ function openEntityModal(preset){
   $("#sbNE_cancel").onclick = closeModal;
   $("#sbNE_create").onclick = () => {
     const id = slug($("#sbNE_id").value || $("#sbNE_label").value);
-    if (!id) return toast(T("Введите название"));
-    if (entityById(id)) return toast(T("Такое системное имя уже есть"));
-    ensureSchema(slug($("#sbNE_schema").value) || id);
+    const schema = slug($("#sbNE_schema").value) || id;
+    const table = slug($("#sbNE_table").value) || id;
+    /* Отказ показываем В МОДАЛКЕ, а не только тостом в углу. Тост живёт две секунды
+       и висит у противоположного края экрана — человек, который смотрит на кнопку,
+       его не видит, и нажатие выглядит как «ничего не произошло». */
+    if (!id) return modalErr("sbNE_err", T("Введите название или системное имя"));
+    if (entityById(id)) {
+      return modalErr("sbNE_err", T("Таблица с системным именем") + " «" + id + "» " +
+        T("уже есть в модели — выберите другое имя"));
+    }
+    /* Пара «схема + таблица» тоже обязана быть уникальной: в базе это одно имя, и две
+       такие строки модели превратились бы в одну таблицу, а DDL отказал бы позже и
+       непонятно почему. */
+    const twin = model.entities.find(x => schemaOf(x) === schema && tableOf(x) === table);
+    if (twin) {
+      return modalErr("sbNE_err", T("В схеме") + " " + schema + " " + T("уже есть таблица") + " " +
+        table + " (" + T("сущность") + " " + twin.id + ")");
+    }
+    if (!validIdent(schema)) return modalErr("sbNE_err", T("Недопустимое имя схемы") + ": " + schema);
+    if (!validIdent(table)) return modalErr("sbNE_err", T("Недопустимое имя таблицы") + ": " + table);
+    ensureSchema(schema);
     const n = model.entities.length;
     const e = { id, label: $("#sbNE_label").value || id, plural_label: $("#sbNE_label").value || id,
       table: slug($("#sbNE_table").value) || id, schema: slug($("#sbNE_schema").value) || id,
