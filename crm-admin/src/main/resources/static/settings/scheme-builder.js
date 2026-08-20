@@ -213,6 +213,9 @@ const relationById = id => model.relations.find(r => r.id === id);
    ============================================================ */
 /* Схема таблицы; пусто (старая модель) — таблица сама себе схема. */
 function schemaOf(e){ return (e && e.schema) || (e && e.id) || ""; }
+/* Имя таблицы в базе. Правило то же, что у schemaOf и у планировщика DDL на сервере
+   (DdlPlanner.tableOf): не задано — берём системное имя. */
+function tableOf(e){ return (e && e.table) || (e && e.id) || ""; }
 
 /* Все схемы: описанные явно плюс те, что упомянуты таблицами. */
 function allSchemas(){
@@ -726,7 +729,18 @@ function renderEntityForm(out){
   $("#sbE_save").onclick = () => {
     const old = e.id, id = slug($("#sbE_id").value);
     if (!id) return toast(T("Нужно системное имя"));
+    /* Здесь запрет остаётся: правка чужого системного имени переклеила бы на эту
+       таблицу связи соседней. Создание — другое дело, там имя подбирается само. */
     if (id !== old && entityById(id)) return toast(T("Такое системное имя уже есть"));
+    const newSchema = slug($("#sbE_schema").value) || id;
+    const newTable = slug($("#sbE_table").value) || id;
+    /* Правило базы: в одной схеме двух таблиц с одним именем не бывает. Раньше правка
+       спокойно делала дубль, и падало это уже на «Применить к базе». */
+    const clash = model.entities.find(x => x !== e && schemaOf(x) === newSchema && tableOf(x) === newTable);
+    if (clash) {
+      return toast(T("В схеме") + " " + newSchema + " " + T("уже есть таблица") + " " + newTable +
+        " (" + T("сущность") + " " + clash.id + ")");
+    }
     e.id = id; e.table = slug($("#sbE_table").value) || id;
     /* Схема: пусто — таблица становится сама себе схемой (прежнее поведение).
        Имени нет в списке — заводим схему на лету, отдельной кнопки для этого не нужно. */
@@ -1287,13 +1301,44 @@ function openViewModal(){
    Возвращает false, чтобы обработчик мог написать `return modalErr(...)`. */
 function modalErr(id, msg){
   const el = $("#" + id);
-  if (el){ el.textContent = msg; el.classList.add("on"); }
+  if (el){ el.textContent = msg; el.classList.add("on"); el.classList.remove("note"); }
   toast(msg);   /* тост оставляем: кто-то смотрит именно туда */
   return false;
 }
 
 /** Допустимый идентификатор Postgres — то же правило, что у планировщика DDL. */
 function validIdent(s){ return /^[a-z_][a-z0-9_]{0,62}$/.test(String(s || "")); }
+
+/* Свободное системное имя.
+   <p>
+   Два разных правила, которые легко перепутать — и мы их перепутали.
+   <p>
+   В БАЗЕ имя таблицы — это schema.table, и уникальным оно обязано быть только внутри
+   схемы: product.product_type и client.product_type прекрасно уживаются.
+   <p>
+   В МОДЕЛИ системное имя (id) — внутренний ключ: на него ссылаются связи
+   (from_entity/to_entity), выбор в инспекторе и планировщик DDL, который складывает
+   сущности в карту по id. Два одинаковых id развалили бы эти ссылки молча: связь ушла
+   бы к «первой попавшейся» таблице.
+   <p>
+   Поэтому занятое системное имя больше не повод отказывать. Внутренний ключ получает
+   префикс схемы, а таблица создаётся ровно под тем именем, которое попросили. */
+function freeEntityId(id, schema){
+  if (!id || !entityById(id)) return id;
+  const withSchema = slug(schema + "_" + id);
+  if (withSchema && !entityById(withSchema)) return withSchema;
+  for (let i = 2; i < 100; i++){
+    const c = withSchema + "_" + i;
+    if (!entityById(c)) return c;
+  }
+  return withSchema + "_" + model.entities.length;
+}
+
+/* Пояснение (не отказ) в модалке: что панель сделала не так, как набрали. */
+function modalNote(id, msg){
+  const el = $("#" + id);
+  if (el){ el.textContent = msg; el.classList.add("on", "note"); }
+}
 
 function openModal(html){
   const m = $("#sbModal");
@@ -1370,13 +1415,8 @@ function openSchemaModal(){
   $("#sbNS_cancel").onclick = closeModal;
   $("#sbNS_create").onclick = () => {
     const p = parts();
-    const id = p.id;
     if (!$("#sbNS_id").value && !$("#sbNS_label").value) {
       return modalErr("sbNS_err", T("Введите название или системное имя"));
-    }
-    if (entityById(id)) {
-      return modalErr("sbNS_err", T("Таблица с системным именем") + " «" + id + "» " +
-        T("уже есть в модели — выберите другое имя"));
     }
     const twinS = model.entities.find(x => schemaOf(x) === p.schema && tableOf(x) === p.table);
     if (twinS) {
@@ -1385,6 +1425,13 @@ function openSchemaModal(){
     }
     if (!validIdent(p.schema)) return modalErr("sbNS_err", T("Недопустимое имя схемы") + ": " + p.schema);
     if (!validIdent(p.table)) return modalErr("sbNS_err", T("Недопустимое имя таблицы") + ": " + p.table);
+    /* Системное имя внутри модели должно быть уникальным (на него ссылаются связи),
+       но занятость — не повод отказывать: в базе имя всё равно schema.table. */
+    const id = freeEntityId(p.id, p.schema);
+    if (id !== p.id) {
+      modalNote("sbNS_err", T("Системное имя") + " «" + p.id + "» " + T("уже занято другой таблицей — ") +
+        T("внутри модели эта будет") + " «" + id + "». " + T("В базе создастся") + " " + p.schema + "." + p.table);
+    }
     /* Схему, которой ещё нет, заводим; существующую переиспользуем — это и есть
        «добавить таблицу в имеющуюся сущность», отдельной кнопки для того не нужно. */
     const label = $("#sbNS_label").value || id;
@@ -1429,20 +1476,16 @@ function openEntityModal(preset){
   $("#sbNE_id").oninput = () => $("#sbNE_id").dataset.edited = "1";
   $("#sbNE_cancel").onclick = closeModal;
   $("#sbNE_create").onclick = () => {
-    const id = slug($("#sbNE_id").value || $("#sbNE_label").value);
-    const schema = slug($("#sbNE_schema").value) || id;
-    const table = slug($("#sbNE_table").value) || id;
+    const asked = slug($("#sbNE_id").value || $("#sbNE_label").value);
+    const schema = slug($("#sbNE_schema").value) || asked;
+    const table = slug($("#sbNE_table").value) || asked;
     /* Отказ показываем В МОДАЛКЕ, а не только тостом в углу. Тост живёт две секунды
        и висит у противоположного края экрана — человек, который смотрит на кнопку,
        его не видит, и нажатие выглядит как «ничего не произошло». */
-    if (!id) return modalErr("sbNE_err", T("Введите название или системное имя"));
-    if (entityById(id)) {
-      return modalErr("sbNE_err", T("Таблица с системным именем") + " «" + id + "» " +
-        T("уже есть в модели — выберите другое имя"));
-    }
-    /* Пара «схема + таблица» тоже обязана быть уникальной: в базе это одно имя, и две
-       такие строки модели превратились бы в одну таблицу, а DDL отказал бы позже и
-       непонятно почему. */
+    if (!asked) return modalErr("sbNE_err", T("Введите название или системное имя"));
+    /* Единственный настоящий запрет — правило базы: в одной схеме двух таблиц с одним
+       именем не бывает. Занятость системного имени запретом НЕ является: оно внутреннее
+       (см. freeEntityId). */
     const twin = model.entities.find(x => schemaOf(x) === schema && tableOf(x) === table);
     if (twin) {
       return modalErr("sbNE_err", T("В схеме") + " " + schema + " " + T("уже есть таблица") + " " +
@@ -1450,6 +1493,11 @@ function openEntityModal(preset){
     }
     if (!validIdent(schema)) return modalErr("sbNE_err", T("Недопустимое имя схемы") + ": " + schema);
     if (!validIdent(table)) return modalErr("sbNE_err", T("Недопустимое имя таблицы") + ": " + table);
+    const id = freeEntityId(asked, schema);
+    if (id !== asked) {
+      modalNote("sbNE_err", T("Системное имя") + " «" + asked + "» " + T("уже занято другой таблицей — ") +
+        T("внутри модели эта будет") + " «" + id + "». " + T("В базе создастся") + " " + schema + "." + table);
+    }
     ensureSchema(schema);
     const n = model.entities.length;
     const e = { id, label: $("#sbNE_label").value || id, plural_label: $("#sbNE_label").value || id,

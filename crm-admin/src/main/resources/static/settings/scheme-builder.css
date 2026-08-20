@@ -175,6 +175,8 @@
 .sb-modal-err{display:none;margin:10px 0 0;padding:9px 11px;border-radius:9px;font-size:12.5px;
   color:var(--coral);background:rgba(255,107,138,.12);border:1px solid rgba(255,107,138,.35)}
 .sb-modal-err.on{display:block}
+/* Пояснение, а не отказ: панель сделала не совсем то, что набрали, и говорит об этом. */
+.sb-modal-err.note{color:var(--blue);background:var(--blue-bg);border-color:rgba(80,195,255,.35)}
 .sb-modal-card{width:min(720px,94vw);max-height:88vh;overflow:auto;background:var(--card);
   border:1px solid var(--line);border-radius:18px;padding:20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.55)}
 .sb-modal-card h3{font-size:17px;font-weight:700;margin-bottom:14px;color:var(--ink)}
