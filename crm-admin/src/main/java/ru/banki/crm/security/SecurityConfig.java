@@ -108,6 +108,7 @@ public class SecurityConfig {
                 /* Выключатель процессов: читать состояние — по секции, нажимать кнопки —
                    по праву edit внутри неё (проверяет сам контроллер). */
                 .requestMatchers("/api/admin/processes/**").access(section(Sections.SET_PROCS))
+                .requestMatchers("/api/admin/jira/**").access(section(Sections.SET_JIRA))
                 .requestMatchers("/api/admin/users/**", "/api/admin/roles/**",
                                  "/api/admin/sections").access(section(Sections.ACCESS))
                 /* Саму МОДЕЛЬ схемы читает не только конструктор в настройках, но и

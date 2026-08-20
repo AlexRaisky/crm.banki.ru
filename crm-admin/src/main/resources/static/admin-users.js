@@ -26,7 +26,7 @@
     "rep-demo": "Пример визуализации отчёта",
     "mon-campaigns": "Базовая работа кампаний",
     uploads: "Загруженные инструменты",
-    "set-dbconn": "Подключения к БД", "set-procs": "Процессы переливов",
+    "set-dbconn": "Подключения к БД", "set-jira": "Jira", "set-procs": "Процессы переливов",
     "set-sync": "Синхронизация шаблонов",
     "set-events": "Импорт событий из crmdb", "set-scheme": "Scheme Builder",
     "set-objects": "Сущности (настройка)", "set-dbtree": "Схемы и таблицы",

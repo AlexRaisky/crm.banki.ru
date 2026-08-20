@@ -711,6 +711,51 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
         </div>
       </section>
 
+      <!-- ===== Jira: подключение и карта полей ===== -->
+      <section class="pane" id="pane-jira">
+        <h1 data-i18n-html="h_jira">Интеграция <span class="grad">с Jira</span></h1>
+        <div class="sub">Из «Планирования промо» задача CRM-Промо заводится кнопкой. Здесь задаётся, куда ходить и под кем: адрес Jira, токен сервисной учётки, проект и тип задачи.</div>
+        <div class="sub" style="margin-top:8px">Токен — <b>personal access token</b> из профиля учётки в Jira (Profile → Personal Access Tokens). Нужны права <b>Browse Projects</b> и <b>Create Issues</b> в проекте, а чтобы постановщиком становился нажавший кнопку, а не робот, — ещё и <b>Modify Reporter</b>. Токен хранится на сервере и наружу не отдаётся.</div>
+
+        <div class="card">
+          <div class="dbc-grid">
+            <div class="dbc-fld wide">
+              <label>Адрес Jira</label>
+              <input class="dbc-in mono" id="jrUrl" placeholder="https://jira.banki.ru">
+            </div>
+            <div class="dbc-fld">
+              <label>Токен сервисной учётки</label>
+              <input class="dbc-in" id="jrToken" type="password" autocomplete="new-password" placeholder="••••••">
+              <span class="mono" id="jrTokenHint" style="color:var(--faint);font-size:11px">оставьте пустым — прежний токен сохранится</span>
+            </div>
+            <div class="dbc-fld">
+              <label>Ключ проекта</label>
+              <input class="dbc-in mono" id="jrProject" placeholder="CRM">
+            </div>
+            <div class="dbc-fld">
+              <label>Тип задачи</label>
+              <input class="dbc-in" id="jrType" placeholder="CRM-Промо">
+            </div>
+            <div class="dbc-fld">
+              <label>Метки по умолчанию</label>
+              <input class="dbc-in mono" id="jrLabels" placeholder="crm_retention">
+            </div>
+          </div>
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">
+            <button type="button" class="btn primary" id="jrSave">Сохранить</button>
+            <button type="button" class="btn" id="jrCheck">Проверить связь</button>
+            <button type="button" class="btn" id="jrMeta">Прочитать поля проекта</button>
+            <button type="button" class="btn" id="jrAuto">Сопоставить поля</button>
+            <span class="save-note" id="jrMsg"></span>
+          </div>
+          <div id="jrBox" class="empty" style="margin-top:12px">Заполните адрес и токен, затем нажмите «Проверить связь».</div>
+        </div>
+
+        <h2 style="margin-top:26px">Карта полей</h2>
+        <div class="sub">Поля в Jira называются <span class="mono">customfield_12345</span>, и угадать их снаружи нельзя — их отдаёт сама Jira. «Сопоставить поля» читает экран создания задачи и связывает поля по названию; что не совпало, останется пустым и будет видно здесь.</div>
+        <div class="card"><div id="jrMapBox" class="empty">Нажмите «Сопоставить поля».</div></div>
+      </section>
+
       <!-- ===== Процессы переливов: остановить и пустить снова ===== -->
       <section class="pane" id="pane-procs">
         <h1 data-i18n-html="h_procs">Процессы <span class="grad">переливов</span></h1>
@@ -973,7 +1018,8 @@ const S_HTML = {
         h_sync:'Синхронизация <span class="grad">шаблонов</span>',
         h_events:'События <span class="grad">crmdb</span>',
         h_evexport:'Перелив событий <span class="grad">в прод</span>',
-        h_procs:'Процессы <span class="grad">переливов</span>' },
+        h_procs:'Процессы <span class="grad">переливов</span>',
+        h_jira:'Интеграция <span class="grad">с Jira</span>' },
   en: { h_over:'Admin <span class="grad">settings</span>', h_apps:'Apps <span class="grad">& sections</span>',
         h_mon:'Integration <span class="grad">monitoring</span>', h_up:'Uploaded <span class="grad">tools</span>',
         h_gen:'General <span class="grad">settings</span>', h_diag:'Storage <span class="grad">diagnostics</span>',
@@ -985,7 +1031,8 @@ const S_HTML = {
         h_sync:'Template <span class="grad">sync</span>',
         h_events:'Events <span class="grad">crmdb</span>',
         h_evexport:'Event export <span class="grad">to prod</span>',
-        h_procs:'Transfer <span class="grad">processes</span>' }
+        h_procs:'Transfer <span class="grad">processes</span>',
+        h_jira:'Jira <span class="grad">integration</span>' }
 };
 function translateStatic(){
   document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t2(el.dataset.i18n); });
@@ -1043,6 +1090,8 @@ const PANES = [
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>' },
   { id:"dbconn", acl:"set-dbconn", group:"Интеграции", label:"Подключения к БД", desc:"Базы, к которым ходит панель. Здесь же отмечается, какая из них приёмник шаблонов, а какая — база событий crmdb.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>' },
+  { id:"jira", acl:"set-jira", group:"Интеграции", label:"Jira", desc:"Адрес, токен сервисной учётки и карта полей: из чего собирается задача CRM-Промо.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 10l8 8 8-8z"/><path d="M12 10v8"/></svg>' },
   /* Первым в группе — выключатель: когда в проде что-то горит, ищут именно его,
      а не очередь и не сверку. */
   { id:"procs", acl:"set-procs", group:"Переливы", label:"Процессы переливов", desc:"Остановить перелив и пустить снова: доставка шаблонов, обратный ETL, импорт и перелив событий.",
@@ -1089,6 +1138,7 @@ function openPane(id){
   if (id === "events" && window.EventSync) EventSync.open();
   if (id === "evexport" && window.EventExport) EventExport.open();
   if (id === "procs" && window.ProcessControl) ProcessControl.open();
+  if (id === "jira" && window.JiraSetup) JiraSetup.open();
   /* Сущности и загруженные инструменты меняются мимо этой страницы — перечитываем */
   if (id === "apps") loadAppDynKids();
   if (id === "monitoring") monBack();
@@ -1763,6 +1813,181 @@ window.EventSync = (function(){
     open: function(){
       bind();                // на случай, если разметку перерисовали
       if (!loaded) scan();   // при первом открытии считаем сразу: это и есть ответ «сколько их»
+    }
+  };
+})();
+
+/* ---------- Jira: подключение и карта полей ----------
+   Токен наружу не отдаётся, поэтому поле пароля всегда пустое, а пустое значение при
+   сохранении означает «не менять». Иначе правка адреса стирала бы токен, и интеграция
+   ломалась бы молча — до следующей попытки завести задачу. */
+window.JiraSetup = (function(){
+  var bound = false, loaded = false, cfg = null;
+
+  function esc(v){ return String(v == null ? "" : v)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function note(text, bad){
+    var n = $("#jrMsg");
+    if (!n) return;
+    n.textContent = text || "";
+    n.classList.toggle("show", !!text);
+    n.style.color = bad ? "var(--coral)" : "";
+  }
+  function box(id, html, empty){
+    var b = $("#" + id);
+    if (!b) return;
+    b.className = empty ? "empty" : "";
+    b.innerHTML = html;
+  }
+  function req(method, url, body){
+    var opts = { method: method, credentials: "same-origin", headers: { Accept: "application/json" } };
+    if (body !== undefined){
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(body);
+    }
+    return fetch(url, opts).then(function(r){
+      if (r.ok) return r.status === 204 ? null : r.json();
+      return r.text().then(function(t){
+        var msg = "";
+        try { msg = JSON.parse(t).message || ""; } catch(e){ msg = ""; }
+        throw new Error(msg || (r.status + " " + r.statusText));
+      });
+    });
+  }
+
+  function load(){
+    loaded = true;
+    return req("GET", "../api/admin/jira/config").then(function(c){
+      cfg = c || {};
+      $("#jrUrl").value = cfg.baseUrl || "";
+      $("#jrProject").value = cfg.projectKey || "";
+      $("#jrType").value = cfg.issueType || "";
+      $("#jrLabels").value = cfg.labels || "";
+      $("#jrToken").value = "";
+      $("#jrTokenHint").textContent = cfg.hasToken
+        ? "токен сохранён; оставьте пустым — не изменится"
+        : "токен не задан";
+      if (cfg.lastStatus){
+        box("jrBox", "Последняя проверка: <b>" + esc(cfg.lastStatus) + "</b> " +
+            esc(String(cfg.lastCheckedAt || "").slice(0, 19).replace("T", " ")) +
+            (cfg.lastError ? "<div style=\"color:var(--coral);margin-top:6px\">" + esc(cfg.lastError) + "</div>" : ""));
+      }
+      renderMap();
+    }).catch(function(e){ note((e && e.message) || "Не удалось прочитать настройки", true); });
+  }
+
+  function save(){
+    note("Сохраняем…");
+    return req("PUT", "../api/admin/jira/config", {
+      baseUrl: $("#jrUrl").value.trim(),
+      token: $("#jrToken").value,
+      projectKey: $("#jrProject").value.trim(),
+      issueType: $("#jrType").value.trim(),
+      labels: $("#jrLabels").value.trim()
+    }).then(function(){
+      note("Сохранено");
+      return load();
+    }).catch(function(e){ note((e && e.message) || "Не удалось сохранить", true); });
+  }
+
+  function check(){
+    note("Проверяем связь…");
+    box("jrBox", "Идём в Jira…");
+    req("POST", "../api/admin/jira/check").then(function(res){
+      if (res && res.ok){
+        note("Связь есть");
+        box("jrBox", "Jira отвечает. Мы для неё: <b>" + esc(res.displayName || res.name) + "</b>" +
+          (res.name ? " <span class=\"mono\">(" + esc(res.name) + ")</span>" : "") +
+          (res.email ? "<div>" + esc(res.email) + "</div>" : ""));
+      } else {
+        note("Связи нет", true);
+        box("jrBox", "<div style=\"color:var(--coral)\">" + esc((res && res.error) || "Jira не ответила") + "</div>");
+      }
+    }).catch(function(e){
+      note("Ошибка", true);
+      box("jrBox", "<div style=\"color:var(--coral)\">" + esc((e && e.message) || "Запрос не выполнен") + "</div>");
+    });
+  }
+
+  /* Поля экрана создания: обязательные первыми — из-за них и падает создание задачи. */
+  function meta(){
+    note("Читаем поля проекта…");
+    box("jrBox", "Спрашиваем Jira, какие поля у экрана создания…");
+    req("GET", "../api/admin/jira/meta").then(function(m){
+      var fields = (m && m.fields) || [];
+      note("Полей: " + fields.length);
+      var html = "<table><thead><tr><th>Поле</th><th>id</th><th>Обяз.</th><th>Значения</th></tr></thead><tbody>";
+      fields.forEach(function(f){
+        var vals = f.values || [];
+        html += "<tr><td class=\"t-name\">" + esc(f.name) + "</td>" +
+          "<td class=\"mono\">" + esc(f.id) + "</td>" +
+          "<td>" + (f.required ? "<b style=\"color:var(--coral)\">да</b>" : "нет") + "</td>" +
+          "<td class=\"mono\" style=\"font-size:11px\">" +
+            (vals.length ? esc(vals.slice(0, 12).join(", ")) + (vals.length > 12 ? " …" : "") : "—") +
+          "</td></tr>";
+      });
+      box("jrBox", html + "</tbody></table>");
+    }).catch(function(e){
+      note("Ошибка", true);
+      box("jrBox", "<div style=\"color:var(--coral)\">" + esc((e && e.message) || "Запрос не выполнен") + "</div>");
+    });
+  }
+
+  function autoMap(){
+    note("Сопоставляем…");
+    req("POST", "../api/admin/jira/automap").then(function(res){
+      note("Сопоставлено полей: " + (res && res.matched));
+      if (cfg) cfg.fieldMap = (res && res.fieldMap) || {};
+      renderMap(res && res.unmatched);
+    }).catch(function(e){ note((e && e.message) || "Не удалось сопоставить", true); });
+  }
+
+  /* Карта показывается целиком: пустая строка — это «поле не найдено», и её надо видеть,
+     а не догадываться по отсутствию. */
+  var FIELD_NAMES = {
+    channel:"Канал", customer:"Заказчик", product:"Тип продукта", kind:"Вид рассылки",
+    name:"Название рассылки", sendDate:"Дата отправки рассылки", meaning:"Бизнес-смысл",
+    link:"Ссылка", content:"Контент", segment:"Сегмент", abTest:"А/В-тестирование",
+    source:"Source", service:"Сервис", analyst:"Ответственный аналитик"
+  };
+  function renderMap(unmatched){
+    var map = (cfg && cfg.fieldMap) || {};
+    var keys = Object.keys(FIELD_NAMES);
+    if (!keys.some(function(k){ return map[k]; })){
+      box("jrMapBox", "Карта пуста. Нажмите «Сопоставить поля» — панель прочитает экран создания задачи и свяжет поля по названию.", true);
+      return;
+    }
+    var html = "<table><thead><tr><th>Наше поле</th><th>Поле в Jira</th><th>id</th></tr></thead><tbody>";
+    keys.forEach(function(k){
+      var id = map[k] || "";
+      html += "<tr><td class=\"t-name\">" + esc(k) + "</td><td>" + esc(FIELD_NAMES[k]) + "</td>" +
+        "<td class=\"mono\"" + (id ? "" : " style=\"color:var(--coral)\"") + ">" +
+        (id ? esc(id) : "не найдено") + "</td></tr>";
+    });
+    html += "</tbody></table>";
+    if (unmatched && unmatched.length){
+      html += "<div class=\"empty\" style=\"color:var(--coral);margin-top:10px\">Не нашлось в Jira: " +
+        esc(unmatched.join(", ")) + ". Проверьте, что поля есть на экране создания задачи этого типа и называются так же.</div>";
+    }
+    box("jrMapBox", html);
+  }
+
+  function bind(){
+    if (bound) return;
+    var b = $("#jrSave");
+    if (!b) return;
+    bound = true;
+    b.onclick = save;
+    $("#jrCheck").onclick = check;
+    $("#jrMeta").onclick = meta;
+    $("#jrAuto").onclick = autoMap;
+  }
+  bind();
+
+  return {
+    open: function(){
+      bind();
+      if (!loaded) load();
     }
   };
 })();
