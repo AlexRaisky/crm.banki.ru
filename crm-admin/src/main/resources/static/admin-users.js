@@ -43,6 +43,36 @@
     if (SECTION_LABELS[s]) return tr(SECTION_LABELS[s]);
     return serverLabels[s] || s;
   }
+  /* Контур, в котором сохранятся права. Матрица у прода, препрода и теста своя —
+     базы разные, роли не общие, — а страницы выглядят одинаково. Поэтому среда стоит
+     не только в шапке страницы, но и напротив каждого раздела: матрица длинная,
+     и заголовок уезжает вверх задолго до того, как дойдёшь до нужной галки.
+     Имя приходит из GET /api/env; настроечная страница кладёт его в window.SET_ENV
+     и зовёт accessApplyEnv, когда ответ дошёл после отрисовки. */
+  var ENV_LABEL = { prod: "ПРОД", preprod: "ПРЕПРОД", test: "ТЕСТ" };
+  function envName() {
+    var e = window.SET_ENV;
+    return (e && e.name) ? String(e.name).toLowerCase() : "";
+  }
+  function envText() {
+    var n = envName();
+    return n ? (ENV_LABEL[n] || n.toUpperCase()) : "";
+  }
+  function envCell() {
+    var s = h("span", { class: "acc-env" + (envName() ? " env-pill " + envName() : ""),
+                        title: "Права сохранятся в базе этого контура. У прода, препрода и теста роли свои." },
+              [envText()]);
+    return s;
+  }
+  /* Ответ про среду мог прийти после отрисовки матрицы — дозаполняем ячейки. */
+  window.accessApplyEnv = function () {
+    var n = envName(), t = envText();
+    document.querySelectorAll(".acc-env").forEach(function (el) {
+      el.textContent = t;
+      el.className = "acc-env" + (n ? " env-pill " + n : "");
+    });
+  };
+
   var CAPS = [
     { k: "read", t: "Просмотр" },
     { k: "add", t: "Добавление" },
@@ -109,7 +139,8 @@
         if (capKey === "read") cb.dispatchEvent(new Event("change"));
       });
     }
-    var head = h("tr", null, [h("th", { style: th.replace("center", "left") }, [tr("Раздел")])]
+    var head = h("tr", null, [h("th", { style: th.replace("center", "left") }, [tr("Раздел")]),
+                              h("th", { style: th.replace("center", "left") }, [tr("Применится в")])]
       .concat(CAPS.map(function (c) {
         return h("th", {
           style: th + ";cursor:pointer",
@@ -158,7 +189,7 @@
             gtitle.push(h("span", { style: "color:var(--faint);font-weight:400" },
               [tr(" — поштучно; строка «Сущности» выше открывает сразу все")]));
           }
-          var gcells = [h("td", { style: gh }, gtitle)];
+          var gcells = [h("td", { style: gh }, gtitle), h("td", { style: gh }, [])];
           CAPS.forEach(function (c) {
             gcells.push(h("td", {
               style: gh + ";text-align:center;cursor:pointer",
@@ -195,7 +226,8 @@
       var cells = [h("td", {
         style: td.replace("center", "left") + ";color:var(--ink)" +
                (sec.group ? ";padding-left:22px" : "")   // вложенность в группу — отступом
-      }, [sectionLabel(sec.id)])];
+      }, [sectionLabel(sec.id)]),
+      h("td", { style: td.replace("center", "left") }, [envCell()])];
       CAPS.forEach(function (c) {
         var cell = h("td", { style: td });
         if (c.k === "read" || sec.writable) cell.appendChild(checks[c.k]);
