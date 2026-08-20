@@ -151,6 +151,35 @@ function pmT(s){ return (typeof t === 'function') ? t(s) : s; }
 function pmEsc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
 function pmAttr(s){ return pmEsc(s); }
 
+/* Длинные поля («доп. условия», комментарий) люди заполняют прозой и вставляют туда
+   ссылки на страницы banki.ru. Голый адрес в узкой ячейке разъезжается на три строки и
+   превращает строку таблицы в стену текста, а кликнуть по нему всё равно нельзя.
+   Поэтому адреса показываем короткой ссылкой: домен, многоточие и последний кусок пути,
+   полный адрес — в подсказке. Открытие ссылки редактор ячейки не запускает: обработчик
+   клика пропускает клики по <a> (см. ниже). */
+function pmLink(u){
+  var clean = u.replace(/[),.;:!?»]+$/, '');    // хвостовая пунктуация в адрес не входит
+  var tail = u.slice(clean.length);
+  var label = clean.replace(/^https?:\/\//, '').replace(/^www\./, '');
+  if (label.length > 44){
+    var parts = label.split('/').filter(Boolean);
+    var host = parts.shift() || label;
+    var lastSeg = parts.pop() || '';
+    if (lastSeg.length > 34) lastSeg = lastSeg.slice(0, 32) + '…';
+    label = parts.length ? host + '/…/' + lastSeg : host + '/' + lastSeg;
+  }
+  return '<a class="ext" href="' + pmAttr(clean) + '" target="_blank" rel="noopener noreferrer"' +
+         ' title="' + pmAttr(clean) + '">' + pmEsc(label) + '</a>' + pmEsc(tail);
+}
+function pmRich(s){
+  var str = String(s == null ? '' : s), out = '', re = /https?:\/\/[^\s<>"']+/g, last = 0, m;
+  while ((m = re.exec(str)) !== null){
+    out += pmEsc(str.slice(last, m.index)) + pmLink(m[0]);
+    last = m.index + m[0].length;
+  }
+  return out + pmEsc(str.slice(last));
+}
+
 /* ---------- даты ---------- */
 function promoToday(){
   var d = new Date();
@@ -845,7 +874,8 @@ function promoRowHtml(x){
     promoCell(x, 'product', badIcon + (pmEsc(r.product) || '—'), prodEd) +
     promoCell(x, 'partner', pmEsc(r.partner) || '—', partEd) +
     promoCell(x, 'base', baseHtml, baseEd) +
-    promoCell(x, 'baseExtra', r.baseExtra ? '<span class="multi">' + pmEsc(r.baseExtra) + '</span>' : '—', extraEd) +
+    promoCell(x, 'baseExtra', r.baseExtra
+      ? '<span class="multi" title="' + pmAttr(r.baseExtra) + '">' + pmRich(r.baseExtra) + '</span>' : '—', extraEd) +
     promoCell(x, 'chan', promoChanBadges(r.chan), chanEd) +
     '<td class="c-total"><input type="checkbox" ' + (r.total ? 'checked' : '') +
       (promoCan('edit') ? '' : ' disabled') +
@@ -855,7 +885,8 @@ function promoRowHtml(x){
     promoCell(x, 'task', taskHtml, taskEd) +
     promoCell(x, 'owner', pmEsc(r.owner) || '—', ownerEd) +
     promoCell(x, 'status', '<span class="st ' + stCls + '">' + (pmEsc(shown) || '—') + '</span>', statusEd) +
-    promoCell(x, 'note', r.note ? '<span class="multi">' + pmEsc(r.note) + '</span>' : '—', noteEd) +
+    promoCell(x, 'note', r.note
+      ? '<span class="multi" title="' + pmAttr(r.note) + '">' + pmRich(r.note) + '</span>' : '—', noteEd) +
     '<td>' + (promoCan('delete')
       ? '<button class="row-del" type="button" title="' + pmT('Удалить строку') + '" onclick="promoDelRow(' + i + ')">×</button>'
       : '') + '</td>' +

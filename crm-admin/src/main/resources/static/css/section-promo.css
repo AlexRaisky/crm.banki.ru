@@ -110,7 +110,15 @@
   .date-pick .dv{font-family:var(--mono);font-size:12px;color:var(--ink)}
   td.c-d.editable:hover .date-pick .cal-ico{color:var(--ink)}
   td.c-d .cell-in{min-width:140px}
-  .multi{display:block;white-space:pre-wrap;max-width:230px}
+  /* Длинный текст в ячейке. Три правила про три разные беды:
+     line-clamp — строка таблицы не растёт на десять строк из-за одного комментария
+       (полный текст в подсказке, а по клику открывается редактор с ним же);
+     overflow-wrap:anywhere — адрес или слово без пробелов не распирает колонку;
+     max-width — колонка не съедает соседние, у которых свои данные. */
+  .multi{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:5;overflow:hidden;
+    white-space:pre-wrap;overflow-wrap:anywhere;max-width:260px;line-height:1.45}
+  .multi a.ext{color:var(--blue);text-decoration:none;border-bottom:1px dotted rgba(80,195,255,.55)}
+  .multi a.ext:hover{border-bottom-style:solid}
   .src-name{font-family:var(--mono);font-size:11.5px;word-break:break-all}
   .src-name.bad{color:var(--coral)}
   .need{color:var(--faint);font-size:11.5px;font-style:italic}
