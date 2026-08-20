@@ -125,7 +125,10 @@ var PROMO_STATUSES = ['', PROMO_STATUS_NEW, 'запланировано', 'в р
 var PROMO_BASES = ['Вклады', 'ОСАГО', 'Каско', 'НС', 'Инвестиции', 'КК', 'ДК', 'ПК',
                    'КПЗН', 'Ипотека', 'КВ', 'Бизнес', 'Диалог', 'ИС', 'МФО', 'Тотал'];
 var PROMO_OWNERS = [];        /* имена для выпадашки ответственных, приезжают с сервера */
-var PROMO_COLS = 13;          /* колонок до кнопки «+» в строке-дате */
+var PROMO_COLS = 16;          /* колонок до кнопки «+» в строке-дате */
+/* Заказчик — справочник направлений (chain.chain + gorizontal.gorizontal), приходит
+   с сервера. Пустой список не беда: поле останется свободным вводом. */
+var PROMO_CUSTOMERS = [];
 
 /* Строка баз → список. Разделители — запятая, точка с запятой и перевод строки:
    в накопленных данных встречаются все три. */
@@ -315,6 +318,7 @@ function promoLoad(){
   if (_promoLoading) return Promise.resolve();
   _promoLoading = true;
   promoLoadOwners();
+  promoLoadCustomers();
   return promoReq('GET', '').then(function(rows){
     PROMO_ROWS = (rows || []).map(function(r){ r.chan = promoNormChan(r.chan); return r; });
     promoRender();
@@ -337,6 +341,20 @@ function promoLoadOwners(){
     PROMO_OWNERS = list || [];
     promoRender();
   }).catch(function(){ PROMO_OWNERS = []; });
+}
+
+/* Справочник заказчиков — направления из chain.chain и gorizontal.gorizontal. Тянем
+   один раз за открытие раздела, как и ответственных. Не приехал (таблиц ещё нет на
+   контуре) — поле остаётся свободным вводом, а не пустым списком в никуда. */
+var _promoCustomersAsked = false;
+function promoLoadCustomers(){
+  if (_promoCustomersAsked) return;
+  _promoCustomersAsked = true;
+  promoReq('GET', '/customers').then(function(list){
+    PROMO_CUSTOMERS = list || [];
+    promoFillCustomerList();
+    promoRender();
+  }).catch(function(){ PROMO_CUSTOMERS = []; });
 }
 
 /* Пока раздел открыт — подтягиваем чужие правки. Во время правки ячейки
@@ -641,7 +659,8 @@ function promoFiltered(){
     if (tv === 'no' && r.total) return false;
     if (q){
       var nm = promoBuildName(r);
-      var hay = [nm.value, r.base, r.baseExtra, r.product, r.partner, r.uniq, r.task, r.note].join(' ').toLowerCase();
+      var hay = [nm.value, r.base, r.baseExtra, r.product, r.partner, r.uniq, r.task, r.note,
+                 r.customer, r.link, r.content].join(' ').toLowerCase();
       if (hay.indexOf(q) === -1) return false;
     }
     return true;
@@ -821,6 +840,26 @@ function promoRowHtml(x){
         ? '<span class="src-name" title="' + pmT('Название из импорта') + '">' + pmEsc(r.commName) + '</span>'
         : '<span class="need" title="' + pmT('Название собирается автоматически') + '">' + pmT('нужно заполнить') + ': ' + pmEsc(nm.miss.join(', ')) + '</span>');
 
+  /* Заказчик — направление из справочника. Список может не приехать (таблиц ещё нет на
+     контуре) или значение может быть заведено до появления справочника, поэтому это
+     input со списком-подсказкой, а не жёсткий select: подсказываем, но не запрещаем. */
+  var custVal = draft != null ? draft : (r.customer || '');
+  var custEd = '<input class="cell-in" list="promoCustomerList" value="' + pmAttr(custVal) +
+    '" placeholder="' + pmT('Заказчик') + '" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
+  var custHtml = r.customer ? pmEsc(r.customer) : '—';
+
+  /* Ссылка и описание — их заполняет постановщик, и они же уезжают в задачу Jira
+     («Ссылка» и «Контент»). Ссылку показываем короткой — как в доп. условиях. */
+  var linkEd = '<input class="cell-in" value="' + pmAttr(draft != null ? draft : (r.link || '')) +
+    '" placeholder="https://www.banki.ru/…" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
+  var linkHtml = r.link ? '<span class="multi" title="' + pmAttr(r.link) + '">' + pmRich(r.link) + '</span>' : '—';
+
+  var contentEd = '<textarea class="cell-in ta" rows="4" placeholder="' +
+    pmT('Что учесть в тексте или визуале') + '" oninput="promoDraft(this.value)"' +
+    ' onkeydown="promoKey(event,true)">' + pmEsc(draft != null ? draft : (r.content || '')) + '</textarea>';
+  var contentHtml = r.content
+    ? '<span class="multi" title="' + pmAttr(r.content) + '">' + pmRich(r.content) + '</span>' : '—';
+
   var taskEd = '<input class="cell-in" value="' + pmAttr(draft != null ? draft : r.task) +
     '" placeholder="CRM-8748" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
   var taskKey = promoTaskKey(r.task);
@@ -871,6 +910,7 @@ function promoRowHtml(x){
   return '<tr class="' + (r.total ? 'total-row ' : '') + (clash.length ? 'base-clash ' : '') +
       (f.bad.length ? 'rule-bad' : '') + '">' +
     promoCell(x, 'd', dateHtml, dateEd) +
+    promoCell(x, 'customer', custHtml, custEd) +
     promoCell(x, 'product', badIcon + (pmEsc(r.product) || '—'), prodEd) +
     promoCell(x, 'partner', pmEsc(r.partner) || '—', partEd) +
     promoCell(x, 'base', baseHtml, baseEd) +
@@ -882,6 +922,8 @@ function promoRowHtml(x){
       ' onchange="promoSetTotal(' + i + ',this.checked)">' + warnIcon + '</td>' +
     promoCell(x, 'uniq', r.uniq ? '<span class="src-name">' + pmEsc(r.uniq) + '</span>' : '—', uniqEd) +
     '<td class="c-name">' + nameHtml + '</td>' +
+    promoCell(x, 'link', linkHtml, linkEd) +
+    promoCell(x, 'content', contentHtml, contentEd) +
     promoCell(x, 'task', taskHtml, taskEd) +
     promoCell(x, 'owner', pmEsc(r.owner) || '—', ownerEd) +
     promoCell(x, 'status', '<span class="st ' + stCls + '">' + (pmEsc(shown) || '—') + '</span>', statusEd) +
@@ -897,8 +939,8 @@ function promoRowHtml(x){
 function promoNewOpen(iso){
   if (!promoCan('add')) return;
   PROMO_EDIT = null;
-  PROMO_NEW = { d: iso || promoToday(), product:'', partner:'', base:'', baseExtra:'', chan: [],
-                total:false, uniq:'', task:'', taskByChan:{}, owner:'',
+  PROMO_NEW = { d: iso || promoToday(), customer:'', product:'', partner:'', base:'', baseExtra:'', chan: [],
+                total:false, uniq:'', link:'', content:'', task:'', taskByChan:{}, owner:'',
                 status: PROMO_STATUS_NEW, note:'', err:'' };
   promoRender();
   var el = document.getElementById('promoNewDate');
@@ -984,9 +1026,9 @@ function promoNewSave(){
   if (!n.d || !n.chan.length) return;
   if (n.uniq && !promoUniqOk(n.uniq)) return;
   if (!promoCan('add')){ alert(pmT('Нет прав на добавление записей.')); return; }
-  var common = { d:n.d, product:n.product, partner:n.partner, base:n.base, baseExtra:n.baseExtra,
-                 total:!!n.total, uniq:n.uniq, owner:n.owner,
-                 status:n.status || PROMO_STATUS_NEW, note:n.note };
+  var common = { d:n.d, customer:n.customer, product:n.product, partner:n.partner, base:n.base,
+                 baseExtra:n.baseExtra, total:!!n.total, uniq:n.uniq, link:n.link, content:n.content,
+                 owner:n.owner, status:n.status || PROMO_STATUS_NEW, note:n.note };
   var chans = n.chan.slice();
   PROMO_NEW = null;
 
@@ -1016,6 +1058,10 @@ function promoNewRowHtml(){
   return '<tr class="new-row">' +
     '<td class="c-d"><input type="date" id="promoNewDate" class="cell-in" value="' + pmAttr(n.d) +
       '" onchange="promoNewSet(\'d\',this.value)"></td>' +
+    /* Заказчик — список-подсказка, а не жёсткий выбор: справочник может не приехать,
+       и тогда поле должно остаться рабочим, а не пустым перечнем. */
+    '<td><input class="cell-in" list="promoCustomerList" placeholder="' + pmT('Заказчик') + '" value="' +
+      pmAttr(n.customer) + '" oninput="promoNewSet(\'customer\',this.value)"></td>' +
     '<td><select class="cell-in" onchange="promoNewSet(\'product\',this.value)">' +
       '<option value="">' + pmT('Продукт') + '…</option>' +
       prodOpts.map(function(p){ return '<option value="' + pmAttr(p) + '"' + (p === n.product ? ' selected' : '') + '>' + pmEsc(p) + '</option>'; }).join('') +
@@ -1040,6 +1086,14 @@ function promoNewRowHtml(){
       pmAttr(n.uniq) + '" oninput="promoNewSet(\'uniq\',this.value)">' +
       '<div class="hint-s">' + pmT('Латиница, цифры и дефис. Если имени нет — NoComName') + '</div></div></td>' +
     '<td class="c-name"><span class="need">' + pmT('соберётся автоматически') + '</span></td>' +
+    /* Ссылка и описание уезжают в задачу Jira как «Ссылка» и «Контент». Заполняет их
+       постановщик — здесь, а не потом в самой задаче: иначе план и задача расходятся
+       с первой минуты. */
+    '<td><input class="cell-in" placeholder="https://www.banki.ru/…" value="' + pmAttr(n.link) +
+      '" oninput="promoNewSet(\'link\',this.value)">' +
+      '<div class="hint-s">' + pmT('Основная ссылка, куда ведём получателя') + '</div></td>' +
+    '<td><textarea class="cell-in ta" rows="4" placeholder="' + pmT('Что учесть в тексте или визуале') +
+      '" oninput="promoNewSet(\'content\',this.value)">' + pmEsc(n.content) + '</textarea></td>' +
     /* Задача: одно поле на один канал, по полю на каждый — когда каналов несколько.
        Подпись канала обязательна: без неё три одинаковых поля подряд не различить. */
     '<td>' + (n.chan.length > 1
@@ -1143,7 +1197,8 @@ function promoCommit(){
   if (e.k === 'd' && !String(v || '').trim()){ PROMO_EDIT = null; promoRender(); return; }  /* дату не очищаем */
   if (e.k === 'task') v = promoTaskKey(v) || String(v || '').trim();
   if (e.k === 'chan') v = promoNormChan(v);   /* несколько каналов сервер развернёт в копии строк */
-  if (typeof v === 'string' && e.k !== 'base' && e.k !== 'baseExtra' && e.k !== 'note') v = v.trim();
+  /* Многострочные поля не трогаем: переносы в них — часть значения. */
+  if (typeof v === 'string' && ['base','baseExtra','note','content'].indexOf(e.k) === -1) v = v.trim();
 
   /* значение не изменилось — на сервер не ходим */
   var was = r[e.k];
@@ -1226,16 +1281,17 @@ document.addEventListener('click', function(e){
 });
 
 function promoExportCsv(){
-  var head = ['Дата','День недели','Продукт','Партнёр','База','Доп. условия','Канал','Тотал',
-              'Уникальное имя','Название коммуникации','Задача','Ответственный','Статус',
+  var head = ['Дата','День недели','Заказчик','Продукт','Партнёр','База','Доп. условия','Канал','Тотал',
+              'Уникальное имя','Название коммуникации','Ссылка','Описание','Задача','Ответственный','Статус',
               'Комментарий','Замечания'];
   var rows = promoFiltered().map(function(x){
     var r = x.r, f = PROMO_FLAGS[x.i] || { bad: [], warn: [] };
     var key = promoTaskKey(r.task);
     var nm = promoBuildName(r);
-    return [promoFmtDate(r.d), promoDow(r.d), r.product, r.partner, r.base, r.baseExtra,
+    return [promoFmtDate(r.d), promoDow(r.d), r.customer || '', r.product, r.partner, r.base, r.baseExtra,
             (r.chan || []).join(', '), r.total ? 'TRUE' : 'FALSE', r.uniq,
-            nm.ok ? nm.value : (r.commName || ''), key ? PROMO_JIRA_BASE + key : '', r.owner,
+            nm.ok ? nm.value : (r.commName || ''), r.link || '', r.content || '',
+            key ? PROMO_JIRA_BASE + key : '', r.owner,
             promoStatusShown(r), r.note, f.bad.concat(f.warn).join(' | ')];
   });
   var csv = [head].concat(rows).map(function(line){
@@ -1315,6 +1371,14 @@ function promoRenderPartnerList(list){
   var dl = document.getElementById('promoPartnerList');
   if (!dl) return;
   dl.innerHTML = (list || []).map(function(p){ return '<option value="' + pmAttr(p) + '">'; }).join('');
+}
+/* Заказчики в datalist. Отдельная функция рядом с партнёрской: список тот же по смыслу
+   (подсказка к свободному вводу), но источник другой — ручка плана, а не справочник
+   партнёров. */
+function promoFillCustomerList(){
+  var dl = document.getElementById('promoCustomerList');
+  if (!dl) return;
+  dl.innerHTML = PROMO_CUSTOMERS.map(function(c){ return '<option value="' + pmAttr(c) + '">'; }).join('');
 }
 function promoFillPartnerList(){
   promoRenderPartnerList(PROMO_PARTNERS);

@@ -71,4 +71,14 @@ public class PromoPlanController {
         access.requireAnySection(Sections.PROMO);
         return service.ownerCandidates();
     }
+
+    /**
+     * Кого можно поставить заказчиком — направления из chain.chain и gorizontal.gorizontal.
+     * В задаче Jira это поле обязательное, поэтому список нужен всем, кто ведёт план.
+     */
+    @GetMapping("/customers")
+    public List<String> customers() {
+        access.requireAnySection(Sections.PROMO);
+        return service.customerCandidates();
+    }
 }

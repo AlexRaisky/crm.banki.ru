@@ -39,7 +39,10 @@ public class PromoPlanService {
             Map.entry("uniq", "uniq_name"),
             Map.entry("task", "task_key"),
             Map.entry("owner", "owner_name"),
-            Map.entry("status", "status"));
+            Map.entry("status", "status"),
+            Map.entry("customer", "customer"),
+            Map.entry("link", "link"),
+            Map.entry("content", "content"));
     /** note вынесен отдельно: Map.of ограничен 10 парами. */
     private static final String NOTE_COLUMN = "note";
 
@@ -51,7 +54,8 @@ public class PromoPlanService {
      */
     private static final String ROW_COLUMNS =
             "id, plan_date, product, partner, base, channel, is_total," +
-            " uniq_name, task_key, owner_name, status, note, communication_name, base_extra, timestamp_upd";
+            " uniq_name, task_key, owner_name, status, note, communication_name, base_extra," +
+            " customer, link, content, timestamp_upd";
 
     private static final String STATUS_PLANNED = "запланировано";
     private static final String STATUS_SENT = "отправлено";
@@ -85,6 +89,37 @@ public class PromoPlanService {
                         "   SELECT DISTINCT trim(owner_name) FROM app.promo_plan" +
                         "    WHERE coalesce(trim(owner_name), '') <> ''" +
                         " ) s ORDER BY name")
+                .getResultList();
+        return out;
+    }
+
+    /**
+     * Кого можно поставить заказчиком: имена из справочников направлений — chain.chain и
+     * gorizontal.gorizontal — плюс те, что уже проставлены в плане.
+     * <p>
+     * Таблиц может не быть: пока они заведены только на тестовом контуре. Существование
+     * проверяем через to_regclass, а НЕ через try/catch вокруг запроса: в Postgres
+     * упавший запрос помечает всю транзакцию на откат, и «мягкая» обработка ошибки
+     * уронила бы весь вызов. Нет таблицы — просто нет её половины списка.
+     * <p>
+     * Имена из плана добавлены по той же причине, что и у ответственных: значение,
+     * выбранное когда-то, не должно исчезнуть из списка из-за правки справочника.
+     */
+    @Transactional(readOnly = true)
+    public List<String> customerCandidates() {
+        List<String> parts = new ArrayList<>();
+        for (String table : List.of("chain.chain", "gorizontal.gorizontal")) {
+            Object reg = em.createNativeQuery("SELECT to_regclass(:t)")
+                    .setParameter("t", table).getSingleResult();
+            if (reg != null) {
+                parts.add("SELECT DISTINCT trim(name) AS name FROM " + table);
+            }
+        }
+        parts.add("SELECT DISTINCT trim(customer) AS name FROM app.promo_plan");
+        @SuppressWarnings("unchecked")
+        List<String> out = em.createNativeQuery(
+                        "SELECT name FROM (" + String.join(" UNION ", parts) + ") s" +
+                        " WHERE name IS NOT NULL AND name <> '' ORDER BY name")
                 .getResultList();
         return out;
     }
@@ -125,7 +160,10 @@ public class PromoPlanService {
         m.put("note", str(r[11]));
         m.put("commName", str(r[12]));   // сохранённое «Название коммуникации» (обычно из импорта)
         m.put("baseExtra", str(r[13]));  // доп. условия для базы, словами
-        m.put("ver", instant(r[14]));
+        m.put("customer", str(r[14]));   // заказчик — он же обязательное поле задачи в Jira
+        m.put("link", str(r[15]));       // основная ссылка, куда ведём получателя
+        m.put("content", str(r[16]));    // что учесть в тексте или визуале
+        m.put("ver", instant(r[17]));
         return m;
     }
 
@@ -175,9 +213,9 @@ public class PromoPlanService {
             em.createNativeQuery(
                             "INSERT INTO app.promo_plan (id, plan_date, product, partner, base, base_extra," +
                             " channel, is_total, uniq_name, task_key, owner_name, status, note," +
-                            " created_by, updated_by)" +
+                            " customer, link, content, created_by, updated_by)" +
                             " VALUES (:id, :d, :product, :partner, :base, :baseExtra, :ch, :total, :uniq," +
-                            " :task, :owner, :status, :note, :u, :u)")
+                            " :task, :owner, :status, :note, :customer, :link, :content, :u, :u)")
                     .setParameter("id", id)
                     .setParameter("d", date)
                     .setParameter("product", text(body.get("product")))
@@ -191,6 +229,9 @@ public class PromoPlanService {
                     .setParameter("owner", text(body.get("owner")))
                     .setParameter("status", text(body.get("status")))
                     .setParameter("note", text(body.get("note")))
+                    .setParameter("customer", text(body.get("customer")))
+                    .setParameter("link", text(body.get("link")))
+                    .setParameter("content", text(body.get("content")))
                     .setParameter("u", CurrentUser.email())
                     .executeUpdate();
             ids.add(id);
@@ -266,9 +307,11 @@ public class PromoPlanService {
             em.createNativeQuery(
                             "INSERT INTO app.promo_plan (plan_date, product, partner, base, base_extra," +
                             " channel, is_total, uniq_name, task_key, owner_name, status, note," +
-                            " communication_name, created_by, updated_by)" +
+                            " communication_name, customer, link, content, created_by, updated_by)" +
+                            /* task_key копируем намеренно: у копии свой канал, но задача пока
+                               общая — до тех пор, пока для нового канала не заведут свою. */
                             " SELECT plan_date, product, partner, base, base_extra, :ch, is_total, uniq_name," +
-                            " task_key, owner_name, status, note, communication_name, :u, :u" +
+                            " task_key, owner_name, status, note, communication_name, customer, link, content, :u, :u" +
                             " FROM app.promo_plan WHERE id = :id")
                     .setParameter("ch", ch)
                     .setParameter("u", CurrentUser.email())
