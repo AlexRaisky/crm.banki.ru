@@ -59,7 +59,7 @@ app:
   # Разделы в разработке (Цепочки и далее) видны только там, где флаг включён (preprod/test).
   features:
     dev: ${FEATURES_DEV:false}
-  # First super-admin, created idempotently on startup.
+  # Супер-админы: список почт через запятую, закрепляется на каждом старте.
   admin:
     email: ${ADMIN_EMAIL:admin@banki.ru}
     password: ${ADMIN_PASSWORD:admin12345}

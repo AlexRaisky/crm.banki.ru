@@ -331,7 +331,11 @@
     var email = existing ? null : h("input", { style: fieldStyle(), type: "email", placeholder: "name@banki.ru" });
     var name = h("input", { style: fieldStyle(), value: existing ? (existing.displayName || "") : "", placeholder: tr("Имя") });
     var pwd = existing ? null : h("input", { style: fieldStyle(), type: "password", placeholder: tr("Пароль (мин. 8)") });
-    var role = roleSelect(existing ? existing.roleId : null);
+    /* Роль без id — та, что список ролей не отдаёт (её нельзя ни выбрать, ни переназначить
+       через панель). Показывать выпадашку в этом случае нельзя: она встанет на первую
+       попавшуюся роль, и «Сохранить» тихо сменило бы человеку роль на неё. */
+    var lockedRole = !!existing && existing.roleId == null;
+    var role = lockedRole ? null : roleSelect(existing ? existing.roleId : null);
     var enabled = h("input", { type: "checkbox" }); if (existing) enabled.checked = existing.enabled;
 
     box.appendChild(h("div", { style: "font-weight:600;margin-bottom:8px" },
@@ -339,13 +343,18 @@
     if (email) box.appendChild(field(tr("Почта"), email));
     box.appendChild(field(tr("Имя"), name));
     if (pwd) box.appendChild(field(tr("Пароль"), pwd));
-    box.appendChild(field(tr("Роль"), role));
+    if (lockedRole) {
+      box.appendChild(field(tr("Роль"),
+        h("div", { style: "color:var(--dim)" }, [(existing.role || "—") + " · " + tr("роль этой учётки здесь не меняется")])));
+    } else {
+      box.appendChild(field(tr("Роль"), role));
+    }
     if (existing) box.appendChild(field(tr("Активен"), enabled));
 
     box.appendChild(h("button", {
       style: btnStyle() + ";margin-top:10px",
       onclick: function () {
-        var roleId = role.value ? Number(role.value) : null;
+        var roleId = role && role.value ? Number(role.value) : null;   // null — «роль не трогаем»
         var p = existing
           ? CRM.adminUpdateUser(existing.id, { displayName: name.value, roleId: roleId, enabled: enabled.checked })
           : CRM.adminCreateUser({ email: email.value.trim(), displayName: name.value, password: pwd.value, roleId: roleId });
