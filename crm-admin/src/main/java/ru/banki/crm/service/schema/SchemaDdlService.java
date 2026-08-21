@@ -546,6 +546,58 @@ public class SchemaDdlService {
         }
     }
 
+    // ------------------------------------------------- ВЗЯТЬ ПОД УПРАВЛЕНИЕ
+
+    /**
+     * Взять существующие таблицы схемы под управление билдера.
+     * <p>
+     * Реестр app.schema_owned — это ответ на вопрос «чьё», и раздаётся он не молча: до
+     * сих пор запись появлялась только когда билдер создавал объект сам. Но в схеме, где
+     * он работает, часть таблиц приходит миграциями, и делать вид, что их нет, — значит
+     * показывать человеку неполную картину. Поэтому берём под управление явным действием:
+     * админ видит список, выбирает таблицы, и это уходит в журнал.
+     * <p>
+     * Защита та же: схемы из стоп-листа не трогаем ни при каких условиях.
+     */
+    public Map<String, Object> adopt(String schema, List<String> tables) {
+        long started = System.currentTimeMillis();
+        try {
+            return tx.execute(status -> {
+                if (!DdlPlanner.valid(schema)) {
+                    throw new GuardViolation("Недопустимое имя схемы: «" + schema + "»");
+                }
+                String reserved = reservedReason(schema);
+                if (reserved != null) throw new GuardViolation("Схема " + schema + " защищена: " + reserved);
+                if (tables == null || tables.isEmpty()) throw new GuardViolation("Не выбрано ни одной таблицы");
+
+                List<String> taken = new ArrayList<>();
+                for (String t : tables) {
+                    if (!DdlPlanner.valid(t)) throw new GuardViolation("Недопустимое имя таблицы: «" + t + "»");
+                    Object reg = em.createNativeQuery("SELECT to_regclass(:t)")
+                            .setParameter("t", schema + "." + t).getSingleResult();
+                    if (reg == null) throw new GuardViolation("Таблицы " + schema + "." + t + " нет в базе");
+                    own(schema, null);       // схема тоже наша: иначе правки в ней обойдёт охрана
+                    own(schema, t);
+                    taken.add(t);
+                }
+                audit("ADOPT", schema, String.join(", ", taken), null, "OK", null,
+                        System.currentTimeMillis() - started);
+
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("schema", schema);
+                m.put("adopted", taken);
+                return m;
+            });
+        } catch (GuardViolation g) {
+            auditSeparately("ADOPT", "REJECTED", g.getMessage(), System.currentTimeMillis() - started);
+            throw g;
+        } catch (RuntimeException e) {
+            String why = message(e);
+            auditSeparately("ADOPT", "ERROR", why, System.currentTimeMillis() - started);
+            throw e instanceof DdlFailure ? e : new DdlFailure(why, e);
+        }
+    }
+
     // ------------------------------------------------- УДАЛЕНИЕ ТАБЛИЦ И СХЕМ
 
     /** Кто ссылается на таблицу извне: чужой внешний ключ, который снимется вместе с ней. */

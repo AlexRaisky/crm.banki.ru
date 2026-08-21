@@ -277,6 +277,13 @@
 .sb-item .lbl .sb-ent-sub{ display:block; font-style:normal; font-size:11px; color:var(--faint); margin-top:1px }
 .sb-item.sb-ent .cnt, .sb-item.sb-tbl .cnt{ white-space:nowrap }
 .sb-item .dot.opt{ opacity:.45 }
+/* Таблица, которая есть в базе, но не в модели: показываем приглушённо — это ещё не
+   наша сущность, а факт из базы, и кликом она никуда не ведёт. */
+.sb-item.sb-orphan{ cursor:default; opacity:.75 }
+.sb-item.sb-orphan .dot{ background:var(--faint) }
+.sb-item.sb-orphan:hover{ background:transparent; opacity:1 }
+.sb-form .btn.tiny, .sb-item .btn.tiny{ padding:2px 9px; font-size:11px; border-radius:7px; margin-left:auto }
+.sb-item .btn.tiny{ margin-left:0 }
 .sb-col-del{ width:20px; height:20px; line-height:1; padding:0; border-radius:6px; cursor:pointer;
   border:1px solid var(--line); background:var(--card); color:var(--faint); font-size:13px }
 .sb-col-del:hover{ color:var(--coral); border-color:rgba(255,107,138,.45) }

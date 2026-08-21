@@ -139,6 +139,36 @@ public class SchemaController {
     }
 
     /**
+     * Взять существующие таблицы схемы под управление конструктора и вернуть их колонки —
+     * из них редактор соберёт сущности. Одним запросом, потому что это одно действие:
+     * взять и завести; половина результата смысла не имеет.
+     */
+    @PostMapping("/db/adopt")
+    public Map<String, Object> adopt(@RequestBody JsonNode body) {
+        access.requireCapability(ru.banki.crm.domain.Capability.EDIT,
+                ru.banki.crm.service.Sections.SET_DBTREE,
+                ru.banki.crm.service.Sections.SET_SCHEME,
+                ru.banki.crm.service.Sections.SET_OBJECTS);
+        String schema = txt(body, "schema");
+        List<String> tables = new java.util.ArrayList<>();
+        JsonNode arr = body == null ? null : body.get("tables");
+        if (arr != null && arr.isArray()) {
+            arr.forEach(n -> {
+                String t = n.asText("").trim();
+                if (!t.isEmpty()) tables.add(t);
+            });
+        }
+        try {
+            Map<String, Object> res = new java.util.LinkedHashMap<>(ddl.adopt(schema, tables));
+            res.put("columns", inspect.columns(schema, tables));
+            return res;
+        } catch (RuntimeException e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    /**
      * Сколько строк в таблице и кто на неё ссылается — данные для диалога удаления.
      * Право спрашиваем то же, что и на само удаление: показывать «в таблице 40 тысяч
      * строк» тому, кто удалять не может, незачем.

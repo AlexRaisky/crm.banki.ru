@@ -633,6 +633,140 @@ function renderInspector(){
     T("Выберите сущность слева или создайте новую.")}</div></div>`;
 }
 
+/* ============================================================
+   Что есть в базе помимо модели.
+
+   Модель — это намерение, база — факт, и расходятся они всегда: часть таблиц
+   приходит миграциями, часть заводили руками. Карточка схемы показывает и такие
+   таблицы, иначе человек видит «1 таблица» там, где их три, и считает это поломкой.
+
+   Затянуть такую таблицу в модель — отдельное действие: сервер записывает её за
+   билдером (app.schema_owned) и отдаёт колонки, из которых мы собираем сущность.
+   ============================================================ */
+let dbTree = null;          /* ответ GET /api/schema/db */
+let dbTreeBusy = false;
+
+function loadDbTables(){
+  if (dbTreeBusy) return Promise.resolve(dbTree);
+  dbTreeBusy = true;
+  return fetch("/api/schema/db", { credentials:"same-origin" })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { dbTree = j || []; dbTreeBusy = false; return dbTree; })
+    .catch(() => { dbTree = []; dbTreeBusy = false; return dbTree; });
+}
+
+/* Таблицы схемы, которых нет в модели. Сравниваем по имени таблицы, а не по id
+   сущности: id — наш внутренний ключ, в базе его нет. */
+function orphanTables(schemaId){
+  if (!Array.isArray(dbTree)) return [];
+  const s = dbTree.find(x => x.name === schemaId);
+  if (!s || !Array.isArray(s.tables)) return [];
+  const known = new Set(model.entities.filter(e => schemaOf(e) === schemaId).map(e => e.table || e.id));
+  return s.tables.filter(t => !known.has(t.name));
+}
+
+/* format_type отдаёт тип так, как его пишет Postgres; в модели типы записаны короче
+   и ровно теми именами, которые понимает планировщик DDL. */
+function normDbType(t, identity){
+  let s = String(t || "").toLowerCase().trim();
+  s = s.replace(/^character varying/, "varchar")
+       .replace(/^character(?=\(|$)/, "char")
+       .replace(/^timestamp with time zone/, "timestamptz")
+       .replace(/^timestamp without time zone/, "timestamp")
+       .replace(/^time with time zone/, "timetz")
+       .replace(/^time without time zone/, "time")
+       .replace(/^int4$/, "integer")
+       .replace(/^int8$/, "bigint")
+       .replace(/^int2$/, "smallint")
+       .replace(/^bool$/, "boolean");
+  /* identity и nextval — это «автономер»: в модели он живёт как serial-тип, и при
+     создании такой же таблицы в другом контуре получится то же самое поведение. */
+  if (identity) {
+    if (s === "bigint") return "bigserial";
+    if (s === "integer") return "serial";
+  }
+  return s;
+}
+
+function entityFromDbTable(schemaId, table, cols, comment){
+  const n = model.entities.length;
+  return {
+    id: freeEntityId(slug(table), schemaId),
+    label: comment || table,
+    plural_label: "",
+    table: table,
+    schema: schemaId,
+    description: comment || "",
+    title_field: "",
+    x: 40 + (n % 3) * 330,
+    y: 40 + Math.floor(n / 3) * 300,
+    technical: false,
+    fields: (cols || []).map(c => {
+      const db = normDbType(c.dbType, c.identity);
+      return {
+        name: c.name,
+        label: c.comment || c.name,
+        db_type: db,
+        ui_type: dbToUi(db),
+        required: !c.nullable,
+        /* Ключ и автономер правит база, а не форма. */
+        read_only: !!(c.primaryKey || c.identity),
+        description: "",
+        target_entity: "",
+        relation_kind: "",
+        /* У автономера в default лежит nextval(...) — в модели это шум. */
+        default_value: c.identity ? "" : (c.defaultValue || ""),
+        options: []
+      };
+    })
+  };
+}
+
+/* Затянуть таблицы базы в модель. Список приходит с сервера обратно: он решает,
+   что именно взял под управление, и молча расширить его подделанным телом нельзя. */
+function adoptTables(schemaId, tables){
+  if (!tables.length) return;
+  toast(T("Читаем структуру таблиц…"));
+  fetch("/api/schema/db/adopt", {
+    method: "POST", credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ schema: schemaId, tables: tables })
+  }).then(r => r.ok ? r.json() : r.text().then(t => {
+      let m = ""; try { m = JSON.parse(t).message || ""; } catch(e){}
+      throw new Error(m || ("HTTP " + r.status));
+    }))
+    .then(res => {
+      const cols = (res && res.columns) || {};
+      const src = Array.isArray(dbTree) ? (dbTree.find(x => x.name === schemaId) || {}) : {};
+      const byName = {};
+      (src.tables || []).forEach(t => { byName[t.name] = t; });
+      const added = (res.adopted || []).map(t =>
+        entityFromDbTable(schemaId, t, cols[t], (byName[t] || {}).comment));
+      added.forEach(e => model.entities.push(e));
+      ensureSchema(schemaId);
+      commit("create", "entity", added.map(e => e.id).join(", "), null);
+      toast(T("Добавлено в модель") + ": " + added.length);
+      dbTree = null;
+      loadDbTables().then(() => renderInspector());
+    })
+    .catch(e => toast((e && e.message) || T("Не удалось добавить таблицы")));
+}
+
+/* Блок «есть в базе, но не в модели». Пока структура базы не прочитана, блока нет,
+   но чтение запускается — и карточка перерисуется сама, когда ответ придёт. */
+function orphansHtml(schemaId){
+  if (dbTree === null){ loadDbTables().then(() => renderInspector()); return ""; }
+  const list = orphanTables(schemaId);
+  if (!list.length) return "";
+  return `<div class="sb-sub-head">${T("Есть в базе, но не в модели")} <span class="n">${list.length}</span>
+      <button class="btn tiny" id="sbS_adoptAll">${T("Добавить все")}</button></div>
+    ${list.map(t => `<div class="sb-item sb-orphan">
+        <span class="dot"></span>
+        <span class="lbl">${esc(t.name)}<i class="sb-ent-sub mono">${esc(schemaId)}.${esc(t.name)}</i></span>
+        <span class="cnt">${t.columns}</span>
+        <button class="btn tiny" data-adopt="${esc(t.name)}">${T("В модель")}</button></div>`).join("")}`;
+}
+
 /* ---------- уровень 1: сущность и её таблицы ---------- */
 function renderSchemaForm(out){
   const s = ensureSchema(state.schema);
@@ -654,6 +788,7 @@ function renderSchemaForm(out){
         <span class="lbl">${esc(e.label || e.id)}<i class="sb-ent-sub mono">${esc(s.id)}.${esc(e.table || e.id)}</i></span>
         <span class="cnt">${e.fields.length}</span></div>`).join("")
       : `<div class="sb-empty">${T("В сущности пока нет таблиц")}</div>`}
+    ${orphansHtml(s.id)}
   </div>`;
   $("#sbS_save").onclick = () => {
     const id = slug($("#sbS_id").value);
@@ -670,6 +805,12 @@ function renderSchemaForm(out){
   $("#sbS_addTable").onclick = () => openEntityModal(s.id);
   $$("#sbInspector .sb-tbl").forEach(x => x.onclick = () => {
     state.entity = x.dataset.e; state.field = null; setTab("entity"); render();
+  });
+  const adoptAll = $("#sbS_adoptAll");
+  if (adoptAll) adoptAll.onclick = () => adoptTables(s.id, orphanTables(s.id).map(t => t.name));
+  $$("#sbInspector [data-adopt]").forEach(b => b.onclick = ev => {
+    ev.stopPropagation();
+    adoptTables(s.id, [b.dataset.adopt]);
   });
 }
 
@@ -1831,6 +1972,9 @@ async function boot(){
 }
 async function load(){
   try {
+    /* Структуру базы перечитываем вместе с моделью: её могли поменять мимо билдера —
+       выкатом миграции или удалением таблицы в «Схемах и таблицах». */
+    dbTree = null;
     model = await SchemaStore.load();
     model.entities.forEach((e, i) => {   /* координаты могли не сохраниться — раскладываем */
       if (typeof e.x !== "number") e.x = 40 + (i % 3) * 330;
