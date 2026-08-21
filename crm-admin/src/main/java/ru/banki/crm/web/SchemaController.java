@@ -30,13 +30,16 @@ public class SchemaController {
     private final SchemaModelService service;
     private final ru.banki.crm.service.schema.SchemaDdlService ddl;
     private final ru.banki.crm.service.schema.SchemaInspectService inspect;
+    private final ru.banki.crm.security.AccessGuard access;
 
     public SchemaController(SchemaModelService service,
                             ru.banki.crm.service.schema.SchemaDdlService ddl,
-                            ru.banki.crm.service.schema.SchemaInspectService inspect) {
+                            ru.banki.crm.service.schema.SchemaInspectService inspect,
+                            ru.banki.crm.security.AccessGuard access) {
         this.service = service;
         this.ddl = ddl;
         this.inspect = inspect;
+        this.access = access;
     }
 
     /**
@@ -133,6 +136,60 @@ public class SchemaController {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
         }
+    }
+
+    /**
+     * Сколько строк в таблице и кто на неё ссылается — данные для диалога удаления.
+     * Право спрашиваем то же, что и на само удаление: показывать «в таблице 40 тысяч
+     * строк» тому, кто удалять не может, незачем.
+     */
+    @PostMapping("/ddl/table-info")
+    public Map<String, Object> tableInfo(@RequestBody JsonNode body) {
+        requireDrop();
+        return ddl.tableInfo(txt(body, "schema"), txt(body, "table"));
+    }
+
+    /**
+     * Удалить таблицу и её сущность в модели. Непустая таблица требует rows — ровно то
+     * число строк, которое показал table-info; связи из чужих таблиц — cascade.
+     */
+    @PostMapping("/ddl/drop-table")
+    public Map<String, Object> dropTable(@RequestBody JsonNode body) {
+        requireDrop();
+        try {
+            JsonNode rows = body == null ? null : body.get("rows");
+            return ddl.dropTable(txt(body, "schema"), txt(body, "table"),
+                    body != null && body.path("cascade").asBoolean(false),
+                    rows == null || rows.isNull() ? null : rows.asLong());
+        } catch (RuntimeException e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    /** Удалить пустую схему, заведённую билдером. */
+    @PostMapping("/ddl/drop-schema")
+    public Map<String, Object> dropSchema(@RequestBody JsonNode body) {
+        requireDrop();
+        try {
+            return ddl.dropSchema(txt(body, "schema"));
+        } catch (RuntimeException e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    /** Право на удаление — в любом из разделов, за которыми живёт конструктор схемы. */
+    private void requireDrop() {
+        access.requireCapability(ru.banki.crm.domain.Capability.DELETE,
+                ru.banki.crm.service.Sections.SET_DBTREE,
+                ru.banki.crm.service.Sections.SET_SCHEME,
+                ru.banki.crm.service.Sections.SET_OBJECTS);
+    }
+
+    private static String txt(JsonNode body, String field) {
+        JsonNode v = body == null ? null : body.get(field);
+        return v == null || v.isNull() ? "" : v.asText().trim();
     }
 
     /** Модель из тела запроса, а при пустом теле — сохранённая. */

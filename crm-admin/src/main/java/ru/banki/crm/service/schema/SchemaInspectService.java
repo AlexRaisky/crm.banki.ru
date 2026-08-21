@@ -68,7 +68,13 @@ public class SchemaInspectService {
                         "SELECT n.nspname, c.relname," +
                         "       obj_description(c.oid, 'pg_class')," +
                         "       (SELECT count(*) FROM pg_attribute a" +
-                        "         WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped)" +
+                        "         WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped)," +
+                        // Заведена ли таблица билдером на этом контуре: от этого зависит,
+                        // покажет ли обозреватель кнопку удаления. Право даёт запись в
+                        // реестре, а не факт наличия таблицы в базе (см. app.schema_owned).
+                        "       (SELECT count(*) FROM app.schema_owned o" +
+                        "         WHERE o.schema_name = n.nspname AND o.table_name = c.relname" +
+                        "           AND o.env = :env)" +
                         // Числа строк здесь нет намеренно: точный count(*) по каждой таблице
                         // превратил бы открытие раздела в полное сканирование базы, а оценка
                         // планировщика (reltuples) врёт тем сильнее, чем дольше не было
@@ -77,6 +83,7 @@ public class SchemaInspectService {
                         " WHERE c.relkind IN ('r','p')" +
                         "   AND n.nspname NOT LIKE 'pg\\_%' AND n.nspname <> 'information_schema'" +
                         " ORDER BY n.nspname, c.relname")
+                .setParameter("env", envName)
                 .getResultList();
 
         Map<String, List<Map<String, Object>>> bySchema = new LinkedHashMap<>();
@@ -86,6 +93,7 @@ public class SchemaInspectService {
             t.put("name", table);
             t.put("comment", pick(str(r[2]), descrOf(descr, schema, table)));
             t.put("columns", num(r[3]));
+            t.put("owned", num(r[4]) > 0);   // создана билдером — её можно удалить отсюда
             bySchema.computeIfAbsent(schema, k -> new ArrayList<>()).add(t);
         }
 
