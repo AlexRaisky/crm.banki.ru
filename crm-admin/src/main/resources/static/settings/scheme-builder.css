@@ -12,15 +12,18 @@
 .sb-toolbar .sb-search:focus{border-color:rgba(80,195,255,.5)}
 .sb-toolbar .spacer{margin-left:auto}
 .sb-status{font-family:var(--mono);font-size:11px;color:var(--faint);white-space:nowrap}
-.sb-dirty{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--amber);
+/* Оба значка состояния скрыты видимостью, а не display: место в тулбаре остаётся за
+   ними всегда. Иначе каждое сохранение меняло бы размер тулбара, а за ним следит
+   ResizeObserver — тулбар подпрыгивал бы на каждой правке вместе с холстом. */
+.sb-dirty{display:inline-flex;visibility:hidden;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--amber);
   background:var(--amber-bg);border:1px solid rgba(255,184,77,.35);border-radius:20px;padding:4px 11px}
-.sb-dirty.on{display:inline-flex}
+.sb-dirty.on{visibility:visible}
 /* Парный значок удачного сохранения: та же форма и то же место, другой цвет —
    так глазу не приходится искать подтверждение в другом углу экрана. */
-.sb-saved{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--green);
+.sb-saved{display:inline-flex;visibility:hidden;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--green);
   background:rgba(60,250,180,.10);border:1px solid rgba(60,250,180,.30);border-radius:20px;padding:4px 11px;
   transition:opacity .2s}
-.sb-saved.on{display:inline-flex}
+.sb-saved.on{visibility:visible}
 /* «Не применено к базе» — состояние, а не вспышка: держится до применения, поэтому
    стоит вплотную к кнопке «Применить к базе» и окрашен в её же тон. */
 .sb-pending{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--blue);

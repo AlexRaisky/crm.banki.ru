@@ -1666,10 +1666,21 @@ function layoutShell(){
   shell.style.height = h + "px";
 }
 let resizeTimer = null;
+/* Схему уже удалось вписать в видимую область (у канваса был ненулевой размер). */
+let fitted = false;
 function relayout(){
   if (!booted) return;
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { layoutShell(); fit(); }, 120);
+  resizeTimer = setTimeout(() => {
+    layoutShell();
+    /* fit() здесь только догоняющий — на случай, когда раздел открыли, пока канвас
+       был нулевой ширины и вписывать было некуда. Дальше вид принадлежит человеку:
+       он подвинул сущность, отъехал панорамой, приблизил нужный угол. Раньше fit()
+       звался на каждое изменение размеров, а тулбар меняет их сам — значок
+       «Сохранено» появляется после каждой правки, — и схема прыгала на вписанный
+       вид дважды за перетаскивание: когда значок зажёгся и когда погас. */
+    if (!fitted) fit();
+  }, 120);
 }
 window.addEventListener("resize", relayout);
 /* Наблюдаем и за самим контейнером: высота шапки с тулбаром меняется не только
@@ -1722,6 +1733,7 @@ function fit(){
   /* центрируем содержимое в видимой области */
   state.tx = (c.width - (maxX - minX) * state.scale) / 2 - minX * state.scale;
   state.ty = Math.max(m, (c.height - (maxY - minY) * state.scale) / 2) - minY * state.scale;
+  fitted = true;
   transform();
 }
 
