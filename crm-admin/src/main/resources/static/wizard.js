@@ -14,14 +14,14 @@
     "general", "cash_register", "insurance_combo", "exchange_rate",
     "insurance_estate", "credits"
   ];
-  // Резерв на случай недоступного справочника: основной источник — dictionary.d_touch_point
+  // Резерв на случай недоступного справочника: основной источник — reference.d_touch_point
   var TOUCH_OPTIONS = [
     "promo", "abandoned-view", "abandoned-form", "abandoned-showcase",
     "abandoned-application", "abandoned-approval", "abandoned-splash",
     "abandoned-rejection", "abandoned-identification", "abandoned-doc-load",
     "sign", "abandoned-payment", "abandoned-refill", "issue", "renewal", "mobile-app"
   ];
-  // Резерв подсказок communication_name; основной источник — dictionary.d_communication_name.
+  // Резерв подсказок communication_name; основной источник — reference.d_communication_name.
   var COMNAME_SEED = [
     "NoComName", "subscription", "out-trigger-", "promo", "reset-email",
     "reset-password", "change-email", "change-password", "change-phone",
@@ -58,7 +58,7 @@
     else if (def != null && options.indexOf(def) >= 0) sel.value = def;
   }
 
-  /* Точки касания: справочник dictionary.d_touch_point (фолбэк — зашитый список). */
+  /* Точки касания: справочник reference.d_touch_point (фолбэк — зашитый список). */
   function loadTouchPoints() {
     if (!window.CRM || !CRM.dictTouchPoints) return;
     CRM.dictTouchPoints().then(function (list) {
@@ -189,7 +189,7 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     initForms(document);
-    loadTouchPoints();   // dictionary.d_touch_point
-    loadLiveComNames();  // dictionary.d_communication_name + значения из шаблонов
+    loadTouchPoints();   // reference.d_touch_point
+    loadLiveComNames();  // reference.d_communication_name + значения из шаблонов
   });
 })();

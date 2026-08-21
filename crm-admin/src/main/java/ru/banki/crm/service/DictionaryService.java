@@ -11,8 +11,9 @@ import java.util.Map;
 
 /**
  * Справочные значения для форм мастера (партнёры, сегменты КЦ, подсказки
- * communication_name). Источник — справочники схемы {@code dictionary} и единый
- * справочник template.d_template; канальные таблицы не читаются.
+ * communication_name). Источник — справочники схем {@code reference} (имена коммуникаций,
+ * точки касания) и {@code dictionary} (партнёры, продукты) плюс единый справочник
+ * template.d_template; канальные таблицы не читаются.
  */
 @Service
 public class DictionaryService {
@@ -87,7 +88,7 @@ public class DictionaryService {
 
     /**
      * Значения communication_name для выпадающего списка — ТОЛЬКО справочник
-     * dictionary.d_communication_name.
+     * reference.d_communication_name.
      * <p>
      * Раньше сюда подмешивались имена, уже встречающиеся в шаблонах канала. На тестовых
      * данных это было незаметно, а на реальных превратило список в свалку исторических
@@ -103,7 +104,7 @@ public class DictionaryService {
     @Transactional(readOnly = true)
     public List<String> communicationNames(String channel) {
         return jdbc.queryForList(
-                "SELECT value FROM dictionary.d_communication_name WHERE is_active ORDER BY sort_order, value",
+                "SELECT value FROM reference.d_communication_name WHERE is_active ORDER BY sort_order, value",
                 String.class);
     }
 
@@ -111,7 +112,7 @@ public class DictionaryService {
     @Transactional(readOnly = true)
     public List<String> touchPoints() {
         return jdbc.queryForList(
-                "SELECT value FROM dictionary.d_touch_point WHERE is_active ORDER BY sort_order, value",
+                "SELECT value FROM reference.d_touch_point WHERE is_active ORDER BY sort_order, value",
                 String.class);
     }
 

@@ -297,7 +297,7 @@ function sfdRecalcNames(){
 }
 
 /* ---------- справочники значений для карточки ----------
-   dictionary.d_touch_point и dictionary.d_communication_name уже отдаются бэкендом
+   reference.d_touch_point и reference.d_communication_name уже отдаются бэкендом
    (/api/dictionaries/*). Раньше их подтягивал wizard.js в старые канальные формы;
    формы ушли вместе с переходом мастера на карточку, и поля снова стали обычным
    вводом руками. Тянем справочники сюда: touch_point — строгий список, а
