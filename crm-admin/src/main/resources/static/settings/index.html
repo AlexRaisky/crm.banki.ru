@@ -830,8 +830,10 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
               </select>
             </div>
             <div class="dbc-fld">
+              <!-- Список исполнителей — учётки с супер-ролью: доработки делают они.
+                   Наполняется из GET /api/admin/backlog/assignees. -->
               <label>Исполнитель</label>
-              <input class="dbc-in" id="bkAssignee" placeholder="можно оставить пустым">
+              <select class="dbc-in" id="bkAssignee"><option value="">не назначен</option></select>
             </div>
             <div class="dbc-fld wide">
               <label>Описание</label>
@@ -3002,6 +3004,6 @@ window.CRM = window.CRM || (function(){
 </style>
 <script src="db-explorer.js?v=3"></script>
 <!-- «Бэклог»: задачи на доработку панели, раздел только для админов -->
-<script src="backlog.js?v=1"></script>
+<script src="backlog.js?v=2"></script>
 </body>
 </html>

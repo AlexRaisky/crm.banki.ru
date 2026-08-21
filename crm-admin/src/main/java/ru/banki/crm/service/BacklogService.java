@@ -94,6 +94,31 @@ public class BacklogService {
         return out;
     }
 
+    /**
+     * Кому можно поручить задачу: учётки с супер-ролью.
+     * <p>
+     * Бэклог ведут те, кто эти доработки и делает, а это ровно супер-админы — остальным
+     * список исполнителей только мешал бы промахиваться. Отключённые учётки не показываем:
+     * назначить задачу на того, кто не может войти, — это потерять её.
+     * <p>
+     * Наружу состав супер-админов панель не раскрывает (роль везде маскируется под
+     * «Админ»), но здесь раздел админский целиком, и список видят только администраторы.
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> assignees() {
+        return jdbc.query(
+                "SELECT u.email, coalesce(u.display_name, '') AS display_name"
+                + "  FROM app.users u JOIN app.role r ON r.id = u.role_id"
+                + " WHERE r.is_super_admin AND u.enabled"
+                + " ORDER BY lower(u.email)",
+                (rs, i) -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("email", rs.getString("email"));
+                    m.put("name", nz(rs.getString("display_name")));
+                    return m;
+                });
+    }
+
     @Transactional
     public Map<String, Object> create(Map<String, Object> body) {
         String title = text(body.get("title"), MAX_TITLE);

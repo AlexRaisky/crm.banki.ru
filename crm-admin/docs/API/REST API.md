@@ -291,6 +291,7 @@ Query-параметры списка (все опциональны, множе
 | `POST /api/admin/db-connections/test-all` | проверить все и вернуть свежий список | ADMIN |
 | `GET /api/admin/backlog` | бэклог доработок; `?status=` — фильтр по одному статусу | ADMIN |
 | `GET /api/admin/backlog/counts` | сколько задач в каждом статусе — для подписей вкладок | ADMIN |
+| `GET /api/admin/backlog/assignees` | кому можно поручить: активные учётки с супер-ролью `{email, name}` | ADMIN |
 | `POST /api/admin/backlog` | завести задачу: `{title, description, area, priority, assignee}` | ADMIN |
 | `PUT /api/admin/backlog/{id}` | правка; поля, которых нет в теле, не трогаются | ADMIN |
 | `DELETE /api/admin/backlog/{id}` | удалить задачу | ADMIN |

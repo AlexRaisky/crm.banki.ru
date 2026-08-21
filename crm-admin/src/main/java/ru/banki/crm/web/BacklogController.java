@@ -35,6 +35,12 @@ public class BacklogController {
         return backlog.counts();
     }
 
+    /** Кому можно поручить: учётки с супер-ролью. */
+    @GetMapping("/assignees")
+    public List<Map<String, Object>> assignees() {
+        return backlog.assignees();
+    }
+
     @PostMapping
     public Map<String, Object> create(@RequestBody Map<String, Object> body) {
         return backlog.create(body);

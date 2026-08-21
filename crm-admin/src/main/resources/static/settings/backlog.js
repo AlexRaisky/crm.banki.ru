@@ -12,6 +12,9 @@ window.Backlog = (function(){
   "use strict";
 
   var bound = false, items = [], filter = "", editing = null;
+  /* Кому можно поручить — учётки с супер-ролью: доработки делают они. Список приходит
+     с сервера, здесь только показываем. */
+  var assignees = [];
 
   var STATUS = [
     { v:"new",         label:"Новые" },
@@ -58,6 +61,32 @@ window.Backlog = (function(){
         throw new Error(msg || (r.status + " " + r.statusText));
       });
     });
+  }
+
+  /* Варианты исполнителя. Уже сохранённое значение добавляем первым, даже если такой
+     учётки в списке больше нет: иначе select молча подменил бы его соседним, и правка
+     заголовка заодно переназначила бы задачу. */
+  function assigneeOptions(cur){
+    var v = String(cur || "");
+    var html = '<option value=""' + (v ? "" : " selected") + ">" + T("не назначен") + "</option>";
+    var known = false;
+    assignees.forEach(function(a){
+      if (a.email === v) known = true;
+      html += '<option value="' + esc(a.email) + '"' + (a.email === v ? " selected" : "") + ">" +
+        esc(a.name ? (a.name + " · " + a.email) : a.email) + "</option>";
+    });
+    if (v && !known){
+      html += '<option value="' + esc(v) + '" selected>' + esc(v) + " · " + T("вне списка") + "</option>";
+    }
+    return html;
+  }
+
+  function loadAssignees(){
+    return req("GET", "../api/admin/backlog/assignees").then(function(list){
+      assignees = list || [];
+      var sel = document.getElementById("bkAssignee");
+      if (sel) sel.innerHTML = assigneeOptions(sel.value);
+    }).catch(function(){ assignees = []; });
   }
 
   function load(){
@@ -177,7 +206,7 @@ window.Backlog = (function(){
         '<div class="dbc-fld"><label>' + T("Приоритет") + "</label>" +
           '<select class="dbc-in bk-e-priority">' + optionsHtml(PRIORITY, it.priority) + "</select></div>" +
         '<div class="dbc-fld"><label>' + T("Исполнитель") + "</label>" +
-          '<input class="dbc-in bk-e-assignee" value="' + esc(it.assignee) + '"></div>' +
+          '<select class="dbc-in bk-e-assignee">' + assigneeOptions(it.assignee) + "</select></div>" +
         '<div class="dbc-fld wide"><label>' + T("Описание") + "</label>" +
           '<textarea class="dbc-in bk-e-desc" rows="3">' + esc(it.description) + "</textarea></div>" +
       "</div>" +
@@ -209,7 +238,7 @@ window.Backlog = (function(){
     }).then(function(){
       document.getElementById("bkTitle").value = "";
       document.getElementById("bkDesc").value = "";
-      document.getElementById("bkAssignee").value = "";
+      document.getElementById("bkAssignee").value = "";   // «не назначен»
       note(T("Добавлено"));
       /* Фильтр сбрасываем на «Новые»: только что заведённая задача должна быть видна,
          а не спрятаться за вкладкой, на которой человек стоял. */
@@ -233,7 +262,9 @@ window.Backlog = (function(){
   return {
     open: function(){
       bind();
-      load();
+      /* Сначала исполнители: список нужен уже первой отрисовке строк, иначе в редакторе
+         сохранённый исполнитель показался бы «вне списка». */
+      loadAssignees().then(load);
       refreshCounts();
     }
   };
