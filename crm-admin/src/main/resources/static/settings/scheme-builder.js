@@ -1186,7 +1186,7 @@ function renderDropBlock(dp){
 
   box.innerHTML = `<h3 class="sb-drop-h">${T("Удалить из базы")}</h3>
     <div class="sb-modal-note">${T("В базе есть колонки, которых больше нет в модели")}: <b>${list.length}</b>.
-      ${T("Ищем только по таблицам, заведённым билдером. Таблицы и схемы целиком не удаляются — только колонки.")}</div>
+      ${T("Ищем только по таблицам, заведённым билдером. Здесь удаляются колонки; таблицу или пустую схему целиком — в разделе «Схемы и таблицы».")}</div>
     <div class="sb-drop">${rows}</div>
     <div class="sb-acts" id="sbDropActs">
       <button class="btn danger" id="sbDrop_go">${T("Удалить выбранное")}</button></div>
