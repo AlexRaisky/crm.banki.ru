@@ -210,6 +210,39 @@ public class TemplateStore {
         return d;
     }
 
+    /**
+     * Код шаблона канала с таким же source (колонка campaign_name) — или null.
+     * <p>
+     * Сравниваем без учёта регистра и краевых пробелов: source собирается из полей формы,
+     * и «Email_promo_…» с «email_promo_…» — это одна и та же коммуникация, заведённая
+     * дважды, а не две разные.
+     */
+    public String findBySource(String channel, String source) {
+        String want = nz(source).trim();
+        if (want.isEmpty()) return null;
+        List<Long> r = jdbc.queryForList(
+                "SELECT code FROM template.d_template" +
+                " WHERE channel = ? AND lower(btrim(campaign_name)) = lower(?)" +
+                " ORDER BY code LIMIT 1",
+                Long.class, channel, want);
+        return r.isEmpty() ? null : String.valueOf(r.get(0));
+    }
+
+    /**
+     * Код письма с таким же letteros_id — или null. Ключ лежит в channel_props, своей
+     * колонки у него нет.
+     */
+    public String findByLetterosId(String channel, String letterosId) {
+        String want = nz(letterosId).trim();
+        if (want.isEmpty()) return null;
+        List<Long> r = jdbc.queryForList(
+                "SELECT code FROM template.d_template" +
+                " WHERE channel = ? AND btrim(coalesce(channel_props->>'letteros_id', '')) = ?" +
+                " ORDER BY code LIMIT 1",
+                Long.class, channel, want);
+        return r.isEmpty() ? null : String.valueOf(r.get(0));
+    }
+
     public boolean exists(String channel, String code) {
         Long n = jdbc.queryForObject(
                 "SELECT count(*) FROM template.d_template WHERE channel = ? AND code = ?",

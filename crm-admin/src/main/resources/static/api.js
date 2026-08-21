@@ -244,7 +244,18 @@
     },
     facetsTemplates: function () { return req("GET", "/api/templates/facets"); },
     getTemplate: function (channel, code) { return req("GET", "/api/templates/" + channel + "/" + code); },
-    createTemplate: function (dto) { return req("POST", "/api/templates/" + dto.channel, dto); },
+    /* force=true — «да, знаю, что source занят, всё равно создаю» (А/Б-пара, день цепочки).
+       Совпадение letteros_id этим не обходится: сервер откажет в любом случае. */
+    createTemplate: function (dto, force) {
+      return req("POST", "/api/templates/" + dto.channel + (force ? "?force=true" : ""), dto);
+    },
+    /* Что уже занято этим source и letteros_id — спрашиваем ДО создания, чтобы показать
+       вопрос человеку, а не отказ сервера после нажатия. */
+    templateDuplicates: function (channel, source, letterosId) {
+      return req("GET", "/api/templates/" + channel + "/duplicates" +
+        "?source=" + encodeURIComponent(source || "") +
+        "&letterosId=" + encodeURIComponent(letterosId || ""));
+    },
     updateTemplate: function (channel, code, dto) { return req("PUT", "/api/templates/" + channel + "/" + code, dto); },
     deleteTemplate: function (channel, code) { return req("DELETE", "/api/templates/" + channel + "/" + code); },
     createChain: function (channel, base, days) { return req("POST", "/api/templates/" + channel + "/chain", { base: base, days: days }); },
@@ -282,15 +293,23 @@
     v1ToDto: v1ToDto,
     dtoToV1: dtoToV1,
 
+    /** Будет ли это сохранение созданием нового шаблона, а не правкой открытого.
+        Решение то же, что и в saveFromV1 — держим его в одном месте, иначе проверка
+        на дубль спрашивала бы про шаблон, который на самом деле обновляют. */
+    willCreateFromV1: function (d) {
+      var dto = v1ToDto(d), cur = window.CRM_CURRENT;
+      return !(cur && cur.channel === dto.channel && dto.code && String(cur.code) === String(dto.code));
+    },
+
     /** Решает create/update по контексту открытого шаблона (window.CRM_CURRENT). */
-    saveFromV1: function (d) {
+    saveFromV1: function (d, opts) {
       var dto = v1ToDto(d);
       var cur = window.CRM_CURRENT;
       var isUpdate = cur && cur.channel === dto.channel && dto.code && String(cur.code) === String(dto.code);
       if (isUpdate) {
         return CRM.updateTemplate(dto.channel, dto.code, dto).then(function () { return { code: dto.code }; });
       }
-      return CRM.createTemplate(dto);
+      return CRM.createTemplate(dto, opts && opts.force);
     }
   };
 

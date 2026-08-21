@@ -165,6 +165,41 @@ function sfdComputeCampaignName(d){
     }
     return tab + '_' + senderType + '_' + product + '_' + comname + '_' + day + 'day';
 }
+/**
+ * Не заводим второй раз то, что уже заведено.
+ *
+ * Спрашиваем сервер ДО сохранения, чтобы показать вопрос человеку, а не отказ после
+ * нажатия. Проверок две, и они разной строгости:
+ *   letteros_id — точный ключ макета письма: совпадение означает то же самое письмо,
+ *                 и заводить второй шаблон незачем — предлагаем открыть существующий;
+ *   source      — имя кампании: обычно совпадение это повторное «Создать», но у А/Б-пары
+ *                 и у дней цепочки оно общее по замыслу, поэтому спрашиваем, а не запрещаем.
+ *
+ * Возвращает промис: null — не сохранять, объект {force} — сохранять (force сообщает
+ * серверу, что дубль по source осознанный). Проверка не удалась — работать не мешаем:
+ * сервер проверит то же самое сам.
+ */
+function sfdGuardDuplicate(d){
+    if (!CRM.willCreateFromV1(d)) return Promise.resolve({ force:false });
+    var source = d.source || '';
+    var letteros = (d.channel === 'email') ? (d.letteros_id || '') : '';
+    if (!source && !letteros) return Promise.resolve({ force:false });
+    return CRM.templateDuplicates(d.channel, source, letteros).then(function(res){
+        if (res && res.letterosId){
+            alert(sfdT('Письмо с таким Letteros Id уже заведено') + ': ' + d.channel + '/' + res.letterosId +
+                '.\n' + sfdT('Откройте существующий шаблон вместо создания нового.'));
+            return null;
+        }
+        if (res && res.source){
+            return confirm(sfdT('Шаблон с таким source уже есть') + ': ' + d.channel + '/' + res.source +
+                '\n' + source + '\n\n' +
+                sfdT('Создать ещё один? Так делают для А/Б-пары и для дней цепочки.'))
+                ? { force:true } : null;
+        }
+        return { force:false };
+    }).catch(function(){ return { force:false }; });
+}
+
 /* ---------- предзаполнение по типу отправителя ----------
    У promo-рассылок эти четыре поля всегда одни и те же, и заполнять их руками каждый
    раз незачем. Пишем во все четыре, а не только в пустые: правило жёсткое, и выбранное
@@ -1070,20 +1105,30 @@ function sfdCreate(){
            уже не видно. Каждый день берёт контент только из своей строки таблицы. */
         var base = Object.assign({}, d);
         sfdChainKeys(d.channel).forEach(function(k){ base[k] = ''; });
-        var seq = rows.reduce(function(p, row){
-            return p.then(function(acc){
-                var dd = Object.assign({}, base, row.overrides, { day: String(row.day) });
-                if (dd.channel === 'email' && dd.letteros_id) dd.code = dd.letteros_id;
-                var src = sfdComputeCampaignName(dd);
-                if (src) dd.source = src;
-                return CRM.saveFromV1(dd).then(function(r){ acc.push(r && r.code); return acc; });
+        /* Дни цепочки делят одно имя кампании, поэтому спрашиваем про дубль один раз —
+           по первому дню, — а остальные идут с уже полученным согласием. Иначе второй
+           день упирался бы в только что созданный первый. */
+        var first = Object.assign({}, base, rows[0].overrides, { day: String(rows[0].day) });
+        var firstSrc = sfdComputeCampaignName(first);
+        if (firstSrc) first.source = firstSrc;
+        sfdGuardDuplicate(first).then(function(go){
+            if (!go) return;
+            var seq = rows.reduce(function(p, row){
+                return p.then(function(acc){
+                    var dd = Object.assign({}, base, row.overrides, { day: String(row.day) });
+                    if (dd.channel === 'email' && dd.letteros_id) dd.code = dd.letteros_id;
+                    var src = sfdComputeCampaignName(dd);
+                    if (src) dd.source = src;
+                    return CRM.saveFromV1(dd, { force: go.force || acc.length > 0 })
+                        .then(function(r){ acc.push(r && r.code); return acc; });
+                });
+            }, Promise.resolve([]));
+            return seq.then(function(codes){
+                alert(sfdT('Цепочка создана') + ': ' + rows.length + ' ' + sfdT('шаблон(ов)') +
+                    '.\nCode: ' + codes.filter(Boolean).join(', '));
+                refreshList();
+                wizardCardOpen(d.channel);
             });
-        }, Promise.resolve([]));
-        seq.then(function(codes){
-            alert(sfdT('Цепочка создана') + ': ' + rows.length + ' ' + sfdT('шаблон(ов)') +
-                '.\nCode: ' + codes.filter(Boolean).join(', '));
-            refreshList();
-            wizardCardOpen(d.channel);
         }).catch(function(e){ alert(sfdT('Ошибка сохранения') + ': ' + (e && e.message ? e.message : e)); });
         return;
     }
@@ -1091,11 +1136,14 @@ function sfdCreate(){
     /* ---- одиночный шаблон ---- */
     if (d.channel === 'email' && !d.letteros_id) d.letteros_id = d.code;
     window.CRM_CURRENT = null;   /* новый шаблон — POST, а не PUT */
-    CRM.saveFromV1(d).then(function(res){
-        var code = (res && res.code != null) ? res.code : d.code;
-        alert(sfdT('Шаблон создан') + '.\ncommunication_name: ' + (d.comname || '') + '\nCode: ' + code);
-        refreshList();
-        wizardCardOpen(d.channel);
+    sfdGuardDuplicate(d).then(function(go){
+        if (!go) return;
+        return CRM.saveFromV1(d, go).then(function(res){
+            var code = (res && res.code != null) ? res.code : d.code;
+            alert(sfdT('Шаблон создан') + '.\ncommunication_name: ' + (d.comname || '') + '\nCode: ' + code);
+            refreshList();
+            wizardCardOpen(d.channel);
+        });
     }).catch(function(e){ alert(sfdT('Ошибка сохранения') + ': ' + (e && e.message ? e.message : e)); });
 }
 /* мастер: обновляем подвал (чего не хватает) без перерисовки — чтобы не терять фокус */
@@ -1740,29 +1788,44 @@ function saveFromChannelForm(channel) {
         if (rows == null) return;
         if (!rows.length) { alert('Сгенерируйте строки: введите дни и нажмите «Сгенерировать строки».'); return; }
         window.CRM_CURRENT = null;                    // цепочка — всегда создание
-        var seq = rows.reduce(function (p, row) {
-            return p.then(function (acc) {
-                var d = Object.assign({}, data, row.overrides, {
-                    day: String(row.day),
-                    source: computeCampaignName(formEl, row.day)
+        /* Про дубль спрашиваем один раз, по первому дню: имя кампании у дней общее,
+           и второй день упирался бы в только что созданный первый. */
+        var firstDay = Object.assign({}, data, rows[0].overrides, {
+            day: String(rows[0].day),
+            source: computeCampaignName(formEl, rows[0].day)
+        });
+        sfdGuardDuplicate(firstDay).then(function (go) {
+            if (!go) return;
+            var seq = rows.reduce(function (p, row) {
+                return p.then(function (acc) {
+                    var d = Object.assign({}, data, row.overrides, {
+                        day: String(row.day),
+                        source: computeCampaignName(formEl, row.day)
+                    });
+                    return CRM.saveFromV1(d, { force: go.force || acc.length > 0 })
+                        .then(function (r) { acc.push(r && r.code); return acc; });
                 });
-                return CRM.saveFromV1(d).then(function (r) { acc.push(r && r.code); return acc; });
+            }, Promise.resolve([]));
+            return seq.then(function (codes) {
+                alert('Цепочка сохранена: ' + rows.length + ' шаблон(ов).\nCode: ' + codes.filter(Boolean).join(', '));
+                window.CRM_CURRENT = null;
+                afterChannelSave();
             });
-        }, Promise.resolve([]));
-        seq.then(function (codes) {
-            alert('Цепочка сохранена: ' + rows.length + ' шаблон(ов).\nCode: ' + codes.filter(Boolean).join(', '));
-            window.CRM_CURRENT = null;
-            afterChannelSave();
         }).catch(function (e) { alert('Ошибка сохранения цепочки: ' + (e && e.message ? e.message : e)); });
         return;
     }
 
     // ---- Одиночный шаблон ----
     data.source = computeCampaignName(formEl, undefined) || data.source;
-    CRM.saveFromV1(data).then(function (r) {
-        alert('Сохранено.\ncommunication_name: ' + data.comname + '\nCode: ' + (r && r.code != null ? r.code : ''));
-        window.CRM_CURRENT = null;
-        afterChannelSave();
+    /* Проверка молчит, когда это правка открытого шаблона: спрашивать «такой уже есть»
+       про него же самого было бы издевательством (см. sfdGuardDuplicate). */
+    sfdGuardDuplicate(data).then(function (go) {
+        if (!go) return;
+        return CRM.saveFromV1(data, go).then(function (r) {
+            alert('Сохранено.\ncommunication_name: ' + data.comname + '\nCode: ' + (r && r.code != null ? r.code : ''));
+            window.CRM_CURRENT = null;
+            afterChannelSave();
+        });
     }).catch(function (e) { alert('Ошибка сохранения: ' + (e && e.message ? e.message : e)); });
 }
 

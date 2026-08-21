@@ -72,11 +72,26 @@ public class TemplateController {
         return service.get(channel, code);
     }
 
+    /**
+     * @param force создавать, даже если шаблон с таким source уже есть — осознанный повтор
+     *              (А/Б-пара, ещё один день цепочки). Совпадение letteros_id так не
+     *              обходится: это то же самое письмо.
+     */
     @PostMapping("/{channel}")
-    public Map<String, String> create(@PathVariable String channel, @Valid @RequestBody TemplateDto dto) {
+    public Map<String, String> create(@PathVariable String channel, @Valid @RequestBody TemplateDto dto,
+                                      @RequestParam(defaultValue = "false") boolean force) {
         access.requireCapability(Capability.ADD, Sections.ADMIN, Sections.TEMPLATES);
         dto.setChannel(channel);
-        return Map.of("code", service.create(dto));
+        return Map.of("code", service.create(dto, force));
+    }
+
+    /** Занят ли уже этот source (и letteros_id у писем) — чтобы спросить до создания. */
+    @GetMapping("/{channel}/duplicates")
+    public Map<String, String> duplicates(@PathVariable String channel,
+                                          @RequestParam(required = false) String source,
+                                          @RequestParam(required = false) String letterosId) {
+        access.requireAnySection(Sections.TEMPLATES, Sections.ADMIN, Sections.VIEWER);
+        return service.duplicates(channel, source, letterosId);
     }
 
     @PostMapping("/{channel}/chain")

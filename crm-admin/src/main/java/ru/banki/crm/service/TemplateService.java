@@ -10,6 +10,7 @@ import ru.banki.crm.dto.TemplateListItemDto;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * CRUD шаблонов новой архитектуры. Единственное хранилище — template.d_template
@@ -261,12 +262,24 @@ public class TemplateService {
     // ----------------------------------------------------------------- CREATE
     @Transactional
     public String create(TemplateDto dto) {
+        return create(dto, false);
+    }
+
+    /**
+     * @param forceSource создавать, даже если шаблон с таким source уже есть. Нужно для
+     *                    осознанных повторов: дни цепочки и А/Б-пары делят одно имя
+     *                    кампании, и запрет по source сломал бы их заведение. На проверку
+     *                    letteros_id не влияет — там совпадение означает то же самое письмо.
+     */
+    @Transactional
+    public String create(TemplateDto dto, boolean forceSource) {
         audit.mark();
         String channel = norm(dto.getChannel());
         if (!List.of("sms", "push", "email", "cc", "fa", "vk", "la").contains(channel)) {
             throw badChannel(dto.getChannel());
         }
         requireFilled(channel, dto, null);
+        requireNotDuplicate(channel, dto, forceSource);
         long code;
         if ("cc".equals(channel)) {
             // у КЦ бизнес-ключ (segment) задаёт пользователь
@@ -290,6 +303,44 @@ public class TemplateService {
         return codeStr;
     }
 
+    /**
+     * Не заводим второй раз то, что уже заведено.
+     * <p>
+     * Проверок две, и они разной строгости. letteros_id — точный ключ макета письма: одно
+     * письмо в Letteros живёт в одном шаблоне, и совпадение здесь осмысленным не бывает,
+     * поэтому его не обойти. source (campaign_name) — имя кампании: обычно совпадение
+     * означает повторное нажатие «Создать», но у дней цепочки и у А/Б-пары оно общее по
+     * замыслу, поэтому такой отказ снимается подтверждением (forceSource).
+     */
+    private void requireNotDuplicate(String channel, TemplateDto dto, boolean forceSource) {
+        if ("email".equals(channel)) {
+            String letteros = nz(dto.getLetterosId()).trim();
+            String twin = store.findByLetterosId(channel, letteros);
+            if (twin != null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Письмо с letteros_id " + letteros + " уже заведено — шаблон " + twin
+                        + ". Откройте его вместо создания нового.");
+            }
+        }
+        if (forceSource) return;
+        String twin = store.findBySource(channel, dto.getSourceType());
+        if (twin != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Шаблон с таким source уже есть — " + channel + "/" + twin
+                    + " («" + nz(dto.getSourceType()).trim() + "»).");
+        }
+    }
+
+    /** Что уже занято этим source и этим letteros_id: коды шаблонов либо null. */
+    @Transactional(readOnly = true)
+    public Map<String, String> duplicates(String channel, String source, String letterosId) {
+        String ch = norm(channel);
+        Map<String, String> out = new java.util.LinkedHashMap<>();
+        out.put("source", store.findBySource(ch, source));
+        out.put("letterosId", "email".equals(ch) ? store.findByLetterosId(ch, letterosId) : null);
+        return out;
+    }
+
     // ------------------------------------------------------------- CREATE CHAIN
     /** Один транзакционный batch вместо N отдельных INSERT-ов (v2 крутил цикл на клиенте). */
     @Transactional
@@ -300,7 +351,10 @@ public class TemplateService {
         List<String> created = new ArrayList<>();
         for (String day : req.getDays()) {
             TemplateDto copy = cloneWithDay(req.getBase(), day);
-            created.add(create(copy));
+            /* Проверку по source делаем на первом дне: у остальных оно то же самое по
+               замыслу цепочки, и повторный отказ означал бы «нельзя завести цепочку
+               вообще». letteros_id при этом проверяется у каждого дня — он свой. */
+            created.add(create(copy, !created.isEmpty()));
         }
         return created;
     }

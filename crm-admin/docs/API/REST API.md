@@ -96,7 +96,8 @@ tags: [api, reference]
 | `GET /api/templates/facets` | значения фильтров (продукт/точка/триггер) из реальных данных | READ в `templates` или `admin` |
 | `GET /api/templates/count` | `{total, active}` под теми же фильтрами | READ в `templates` или `admin` |
 | `GET /api/templates/{channel}/{code}` | полная карточка `TemplateDto` | READ в `templates` или `admin` |
-| `POST /api/templates/{channel}` | создать шаблон → `{code}` | ADD в `admin` или `templates` |
+| `POST /api/templates/{channel}` | создать шаблон → `{code}`; `?force=true` — подтверждённый дубль по source | ADD в `admin` или `templates` |
+| `GET /api/templates/{channel}/duplicates` | занят ли этот `source` (и `letterosId` у писем) → коды шаблонов или `null` | READ в `templates`, `admin` или `viewer` |
 | `POST /api/templates/{channel}/chain` | батч «цепочка дней»: `{base, days[]}` → `{codes[]}` | ADD в `admin` или `templates` |
 | `PUT /api/templates/{channel}/{code}` | обновить | EDIT в `admin` или `templates` |
 | `DELETE /api/templates/{channel}/{code}` | удалить | DELETE в `admin` или `templates` |
