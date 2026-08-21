@@ -289,6 +289,11 @@ Query-параметры списка (все опциональны, множе
 | `DELETE /api/admin/db-connections/{id}` | удалить | ADMIN |
 | `POST /api/admin/db-connections/{id}/test` | проверить одно (`SELECT 1`); `id` — число либо `our-db` / `prod-db` | ADMIN |
 | `POST /api/admin/db-connections/test-all` | проверить все и вернуть свежий список | ADMIN |
+| `GET /api/admin/backlog` | бэклог доработок; `?status=` — фильтр по одному статусу | ADMIN |
+| `GET /api/admin/backlog/counts` | сколько задач в каждом статусе — для подписей вкладок | ADMIN |
+| `POST /api/admin/backlog` | завести задачу: `{title, description, area, priority, assignee}` | ADMIN |
+| `PUT /api/admin/backlog/{id}` | правка; поля, которых нет в теле, не трогаются | ADMIN |
+| `DELETE /api/admin/backlog/{id}` | удалить задачу | ADMIN |
 
 Пароль наружу не отдаётся — только флаг `hasPassword`. Этот же реестр даёт приёмник синка и источник DWH для отчёта «ЧЕК СМС траффик».
 

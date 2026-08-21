@@ -91,6 +91,12 @@
 .sb-node-add{margin-left:auto;width:24px;height:24px;flex:0 0 auto;border-radius:7px;border:1px solid var(--line);
   background:var(--card);color:var(--dim);cursor:pointer;font-size:14px;line-height:1;padding:0}
 .sb-node-add:hover{color:var(--green);border-color:var(--green)}
+/* Крестик рядом с «+»: приглушён, пока на блок не навели — удаление не должно
+   бросаться в глаза сильнее, чем добавление. */
+.sb-node-del{width:24px;height:24px;flex:0 0 auto;border-radius:7px;border:1px solid var(--line);
+  background:transparent;color:var(--faint);font-size:15px;line-height:1;cursor:pointer;opacity:.5}
+.sb-node:hover .sb-node-del{opacity:1}
+.sb-node-del:hover{color:var(--coral);border-color:var(--coral)}
 .sb-node-fields{max-height:270px;overflow:auto}
 /* развёрнутый узел: список полей выше, но не бесконечный — дальше скроллится
    внутри самого узла, чтобы схема не растягивалась на весь канвас */

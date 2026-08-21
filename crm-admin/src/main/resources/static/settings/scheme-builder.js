@@ -471,6 +471,7 @@ function renderNodes(){
         <div><div class="sb-node-title">${esc(s.label || s.id)}</div>
           <div class="sb-node-sub mono">${esc(s.id)} · ${tables.length} ${T("табл.")} · ${cols}</div></div>
         <button class="sb-node-add" title="${T("Добавить таблицу")}">+</button>
+        <button class="sb-node-del" title="${T("Удалить блок")}">×</button>
       </div>
       <div class="sb-node-body">${plates || `<div class="sb-plate-empty">${T("нет таблиц")}</div>`}</div>
     </div>`;
@@ -495,6 +496,7 @@ function renderNodes(){
       state.drag = { id: sid, dx: p.x - xy.x, dy: p.y - xy.y }; ev.preventDefault();
     };
     n.querySelector(".sb-node-add").onclick = ev => { ev.stopPropagation(); openEntityModal(sid); };
+    n.querySelector(".sb-node-del").onclick = ev => { ev.stopPropagation(); deleteSchemaBlock(sid); };
     $$(".sb-plate-add", n).forEach(b => b.onclick = ev => {
       ev.stopPropagation(); state.schema = sid; state.entity = b.dataset.e; openFieldModal();
     });
@@ -767,6 +769,45 @@ function orphansHtml(schemaId){
         <button class="btn tiny" data-adopt="${esc(t.name)}">${T("В модель")}</button></div>`).join("")}`;
 }
 
+/**
+ * Удалить блок (схему) целиком: сам блок, его таблицы и связи, в которых они участвуют.
+ *
+ * Только из модели. В базе таблицы остаются — конструктор рисует намерение, а сносить
+ * данные заодно с картинкой нельзя; для этого есть «Схемы и таблицы», где удаление
+ * спрашивает про число строк. Об этом и говорим прямо в подтверждении, иначе человек
+ * решит, что таблицы уже удалены.
+ */
+function deleteSchemaBlock(schemaId){
+  const s = (model.schemas || []).find(x => x.id === schemaId);
+  const tables = model.entities.filter(e => schemaOf(e) === schemaId);
+  const ids = tables.map(e => e.id);
+  const rels = (model.relations || []).filter(r =>
+    ids.indexOf(r.from_entity) >= 0 || ids.indexOf(r.to_entity) >= 0);
+  const name = (s && (s.label || s.id)) || schemaId;
+
+  let msg = T("Удалить блок") + " «" + name + "»?";
+  if (tables.length){
+    msg += "\n\n" + T("Из модели исчезнут таблицы") + ": " + tables.map(e => e.table || e.id).join(", ");
+    if (rels.length) msg += "\n" + T("и связи") + ": " + rels.length;
+  }
+  msg += "\n\n" + T("В базе они останутся — удалить их можно в разделе «Схемы и таблицы».");
+  if (!confirm(msg)) return;
+
+  model.entities = model.entities.filter(e => schemaOf(e) !== schemaId);
+  model.relations = (model.relations || []).filter(r =>
+    ids.indexOf(r.from_entity) < 0 && ids.indexOf(r.to_entity) < 0);
+  model.schemas = (model.schemas || []).filter(x => x.id !== schemaId);
+  /* Пометка удаления: без неё наложение черновика на файл (EntityLayout.mergeDraft)
+     вернуло бы таблицы обратно при следующей загрузке. */
+  if (!Array.isArray(model.deleted)) model.deleted = [];
+  ids.forEach(id => { if (model.deleted.indexOf(id) < 0) model.deleted.push(id); });
+
+  if (state.schema === schemaId) state.schema = null;
+  if (ids.indexOf(state.entity) >= 0){ state.entity = null; state.field = null; }
+  commit("delete", "schema", schemaId, null);
+  toast(T("Блок удалён"));
+}
+
 /* ---------- уровень 1: сущность и её таблицы ---------- */
 function renderSchemaForm(out){
   const s = ensureSchema(state.schema);
@@ -781,6 +822,7 @@ function renderSchemaForm(out){
     <div class="sb-acts">
       <button class="btn accent" id="sbS_save">${T("Сохранить")}</button>
       <button class="btn" id="sbS_addTable">+ ${T("Таблица")}</button>
+      <button class="btn ghost-danger" id="sbS_del">${T("Удалить блок")}</button>
     </div>
     <div class="sb-sub-head">${T("Таблицы")} <span class="n">${tables.length}</span></div>
     ${tables.length ? tables.map(e => `<div class="sb-item sb-tbl" data-e="${esc(e.id)}">
@@ -803,6 +845,7 @@ function renderSchemaForm(out){
     commit("update", "schema", id, s); toast(T("Сущность сохранена"));
   };
   $("#sbS_addTable").onclick = () => openEntityModal(s.id);
+  $("#sbS_del").onclick = () => deleteSchemaBlock(s.id);
   $$("#sbInspector .sb-tbl").forEach(x => x.onclick = () => {
     state.entity = x.dataset.e; state.field = null; setTab("entity"); render();
   });
