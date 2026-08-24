@@ -188,6 +188,7 @@ public class JiraService {
             m.put("name", f.path("name").asText(e.getKey()));
             m.put("required", f.path("required").asBoolean(false));
             m.put("type", f.path("schema").path("type").asText(""));
+            m.put("onCreateScreen", true);
             List<String> values = new ArrayList<>();
             JsonNode allowed = f.get("allowedValues");
             if (allowed != null && allowed.isArray()) {
@@ -212,6 +213,32 @@ public class JiraService {
     }
 
     /**
+     * Все поля инстанса, а не только те, что выведены на экран создания.
+     * <p>
+     * Нужны потому, что экран создания у проекта обычно куда беднее карточки: «Source» и
+     * «А/В-тестирование» на задаче видны, а при заведении их не спрашивают. Такое поле
+     * заполняется вторым шагом — правкой уже созданной задачи, — но привязать его к
+     * нашему нужно заранее, иначе панель про него просто не знает.
+     */
+    public List<Map<String, Object>> allFields() {
+        JsonNode res = client().get("/rest/api/2/field");
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (res != null && res.isArray()) {
+            res.forEach(f -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", f.path("id").asText(""));
+                m.put("name", f.path("name").asText(""));
+                m.put("type", f.path("schema").path("type").asText(""));
+                m.put("onCreateScreen", false);
+                if (!String.valueOf(m.get("id")).isEmpty()) {
+                    out.add(m);
+                }
+            });
+        }
+        return out;
+    }
+
+    /**
      * Сопоставить наши поля с полями Jira по видимому имени.
      * <p>
      * Ищем в три захода: точное имя из OUR_FIELDS, затем запасные из ALIASES, затем —
@@ -224,30 +251,46 @@ public class JiraService {
     public Map<String, Object> autoMap() {
         Map<String, Object> m = meta();
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> fields = (List<Map<String, Object>>) m.get("fields");
+        List<Map<String, Object>> screen = (List<Map<String, Object>>) m.get("fields");
+        /* Поля карточки, которых нет на экране создания. Ищем в них вторым кругом:
+           «Source» и «А/В-тестирование» именно такие — в задаче есть, при заведении не
+           спрашиваются. Если Jira не дала общий список (прав не хватило), работаем как
+           раньше, только по экрану создания. */
+        List<Map<String, Object>> offScreen = new ArrayList<>();
+        try {
+            Set<String> onScreen = new LinkedHashSet<>();
+            screen.forEach(f -> onScreen.add(String.valueOf(f.get("id"))));
+            allFields().forEach(f -> {
+                if (!onScreen.contains(String.valueOf(f.get("id")))) offScreen.add(f);
+            });
+        } catch (RuntimeException e) {
+            offScreen.clear();
+        }
+
         ObjectNode fieldMap = om.createObjectNode();
         List<Map<String, Object>> unmatched = new ArrayList<>();
+        List<Map<String, Object>> late = new ArrayList<>();   // привязаны, но не на экране создания
         OUR_FIELDS.forEach((ourKey, jiraName) -> {
             List<String> names = new ArrayList<>();
             names.add(jiraName);
             names.addAll(ALIASES.getOrDefault(ourKey, List.of()));
 
-            String id = null;
-            for (String want : names) {                       // точное совпадение
-                id = findField(fields, norm(want), false);
-                if (id != null) break;
-            }
+            String id = match(screen, names);
             if (id == null) {
-                for (String want : names) {                   // вхождение
-                    id = findField(fields, norm(want), true);
-                    if (id != null) break;
+                id = match(offScreen, names);
+                if (id != null) {
+                    Map<String, Object> l = new LinkedHashMap<>();
+                    l.put("key", ourKey);
+                    l.put("name", jiraName);
+                    l.put("id", id);
+                    late.add(l);
                 }
             }
             if (id == null) {
                 Map<String, Object> miss = new LinkedHashMap<>();
                 miss.put("key", ourKey);
                 miss.put("name", jiraName);
-                miss.put("candidates", candidates(fields, names));
+                miss.put("candidates", candidates(screen, names));
                 unmatched.add(miss);
             } else {
                 fieldMap.put(ourKey, id);
@@ -258,12 +301,32 @@ public class JiraService {
                 .setParameter("fm", fieldMap.toString())
                 .setParameter("u", CurrentUser.email())
                 .executeUpdate();
+        List<Map<String, Object>> all = new ArrayList<>(screen);
+        all.addAll(offScreen);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("matched", fieldMap.size());
         out.put("unmatched", unmatched);
+        out.put("late", late);       // нашлись, но заполнятся после создания задачи
         out.put("fieldMap", json(fieldMap.toString()));
-        out.put("fields", fields);   // фронту — чтобы дать выбрать поле руками
+        out.put("fields", all);      // фронту — чтобы дать выбрать поле руками
         return out;
+    }
+
+    /** Первое совпадение по любому из имён: сперва точное, потом по началу имени. */
+    private static String match(List<Map<String, Object>> fields, List<String> names) {
+        for (String want : names) {
+            String id = findField(fields, norm(want), false);
+            if (id != null) {
+                return id;
+            }
+        }
+        for (String want : names) {
+            String id = findField(fields, norm(want), true);
+            if (id != null) {
+                return id;
+            }
+        }
+        return null;
     }
 
     /**

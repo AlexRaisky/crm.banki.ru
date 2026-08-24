@@ -2036,6 +2036,10 @@ window.JiraSetup = (function(){
   /* Поля экрана создания, как их вернула Jira. Нужны, чтобы ненайденное поле можно было
      выбрать руками: имя в чужом проекте бывает каким угодно, и угадать его нельзя. */
   var jiraFields = null;
+  /* Поля, которые нашлись, но не на экране создания: в самой задаче они есть, а при
+     заведении Jira их не спросит — заполнятся вторым шагом. Помечаем, чтобы человек не
+     считал такую привязку ошибкой. */
+  var lateKeys = {};
 
   function esc(v){ return String(v == null ? "" : v)
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
@@ -2154,6 +2158,8 @@ window.JiraSetup = (function(){
       note("Сопоставлено полей: " + (res && res.matched));
       if (cfg) cfg.fieldMap = (res && res.fieldMap) || {};
       jiraFields = (res && res.fields) || null;
+      lateKeys = {};
+      ((res && res.late) || []).forEach(function(l){ lateKeys[l.key] = true; });
       renderMap(res && res.unmatched);
     }).catch(function(e){ note((e && e.message) || "Не удалось сопоставить", true); });
   }
@@ -2183,16 +2189,26 @@ window.JiraSetup = (function(){
     source:"Source", service:"Сервис", analyst:"Ответственный аналитик"
   };
   /* Ячейка для непривязанного поля: список полей Jira, если он у нас есть, иначе просто
-     «не найдено» — список приезжает вместе с ответом «Сопоставить поля». */
+     «не найдено» — список приезжает вместе с ответом «Сопоставить поля».
+     Поля разведены по группам не для красоты: то, чего нет на экране создания, Jira при
+     заведении задачи не примет — такое поле заполняется правкой уже созданной. */
   function picker(key){
     if (!jiraFields || !jiraFields.length) return "не найдено";
-    var opts = "<option value=\"\">— не найдено, выбрать —</option>";
-    jiraFields.forEach(function(f){
-      opts += "<option value=\"" + esc(f.id) + "\">" + esc(f.name) +
-        (f.required ? " *" : "") + " (" + esc(f.id) + ")</option>";
-    });
+    var onCreate = jiraFields.filter(function(f){ return f.onCreateScreen !== false; });
+    var other = jiraFields.filter(function(f){ return f.onCreateScreen === false; });
+    function opts(list){
+      return list.map(function(f){
+        return "<option value=\"" + esc(f.id) + "\">" + esc(f.name) +
+          (f.required ? " *" : "") + " (" + esc(f.id) + ")</option>";
+      }).join("");
+    }
+    var html = "<option value=\"\">— не найдено, выбрать —</option>";
+    html += other.length
+      ? "<optgroup label=\"На экране создания\">" + opts(onCreate) + "</optgroup>" +
+        "<optgroup label=\"Прочие поля Jira (заполнятся после создания)\">" + opts(other) + "</optgroup>"
+      : opts(onCreate);
     return "<select class=\"dbc-in jr-pick\" data-key=\"" + esc(key) + "\" " +
-      "style=\"min-width:220px;font-size:12px\">" + opts + "</select>";
+      "style=\"min-width:220px;font-size:12px\">" + html + "</select>";
   }
 
   function bindPickers(){
@@ -2212,11 +2228,18 @@ window.JiraSetup = (function(){
     var html = "<table><thead><tr><th>Наше поле</th><th>Поле в Jira</th><th>id</th></tr></thead><tbody>";
     keys.forEach(function(k){
       var id = map[k] || "";
+      var late = id && lateKeys[k]
+        ? " <span style=\"color:var(--faint);font-size:11px\">после создания</span>" : "";
       html += "<tr><td class=\"t-name\">" + esc(k) + "</td><td>" + esc(FIELD_NAMES[k]) + "</td>" +
         "<td class=\"mono\"" + (id ? "" : " style=\"color:var(--coral)\"") + ">" +
-        (id ? esc(id) : picker(k)) + "</td></tr>";
+        (id ? esc(id) + late : picker(k)) + "</td></tr>";
     });
     html += "</tbody></table>";
+    if (Object.keys(lateKeys).length){
+      html += "<div class=\"empty\" style=\"margin-top:10px\">Пометка «после создания» значит, " +
+        "что поля нет на экране заведения задачи — Jira не примет его в запросе создания. " +
+        "Панель заполнит такое поле вторым шагом, правкой уже созданной задачи.</div>";
+    }
     if (unmatched && unmatched.length){
       /* Раньше здесь была одна строка «не нашлось». Толку от неё немного: человек и так
          видит красное «не найдено», а вопрос у него другой — как поле называется в Jira
