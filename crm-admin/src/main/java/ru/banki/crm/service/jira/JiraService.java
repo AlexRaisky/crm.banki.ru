@@ -13,8 +13,10 @@ import ru.banki.crm.security.CurrentUser;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Настройка Jira и разбор её метаданных.
@@ -48,6 +50,24 @@ public class JiraService {
         OUR_FIELDS.put("source", "Source");
         OUR_FIELDS.put("service", "Сервис");
         OUR_FIELDS.put("analyst", "Ответственный аналитик");
+    }
+
+    /**
+     * Как то же поле может называться в чужой Jira. Основное имя из OUR_FIELDS — то, что
+     * показываем человеку; здесь варианты, которые тоже засчитываем при сопоставлении.
+     * <p>
+     * Список не выдуман: «A/B-тестирование» в Jira пишут и латиницей, и кириллицей, и
+     * через «АБ», а поле источника называют то английским Source, то русским Источником.
+     */
+    static final Map<String, List<String>> ALIASES = new LinkedHashMap<>();
+    static {
+        ALIASES.put("abTest", List.of("A/B-тестирование", "AB-тестирование", "АБ-тестирование",
+                "A/B тест", "AB-тест", "АБ-тест", "A/B test", "AB test"));
+        ALIASES.put("source", List.of("Источник", "Сорс", "Source system", "Источник трафика"));
+        ALIASES.put("customer", List.of("Заказчик задачи", "Customer"));
+        ALIASES.put("channel", List.of("Канал коммуникации", "Channel"));
+        ALIASES.put("sendDate", List.of("Дата отправки", "Дата рассылки"));
+        ALIASES.put("analyst", List.of("Ответственный", "Аналитик"));
     }
 
     @PersistenceContext
@@ -194,9 +214,11 @@ public class JiraService {
     /**
      * Сопоставить наши поля с полями Jira по видимому имени.
      * <p>
-     * Сравниваем без учёта регистра, пробелов и «ё»: подпись в форме и name в API
-     * совпадают не всегда до символа. Что не нашлось — остаётся пустым, и это честнее,
-     * чем привязать «Сервис» к первому похожему полю и получить сюрприз в проде.
+     * Ищем в три захода: точное имя из OUR_FIELDS, затем запасные из ALIASES, затем —
+     * вхождение одного имени в другое («Ссылка» против «Ссылка на макет»). Ничего
+     * похожего не нашлось — оставляем пустым и возвращаем кандидатов: угадывать поле
+     * по первому похожему нельзя, а вот показать человеку, что есть на экране создания,
+     * куда полезнее сухого «не найдено».
      */
     @Transactional
     public Map<String, Object> autoMap() {
@@ -204,18 +226,29 @@ public class JiraService {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> fields = (List<Map<String, Object>>) m.get("fields");
         ObjectNode fieldMap = om.createObjectNode();
-        List<String> unmatched = new ArrayList<>();
+        List<Map<String, Object>> unmatched = new ArrayList<>();
         OUR_FIELDS.forEach((ourKey, jiraName) -> {
-            String want = norm(jiraName);
+            List<String> names = new ArrayList<>();
+            names.add(jiraName);
+            names.addAll(ALIASES.getOrDefault(ourKey, List.of()));
+
             String id = null;
-            for (Map<String, Object> f : fields) {
-                if (want.equals(norm(String.valueOf(f.get("name"))))) {
-                    id = String.valueOf(f.get("id"));
-                    break;
+            for (String want : names) {                       // точное совпадение
+                id = findField(fields, norm(want), false);
+                if (id != null) break;
+            }
+            if (id == null) {
+                for (String want : names) {                   // вхождение
+                    id = findField(fields, norm(want), true);
+                    if (id != null) break;
                 }
             }
             if (id == null) {
-                unmatched.add(jiraName);
+                Map<String, Object> miss = new LinkedHashMap<>();
+                miss.put("key", ourKey);
+                miss.put("name", jiraName);
+                miss.put("candidates", candidates(fields, names));
+                unmatched.add(miss);
             } else {
                 fieldMap.put(ourKey, id);
             }
@@ -229,6 +262,59 @@ public class JiraService {
         out.put("matched", fieldMap.size());
         out.put("unmatched", unmatched);
         out.put("fieldMap", json(fieldMap.toString()));
+        out.put("fields", fields);   // фронту — чтобы дать выбрать поле руками
+        return out;
+    }
+
+    /**
+     * id поля с таким именем: точно, а при {@code loose} — ещё и по началу имени
+     * («Ссылка» находит «Ссылка на макет», «Дата отправки» — «Дата отправки рассылки»).
+     * <p>
+     * Именно по началу и только в одну сторону: имя в Jira должно начинаться с нашего,
+     * не наоборот. Обратное направление выглядит соблазнительно, но привязывает «Тип
+     * продукта» к полю «Тип» — а неверная привязка хуже пустой: пустую видно сразу,
+     * неверную заметят на первой заведённой задаче. Короткие имена в нестрогий проход
+     * не пускаем вовсе, у них слишком много случайных совпадений.
+     */
+    private static final int LOOSE_MIN_LEN = 5;
+
+    private static String findField(List<Map<String, Object>> fields, String want, boolean loose) {
+        if (want.isEmpty() || (loose && want.length() < LOOSE_MIN_LEN)) {
+            return null;
+        }
+        for (Map<String, Object> f : fields) {
+            String have = norm(String.valueOf(f.get("name")));
+            boolean hit = loose ? have.startsWith(want) : have.equals(want);
+            if (hit) {
+                return String.valueOf(f.get("id"));
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Чем поле могло бы быть: поля Jira, у которых с нашим именем есть общее слово.
+     * Не догадка для подстановки, а подсказка глазам — часто сразу видно, что поле
+     * названо иначе, чем ожидала панель.
+     */
+    private static List<Map<String, Object>> candidates(List<Map<String, Object>> fields, List<String> names) {
+        Set<String> words = new LinkedHashSet<>();
+        names.forEach(n -> {
+            for (String w : n.toLowerCase().split("[\\s./\\-_]+")) {
+                if (w.length() > 2) words.add(norm(w));
+            }
+        });
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> f : fields) {
+            String have = norm(String.valueOf(f.get("name")));
+            if (words.stream().anyMatch(have::contains)) {
+                Map<String, Object> c = new LinkedHashMap<>();
+                c.put("id", f.get("id"));
+                c.put("name", f.get("name"));
+                out.add(c);
+            }
+            if (out.size() >= 5) break;
+        }
         return out;
     }
 
@@ -267,9 +353,35 @@ public class JiraService {
                 .executeUpdate();
     }
 
+    /**
+     * Имя поля к сравнимому виду.
+     * <p>
+     * Кроме регистра, пробелов и «ё» снимаем ещё две беды, из-за которых поле «не
+     * находится» при одинаковых на вид подписях. Первая — разделители: «A/B-тест»,
+     * «A/B тест» и «AB тест» для человека одно и то же. Вторая коварнее: кириллица
+     * вперемешку с латиницей. В нашем списке стояло «А/В-тестирование» с русскими А и В,
+     * а в Jira поле названо латинскими A и B — на экране не отличить, для equals это
+     * разные строки. Поэтому буквы-двойники сводим к латинским.
+     */
     private static String norm(String s) {
-        return s == null ? "" : s.toLowerCase().replace('ё', 'е').replaceAll("[\\s.]+", "");
+        if (s == null) {
+            return "";
+        }
+        String low = s.toLowerCase().replace('ё', 'е');
+        StringBuilder sb = new StringBuilder(low.length());
+        for (int i = 0; i < low.length(); i++) {
+            char c = low.charAt(i);
+            int idx = CYR_LOOKALIKE.indexOf(c);
+            sb.append(idx >= 0 ? LAT_LOOKALIKE.charAt(idx) : c);
+        }
+        return sb.toString().replaceAll("[\\s.\\-_/\\\\()]+", "");
     }
+
+    /* Кириллические буквы и латинские двойники — попарно, посимвольно. Только те, что
+       в нижнем регистре неотличимы на глаз: спутать их в названии поля легко, а найти
+       потом трудно. */
+    private static final String CYR_LOOKALIKE = "асеорхукмтвн";
+    private static final String LAT_LOOKALIKE = "aceopxykmtbh";
 
     private static String enc(String s) {
         return java.net.URLEncoder.encode(s, java.nio.charset.StandardCharsets.UTF_8);

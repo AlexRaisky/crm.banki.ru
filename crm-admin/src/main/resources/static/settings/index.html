@@ -2033,6 +2033,9 @@ window.EventSync = (function(){
    ломалась бы молча — до следующей попытки завести задачу. */
 window.JiraSetup = (function(){
   var bound = false, loaded = false, cfg = null;
+  /* Поля экрана создания, как их вернула Jira. Нужны, чтобы ненайденное поле можно было
+     выбрать руками: имя в чужом проекте бывает каким угодно, и угадать его нельзя. */
+  var jiraFields = null;
 
   function esc(v){ return String(v == null ? "" : v)
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
@@ -2126,6 +2129,8 @@ window.JiraSetup = (function(){
     req("GET", "../api/admin/jira/meta").then(function(m){
       var fields = (m && m.fields) || [];
       note("Полей: " + fields.length);
+      jiraFields = fields;   // теперь непривязанное поле можно выбрать из списка
+      renderMap();
       var html = "<table><thead><tr><th>Поле</th><th>id</th><th>Обяз.</th><th>Значения</th></tr></thead><tbody>";
       fields.forEach(function(f){
         var vals = f.values || [];
@@ -2148,8 +2153,25 @@ window.JiraSetup = (function(){
     req("POST", "../api/admin/jira/automap").then(function(res){
       note("Сопоставлено полей: " + (res && res.matched));
       if (cfg) cfg.fieldMap = (res && res.fieldMap) || {};
+      jiraFields = (res && res.fields) || null;
       renderMap(res && res.unmatched);
     }).catch(function(e){ note((e && e.message) || "Не удалось сопоставить", true); });
+  }
+
+  /* Ручная привязка. Пишем всю карту целиком — ручка принимает её пакетом, а valueMap
+     передаём как есть, иначе сохранение полей стёрло бы сопоставление значений. */
+  function setField(key, id){
+    if (!cfg) return;
+    cfg.fieldMap = cfg.fieldMap || {};
+    if (id) cfg.fieldMap[key] = id; else delete cfg.fieldMap[key];
+    note("Сохраняем…");
+    req("PUT", "../api/admin/jira/maps", { fieldMap: cfg.fieldMap, valueMap: cfg.valueMap || {} })
+      .then(function(res){
+        if (res) cfg = res;
+        note("Сохранено");
+        renderMap();
+      })
+      .catch(function(e){ note((e && e.message) || "Не удалось сохранить", true); });
   }
 
   /* Карта показывается целиком: пустая строка — это «поле не найдено», и её надо видеть,
@@ -2160,6 +2182,26 @@ window.JiraSetup = (function(){
     link:"Ссылка", content:"Контент", segment:"Сегмент", abTest:"А/В-тестирование",
     source:"Source", service:"Сервис", analyst:"Ответственный аналитик"
   };
+  /* Ячейка для непривязанного поля: список полей Jira, если он у нас есть, иначе просто
+     «не найдено» — список приезжает вместе с ответом «Сопоставить поля». */
+  function picker(key){
+    if (!jiraFields || !jiraFields.length) return "не найдено";
+    var opts = "<option value=\"\">— не найдено, выбрать —</option>";
+    jiraFields.forEach(function(f){
+      opts += "<option value=\"" + esc(f.id) + "\">" + esc(f.name) +
+        (f.required ? " *" : "") + " (" + esc(f.id) + ")</option>";
+    });
+    return "<select class=\"dbc-in jr-pick\" data-key=\"" + esc(key) + "\" " +
+      "style=\"min-width:220px;font-size:12px\">" + opts + "</select>";
+  }
+
+  function bindPickers(){
+    var list = document.querySelectorAll("#jrMapBox .jr-pick");
+    Array.prototype.forEach.call(list, function(sel){
+      sel.onchange = function(){ setField(sel.dataset.key, sel.value); };
+    });
+  }
+
   function renderMap(unmatched){
     var map = (cfg && cfg.fieldMap) || {};
     var keys = Object.keys(FIELD_NAMES);
@@ -2172,14 +2214,31 @@ window.JiraSetup = (function(){
       var id = map[k] || "";
       html += "<tr><td class=\"t-name\">" + esc(k) + "</td><td>" + esc(FIELD_NAMES[k]) + "</td>" +
         "<td class=\"mono\"" + (id ? "" : " style=\"color:var(--coral)\"") + ">" +
-        (id ? esc(id) : "не найдено") + "</td></tr>";
+        (id ? esc(id) : picker(k)) + "</td></tr>";
     });
     html += "</tbody></table>";
     if (unmatched && unmatched.length){
-      html += "<div class=\"empty\" style=\"color:var(--coral);margin-top:10px\">Не нашлось в Jira: " +
-        esc(unmatched.join(", ")) + ". Проверьте, что поля есть на экране создания задачи этого типа и называются так же.</div>";
+      /* Раньше здесь была одна строка «не нашлось». Толку от неё немного: человек и так
+         видит красное «не найдено», а вопрос у него другой — как поле называется в Jira
+         на самом деле. Поэтому показываем кандидатов с их id. */
+      html += "<div style=\"margin-top:12px\">";
+      unmatched.forEach(function(u){
+        var name = u && u.name ? u.name : String(u);
+        var cand = (u && u.candidates) || [];
+        html += "<div style=\"color:var(--coral);margin-top:8px\">Не нашлось: <b>" + esc(name) + "</b>";
+        if (cand.length){
+          html += " <span style=\"color:var(--faint)\">— похожие поля на экране создания: " +
+            cand.map(function(c){ return esc(c.name) + " <span class=\"mono\">(" + esc(c.id) + ")</span>"; }).join(", ") +
+            "</span>";
+        }
+        html += "</div>";
+      });
+      html += "<div class=\"empty\" style=\"margin-top:8px\">Если поле называется иначе — выберите его " +
+        "в списке напротив строки. Если его нет совсем, значит оно не выведено на экран " +
+        "создания задачи этого типа, и это правится в Jira.</div></div>";
     }
     box("jrMapBox", html);
+    bindPickers();
   }
 
   function bind(){
