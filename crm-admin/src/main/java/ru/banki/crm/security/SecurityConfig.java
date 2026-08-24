@@ -26,7 +26,11 @@ public class SecurityConfig {
 
     // Public endpoints: the login page + its helper assets, health, and the login/logout actions.
     private static final String[] PUBLIC = {
-            "/login.html", "/api/login", "/logout", "/favicon.ico", "/error"
+            "/login.html", "/api/login", "/logout", "/favicon.ico", "/error",
+            /* Версию сборки спрашивает соседний контур, у которого нашей куки нет.
+               Здесь маршрут только пропускается фильтром — кому отвечать, решает сам
+               контроллер: вошедшему пользователю либо соседу с верным секретом. */
+            "/api/build"
     };
 
     /** Секретный ключ для подписи remember-me токена. Стабильный между рестартами → кука переживает перезапуск. */

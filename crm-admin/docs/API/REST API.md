@@ -283,6 +283,12 @@ Query-параметры списка (все опциональны, множе
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
+| `GET /api/build` | версия сборки контура; отвечает вошедшему пользователю либо соседнему контуру с верным `X-Peer-Token` | вход или секрет |
+| `GET /api/admin/deploy` | версии всех контуров: своя из образа, соседние — опросом по внутренней сети | ADMIN |
+| `GET /api/admin/deploy/pending` | что есть у нас и чего ещё нет на целевом контуре | ADMIN |
+| `POST /api/admin/deploy/plan` | срез коммитов и готовая команда; `record=true` пишет намерение в журнал | ADMIN |
+| `GET /api/admin/deploy/history` | журнал выкаток | ADMIN |
+| `POST /api/admin/deploy/reconcile` | закрыть записи журнала, версия которых уже стоит на цели | ADMIN |
 | `GET /api/admin/integrations` | карта интеграций: узлы (внешние системы) и потоки между ними с живым состоянием | READ в `set-dbconn`, `set-sync` или `set-procs` |
 | `GET /api/admin/db-connections` | встроенные (наша/прод) + пользовательские, со статусом последней проверки | ADMIN |
 | `POST /api/admin/db-connections` | добавить: `{name, jdbcUrl, username, password, purpose, active}` | ADMIN |

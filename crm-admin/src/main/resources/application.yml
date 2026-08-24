@@ -63,6 +63,13 @@ app:
   admin:
     email: ${ADMIN_EMAIL:admin@banki.ru}
     password: ${ADMIN_PASSWORD:admin12345}
+  # Выкатки: адреса соседних контуров во внутренней сети compose, общий секрет для
+  # запроса версии и данные для текста команды (ветка и каталог на сервере).
+  deploy:
+    peers: ${DEPLOY_PEERS:}
+    peer-token: ${DEPLOY_PEER_TOKEN:}
+    branch: ${DEPLOY_BRANCH:admin-panel}
+    dir: ${DEPLOY_DIR:~/crm.banki.ru}
   # Restrict login/registration email domain (empty = no restriction).
   email-domain: ${APP_EMAIL_DOMAIN:}
   # Постоянная авторизация (remember-me). Ключ должен быть стабильным между рестартами.

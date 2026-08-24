@@ -823,6 +823,34 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
         <div class="card"><div id="diagBox"></div></div>
       </section>
 
+      <!-- ===== Выкатки =====
+           Что стоит на контурах, что не доехало и какой командой это доставить.
+           Панель выкат не выполняет — она готовит команду и ведёт журнал.
+           Рисует settings/deploy.js. -->
+      <section class="pane" id="pane-deploy">
+        <h1 data-i18n-html="h_deploy">Выкатки <span class="grad">между контурами</span></h1>
+        <div class="sub">Тест → препрод → прод. Раздел показывает, какая версия стоит на каждом контуре
+          и какие правки ещё не доехали до следующего, собирает команду на выбранный срез и ведёт журнал:
+          кто, когда и до какой правки катил. Саму команду вы выполняете на сервере — панель не имеет
+          доступа к docker и пересоздать контейнер не может.</div>
+
+        <div class="row" style="gap:10px;align-items:center;margin:16px 0 4px">
+          <button type="button" class="btn" id="dpReload">Обновить</button>
+          <span class="save-note" id="dpMsg"></span>
+        </div>
+
+        <div id="dpEnvs" class="dp-envs"></div>
+
+        <h2 style="margin-top:26px">Что не доехало</h2>
+        <div id="dpList" class="empty">Читаем разницу между контурами…</div>
+        <div id="dpPlan" class="dp-plan"></div>
+
+        <h2 style="margin-top:30px">Журнал выкаток</h2>
+        <div class="sub">Запись появляется, когда вы берёте команду, и закрывается сама — когда панель
+          видит на целевом контуре ту версию, которую планировали.</div>
+        <div id="dpLog" class="empty">Выкаток ещё не было</div>
+      </section>
+
       <!-- ===== Бэклог доработок =====
            Раздел только для админов: /api/admin/** закрыт ролью на сервере, а пункт
            меню прячется от остальных (adminOnly в PANES). Рисует settings/backlog.js. -->
@@ -1192,8 +1220,11 @@ const PANES = [
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
   { id:"monitoring", acl:"set-mon", group:"Служебное", label:"Мониторинг", desc:"Работа с партнёрами: статусы, зависшие отправки, Context API.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>' },
-  /* adminOnly, а не секция матрицы: раздел закрыт ролью целиком (/api/admin/**),
-     и заводить под него выдаваемое право значило бы обещать доступ, которого нет. */
+  /* Выкатки и бэклог — админские целиком: закрыты ролью на сервере, поэтому вместо
+     секции матрицы у них флаг adminOnly. Заводить выдаваемое право под раздел, доступ к
+     которому всё равно решает роль, значило бы обещать то, чего нет. */
+  { id:"deploy", adminOnly:true, group:"Служебное", label:"Выкатки", desc:"Какая версия стоит на каждом контуре, что ещё не доехало до следующего и какой командой это доставить.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h16M4 18h10"/><path d="M17 3l3 3-3 3M17 15l3 3-3 3"/></svg>' },
   { id:"backlog", adminOnly:true, group:"Служебное", label:"Бэклог", desc:"Задачи на доработку панели: что просили, что в работе, что сделано. Виден только администраторам.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l2 2 4-4"/><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4V2M16 4V2"/></svg>' },
   { id:"diag", acl:"set-diag", group:"Служебное", label:"Диагностика хранилища", desc:"Занятость localStorage браузера данными панели.",
@@ -1221,6 +1252,7 @@ function openPane(id){
   if (id === "jira" && window.JiraSetup) JiraSetup.open();
   if (id === "integrations" && window.Integrations) Integrations.open();
   if (id === "backlog" && window.Backlog) Backlog.open();
+  if (id === "deploy" && window.Deploy) Deploy.open();
   /* Сущности и загруженные инструменты меняются мимо этой страницы — перечитываем */
   if (id === "apps") loadAppDynKids();
   if (id === "monitoring") monBack();
@@ -2978,6 +3010,51 @@ window.CRM = window.CRM || (function(){
 <script src="object-manager.js?v=4"></script>
 <!-- «Схемы и таблицы»: обозреватель фактического состояния БД + удаление своих объектов -->
 <style>
+  /* ---- Выкатки ---- */
+  /* Контуры идут слева направо в том же порядке, в каком по ним катят, и раскрашены
+     той же семантикой, что в инструкции: зелёный — где можно ломать, красный — боевой. */
+  .dp-envs{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:14px}
+  .dp-env{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--card);
+    border-top:3px solid var(--faint)}
+  .dp-env.test{border-top-color:var(--green)}
+  .dp-env.preprod{border-top-color:var(--amber)}
+  .dp-env.prod{border-top-color:var(--coral)}
+  .dp-env.down{opacity:.6}
+  .dp-env-name{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+  .dp-env-ver{font-size:18px;font-weight:600;margin:4px 0 2px}
+  .dp-env-sub{font-size:12px;color:var(--dim);overflow-wrap:anywhere}
+  .dp-env-when{font-size:11px;color:var(--faint);margin-top:4px}
+
+  #dpList .dp-hint{color:var(--dim);font-size:12.5px;margin-bottom:10px}
+  #dpList .dp-commit{display:flex;align-items:flex-start;gap:10px;padding:9px 11px;border:1px solid var(--line);
+    border-radius:9px;margin-bottom:6px;cursor:pointer;background:var(--card)}
+  #dpList .dp-commit:hover{border-color:var(--blue)}
+  #dpList .dp-commit.on{background:var(--blue-bg);border-color:rgba(80,195,255,.35)}
+  #dpList .dp-commit input{margin-top:4px;flex:0 0 auto}
+  #dpList .dp-c-hash{font-size:12px;color:var(--faint);flex:0 0 auto;padding-top:1px}
+  #dpList .dp-c-main{flex:1;min-width:0}
+  #dpList .dp-c-subj{display:block;font-size:13px;overflow-wrap:anywhere}
+  #dpList .dp-c-meta{display:block;font-size:11px;color:var(--faint);margin-top:2px}
+  #dpList .dp-c-mig{flex:0 0 auto;font-size:10.5px;padding:2px 8px;border-radius:9px;
+    background:var(--amber-bg);color:var(--amber);white-space:nowrap}
+
+  .dp-plan{margin-top:16px}
+  .dp-plan .dp-plan-head{font-size:13.5px;margin-bottom:8px}
+  .dp-plan .dp-warn{background:var(--amber-bg);color:var(--amber);border-radius:9px;
+    padding:9px 12px;font-size:12.5px;margin-bottom:8px}
+  .dp-plan pre{background:var(--card2);border:1px solid var(--line);border-left:3px solid var(--blue);
+    border-radius:9px;padding:12px 14px;overflow-x:auto;margin:0}
+  .dp-plan pre code{font-family:var(--mono);font-size:12.5px;line-height:1.75;white-space:pre}
+
+  #dpLog .dp-tbl{width:100%;border-collapse:collapse;font-size:13px}
+  #dpLog .dp-tbl th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);
+    color:var(--dim);font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  #dpLog .dp-tbl td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  #dpLog .dp-tbl .num{font-variant-numeric:tabular-nums}
+  #dpLog .dp-st{font-size:11px;padding:2px 8px;border-radius:9px;background:var(--card2);color:var(--dim)}
+  #dpLog .dp-st.done{background:var(--green-bg);color:var(--green)}
+  #dpLog .dp-st.cancelled{color:var(--faint)}
+
   /* ---- Карта интеграций ---- */
   #igHost .ig-svg{width:100%;height:auto;display:block}
   /* Один набор цветов на всю карту: узел, стрелка и карточка одного потока обязаны
@@ -3074,5 +3151,7 @@ window.CRM = window.CRM || (function(){
 <script src="backlog.js?v=2"></script>
 <!-- «Карта интеграций»: схема внешних связей панели с живым состоянием -->
 <script src="integrations.js?v=1"></script>
+<!-- «Выкатки»: версии контуров, разница между ними и команда на выкат -->
+<script src="deploy.js?v=1"></script>
 </body>
 </html>
