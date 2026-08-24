@@ -327,7 +327,13 @@ function promoCreateJira(i){
   }
   var btn = document.querySelector('.jira-new[onclick*="(' + i + ')"]');
   if (btn){ btn.disabled = true; btn.textContent = pmT('Заводим…'); }
-  promoReq('POST', '/' + r.id + '/jira', { source: nm.ok ? nm.value : '' })
+  /* Тип продукта в Jira выбирают кодом — General, Debitcards, — а в плане он назван
+     по-русски: «Общие», «Дебетовые карты». Код лежит в том же справочнике, из которого
+     собирается source, поэтому шлём его отсюда, а не заставляем сервер искать заново. */
+  promoReq('POST', '/' + r.id + '/jira', {
+    source: nm.ok ? nm.value : '',
+    productCode: promoProdCode(r.product)
+  })
     .then(function(res){
       if (res && res.warning) alert(res.warning);
       return promoLoad();

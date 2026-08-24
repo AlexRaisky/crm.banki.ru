@@ -86,7 +86,7 @@ public class PromoPlanService {
      * дубль в Jira потом никто не вычистит.
      */
     @Transactional
-    public Map<String, Object> createJiraTask(long id, String source) {
+    public Map<String, Object> createJiraTask(long id, String source, String productCode) {
         Object[] r = rowById(id);
         String existing = str(r[8]);
         if (!existing.isEmpty()) {
@@ -96,7 +96,10 @@ public class PromoPlanService {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("channel", str(r[5]));
         data.put("customer", str(r[14]));
-        data.put("product", str(r[2]));
+        /* В Jira тип продукта — код латиницей (General, Debitcards), в плане он записан
+           по-русски. Код приходит с клиента из того же справочника, что и source; нет
+           кода — отправим как есть и получим внятный отказ со списком допустимых. */
+        data.put("product", firstNonEmpty(text(productCode), str(r[2])));
         data.put("name", firstNonEmpty(str(r[12]), str(r[7])));   // название коммуникации, иначе уникальное имя
         data.put("sendDate", String.valueOf(r[1]));
         data.put("meaning", str(r[11]));                          // примечание строки = бизнес-смысл

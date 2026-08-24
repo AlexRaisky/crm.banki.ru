@@ -60,7 +60,7 @@ public class PromoPlanController {
     }
 
     /**
-     * Завести задачу в Jira по строке плана: {source}.
+     * Завести задачу в Jira по строке плана: {source, productCode}.
      * <p>
      * Право то же, что на правку строки: задача заводится по плану и тут же прописывает
      * в него свой ключ, так что это правка плана, а не отдельная привилегия.
@@ -70,7 +70,10 @@ public class PromoPlanController {
                                               @RequestBody(required = false) Map<String, Object> body) {
         access.requireCapability(Capability.EDIT, Sections.PROMO);
         Object src = body == null ? null : body.get("source");
-        return service.createJiraTask(id, src == null ? "" : String.valueOf(src));
+        Object code = body == null ? null : body.get("productCode");
+        return service.createJiraTask(id,
+                src == null ? "" : String.valueOf(src),
+                code == null ? "" : String.valueOf(code));
     }
 
     /**
