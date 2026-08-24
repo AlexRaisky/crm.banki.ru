@@ -289,6 +289,12 @@ Query-параметры списка (все опциональны, множе
 | `POST /api/admin/deploy/plan` | срез коммитов и готовая команда; `record=true` пишет намерение в журнал | ADMIN |
 | `GET /api/admin/deploy/history` | журнал выкаток | ADMIN |
 | `POST /api/admin/deploy/reconcile` | закрыть записи журнала, версия которых уже стоит на цели | ADMIN |
+| `GET /api/admin/settings-pack` | что можно перенести между контурами и сколько записей в каждом объекте | ADMIN |
+| `POST /api/admin/settings-pack/export` | собрать пакет из выбранных объектов | ADMIN |
+| `POST /api/admin/settings-pack/preview` | что произойдёт при применении присланного пакета | ADMIN |
+| `POST /api/admin/settings-pack/apply` | применить выбранные объекты; перед каждым снимается слепок | ADMIN |
+| `GET /api/admin/settings-pack/snapshots` | слепки «как было» | ADMIN |
+| `POST /api/admin/settings-pack/snapshots/{id}/restore` | вернуть объект из слепка | ADMIN |
 | `GET /api/admin/integrations` | карта интеграций: узлы (внешние системы) и потоки между ними с живым состоянием | READ в `set-dbconn`, `set-sync` или `set-procs` |
 | `GET /api/admin/db-connections` | встроенные (наша/прод) + пользовательские, со статусом последней проверки | ADMIN |
 | `POST /api/admin/db-connections` | добавить: `{name, jdbcUrl, username, password, purpose, active}` | ADMIN |

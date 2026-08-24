@@ -834,6 +834,12 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
           кто, когда и до какой правки катил. Саму команду вы выполняете на сервере — панель не имеет
           доступа к docker и пересоздать контейнер не может.</div>
 
+        <div class="dp-tabs" id="dpTabs">
+          <button type="button" class="dp-tab on" data-tab="code">Код</button>
+          <button type="button" class="dp-tab" data-tab="settings">Настройки</button>
+        </div>
+
+        <div class="dp-tab-body" id="dpTab-code">
         <div class="row" style="gap:10px;align-items:center;margin:16px 0 4px">
           <button type="button" class="btn" id="dpReload">Обновить</button>
           <span class="save-note" id="dpMsg"></span>
@@ -849,6 +855,33 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
         <div class="sub">Запись появляется, когда вы берёте команду, и закрывается сама — когда панель
           видит на целевом контуре ту версию, которую планировали.</div>
         <div id="dpLog" class="empty">Выкаток ещё не было</div>
+        </div>
+
+        <!-- ===== Перенос настроек: то, что заведено руками в панели, а не в коде ===== -->
+        <div class="dp-tab-body" id="dpTab-settings" hidden>
+          <div class="sub" style="margin-top:16px">Роли, модель схемы и справочники живут в базе, и у каждого
+            контура она своя. Здесь их собирают в файл на одном контуре и применяют на другом.
+            Файлом, а не прямым соединением: прямое означало бы дать проду доступ в тест.
+            Учётки, пароли и токены в пакет не попадают никогда.</div>
+
+          <h2 style="margin-top:24px">Собрать пакет здесь</h2>
+          <div id="spItems" class="sp-items"></div>
+          <div class="row" style="gap:10px;align-items:center;margin-top:12px">
+            <button type="button" class="btn primary" id="spExport">Скачать пакет</button>
+            <span class="save-note" id="spMsg"></span>
+          </div>
+
+          <h2 style="margin-top:30px">Применить пакет с другого контура</h2>
+          <div class="sub">Сначала предпросмотр — что появится и что изменится, — и только потом применение.
+            Перед перезаписью снимается слепок «как было».</div>
+          <div class="row" style="gap:10px;align-items:center;margin-top:12px">
+            <input type="file" id="spFile" accept="application/json,.json" class="dbc-in" style="max-width:340px">
+          </div>
+          <div id="spPreview" class="sp-preview"></div>
+
+          <h2 style="margin-top:30px">Слепки «как было»</h2>
+          <div id="spSnaps" class="empty">Слепков нет: настройки ещё не переносили</div>
+        </div>
       </section>
 
       <!-- ===== Бэклог доработок =====
@@ -1231,6 +1264,17 @@ const PANES = [
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>' },
 ];
 
+/* Вкладки раздела «Выкатки»: код и настройки переносятся по-разному, но это одно
+   действие — перенос между контурами, — поэтому живут на одной странице. */
+document.addEventListener("click", function(ev){
+  const tab = ev.target.closest("#dpTabs .dp-tab");
+  if (!tab) return;
+  document.querySelectorAll("#dpTabs .dp-tab").forEach(t => t.classList.toggle("on", t === tab));
+  document.querySelectorAll(".dp-tab-body").forEach(b => {
+    b.hidden = b.id !== "dpTab-" + tab.dataset.tab;
+  });
+});
+
 const snav = $("#snav");
 let curPane = "over";   /* нужен, чтобы после смены языка вернуться в тот же раздел */
 function openPane(id){
@@ -1253,6 +1297,7 @@ function openPane(id){
   if (id === "integrations" && window.Integrations) Integrations.open();
   if (id === "backlog" && window.Backlog) Backlog.open();
   if (id === "deploy" && window.Deploy) Deploy.open();
+  if (id === "deploy" && window.SettingsPack) SettingsPack.open();
   /* Сущности и загруженные инструменты меняются мимо этой страницы — перечитываем */
   if (id === "apps") loadAppDynKids();
   if (id === "monitoring") monBack();
@@ -3055,6 +3100,35 @@ window.CRM = window.CRM || (function(){
   #dpLog .dp-st.done{background:var(--green-bg);color:var(--green)}
   #dpLog .dp-st.cancelled{color:var(--faint)}
 
+  /* вкладки раздела «Выкатки» */
+  .dp-tabs{display:flex;gap:8px;margin:18px 0 0;border-bottom:1px solid var(--line)}
+  .dp-tabs .dp-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--dim);
+    padding:8px 4px;margin-bottom:-1px;font-size:13.5px;cursor:pointer}
+  .dp-tabs .dp-tab:hover{color:var(--ink)}
+  .dp-tabs .dp-tab.on{color:var(--ink);border-bottom-color:var(--blue);font-weight:600}
+
+  /* перенос настроек */
+  .sp-items{display:grid;gap:8px;margin-top:14px}
+  .sp-item{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border:1px solid var(--line);
+    border-radius:9px;background:var(--card);cursor:pointer}
+  .sp-item:hover{border-color:var(--blue)}
+  .sp-item input{margin-top:3px;flex:0 0 auto}
+  .sp-item-main{flex:1;min-width:0}
+  .sp-item-title{display:block;font-size:13.5px;font-weight:600}
+  .sp-item-about{display:block;font-size:12px;color:var(--dim);margin-top:2px}
+  .sp-item-count{flex:0 0 auto;font-size:12px;color:var(--faint);padding-top:2px}
+  .sp-preview{margin-top:14px}
+  .sp-preview .sp-from{font-size:13px;margin-bottom:10px}
+  .sp-preview .sp-warn{background:var(--amber-bg);color:var(--amber);border-radius:9px;
+    padding:9px 12px;font-size:12.5px;margin-bottom:10px}
+  .sp-tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .sp-tbl th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);color:var(--dim);
+    font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .sp-tbl td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .sp-tbl .num{font-variant-numeric:tabular-nums;text-align:right;width:1%;white-space:nowrap}
+  .sp-tbl .sp-note{color:var(--faint);font-size:12px}
+  #spSnaps .btn{padding:3px 10px;font-size:11.5px}
+
   /* ---- Карта интеграций ---- */
   #igHost .ig-svg{width:100%;height:auto;display:block}
   /* Один набор цветов на всю карту: узел, стрелка и карточка одного потока обязаны
@@ -3153,5 +3227,7 @@ window.CRM = window.CRM || (function(){
 <script src="integrations.js?v=1"></script>
 <!-- «Выкатки»: версии контуров, разница между ними и команда на выкат -->
 <script src="deploy.js?v=1"></script>
+<!-- Перенос настроек между контурами — вкладка «Настройки» того же раздела -->
+<script src="settings-pack.js?v=1"></script>
 </body>
 </html>
