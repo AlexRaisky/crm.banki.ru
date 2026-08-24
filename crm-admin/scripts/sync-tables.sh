@@ -119,7 +119,18 @@ say "Применяю на $DST"
 # пришлось бы разбирать руками.
 docker exec -i "crm-admin-db-$DST" psql -v ON_ERROR_STOP=1 --single-transaction \
     -U "$DB_USER" -d "$DB_NAME" < "$TMP/schema.sql" > "$TMP/apply.log" 2>&1 || {
-  echo "Ошибка применения, последние строки:"; tail -20 "$TMP/apply.log"; exit 1;
+  echo "Ошибка применения, последние строки:"; tail -20 "$TMP/apply.log"
+  # Самая частая причина — остаток прошлого, упавшего прогона: таблица создалась, а
+  # ключи к ней (они идут в конце дампа) — нет. Внешний ключ теперь ссылаться не на что.
+  if grep -q "no unique constraint matching given keys" "$TMP/apply.log"; then
+    bad_tbl="$(grep -o 'referenced table "[^"]*"' "$TMP/apply.log" | head -1 | sed 's/.*"\(.*\)"/\1/')"
+    echo
+    echo "Похоже, таблица «$bad_tbl» осталась от прошлого неудачного прогона: сама есть,"
+    echo "а первичный ключ до неё не дошёл. Проверьте, что она пуста, удалите и повторите:"
+    echo "  docker exec crm-admin-db-$DST psql -U $DB_USER -d $DB_NAME -c \"select count(*) from <схема>.$bad_tbl\""
+    echo "  docker exec crm-admin-db-$DST psql -U $DB_USER -d $DB_NAME -c \"drop table <схема>.$bad_tbl cascade\""
+  fi
+  exit 1;
 }
 echo "  готово"
 
