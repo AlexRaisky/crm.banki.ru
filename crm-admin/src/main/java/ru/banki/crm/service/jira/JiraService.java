@@ -175,9 +175,11 @@ public class JiraService {
 
         ObjectNode create = om.createObjectNode();
         ObjectNode later = om.createObjectNode();
+        /* Значения в том написании, которое приняла Jira: заголовок задачи должен читаться
+           как её же поля — «E-mail - Карты - Debitcards», а не «email - Карты - general». */
+        Map<String, String> shown = new LinkedHashMap<>();
         create.set("project", om.createObjectNode().put("key", project));
         create.set("issuetype", om.createObjectNode().put("name", type));
-        create.put("summary", summary(data));
         String reporter = str(data.get("reporterEmail"));
         if (!reporter.isEmpty()) {
             String login = userLogin(reporter);
@@ -208,11 +210,17 @@ public class JiraService {
             Map<String, Object> f = byId.get(fieldId);
             if (f == null) {
                 later.set(fieldId, coerce(null, value));   // поля нет на экране создания
+                shown.put(ourKey, value);
             } else {
-                create.set(fieldId, coerce(f, value));
+                JsonNode ready = coerce(f, value);
+                create.set(fieldId, ready);
+                /* option приходит объектом {"value": …} — в заголовок берём именно это
+                   написание, оно и стоит потом в карточке. */
+                shown.put(ourKey, ready.isObject() ? ready.path("value").asText(value) : value);
             }
         });
 
+        create.put("summary", summary(data, shown));
         ObjectNode payload = om.createObjectNode();
         payload.set("fields", create);
         JsonNode res = client().post("/rest/api/2/issue", payload.toString());
@@ -244,17 +252,26 @@ public class JiraService {
      * автоматически»), но через API он обязателен и никем не подставляется, поэтому
      * повторяем тот же порядок частей.
      */
-    private static String summary(Map<String, Object> data) {
+    private static String summary(Map<String, Object> data, Map<String, String> shown) {
         String given = str(data.get("summary"));
         if (!given.isBlank()) {
             return given;
         }
         List<String> parts = new ArrayList<>();
         for (String k : List.of("channel", "customer", "product", "kind", "name", "sendDate")) {
-            String v = str(data.get(k));
-            if (!v.isBlank()) parts.add(v);
+            String v = shown.getOrDefault(k, str(data.get(k)));
+            if (v.isBlank()) {
+                continue;
+            }
+            parts.add("sendDate".equals(k) ? humanDate(v) : v);
         }
         return parts.isEmpty() ? "Промо" : String.join(" - ", parts);
+    }
+
+    /** В заголовке дата принята по-русски: 20.08.2026, а не 2026-08-20. */
+    private static String humanDate(String iso) {
+        String[] p = iso.length() >= 10 ? iso.substring(0, 10).split("-") : new String[0];
+        return p.length == 3 ? p[2] + "." + p[1] + "." + p[0] : iso;
     }
 
     /**

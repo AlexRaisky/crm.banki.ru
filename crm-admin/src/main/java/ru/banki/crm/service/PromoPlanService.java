@@ -100,6 +100,10 @@ public class PromoPlanService {
            по-русски. Код приходит с клиента из того же справочника, что и source; нет
            кода — отправим как есть и получим внятный отказ со списком допустимых. */
         data.put("product", firstNonEmpty(text(productCode), str(r[2])));
+        /* «Вид рассылки» в Jira — Total или Mono, и это ровно наш флаг «тотал»: рассылка
+           либо на всю базу, либо на сегмент. Отдельного поля в плане нет, поэтому берём
+           флаг; не совпадёт со справочником Jira — придёт понятный отказ со списком. */
+        data.put("kind", Boolean.TRUE.equals(r[6]) ? "Total" : "Mono");
         data.put("name", firstNonEmpty(str(r[12]), str(r[7])));   // название коммуникации, иначе уникальное имя
         data.put("sendDate", String.valueOf(r[1]));
         data.put("meaning", str(r[11]));                          // примечание строки = бизнес-смысл
