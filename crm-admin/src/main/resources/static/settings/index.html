@@ -823,6 +823,36 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
         <div class="card"><div id="diagBox"></div></div>
       </section>
 
+      <!-- ===== Состояние системы =====
+           Одна страница на вопрос «всё ли в порядке»: итог, проверки с подсказками,
+           числа по таблицам, переливы и подключения. Рисует settings/health.js. -->
+      <section class="pane" id="pane-health">
+        <h1 data-i18n-html="h_health">Состояние <span class="grad">системы</span></h1>
+        <div class="sub">Сколько данных в таблицах, работают ли переливы, докуда доехала очередь,
+          отвечают ли базы и какая версия собрана. Страница только читает — ничего не запускает
+          и не останавливает; для этого есть «Процессы переливов».</div>
+
+        <div class="row" style="gap:10px;align-items:center;margin:16px 0 4px">
+          <button type="button" class="btn" id="hlReload">Обновить</button>
+          <span class="mono" id="hlStamp" style="color:var(--faint);font-size:11.5px"></span>
+        </div>
+
+        <div id="hlHost">
+          <div class="empty" id="hlLoading">Опрашиваем систему…</div>
+          <div id="hlTop"></div>
+          <div id="hlChecks" class="hl-checks"></div>
+
+          <h2 style="margin-top:28px">Данные</h2>
+          <div id="hlTables" class="hl-tables"></div>
+
+          <h2 style="margin-top:28px">Переливы</h2>
+          <div id="hlProcs"></div>
+
+          <h2 style="margin-top:28px">Подключения</h2>
+          <div id="hlConns" class="empty">Читаем подключения…</div>
+        </div>
+      </section>
+
       <!-- ===== Выкатки =====
            Что стоит на контурах, что не доехало и какой командой это доставить.
            Панель выкат не выполняет — она готовит команду и ведёт журнал.
@@ -1256,6 +1286,10 @@ const PANES = [
   /* Выкатки и бэклог — админские целиком: закрыты ролью на сервере, поэтому вместо
      секции матрицы у них флаг adminOnly. Заводить выдаваемое право под раздел, доступ к
      которому всё равно решает роль, значило бы обещать то, чего нет. */
+  /* Состояние — первым в группе: с него начинают, когда «что-то не так», и им же
+     проверяют утром, что ночь прошла спокойно. */
+  { id:"health", acl:"set-diag", group:"Служебное", label:"Состояние системы", desc:"Сколько данных в таблицах, работают ли переливы, докуда доехала очередь, отвечают ли базы и какая версия собрана.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-7 4 14L16 12h5"/></svg>' },
   { id:"deploy", adminOnly:true, group:"Служебное", label:"Выкатки", desc:"Какая версия стоит на каждом контуре, что ещё не доехало до следующего и какой командой это доставить.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h16M4 18h10"/><path d="M17 3l3 3-3 3M17 15l3 3-3 3"/></svg>' },
   { id:"backlog", adminOnly:true, group:"Служебное", label:"Бэклог", desc:"Задачи на доработку панели: что просили, что в работе, что сделано. Виден только администраторам.",
@@ -1296,6 +1330,7 @@ function openPane(id){
   if (id === "jira" && window.JiraSetup) JiraSetup.open();
   if (id === "integrations" && window.Integrations) Integrations.open();
   if (id === "backlog" && window.Backlog) Backlog.open();
+  if (id === "health" && window.Health) Health.open();
   if (id === "deploy" && window.Deploy) Deploy.open();
   if (id === "deploy" && window.SettingsPack) SettingsPack.open();
   /* Сущности и загруженные инструменты меняются мимо этой страницы — перечитываем */
@@ -3100,6 +3135,63 @@ window.CRM = window.CRM || (function(){
   #dpLog .dp-st.done{background:var(--green-bg);color:var(--green)}
   #dpLog .dp-st.cancelled{color:var(--faint)}
 
+  /* ---- Состояние системы ---- */
+  /* Общая точка-индикатор: один и тот же кружок у вердикта, проверок, процессов и
+     подключений — цвет читается одинаково во всех четырёх списках. */
+  #hlHost .hl-dot{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:0 0 auto;margin-top:6px}
+  #hlHost .ok .hl-dot{background:var(--green)}
+  #hlHost .warn .hl-dot{background:var(--amber)}
+  #hlHost .down .hl-dot{background:var(--coral)}
+  #hlHost .off .hl-dot{background:var(--faint)}
+
+  #hlHost .hl-verdict{display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:11px;
+    border:1px solid var(--line);background:var(--card2)}
+  #hlHost .hl-verdict .hl-dot{width:12px;height:12px;margin-top:0}
+  #hlHost .hl-verdict-text{font-size:17px;font-weight:600}
+  #hlHost .hl-verdict-env{margin-left:auto;color:var(--faint);font-size:12px;text-transform:uppercase}
+  #hlHost .hl-verdict.ok{background:var(--green-bg);border-color:rgba(60,250,180,.25)}
+  #hlHost .hl-verdict.warn{background:var(--amber-bg);border-color:rgba(255,184,77,.3)}
+  #hlHost .hl-verdict.down{background:var(--coral-bg);border-color:rgba(255,107,138,.3)}
+
+  #hlHost .hl-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:12px}
+  #hlHost .hl-fact{border:1px solid var(--line);border-radius:10px;padding:11px 13px;background:var(--card)}
+  #hlHost .hl-fact-l{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+  #hlHost .hl-fact-v{font-size:15px;font-weight:600;margin-top:3px;overflow-wrap:anywhere}
+  #hlHost .hl-fact-s{font-size:11.5px;color:var(--dim);margin-top:3px;overflow-wrap:anywhere}
+
+  #hlHost .hl-checks{display:grid;gap:6px;margin-top:14px}
+  #hlHost .hl-check{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border:1px solid var(--line);
+    border-radius:9px;background:var(--card)}
+  #hlHost .hl-check-title{display:block;font-size:13px}
+  #hlHost .hl-check-hint{display:block;font-size:11.5px;color:var(--dim);margin-top:2px}
+
+  #hlHost .hl-tbl{width:100%;border-collapse:collapse;font-size:13px}
+  #hlHost .hl-tbl th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);color:var(--dim);
+    font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  #hlHost .hl-tbl td{padding:7px 10px;border-bottom:1px solid var(--line)}
+  #hlHost .hl-tbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  #hlHost .hl-tbl .hl-missing{opacity:.5}
+  #hlHost .hl-approx{color:var(--faint)}
+  #hlHost .hl-note{color:var(--faint);font-size:11.5px;margin-top:8px}
+
+  #hlHost .hl-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+  #hlHost .hl-card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--card);
+    border-left:3px solid var(--faint)}
+  #hlHost .hl-card.ok{border-left-color:var(--green)}
+  #hlHost .hl-card.warn{border-left-color:var(--amber)}
+  #hlHost .hl-card.down{border-left-color:var(--coral)}
+  #hlHost .hl-card-t{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+  #hlHost .hl-card-v{font-size:16px;font-weight:600;margin-top:3px}
+  #hlHost .hl-card-s{font-size:11.5px;color:var(--dim);margin-top:4px;overflow-wrap:anywhere}
+
+  #hlHost .hl-procs, #hlConns{display:grid;gap:6px;margin-top:10px}
+  #hlHost .hl-proc, #hlConns .hl-conn{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;
+    border:1px solid var(--line);border-radius:9px;background:var(--card)}
+  #hlHost .hl-proc-title, #hlConns .hl-conn-title{display:block;font-size:13px}
+  #hlHost .hl-proc-sub, #hlConns .hl-conn-sub{display:block;font-size:11px;color:var(--faint);margin-top:2px;
+    overflow-wrap:anywhere}
+  #hlConns .hl-stale{color:var(--faint);font-size:11px}
+
   /* вкладки раздела «Выкатки» */
   .dp-tabs{display:flex;gap:8px;margin:18px 0 0;border-bottom:1px solid var(--line)}
   .dp-tabs .dp-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--dim);
@@ -3225,6 +3317,8 @@ window.CRM = window.CRM || (function(){
 <script src="backlog.js?v=2"></script>
 <!-- «Карта интеграций»: схема внешних связей панели с живым состоянием -->
 <script src="integrations.js?v=1"></script>
+<!-- «Состояние системы»: таблицы, переливы, очередь, подключения, версия -->
+<script src="health.js?v=1"></script>
 <!-- «Выкатки»: версии контуров, разница между ними и команда на выкат -->
 <script src="deploy.js?v=1"></script>
 <!-- Перенос настроек между контурами — вкладка «Настройки» того же раздела -->
