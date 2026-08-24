@@ -41,8 +41,11 @@ DB_USER="${DB_USER:-crm}"
 DB_NAME="${DB_NAME:-crm}"
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
-psql_src() { docker exec -i "crm-admin-db-$SRC" psql -qtAX -U "$DB_USER" -d "$DB_NAME" "$@"; }
-psql_dst() { docker exec -i "crm-admin-db-$DST" psql -qtAX -U "$DB_USER" -d "$DB_NAME" "$@"; }
+# Без -i и с закрытым stdin намеренно: внутри цикла «читаем список — создаём схему»
+# docker exec -i вычитывает ВЕСЬ оставшийся ввод цикла, и создаётся только первая схема,
+# а остальные молча теряются. Дамп подаётся отдельным вызовом, ему -i и нужен.
+psql_src() { docker exec "crm-admin-db-$SRC" psql -qtAX -U "$DB_USER" -d "$DB_NAME" "$@" </dev/null; }
+psql_dst() { docker exec "crm-admin-db-$DST" psql -qtAX -U "$DB_USER" -d "$DB_NAME" "$@" </dev/null; }
 
 for c in "$SRC" "$DST"; do
   docker inspect "crm-admin-db-$c" >/dev/null 2>&1 || { echo "Нет контейнера crm-admin-db-$c"; exit 1; }
@@ -94,11 +97,12 @@ fi
 
 # ------------------------------------------------------------------ перенос
 say "Создаю схемы"
-awk -F. '{print $1}' "$TMP/missing.txt" | sort -u | while read -r s; do
+awk -F. '{print $1}' "$TMP/missing.txt" | sort -u > "$TMP/schemas.txt"
+while read -r s; do
   [ -n "$s" ] || continue
   echo "  $s"
   psql_dst -c "CREATE SCHEMA IF NOT EXISTS \"$s\"" >/dev/null
-done
+done < "$TMP/schemas.txt"
 
 say "Снимаю структуру с $SRC"
 ARGS=""
@@ -111,8 +115,10 @@ docker exec "crm-admin-db-$SRC" pg_dump -U "$DB_USER" -d "$DB_NAME" \
 echo "  строк в дампе: $(wc -l < "$TMP/schema.sql")"
 
 say "Применяю на $DST"
-docker exec -i "crm-admin-db-$DST" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" \
-    < "$TMP/schema.sql" > "$TMP/apply.log" 2>&1 || {
+# Одной транзакцией: сорвалось на середине — не осталось половины таблиц, которые потом
+# пришлось бы разбирать руками.
+docker exec -i "crm-admin-db-$DST" psql -v ON_ERROR_STOP=1 --single-transaction \
+    -U "$DB_USER" -d "$DB_NAME" < "$TMP/schema.sql" > "$TMP/apply.log" 2>&1 || {
   echo "Ошибка применения, последние строки:"; tail -20 "$TMP/apply.log"; exit 1;
 }
 echo "  готово"
@@ -129,8 +135,8 @@ if [ -n "$DATA_SCHEMAS" ]; then
   if [ -n "$DARGS" ]; then
     docker exec "crm-admin-db-$SRC" pg_dump -U "$DB_USER" -d "$DB_NAME" \
         --data-only --no-owner $DARGS > "$TMP/data.sql"
-    docker exec -i "crm-admin-db-$DST" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" \
-        < "$TMP/data.sql" > "$TMP/data.log" 2>&1 || {
+    docker exec -i "crm-admin-db-$DST" psql -v ON_ERROR_STOP=1 --single-transaction \
+        -U "$DB_USER" -d "$DB_NAME" < "$TMP/data.sql" > "$TMP/data.log" 2>&1 || {
       echo "Данные не залились, последние строки:"; tail -20 "$TMP/data.log"; exit 1;
     }
     echo "  данные перенесены"
