@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ru.banki.crm.security.CurrentUser;
+import ru.banki.crm.service.jira.JiraService;
 
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -64,9 +65,81 @@ public class PromoPlanService {
     private EntityManager em;
 
     private final AdminLogService adminLog;
+    private final JiraService jira;
 
-    public PromoPlanService(AdminLogService adminLog) {
+    public PromoPlanService(AdminLogService adminLog, JiraService jira) {
         this.adminLog = adminLog;
+        this.jira = jira;
+    }
+
+    // ------------------------------------------------------------------ задача в Jira
+
+    /**
+     * Завести задачу по строке плана и запомнить её ключ.
+     * <p>
+     * Строка плана и задача должны говорить об одном и том же, поэтому поля берём отсюда,
+     * а не просим заполнить заново. Source приходит с клиента: его собирает Конструктор
+     * source из канала, продукта, партнёра, уникального имени и даты — там же, где он
+     * показан человеку, и второй раз ту же логику на сервере повторять незачем.
+     * <p>
+     * Вторую задачу на ту же строку не заводим: раз ключ уже стоит, значит задача есть, а
+     * дубль в Jira потом никто не вычистит.
+     */
+    @Transactional
+    public Map<String, Object> createJiraTask(long id, String source) {
+        Object[] r = rowById(id);
+        String existing = str(r[8]);
+        if (!existing.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "По этой строке уже заведена задача " + existing + ". Уберите ключ, если нужна новая.");
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("channel", str(r[5]));
+        data.put("customer", str(r[14]));
+        data.put("product", str(r[2]));
+        data.put("name", firstNonEmpty(str(r[12]), str(r[7])));   // название коммуникации, иначе уникальное имя
+        data.put("sendDate", String.valueOf(r[1]));
+        data.put("meaning", str(r[11]));                          // примечание строки = бизнес-смысл
+        data.put("link", str(r[15]));
+        data.put("content", str(r[16]));
+        data.put("segment", firstNonEmpty(joinNonEmpty(str(r[4]), str(r[13])), ""));
+        data.put("analyst", str(r[9]));
+        data.put("source", text(source));
+        data.put("reporterEmail", CurrentUser.email());
+
+        Map<String, Object> res = jira.createIssue(data);
+        String key = String.valueOf(res.get("key"));
+        em.createNativeQuery("UPDATE app.promo_plan SET task_key = :k, timestamp_upd = now(),"
+                        + " updated_by = :u WHERE id = :id")
+                .setParameter("k", key)
+                .setParameter("u", CurrentUser.email())
+                .setParameter("id", id)
+                .executeUpdate();
+        writeLog(operationSnapshot(id), "JIRA");
+        return res;
+    }
+
+    private Object[] rowById(long id) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery(
+                        "SELECT " + ROW_COLUMNS + " FROM app.promo_plan WHERE id = :id")
+                .setParameter("id", id)
+                .getResultList();
+        if (rows.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Строка плана не найдена");
+        }
+        return rows.get(0);
+    }
+
+    private static String firstNonEmpty(String a, String b) {
+        return a == null || a.isBlank() ? (b == null ? "" : b) : a;
+    }
+
+    /** База и дополнительные условия к ней — в Jira это одно поле «Сегмент». */
+    private static String joinNonEmpty(String a, String b) {
+        if (a == null || a.isBlank()) return b == null ? "" : b;
+        if (b == null || b.isBlank()) return a;
+        return a + ", " + b;
     }
 
     /**

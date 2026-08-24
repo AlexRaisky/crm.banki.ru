@@ -60,6 +60,20 @@ public class PromoPlanController {
     }
 
     /**
+     * Завести задачу в Jira по строке плана: {source}.
+     * <p>
+     * Право то же, что на правку строки: задача заводится по плану и тут же прописывает
+     * в него свой ключ, так что это правка плана, а не отдельная привилегия.
+     */
+    @PostMapping("/{id}/jira")
+    public Map<String, Object> createJiraTask(@PathVariable long id,
+                                              @RequestBody(required = false) Map<String, Object> body) {
+        access.requireCapability(Capability.EDIT, Sections.PROMO);
+        Object src = body == null ? null : body.get("source");
+        return service.createJiraTask(id, src == null ? "" : String.valueOf(src));
+    }
+
+    /**
      * Кого можно назначить ответственным — имена пользователей панели.
      * <p>
      * Лежит здесь, а не в админской ручке пользователей: список нужен всем, кто ведёт

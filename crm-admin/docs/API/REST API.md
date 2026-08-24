@@ -167,6 +167,7 @@ Query-параметры списка (все опциональны, множе
 | `POST /api/promo/plan` | завести промо; мультиканал → столько строк, сколько каналов | ADD в `promo` |
 | `PATCH /api/promo/plan/{id}` | правка одного поля: `{field, value, ver}` | EDIT в `promo` |
 | `DELETE /api/promo/plan/{id}` | удалить строку | DELETE в `promo` |
+| `POST /api/promo/plan/{id}/jira` | завести задачу в Jira по строке плана: `{source}`; ключ пишется в `task_key` | EDIT в `promo` |
 | `GET /api/promo/plan/owners` | имена пользователей панели для выпадающего «Ответственный» | READ в `promo` |
 
 `owners` живёт здесь, а не в `/api/admin/users` (`src/main/java/ru/banki/crm/web/PromoPlanController.java:69`): список нужен всем, кто ведёт план, а админская ручка отдаёт учётки целиком и только админу. Отдаются одни имена — ни почты, ни ролей.

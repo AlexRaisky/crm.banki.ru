@@ -135,6 +135,204 @@ public class JiraService {
         return config();
     }
 
+    // ------------------------------------------------------------------ заведение задачи
+
+    /**
+     * Завести задачу по нашим данным.
+     * <p>
+     * Работа в два шага, и это не прихоть: часть полей проекта не выведена на экран
+     * создания — «Source», «Letteros ID», «Финальная ссылка». В запросе создания Jira их
+     * не примет («Field cannot be set. It is not on the appropriate screen»), поэтому
+     * сначала создаём задачу тем, что экран принимает, а остальное дописываем правкой.
+     * <p>
+     * Если второй шаг не удался, задача всё равно создана — возвращаем ключ и честное
+     * предупреждение вместо отката: отменять уже заведённую задачу хуже, чем дозаполнить
+     * пару полей руками.
+     *
+     * @param data наши ключи (channel, customer, …) со значениями из панели
+     * @return key, ссылка и что не доехало
+     */
+    @Transactional
+    public Map<String, Object> createIssue(Map<String, Object> data) {
+        Object[] r = row();
+        String project = str(r[2]);
+        String type = str(r[3]);
+        String labels = str(r[4]);
+        JsonNode fieldMap = node(str(r[5]));
+        JsonNode valueMap = node(str(r[6]));
+        if (project.isEmpty() || type.isEmpty()) {
+            throw bad("Не заданы ключ проекта или тип задачи: «Настройки» → «Интеграции» → Jira.");
+        }
+        if (fieldMap.isEmpty()) {
+            throw bad("Карта полей пуста. Нажмите «Сопоставить поля» в настройках Jira.");
+        }
+
+        Map<String, Object> m = meta();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> screen = (List<Map<String, Object>>) m.get("fields");
+        Map<String, Map<String, Object>> byId = new LinkedHashMap<>();
+        screen.forEach(f -> byId.put(String.valueOf(f.get("id")), f));
+
+        ObjectNode create = om.createObjectNode();
+        ObjectNode later = om.createObjectNode();
+        create.set("project", om.createObjectNode().put("key", project));
+        create.set("issuetype", om.createObjectNode().put("name", type));
+        create.put("summary", summary(data));
+        String reporter = str(data.get("reporterEmail"));
+        if (!reporter.isEmpty()) {
+            String login = userLogin(reporter);
+            if (login != null) {
+                create.set("reporter", om.createObjectNode().put("name", login));
+            }
+        }
+        if (!labels.isBlank()) {
+            var arr = create.putArray("labels");
+            for (String l : labels.split("[,;\\s]+")) {
+                if (!l.isBlank()) arr.add(l.trim());
+            }
+        }
+
+        fieldMap.fields().forEachRemaining(e -> {
+            String ourKey = e.getKey();
+            String fieldId = e.getValue().asText("");
+            String value = str(data.get(ourKey));
+            if (fieldId.isEmpty() || value.isEmpty()) {
+                return;
+            }
+            /* Наше значение может называться в Jira иначе — «email» против «Email»,
+               «ДК» против «Дебетовые карты». Соответствие живёт в value_map. */
+            JsonNode swap = valueMap.path(ourKey).path(value);
+            if (swap.isTextual() && !swap.asText().isBlank()) {
+                value = swap.asText();
+            }
+            Map<String, Object> f = byId.get(fieldId);
+            if (f == null) {
+                later.set(fieldId, coerce(null, value));   // поля нет на экране создания
+            } else {
+                create.set(fieldId, coerce(f, value));
+            }
+        });
+
+        ObjectNode payload = om.createObjectNode();
+        payload.set("fields", create);
+        JsonNode res = client().post("/rest/api/2/issue", payload.toString());
+        String key = res.path("key").asText("");
+        if (key.isEmpty()) {
+            throw bad("Jira не вернула ключ созданной задачи");
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("key", key);
+        out.put("url", str(r[0]).replaceAll("/+$", "") + "/browse/" + key);
+        if (!later.isEmpty()) {
+            ObjectNode upd = om.createObjectNode();
+            upd.set("fields", later);
+            try {
+                client().put("/rest/api/2/issue/" + key, upd.toString());
+                out.put("lateFilled", later.size());
+            } catch (ResponseStatusException e) {
+                /* Задача уже есть — не падаем, а говорим, что дозаполнить руками. */
+                out.put("warning", "Задача " + key + " создана, но поля вне экрана создания не записались: "
+                        + e.getReason());
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Заголовок задачи. На форме Jira его собирает скрипт («Поле заполняется
+     * автоматически»), но через API он обязателен и никем не подставляется, поэтому
+     * повторяем тот же порядок частей.
+     */
+    private static String summary(Map<String, Object> data) {
+        String given = str(data.get("summary"));
+        if (!given.isBlank()) {
+            return given;
+        }
+        List<String> parts = new ArrayList<>();
+        for (String k : List.of("channel", "customer", "product", "kind", "name", "sendDate")) {
+            String v = str(data.get(k));
+            if (!v.isBlank()) parts.add(v);
+        }
+        return parts.isEmpty() ? "Промо" : String.join(" - ", parts);
+    }
+
+    /**
+     * Значение в том виде, в каком его ждёт поле. Тип берём из createmeta: список хочет
+     * объект с value, пользовательское поле — логин, массив — массив. Для поля, которого
+     * на экране создания нет ({@code f == null}), типа мы не знаем — шлём строкой, такие
+     * поля у нас текстовые.
+     */
+    private JsonNode coerce(Map<String, Object> f, String raw) {
+        if (f == null) {
+            return om.getNodeFactory().textNode(raw);
+        }
+        String type = str(f.get("type"));
+        String items = str(f.get("items"));
+        @SuppressWarnings("unchecked")
+        List<String> allowed = (List<String>) f.getOrDefault("values", List.of());
+        String value = raw;
+        if (!allowed.isEmpty()) {
+            /* Вариант в Jira пишут по-своему: у нас «email», у них «E-mail», у нас
+               «mobile-push» — у них «Mobile Push». Ищем тем же способом, что и имена
+               полей: без регистра, пробелов и разделителей. Нашли — подставляем их
+               написание, иначе Jira не примет. */
+            String want = norm(value);
+            String hit = allowed.stream().filter(v -> norm(v).equals(want)).findFirst().orElse(null);
+            if (hit == null) {
+                throw bad("Поле «" + f.get("name") + "»: значение «" + value + "» не из списка Jira. "
+                        + "Допустимо: " + String.join(", ", allowed.subList(0, Math.min(allowed.size(), 12)))
+                        + (allowed.size() > 12 ? " …" : "")
+                        + ". Поправьте данные в панели или задайте соответствие значений в value_map.");
+            }
+            value = hit;
+        }
+        switch (type) {
+            case "option":
+                return om.createObjectNode().put("value", value);
+            case "user":
+                String login = userLogin(value);
+                return om.createObjectNode().put("name", login == null ? value : login);
+            case "number":
+                try {
+                    return om.getNodeFactory().numberNode(Double.parseDouble(value));
+                } catch (NumberFormatException ignored) {
+                    return om.getNodeFactory().textNode(value);
+                }
+            case "array":
+                var arr = om.createArrayNode();
+                if ("string".equals(items)) {
+                    arr.add(value);
+                } else {
+                    arr.add(om.createObjectNode().put("value", value));
+                }
+                return arr;
+            default:
+                return om.getNodeFactory().textNode(value);
+        }
+    }
+
+    /**
+     * Логин в Jira по адресу почты или имени. Нужен для Reporter и полей-пользователей:
+     * Data Center ждёт именно логин, а панель знает человека по почте. Не нашли — вернём
+     * null, и поле просто не заполнится: из-за одного постановщика заваливать заведение
+     * задачи не стоит.
+     */
+    private String userLogin(String emailOrName) {
+        if (emailOrName == null || emailOrName.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode res = client().get("/rest/api/2/user/search?maxResults=2&username=" + enc(emailOrName.trim()));
+            if (res != null && res.isArray() && res.size() > 0) {
+                return res.get(0).path("name").asText(null);
+            }
+        } catch (RuntimeException ignored) {
+            // прав на поиск людей может не быть — тогда просто без постановщика
+        }
+        return null;
+    }
+
     // ------------------------------------------------------------------ связь
 
     /** Проверка связи: кто мы для Jira. Ничего не меняет. */
@@ -188,6 +386,9 @@ public class JiraService {
             m.put("name", f.path("name").asText(e.getKey()));
             m.put("required", f.path("required").asBoolean(false));
             m.put("type", f.path("schema").path("type").asText(""));
+            /* Для массива важно, из чего он: labels — это массив строк, а «Партнёр
+               Раздела» — массив вариантов, и обёртка у них разная. */
+            m.put("items", f.path("schema").path("items").asText(""));
             m.put("onCreateScreen", true);
             List<String> values = new ArrayList<>();
             JsonNode allowed = f.get("allowedValues");
@@ -464,6 +665,17 @@ public class JiraService {
         } catch (Exception e) {
             return om.createObjectNode();
         }
+    }
+
+    /** То же, что json(), но типом: наружу карты уходят как Object, внутри нужен узел. */
+    private JsonNode node(String s) {
+        Object o = json(s);
+        return o instanceof JsonNode n ? n : om.createObjectNode();
+    }
+
+    /** Отказ с понятной причиной — её видно в интерфейсе, поэтому пишем по-человечески. */
+    private static ResponseStatusException bad(String message) {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
     }
 
     private String jsonText(Object o) {

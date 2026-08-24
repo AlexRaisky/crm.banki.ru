@@ -305,6 +305,40 @@ function promoFail(e){
   return promoLoad();
 }
 
+/* ---------- задача в Jira из строки плана ----------
+   Всё, что нужно задаче, в строке уже есть — канал, заказчик, продукт, дата, сегмент,
+   ссылка. Кроме source: его собирает Конструктор source здесь же, на клиенте, поэтому
+   отправляем готовым, а не просим сервер повторить ту же сборку.
+
+   Заводит задачу сервер: у браузера нет ни адреса Jira, ни токена, и хорошо, что нет. */
+function promoCreateJira(i){
+  var r = PROMO_ROWS[i];
+  if (!r || !r.id) return;
+  if (promoTaskKey(r.task)){
+    alert(pmT('По этой строке уже есть задача') + ' ' + r.task);
+    return;
+  }
+  var nm = promoBuildName(r);
+  if (!nm.ok){
+    /* Без source задача заведётся, но останется без главного поля — а дозаполнять его
+       потом руками ровно то, ради чего кнопку и делали. Поэтому не молчим. */
+    if (!confirm(pmT('Не хватает данных для source: ') + nm.miss.join(', ') +
+                 '.\n' + pmT('Завести задачу без поля Source?'))) return;
+  }
+  var btn = document.querySelector('.jira-new[onclick*="(' + i + ')"]');
+  if (btn){ btn.disabled = true; btn.textContent = pmT('Заводим…'); }
+  promoReq('POST', '/' + r.id + '/jira', { source: nm.ok ? nm.value : '' })
+    .then(function(res){
+      if (res && res.warning) alert(res.warning);
+      return promoLoad();
+    })
+    .catch(function(e){
+      if (btn){ btn.disabled = false; btn.textContent = pmT('Завести'); }
+      if (e && e.status === 401) return;
+      alert(pmT('Не удалось завести задачу: ') + ((e && e.message) || e));
+    });
+}
+
 /* Заменить строку в наборе на пришедшую с сервера (по id). */
 function promoApplyRow(row){
   if (!row) return;
@@ -863,9 +897,15 @@ function promoRowHtml(x){
   var taskEd = '<input class="cell-in" value="' + pmAttr(draft != null ? draft : r.task) +
     '" placeholder="CRM-8748" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
   var taskKey = promoTaskKey(r.task);
+  /* Пустая ячейка задачи — это не «нечего показать», а «задачу ещё не завели». Кнопка
+     стоит прямо здесь: заводить задачу из строки плана и есть смысл кнопки, а ключ
+     после заведения встанет на её место. */
   var taskHtml = taskKey
     ? '<a class="jira" href="' + PROMO_JIRA_BASE + pmAttr(taskKey) + '" target="_blank" rel="noopener">' + pmEsc(taskKey) + '</a>'
-    : '—';
+    : (promoCan('edit')
+        ? '<button type="button" class="jira-new" onclick="event.stopPropagation();promoCreateJira(' + x.i + ')">' +
+            pmT('Завести') + '</button>'
+        : '—');
 
   /* Ответственный — из пользователей панели. Текущее значение строки всегда есть в
      списке, даже если такого пользователя уже нет: иначе открытие редактора молча
