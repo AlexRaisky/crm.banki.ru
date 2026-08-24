@@ -2245,9 +2245,21 @@ window.JiraSetup = (function(){
          видит красное «не найдено», а вопрос у него другой — как поле называется в Jira
          на самом деле. Поэтому показываем кандидатов с их id. */
       html += "<div style=\"margin-top:12px\">";
+      var hasAmbiguous = false;
       unmatched.forEach(function(u){
         var name = u && u.name ? u.name : String(u);
         var cand = (u && u.candidates) || [];
+        if (u && u.ambiguous){
+          /* Однофамильцы — отдельная беда: раньше панель молча брала первое поле, задача
+             заводилась, а значение уходило в чужое поле и пропадало. */
+          hasAmbiguous = true;
+          html += "<div style=\"color:var(--coral);margin-top:8px\">Несколько полей с именем <b>" +
+            esc(name) + "</b>: " + cand.map(function(c){
+              return esc(c.name) + " <span class=\"mono\">(" + esc(c.id) + ")</span>" +
+                (c.onCreateScreen ? "" : " <span style=\"color:var(--faint)\">— не на экране создания</span>");
+            }).join(", ") + " — выберите нужное сами.</div>";
+          return;
+        }
         html += "<div style=\"color:var(--coral);margin-top:8px\">Не нашлось: <b>" + esc(name) + "</b>";
         if (cand.length){
           html += " <span style=\"color:var(--faint)\">— похожие поля на экране создания: " +
@@ -2256,9 +2268,13 @@ window.JiraSetup = (function(){
         }
         html += "</div>";
       });
-      html += "<div class=\"empty\" style=\"margin-top:8px\">Если поле называется иначе — выберите его " +
-        "в списке напротив строки. Если его нет совсем, значит оно не выведено на экран " +
-        "создания задачи этого типа, и это правится в Jira.</div></div>";
+      html += "<div class=\"empty\" style=\"margin-top:8px\">" +
+        (hasAmbiguous
+          ? "Одноимённые поля панель не привязывает наугад: выберите нужное в списке напротив строки. "
+          : "") +
+        "Если поле называется иначе — выберите его в списке напротив строки. Если его нет " +
+        "совсем, значит оно не выведено на экран создания задачи этого типа, и это правится " +
+        "в Jira.</div></div>";
     }
     box("jrMapBox", html);
     bindPickers();

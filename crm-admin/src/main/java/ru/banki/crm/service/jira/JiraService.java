@@ -493,26 +493,35 @@ public class JiraService {
             names.add(jiraName);
             names.addAll(ALIASES.getOrDefault(ourKey, List.of()));
 
-            String id = match(screen, names);
-            if (id == null) {
-                id = match(offScreen, names);
-                if (id != null) {
+            /* Экран создания в приоритете: если поле есть там, однофамильцы из общего
+               списка полей нас не интересуют — заполнять всё равно будем это. */
+            List<String> hits = matchAll(screen, names);
+            boolean fromScreen = !hits.isEmpty();
+            if (hits.isEmpty()) {
+                hits = matchAll(offScreen, names);
+            }
+
+            if (hits.size() == 1) {
+                String id = hits.get(0);
+                fieldMap.put(ourKey, id);
+                if (!fromScreen) {
                     Map<String, Object> l = new LinkedHashMap<>();
                     l.put("key", ourKey);
                     l.put("name", jiraName);
                     l.put("id", id);
                     late.add(l);
                 }
+                return;
             }
-            if (id == null) {
-                Map<String, Object> miss = new LinkedHashMap<>();
-                miss.put("key", ourKey);
-                miss.put("name", jiraName);
-                miss.put("candidates", candidates(screen, names));
-                unmatched.add(miss);
-            } else {
-                fieldMap.put(ourKey, id);
-            }
+
+            Map<String, Object> miss = new LinkedHashMap<>();
+            miss.put("key", ourKey);
+            miss.put("name", jiraName);
+            miss.put("ambiguous", hits.size() > 1);
+            miss.put("candidates", hits.size() > 1
+                    ? named(hits, screen, offScreen)      // одноимённые: выбирать человеку
+                    : candidates(screen, names));         // не нашлось: показываем похожие
+            unmatched.add(miss);
         });
         em.createNativeQuery("UPDATE app.jira_connection SET field_map = CAST(:fm AS jsonb),"
                         + " timestamp_upd = now(), updated_by = :u WHERE id = 1")
@@ -530,21 +539,32 @@ public class JiraService {
         return out;
     }
 
-    /** Первое совпадение по любому из имён: сперва точное, потом по началу имени. */
-    private static String match(List<Map<String, Object>> fields, List<String> names) {
+    /**
+     * Все поля, подходящие под любое из имён: сперва точные совпадения, и только если их
+     * нет — совпадения по началу имени.
+     * <p>
+     * Именно все, а не первое попавшееся. В инстансе живут поля-однофамильцы: «Source»
+     * нашёлся дважды, и автосопоставление молча взяло чужое, customfield_12441 вместо
+     * customfield_19070. Задача завелась, поле осталось пустым, и понять почему можно
+     * было только из базы. Пусть лучше панель признается, что не знает, какое из двух.
+     */
+    private static List<String> matchAll(List<Map<String, Object>> fields, List<String> names) {
+        List<String> exact = new ArrayList<>();
         for (String want : names) {
-            String id = findField(fields, norm(want), false);
-            if (id != null) {
-                return id;
+            for (String id : findFields(fields, norm(want), false)) {
+                if (!exact.contains(id)) exact.add(id);
             }
         }
+        if (!exact.isEmpty()) {
+            return exact;
+        }
+        List<String> loose = new ArrayList<>();
         for (String want : names) {
-            String id = findField(fields, norm(want), true);
-            if (id != null) {
-                return id;
+            for (String id : findFields(fields, norm(want), true)) {
+                if (!loose.contains(id)) loose.add(id);
             }
         }
-        return null;
+        return loose;
     }
 
     /**
@@ -559,15 +579,42 @@ public class JiraService {
      */
     private static final int LOOSE_MIN_LEN = 5;
 
-    private static String findField(List<Map<String, Object>> fields, String want, boolean loose) {
+    private static List<String> findFields(List<Map<String, Object>> fields, String want, boolean loose) {
+        List<String> out = new ArrayList<>();
         if (want.isEmpty() || (loose && want.length() < LOOSE_MIN_LEN)) {
-            return null;
+            return out;
         }
         for (Map<String, Object> f : fields) {
             String have = norm(String.valueOf(f.get("name")));
-            boolean hit = loose ? have.startsWith(want) : have.equals(want);
-            if (hit) {
-                return String.valueOf(f.get("id"));
+            if (loose ? have.startsWith(want) : have.equals(want)) {
+                out.add(String.valueOf(f.get("id")));
+            }
+        }
+        return out;
+    }
+
+    /** Поля по списку id — с именами, чтобы человеку было из чего выбирать. */
+    private static List<Map<String, Object>> named(List<String> ids,
+                                                   List<Map<String, Object>> screen,
+                                                   List<Map<String, Object>> offScreen) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (String id : ids) {
+            Map<String, Object> f = find(screen, id);
+            boolean onScreen = f != null;
+            if (f == null) f = find(offScreen, id);
+            Map<String, Object> c = new LinkedHashMap<>();
+            c.put("id", id);
+            c.put("name", f == null ? id : f.get("name"));
+            c.put("onCreateScreen", onScreen);
+            out.add(c);
+        }
+        return out;
+    }
+
+    private static Map<String, Object> find(List<Map<String, Object>> fields, String id) {
+        for (Map<String, Object> f : fields) {
+            if (id.equals(String.valueOf(f.get("id")))) {
+                return f;
             }
         }
         return null;
