@@ -123,8 +123,13 @@ window.Health = (function(){
               T("с ошибкой") + ": " + num(q.error || 0),
               T("доставлено") + ": " + num(q.ok || 0)].join(" · "),
              (q.error ? "down" : ((q.pending || 0) > 50 ? "warn" : "ok"))) +
-        card(T("Обратный ETL"), etl.enabled ? T("включён") : T("выключен"),
-             watermark(etl), etl.enabled ? (etl.configured ? "ok" : "down") : "off") +
+        /* У ETL два выключателя: переменная окружения и кнопка в «Процессах переливов».
+           Карточка показывает тот, который сейчас решает, — иначе она спорит с разделом,
+           где человек только что остановил перелив. */
+        card(T("Обратный ETL"),
+             etl.stopped ? T("остановлен") : (etl.enabled ? T("включён") : T("выключен")),
+             etl.stopped ? T("остановлен в «Процессах переливов»") : watermark(etl),
+             etl.stopped ? "off" : (etl.enabled ? (etl.configured ? "ok" : "warn") : "off")) +
       "</div>" +
       '<div class="hl-procs">' + list.map(function(p){
         var st = p.enabled ? "ok" : "off";

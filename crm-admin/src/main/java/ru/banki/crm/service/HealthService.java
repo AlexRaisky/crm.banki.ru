@@ -84,9 +84,10 @@ public class HealthService {
         out.put("generatedAt", java.time.Instant.now().toString());
         out.put("database", database());
         out.put("tables", tables());
-        out.put("processes", processes(checks));
-        out.put("queue", queue(checks));
-        out.put("etl", etlBlock(checks));
+        List<Map<String, Object>> procs = processes(checks);
+        out.put("processes", procs);
+        out.put("queue", queue(checks, byCode(procs)));
+        out.put("etl", etlBlock(checks, byCode(procs)));
         out.put("connections", connections(checks));
         out.put("checks", checks);
         /* Итог страницы одним словом: худшее из проверок. Читают его первым, а иногда и
@@ -163,7 +164,19 @@ public class HealthService {
         return list;
     }
 
-    private Map<String, Object> queue(List<Map<String, Object>> checks) {
+    /** Процессы по коду — чтобы проверки могли спросить «а не остановлено ли это руками». */
+    private static Map<String, Map<String, Object>> byCode(List<Map<String, Object>> procs) {
+        Map<String, Map<String, Object>> out = new LinkedHashMap<>();
+        procs.forEach(p -> out.put(String.valueOf(p.get("code")), p));
+        return out;
+    }
+
+    private static boolean stopped(Map<String, Map<String, Object>> procs, String code) {
+        Map<String, Object> p = procs.get(code);
+        return p != null && !Boolean.TRUE.equals(p.get("enabled"));
+    }
+
+    private Map<String, Object> queue(List<Map<String, Object>> checks, Map<String, Map<String, Object>> procs) {
         Map<String, Object> q;
         try {
             q = new LinkedHashMap<>(sync.stats());
@@ -174,6 +187,11 @@ public class HealthService {
         if (error > 0) {
             checks.add(check("queue", "down", "В очереди синка ошибок: " + error,
                     "Откройте «Синхронизацию шаблонов»: у каждой записи виден текст отказа и кнопка повтора."));
+        } else if (stopped(procs, ProcessControlService.PROD_SYNC) && pending > 0) {
+            /* Доставку перекрыл человек — очередь копится не потому, что сломалось.
+               Пишем причину прямо, иначе дежурный пойдёт чинить работающее. */
+            checks.add(check("queue", "off", "Доставка шаблонов остановлена, в очереди: " + pending,
+                    "Так и задумано, если перелив останавливали. Пустить обратно — в «Процессах переливов»."));
         } else if (pending > 50) {
             checks.add(check("queue", "warn", "Очередь синка растёт: " + pending,
                     "Столько записей ждут отправки. Проверьте, работает ли доставка и отвечает ли прод."));
@@ -188,7 +206,15 @@ public class HealthService {
         return q;
     }
 
-    private Map<String, Object> etlBlock(List<Map<String, Object>> checks) {
+    /**
+     * У ETL два выключателя, и путать их нельзя: переменная {@code ETL_ENABLED} решает,
+     * заведён ли процесс вообще, а кнопка в «Процессах переливов» — идёт ли он прямо
+     * сейчас. Прогон требует обоих ({@code NoticeEtlService.tickIncremental}), поэтому и
+     * проверка смотрит на оба: раньше она видела только переменную и продолжала ругаться
+     * на процесс, который человек уже остановил, — с непонятным выводом «почему я не могу
+     * это выключить».
+     */
+    private Map<String, Object> etlBlock(List<Map<String, Object>> checks, Map<String, Map<String, Object>> procs) {
         Map<String, Object> s;
         try {
             s = new LinkedHashMap<>(etl.status());
@@ -197,11 +223,17 @@ public class HealthService {
         }
         boolean enabled = Boolean.TRUE.equals(s.get("enabled"));
         boolean configured = Boolean.TRUE.equals(s.get("configured"));
-        if (!enabled) {
+        boolean halted = stopped(procs, ProcessControlService.ETL_NOTICE);
+        s.put("stopped", halted);
+        if (halted) {
+            checks.add(check("etl", "off", "Обратный ETL остановлен",
+                    "Остановлен в «Процессах переливов». Пустить обратно — там же."));
+        } else if (!enabled) {
             checks.add(check("etl", "off", "Обратный ETL выключен", "Включается переменной ETL_ENABLED."));
         } else if (!configured) {
-            checks.add(check("etl", "down", "ETL включён, но прод-приёмник не настроен",
-                    "Выберите базу-приёмник в «Подключениях к БД»."));
+            checks.add(check("etl", "warn", "ETL включён, но прод-приёмник не настроен",
+                    "Выберите базу-приёмник в «Подключениях к БД» — или остановите ETL"
+                    + " в «Процессах переливов», если на этом контуре он не нужен."));
         } else {
             checks.add(check("etl", "ok", "Обратный ETL работает", ""));
         }
