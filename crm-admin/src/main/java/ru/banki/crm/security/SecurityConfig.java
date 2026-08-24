@@ -104,6 +104,10 @@ public class SecurityConfig {
                    перечислить, остаётся доступной только администратору. Забыть и молча
                    открыть эндпоинт всем — так нельзя. */
                 .requestMatchers("/api/admin/db-connections/**").access(section(Sections.SET_DBCONN))
+                /* Карта интеграций сводит вместе то, что уже показывают три соседние
+                   панели, — и открыта тому, кому выдана любая из них. */
+                .requestMatchers("/api/admin/integrations/**").access(section(Sections.SET_DBCONN,
+                        Sections.SET_SYNC, Sections.SET_PROCS))
                 .requestMatchers("/api/admin/etl/**", "/api/admin/prod-db/**").access(section(Sections.SET_SYNC))
                 /* Выключатель процессов: читать состояние — по секции, нажимать кнопки —
                    по праву edit внутри неё (проверяет сам контроллер). */

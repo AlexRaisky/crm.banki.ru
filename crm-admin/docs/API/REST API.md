@@ -283,6 +283,7 @@ Query-параметры списка (все опциональны, множе
 
 | Метод и путь | Назначение | Право |
 |---|---|---|
+| `GET /api/admin/integrations` | карта интеграций: узлы (внешние системы) и потоки между ними с живым состоянием | READ в `set-dbconn`, `set-sync` или `set-procs` |
 | `GET /api/admin/db-connections` | встроенные (наша/прод) + пользовательские, со статусом последней проверки | ADMIN |
 | `POST /api/admin/db-connections` | добавить: `{name, jdbcUrl, username, password, purpose, active}` | ADMIN |
 | `PUT /api/admin/db-connections/{id}` | изменить (пароль пишется только если прислан непустым) | ADMIN |

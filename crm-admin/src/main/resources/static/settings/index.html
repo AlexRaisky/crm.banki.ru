@@ -714,6 +714,27 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
       </section>
 
       <!-- ===== Jira: подключение и карта полей ===== -->
+      <!-- ===== Карта интеграций =====
+           Сводит вместе то, что показывают «Подключения к БД», «Синхронизация»,
+           «Процессы переливов» и «Jira». Только чтение; рисует settings/integrations.js
+           по ответу GET /api/admin/integrations. -->
+      <section class="pane" id="pane-integrations">
+        <h1 data-i18n-html="h_integr">Карта <span class="grad">интеграций</span></h1>
+        <div class="sub">С кем панель разговаривает и в каком это состоянии прямо сейчас: боевая база
+          шаблонов, база событий crmdb, Jira, витрины под отчёты. Стрелка — поток данных, цвет —
+          состояние: зелёный работает, жёлтый работает с замечаниями, красный не отвечает,
+          серый выключен человеком или не настроен. Клик по узлу открывает раздел, где это настраивается.</div>
+
+        <div class="row" style="gap:10px;align-items:center;margin:16px 0 4px">
+          <button type="button" class="btn" id="igReload">Обновить состояние</button>
+          <span class="mono" id="igStamp" style="color:var(--faint);font-size:11.5px"></span>
+        </div>
+
+        <div class="card" style="padding:14px">
+          <div id="igHost" class="empty">Опрашиваем интеграции…</div>
+        </div>
+      </section>
+
       <section class="pane" id="pane-jira">
         <h1 data-i18n-html="h_jira">Интеграция <span class="grad">с Jira</span></h1>
         <div class="sub">Из «Планирования промо» задача CRM-Промо заводится кнопкой. Здесь задаётся, куда ходить и под кем: адрес Jira, токен сервисной учётки, проект и тип задачи.</div>
@@ -1139,6 +1160,10 @@ const PANES = [
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><rect x="3" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v6M17.5 15V12H6.5"/></svg>' },
   { id:"dbtree", acl:"set-dbtree", group:"Данные", label:"Схемы и таблицы", desc:"Что реально есть в базе: схемы, внутри — таблицы с описанием, числом колонок и оценкой строк.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>' },
+  /* Карта идёт первой в группе: когда что-то не доехало, сначала смотрят «где рвётся»,
+     а уже потом лезут в конкретное подключение. */
+  { id:"integrations", acl:"set-dbconn", group:"Интеграции", label:"Карта интеграций", desc:"Все внешние связи панели на одной схеме: боевая база шаблонов, crmdb, Jira, витрины отчётов — и состояние каждого потока.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="4" cy="5" r="2"/><circle cx="20" cy="5" r="2"/><circle cx="4" cy="19" r="2"/><circle cx="20" cy="19" r="2"/><path d="M6 6.5 10 10M18 6.5 14 10M6 17.5 10 14M18 17.5 14 14"/></svg>' },
   { id:"dbconn", acl:"set-dbconn", group:"Интеграции", label:"Подключения к БД", desc:"Базы, к которым ходит панель. Здесь же отмечается, какая из них приёмник шаблонов, а какая — база событий crmdb.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>' },
   { id:"jira", acl:"set-jira", group:"Интеграции", label:"Jira", desc:"Адрес, токен сервисной учётки и карта полей: из чего собирается задача CRM-Промо.",
@@ -1194,6 +1219,7 @@ function openPane(id){
   if (id === "evexport" && window.EventExport) EventExport.open();
   if (id === "procs" && window.ProcessControl) ProcessControl.open();
   if (id === "jira" && window.JiraSetup) JiraSetup.open();
+  if (id === "integrations" && window.Integrations) Integrations.open();
   if (id === "backlog" && window.Backlog) Backlog.open();
   /* Сущности и загруженные инструменты меняются мимо этой страницы — перечитываем */
   if (id === "apps") loadAppDynKids();
@@ -2952,6 +2978,47 @@ window.CRM = window.CRM || (function(){
 <script src="object-manager.js?v=4"></script>
 <!-- «Схемы и таблицы»: обозреватель фактического состояния БД + удаление своих объектов -->
 <style>
+  /* ---- Карта интеграций ---- */
+  #igHost .ig-svg{width:100%;height:auto;display:block}
+  /* Один набор цветов на всю карту: узел, стрелка и карточка одного потока обязаны
+     совпадать, иначе схема и список под ней спорят друг с другом. */
+  #igHost .ig-node rect{fill:var(--card2);stroke:var(--line);stroke-width:1.5}
+  #igHost .ig-node.center rect{fill:var(--blue-bg);stroke:rgba(80,195,255,.45)}
+  #igHost .ig-node[data-pane]{cursor:pointer}
+  #igHost .ig-node[data-pane]:hover rect{stroke:var(--blue)}
+  #igHost .ig-node-title{fill:var(--ink);font-size:13px;font-weight:600}
+  #igHost .ig-node-sub{fill:var(--dim);font-size:10.5px;font-family:var(--mono)}
+  #igHost .ig-node-st{fill:var(--faint);font-size:10.5px}
+  #igHost .ig-dot{fill:var(--faint)}
+  #igHost .ig-node.ok .ig-dot{fill:var(--green)}
+  #igHost .ig-node.warn .ig-dot{fill:var(--amber)}
+  #igHost .ig-node.down .ig-dot{fill:var(--coral)}
+  #igHost .ig-line{fill:none;stroke:var(--line);stroke-width:2}
+  #igHost .ig-line.ok{stroke:var(--green)}
+  #igHost .ig-line.warn{stroke:var(--amber)}
+  #igHost .ig-line.down{stroke:var(--coral)}
+  /* Выключенный поток — пунктиром: видно, что связь есть, но по ней сейчас не льют. */
+  #igHost .ig-line.off{stroke:var(--faint);stroke-dasharray:6 5}
+  #igHost .ig-arrow{fill:var(--line)}
+  #igHost .ig-arrow.ok{fill:var(--green)}
+  #igHost .ig-arrow.warn{fill:var(--amber)}
+  #igHost .ig-arrow.down{fill:var(--coral)}
+  #igHost .ig-arrow.off{fill:var(--faint)}
+  #igHost .ig-line-label{fill:var(--ink);font-size:11.5px;font-weight:600}
+  #igHost .ig-line-sub{fill:var(--faint);font-size:10px;font-family:var(--mono)}
+  #igHost .ig-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-top:18px}
+  #igHost .ig-card{border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:var(--card)}
+  #igHost .ig-card-head{display:flex;align-items:center;gap:7px;font-weight:600;font-size:13px}
+  #igHost .ig-card-st{margin-left:auto;font-size:11px;color:var(--faint);font-weight:400;white-space:nowrap}
+  #igHost .ig-dot-s{width:8px;height:8px;border-radius:3px;background:var(--faint);flex:0 0 auto}
+  #igHost .ig-card.ok .ig-dot-s{background:var(--green)}
+  #igHost .ig-card.warn .ig-dot-s{background:var(--amber)}
+  #igHost .ig-card.down .ig-dot-s{background:var(--coral)}
+  #igHost .ig-card-path{color:var(--dim);font-size:11px;margin-top:5px}
+  #igHost .ig-card-about{color:var(--dim);font-size:12px;margin-top:7px}
+  #igHost .ig-card-detail{color:var(--ink);font-size:12px;margin-top:6px}
+  #igHost .ig-card-proc{color:var(--faint);font-size:11px;margin-top:6px}
+  #igHost .ig-go{margin-top:10px;padding:3px 10px;font-size:11.5px}
   /* ---- Бэклог ---- */
   #bkTabs .bk-tab{border:1px solid var(--line);background:var(--card2);color:var(--dim);
     border-radius:20px;padding:5px 13px;font-size:12.5px;cursor:pointer}
@@ -3005,5 +3072,7 @@ window.CRM = window.CRM || (function(){
 <script src="db-explorer.js?v=3"></script>
 <!-- «Бэклог»: задачи на доработку панели, раздел только для админов -->
 <script src="backlog.js?v=2"></script>
+<!-- «Карта интеграций»: схема внешних связей панели с живым состоянием -->
+<script src="integrations.js?v=1"></script>
 </body>
 </html>
