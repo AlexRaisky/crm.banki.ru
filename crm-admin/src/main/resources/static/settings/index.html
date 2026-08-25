@@ -777,6 +777,19 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
         <h2 style="margin-top:26px">Карта полей</h2>
         <div class="sub">Поля в Jira называются <span class="mono">customfield_12345</span>, и угадать их снаружи нельзя — их отдаёт сама Jira. «Сопоставить поля» читает экран создания задачи и связывает поля по названию; что не совпало, останется пустым и будет видно здесь.</div>
         <div class="card"><div id="jrMapBox" class="empty">Нажмите «Сопоставить поля».</div></div>
+
+        <!-- ===== Значения списков =====
+             Поля-списки в Jira закрытые: наше «Розница» не пройдёт, если в проекте
+             «Карты». Написание панель подбирает сама, а разные слова сводит человек. -->
+        <h2 style="margin-top:26px">Значения списков</h2>
+        <div class="sub">У полей-списков Jira принимает только свои значения. Разное написание
+          панель сводит сама — «email» находит «E-mail». Здесь задают пары, где слова разные:
+          слева наше значение из панели, справа значение из справочника Jira.</div>
+        <div class="row" style="gap:10px;align-items:center;margin:12px 0 4px">
+          <button type="button" class="btn" id="jvLoad">Показать списки</button>
+          <span class="save-note" id="jvMsg"></span>
+        </div>
+        <div id="jvBox" class="empty">Нажмите «Показать списки» — панель спросит у Jira допустимые значения.</div>
       </section>
 
       <!-- ===== Процессы переливов: остановить и пустить снова ===== -->
@@ -2314,6 +2327,119 @@ window.JiraSetup = (function(){
     bindPickers();
   }
 
+  // ------------------------------------------------------------ значения списков
+
+  /* Пары «наше значение → значение Jira». Правило то же, что у полей: пишем целиком
+     карту, а не по одной паре — ручка принимает её пакетом, и отправлять fieldMap рядом
+     обязательно, иначе сохранение значений стёрло бы сопоставление полей. */
+  var jvData = null;
+
+  /* На странице настроек есть только $ для одного элемента; списками пользуемся здесь. */
+  function $$(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+
+  function jvNote(text, bad){
+    var n = $("#jvMsg");
+    if (!n) return;
+    n.textContent = text || "";
+    n.style.color = bad ? "var(--coral)" : "";
+  }
+
+  function loadValues(){
+    jvNote("Спрашиваем Jira…");
+    req("GET", "../api/admin/jira/values").then(function(j){
+      jvData = j || {};
+      jvNote("");
+      renderValues();
+    }).catch(function(e){ jvNote((e && e.message) || "Не удалось прочитать списки", true); });
+  }
+
+  function renderValues(){
+    var fields = (jvData && jvData.fields) || [];
+    if (!fields.length){
+      box("jvBox", "Полей-списков нет: либо карта полей пуста, либо у привязанных полей " +
+        "свободный текст — тогда сопоставлять нечего.", true);
+      return;
+    }
+    var html = fields.map(function(f){
+      var pairs = f.pairs || {};
+      var keys = Object.keys(pairs);
+      var rows = keys.map(function(our){
+        return '<div class="jv-row" data-key="' + esc(f.key) + '" data-our="' + esc(our) + '">' +
+          '<input class="dbc-in jv-our" value="' + esc(our) + '" placeholder="как у нас">' +
+          '<span class="jv-arrow">→</span>' + jvSelect(f, pairs[our]) +
+          '<button type="button" class="btn tiny jv-del">Убрать</button></div>';
+      }).join("");
+      return '<div class="jv-field"><div class="jv-head">' + esc(f.title) +
+          ' <span class="mono">' + esc(f.fieldId) + '</span>' +
+          '<span class="jv-allowed">' + esc(f.allowed.join(", ")) + "</span></div>" +
+        rows +
+        '<div class="jv-row jv-new" data-key="' + esc(f.key) + '">' +
+          '<input class="dbc-in jv-our" placeholder="наше значение">' +
+          '<span class="jv-arrow">→</span>' + jvSelect(f, "") +
+          '<button type="button" class="btn tiny jv-add">Добавить</button></div></div>';
+    }).join("");
+    box("jvBox", html + '<div class="row" style="margin-top:12px">' +
+      '<button type="button" class="btn primary" id="jvSave">Сохранить пары</button></div>');
+    bindValues();
+  }
+
+  function jvSelect(f, cur){
+    return '<select class="dbc-in jv-jira"><option value="">— значение Jira —</option>' +
+      (f.allowed || []).map(function(v){
+        return '<option value="' + esc(v) + '"' + (v === cur ? " selected" : "") + ">" + esc(v) + "</option>";
+      }).join("") + "</select>";
+  }
+
+  function bindValues(){
+    $$("#jvBox .jv-del").forEach(function(b){
+      b.onclick = function(){ b.closest(".jv-row").remove(); };
+    });
+    $$("#jvBox .jv-add").forEach(function(b){
+      b.onclick = function(){
+        var row = b.closest(".jv-row");
+        var our = (row.querySelector(".jv-our").value || "").trim();
+        var jira = row.querySelector(".jv-jira").value || "";
+        if (!our || !jira){ jvNote("Заполните обе половины пары", true); return; }
+        var clone = row.cloneNode(true);
+        clone.classList.remove("jv-new");
+        clone.querySelector(".jv-add").outerHTML =
+          '<button type="button" class="btn tiny jv-del">Убрать</button>';
+        /* cloneNode копирует разметку, а не состояние: у input значение живёт в свойстве
+           value, у select — в выбранном option. Без явного переноса добавленная пара
+           уезжала на сервер пустой и молча терялась. */
+        clone.querySelector(".jv-our").value = our;
+        clone.querySelector(".jv-jira").value = jira;
+        row.parentNode.insertBefore(clone, row);
+        row.querySelector(".jv-our").value = "";
+        row.querySelector(".jv-jira").value = "";
+        jvNote("");
+        bindValues();
+      };
+    });
+    var save = $("#jvSave");
+    if (save) save.onclick = saveValues;
+  }
+
+  function saveValues(){
+    var map = {};
+    $$("#jvBox .jv-row").forEach(function(row){
+      if (row.classList.contains("jv-new")) return;      // строка добавления — не пара
+      var our = (row.querySelector(".jv-our").value || "").trim();
+      var jira = row.querySelector(".jv-jira").value || "";
+      if (!our || !jira) return;
+      var key = row.dataset.key;
+      (map[key] = map[key] || {})[our] = jira;
+    });
+    jvNote("Сохраняем…");
+    req("PUT", "../api/admin/jira/maps", { fieldMap: (cfg && cfg.fieldMap) || {}, valueMap: map })
+      .then(function(res){
+        if (res) cfg = res;
+        jvNote("Сохранено");
+        loadValues();
+      })
+      .catch(function(e){ jvNote((e && e.message) || "Не удалось сохранить", true); });
+  }
+
   function bind(){
     if (bound) return;
     var b = $("#jrSave");
@@ -2323,6 +2449,7 @@ window.JiraSetup = (function(){
     $("#jrCheck").onclick = check;
     $("#jrMeta").onclick = meta;
     $("#jrAuto").onclick = autoMap;
+    $("#jvLoad").onclick = loadValues;
   }
   bind();
 
@@ -3374,6 +3501,19 @@ window.CRM = window.CRM || (function(){
   .ch-failed td{color:var(--coral)}
   .ch-err{font-size:11px;color:var(--coral)}
   .ch-note{color:var(--faint);font-size:11.5px;margin-top:10px}
+
+  /* Пары значений Jira: строка «наше → их», плюс строка добавления снизу. Список
+     допустимых значений показан прямо в заголовке поля — иначе пришлось бы держать
+     его в другой вкладке и сверять по памяти. */
+  .jv-field{border:1px solid var(--line);border-radius:9px;padding:12px 14px;margin-bottom:10px;background:var(--card)}
+  .jv-head{font-size:13px;font-weight:600;margin-bottom:8px}
+  .jv-head .mono{color:var(--faint);font-weight:400;font-size:11.5px;margin-left:6px}
+  .jv-allowed{display:block;font-weight:400;font-size:11.5px;color:var(--dim);margin-top:3px}
+  .jv-row{display:flex;gap:8px;align-items:center;margin-top:6px}
+  .jv-row .jv-our{max-width:220px}
+  .jv-row .jv-jira{max-width:240px}
+  .jv-arrow{color:var(--faint)}
+  .jv-new{opacity:.85}
   .sp-preview{margin-top:14px}
   .sp-preview .sp-from{font-size:13px;margin-bottom:10px}
   .sp-preview .sp-warn{background:var(--amber-bg);color:var(--amber);border-radius:9px;

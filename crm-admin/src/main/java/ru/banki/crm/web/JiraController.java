@@ -66,4 +66,15 @@ public class JiraController {
         access.requireCapability(Capability.EDIT, Sections.SET_JIRA);
         return jira.saveMaps(body);
     }
+
+    /**
+     * Поля-списки с допустимыми значениями Jira и уже заданными парами. Нужно форме
+     * сопоставления значений: закрытый список в Jira не примет наше «Розница», если у
+     * них это «Карты», и до сих пор такие пары правили в базе руками.
+     */
+    @GetMapping("/values")
+    public Map<String, Object> valueOptions() {
+        access.requireAnySection(Sections.SET_JIRA);
+        return jira.valueOptions();
+    }
 }

@@ -431,6 +431,56 @@ public class JiraService {
     }
 
     /**
+     * Поля-списки и то, как их значения называются у них и у нас.
+     * <p>
+     * Списки в Jira закрытые: «Розница» не пройдёт, если в справочнике проекта стоит
+     * «Карты». Панель подбирает написание сама (без регистра и разделителей), но когда
+     * слова разные, помочь может только человек — и до сих пор он делал это правкой
+     * value_map в базе. Здесь собрано всё, что нужно форме: наш ключ, поле, допустимые
+     * значения Jira и уже заданные пары.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> valueOptions() {
+        Object[] r = row();
+        JsonNode fieldMap = node(str(r[5]));
+        JsonNode valueMap = node(str(r[6]));
+
+        Map<String, Object> m = meta();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> screen = (List<Map<String, Object>>) m.get("fields");
+        Map<String, Map<String, Object>> byId = new LinkedHashMap<>();
+        screen.forEach(f -> byId.put(String.valueOf(f.get("id")), f));
+
+        List<Map<String, Object>> out = new ArrayList<>();
+        OUR_FIELDS.forEach((ourKey, title) -> {
+            String fieldId = fieldMap.path(ourKey).asText("");
+            Map<String, Object> f = fieldId.isEmpty() ? null : byId.get(fieldId);
+            if (f == null) {
+                return;   // поле не привязано или не на экране создания — списка значений нет
+            }
+            @SuppressWarnings("unchecked")
+            List<String> allowed = (List<String>) f.getOrDefault("values", List.of());
+            if (allowed.isEmpty()) {
+                return;   // свободный текст: сопоставлять нечего
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("key", ourKey);
+            row.put("title", title);
+            row.put("fieldId", fieldId);
+            row.put("allowed", allowed);
+            Map<String, String> pairs = new LinkedHashMap<>();
+            valueMap.path(ourKey).fields().forEachRemaining(e -> pairs.put(e.getKey(), e.getValue().asText("")));
+            row.put("pairs", pairs);
+            out.add(row);
+        });
+
+        Map<String, Object> answer = new LinkedHashMap<>();
+        answer.put("fields", out);
+        answer.put("valueMap", json(str(r[6])));
+        return answer;
+    }
+
+    /**
      * Все поля инстанса, а не только те, что выведены на экран создания.
      * <p>
      * Нужны потому, что экран создания у проекта обычно куда беднее карточки: «Source» и
