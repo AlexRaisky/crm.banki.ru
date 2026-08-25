@@ -48,6 +48,31 @@ public class DeployController {
         return deploy.enqueue(text(body, "target"), text(body, "upTo"));
     }
 
+    /** Пауза обработчика: {paused: true|false}. Текущее задание не прерывается. */
+    @PostMapping("/api/admin/deploy/runner/pause")
+    public Map<String, Object> pause(@RequestBody(required = false) JsonNode body) {
+        boolean paused = body != null && body.path("paused").asBoolean(false);
+        return deploy.pause(paused);
+    }
+
+    /** Снять задание из очереди — пока обработчик его не взял. */
+    @PostMapping("/api/admin/deploy/jobs/{id}/cancel")
+    public Map<String, Object> cancelJob(@PathVariable long id) {
+        return deploy.cancelJob(id);
+    }
+
+    /** Повторить неудавшееся задание тем же контуром и коммитом. */
+    @PostMapping("/api/admin/deploy/jobs/{id}/retry")
+    public Map<String, Object> retryJob(@PathVariable long id) {
+        return deploy.retryJob(id);
+    }
+
+    /** История заданий обработчика. */
+    @GetMapping("/api/admin/deploy/jobs")
+    public List<Map<String, Object>> jobs(@RequestParam(defaultValue = "50") int limit) {
+        return deploy.jobs(limit);
+    }
+
     /** Жив ли обработчик и что сейчас в очереди — без этого кнопка молча копила бы задания. */
     @GetMapping("/api/admin/deploy/runner")
     public Map<String, Object> runner() {

@@ -214,9 +214,12 @@ public class DeployService {
         Map<String, Object> out = new LinkedHashMap<>();
         try {
             Map<String, Object> row = jdbc.queryForMap(
-                    "SELECT last_seen_at, host, version,"
+                    "SELECT last_seen_at, host, version, paused, paused_by, paused_at,"
                     + " extract(epoch from (now() - last_seen_at))::bigint AS ago"
                     + " FROM app.deploy_runner WHERE id = 1");
+            out.put("paused", Boolean.TRUE.equals(row.get("paused")));
+            out.put("pausedBy", row.get("paused_by"));
+            out.put("pausedAt", row.get("paused_at") == null ? null : String.valueOf(row.get("paused_at")));
             Object ago = row.get("ago");
             long sec = ago instanceof Number n ? n.longValue() : -1;
             out.put("lastSeenAt", row.get("last_seen_at") == null ? null : String.valueOf(row.get("last_seen_at")));
@@ -230,6 +233,61 @@ public class DeployService {
             out.put("error", "Таблица обработчика недоступна — миграция V48 не накачена?");
         }
         return out;
+    }
+
+    /**
+     * Пауза обработчика: перестать брать новые задания.
+     * <p>
+     * Текущее не трогаем — задание это сборка образа и пересоздание контейнера, рвать его
+     * на середине хуже, чем дать доработать. Пауза нужна для релизного окна и инцидента,
+     * когда выкаты надо перекрыть быстро и не всем, у кого есть кнопка, доступен ssh.
+     */
+    @Transactional
+    public Map<String, Object> pause(boolean paused) {
+        jdbc.update("UPDATE app.deploy_runner SET paused = ?, paused_by = ?,"
+                    + " paused_at = CASE WHEN ? THEN now() ELSE NULL END WHERE id = 1",
+                paused, paused ? CurrentUser.email() : null, paused);
+        return runner();
+    }
+
+    /**
+     * Снять задание из очереди. Только то, что ещё не взято: у running задания половина
+     * работы уже сделана в реальном мире — контейнер пересоздан или образ собран, — и
+     * «отмена» в базе о ней ничего не знает.
+     */
+    @Transactional
+    public Map<String, Object> cancelJob(long id) {
+        int n = jdbc.update("UPDATE app.deploy_log SET run_status = 'cancelled', status = 'cancelled',"
+                            + " run_finished_at = now(),"
+                            + " run_output = 'Отменено: ' || ? WHERE id = ? AND run_status = 'queued'",
+                CurrentUser.email(), id);
+        if (n == 0) {
+            throw bad("Задание уже взято обработчиком или его нет — отменять нечего.");
+        }
+        return runner();
+    }
+
+    /** Повторить упавшее задание: тот же контур, тот же коммит, снова в очередь. */
+    @Transactional
+    public Map<String, Object> retryJob(long id) {
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT target_env, to_commit, run_status FROM app.deploy_log WHERE id = ?", id);
+        String status = String.valueOf(row.get("run_status"));
+        if (!"failed".equals(status) && !"cancelled".equals(status)) {
+            throw bad("Повторять можно только неудавшееся или отменённое задание, а это — " + status);
+        }
+        return enqueue(String.valueOf(row.get("target_env")), String.valueOf(row.get("to_commit")));
+    }
+
+    /** История заданий обработчика: что заказывали, чем кончилось. */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> jobs(int limit) {
+        return jdbc.queryForList(
+                "SELECT id, source_env, target_env, to_commit, to_subject, commits, migrations,"
+                + " run_status, run_started_at, run_finished_at, run_output, coalesce(run_by, actor) AS actor,"
+                + " timestamp_cr"
+                + " FROM app.deploy_log WHERE run_status IS NOT NULL"
+                + " ORDER BY id DESC LIMIT ?", Math.max(1, Math.min(limit, 200)));
     }
 
     /** Текущее задание очереди: что катится прямо сейчас или ждёт обработчика. */

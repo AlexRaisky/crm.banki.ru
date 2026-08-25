@@ -965,6 +965,35 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
         </div>
       </section>
 
+      <!-- ===== Обработчик выкатов =====
+           Выкат выполняет скрипт на сервере, а не панель: docker живёт на хосте, и сокет
+           хоста в контейнере равнялся бы root на сервере. Здесь видно, жив ли он, что в
+           очереди и чем кончились прошлые задания. Рисует settings/runner.js. -->
+      <section class="pane" id="pane-runner">
+        <h1 data-i18n-html="h_runner">Обработчик <span class="grad">выкатов</span></h1>
+        <div class="sub">Кнопка «Выкатить» в разделе «Выкатки» не запускает docker сама — она ставит
+          задание, а выполняет его скрипт на сервере (<span class="mono">scripts/deploy-runner.sh</span>,
+          systemd-таймер раз в минуту). Панели docker недоступен намеренно: сокет хоста в контейнере
+          равен правам root на сервере. Эта страница отвечает на вопросы «работает ли он»,
+          «что сейчас катится» и «почему прошлый выкат не удался».</div>
+
+        <div class="row" style="gap:10px;align-items:center;margin:16px 0 4px">
+          <button type="button" class="btn" id="rnReload">Обновить</button>
+          <button type="button" class="btn" id="rnPause">Поставить на паузу</button>
+          <span class="save-note" id="rnMsg"></span>
+        </div>
+
+        <div id="rnState" class="empty">Читаем состояние…</div>
+
+        <h2 style="margin-top:28px">Очередь и последние задания</h2>
+        <div class="sub">Задания берутся строго по одному: сборка идёт на одном теге образа,
+          и два выката собирали бы его друг поверх друга.</div>
+        <div id="rnJobs" class="empty" style="margin-top:12px">—</div>
+
+        <h2 style="margin-top:28px">Если обработчик не отвечает</h2>
+        <div id="rnHelp" class="rn-help"></div>
+      </section>
+
       <!-- ===== Бэклог доработок =====
            Раздел только для админов: /api/admin/** закрыт ролью на сервере, а пункт
            меню прячется от остальных (adminOnly в PANES). Рисует settings/backlog.js. -->
@@ -1236,6 +1265,7 @@ const S_HTML = {
         h_integr:'Карта <span class="grad">интеграций</span>',
         h_health:'Состояние <span class="grad">системы</span>',
         h_deploy:'Выкатки <span class="grad">между контурами</span>',
+        h_runner:'Обработчик <span class="grad">выкатов</span>',
         h_backlog:'Бэклог <span class="grad">доработок</span>',
         h_jira:'Интеграция <span class="grad">с Jira</span>' },
   en: { h_over:'Admin <span class="grad">settings</span>', h_apps:'Apps <span class="grad">& sections</span>',
@@ -1253,6 +1283,7 @@ const S_HTML = {
         h_integr:'Integration <span class="grad">map</span>',
         h_health:'System <span class="grad">health</span>',
         h_deploy:'Rollouts <span class="grad">between environments</span>',
+        h_runner:'Deploy <span class="grad">runner</span>',
         h_backlog:'Improvement <span class="grad">backlog</span>',
         h_jira:'Jira <span class="grad">integration</span>' }
 };
@@ -1357,6 +1388,8 @@ const PANES = [
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-7 4 14L16 12h5"/></svg>' },
   { id:"deploy", adminOnly:true, group:"Служебное", label:"Выкатки", desc:"Какая версия стоит на каждом контуре, что ещё не доехало до следующего и какой командой это доставить.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h16M4 18h10"/><path d="M17 3l3 3-3 3M17 15l3 3-3 3"/></svg>' },
+  { id:"runner", adminOnly:true, group:"Служебное", label:"Обработчик выкатов", desc:"Кто выполняет выкаты на сервере: жив ли он, что в очереди, чем закончились прошлые задания. Здесь же пауза на время инцидента.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>' },
   { id:"backlog", adminOnly:true, group:"Служебное", label:"Бэклог", desc:"Задачи на доработку панели: что просили, что в работе, что сделано. Виден только администраторам.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l2 2 4-4"/><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4V2M16 4V2"/></svg>' },
   { id:"diag", acl:"set-diag", group:"Служебное", label:"Диагностика хранилища", desc:"Занятость localStorage браузера данными панели.",
@@ -1398,6 +1431,7 @@ function openPane(id){
   if (id === "health" && window.Health) Health.open();
   if (id === "deploy" && window.Deploy) Deploy.open();
   if (id === "deploy" && window.SettingsPack) SettingsPack.open();
+  if (id === "runner" && window.DeployRunner) DeployRunner.open();
   /* Сущности и загруженные инструменты меняются мимо этой страницы — перечитываем */
   if (id === "apps") loadAppDynKids();
   if (id === "monitoring") monBack();
@@ -3523,6 +3557,36 @@ window.CRM = window.CRM || (function(){
     max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
   .dp-runner-off{font-size:12px;color:var(--faint)}
 
+  /* Страница обработчика выкатов. */
+  .rn-state{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--card)}
+  .rn-state.ok{border-color:color-mix(in srgb, var(--green,#30a46c) 45%, var(--line))}
+  .rn-state.down{border-color:color-mix(in srgb, var(--coral) 45%, var(--line))}
+  .rn-state.warn{border-color:color-mix(in srgb, var(--amber,#e2a336) 45%, var(--line))}
+  .rn-head{display:flex;align-items:center;font-size:14px;margin-bottom:12px}
+  .rn-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+  .rn-fact-l{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint)}
+  .rn-fact-v{font-size:14px;margin-top:3px}
+  .rn-fact-s{font-size:11.5px;color:var(--dim);margin-top:2px}
+  .rn-warn{margin-top:12px;font-size:12.5px;color:var(--coral);line-height:1.5}
+  .rn-warn.soft{color:var(--dim)}
+  .rn-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+  .rn-tbl th{text-align:left;font-weight:600;color:var(--faint);font-size:11px;text-transform:uppercase;
+    letter-spacing:.04em;padding:6px 10px;border-bottom:1px solid var(--line)}
+  .rn-tbl td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  .rn-st{font-size:11.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+  .rn-st.done{color:var(--green,#30a46c)}
+  .rn-st.failed{color:var(--coral)}
+  .rn-st.running{color:var(--blue)}
+  .rn-st.queued{color:var(--dim)}
+  .rn-st.cancelled{color:var(--faint)}
+  .rn-dur,.rn-mig{font-size:11px;color:var(--faint);margin-left:6px}
+  .rn-out td{padding-top:0}
+  .rn-output{white-space:pre-wrap;font-size:11.5px;color:var(--dim);max-height:220px;overflow:auto;
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg)}
+  .rn-help{font-size:12.5px;color:var(--dim);line-height:1.6}
+  .rn-help pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+    overflow:auto;font-size:11.5px}
+
   /* Пары значений Jira: строка «наше → их», плюс строка добавления снизу. Список
      допустимых значений показан прямо в заголовке поля — иначе пришлось бы держать
      его в другой вкладке и сверять по памяти. */
@@ -3650,5 +3714,6 @@ window.CRM = window.CRM || (function(){
 <!-- Перенос настроек между контурами — вкладка «Настройки» того же раздела -->
 <script src="settings-pack.js?v=1"></script>
 <script src="changes.js?v=1"></script>
+<script src="runner.js?v=1"></script>
 </body>
 </html>

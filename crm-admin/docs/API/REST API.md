@@ -292,6 +292,10 @@ Query-параметры списка (все опциональны, множе
 | `GET /api/admin/deploy/changes?days=N` | что менялось в контуре и каких объектов пакета это касается | ADMIN |
 | `POST /api/admin/deploy/run` | поставить выкат в очередь обработчику на хосте: `{target, upTo}` | ADMIN |
 | `GET /api/admin/deploy/runner` | жив ли обработчик и что сейчас в очереди | ADMIN |
+| `POST /api/admin/deploy/runner/pause` | пауза обработчика: `{paused}`; текущее задание не прерывается | ADMIN |
+| `GET /api/admin/deploy/jobs?limit=N` | история заданий обработчика | ADMIN |
+| `POST /api/admin/deploy/jobs/{id}/cancel` | снять задание, пока его не взяли | ADMIN |
+| `POST /api/admin/deploy/jobs/{id}/retry` | повторить неудавшееся задание | ADMIN |
 | `POST /api/admin/deploy/reconcile` | закрыть записи журнала, версия которых уже стоит на цели | ADMIN |
 | `GET /api/admin/health` | состояние системы: таблицы, переливы, очередь, подключения, версия, миграции | READ в `set-dbconn`, `set-sync`, `set-procs` или `set-diag` |
 | `GET /api/admin/settings-pack` | что можно перенести между контурами и сколько записей в каждом объекте | ADMIN |
