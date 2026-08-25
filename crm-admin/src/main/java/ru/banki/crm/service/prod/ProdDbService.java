@@ -152,7 +152,15 @@ public class ProdDbService {
     private static String blankNull(String s) { return (s == null || s.isBlank()) ? null : s; }
 
     // ---------------------------------------------------------------- health
-    /** Проверка соединения: коннект, latency, наличие 4 канальных таблиц. */
+    /**
+     * Проверка соединения: коннект, latency, наличие канальных таблиц.
+     * <p>
+     * Про ключи ответа. Успех обозначен сразу двумя — {@code reachable} и {@code ok}, и
+     * это не небрежность. Исторически здесь был только первый, а у базы событий — только
+     * второй; читатели же (карта интеграций, «Состояние системы») написаны под {@code ok}
+     * и потому показывали живую прод-базу как «не отвечает». Ключи оставлены оба: убрать
+     * {@code reachable} нельзя, его читает «Диагностика подключений».
+     */
     public Map<String, Object> health() {
         Map<String, Object> out = new LinkedHashMap<>();
         Cfg pc = config();
@@ -168,6 +176,9 @@ public class ProdDbService {
                 rs.next();
             }
             out.put("reachable", true);
+            out.put("ok", true);
+            out.put("url", pc.url());
+            out.put("user", pc.user());
             out.put("latencyMs", System.currentTimeMillis() - t0);
             Map<String, Boolean> tables = new LinkedHashMap<>();
             for (String ch : List.of("sms", "push", "email", "cc", "fa", "vk", "la")) {
@@ -186,6 +197,7 @@ public class ProdDbService {
             out.put("tables", tables);
         } catch (Exception e) {
             out.put("reachable", false);
+            out.put("ok", false);
             // у Hikari верхнее сообщение — «request timed out»; настоящая причина в cause
             Throwable root = e;
             while (root.getCause() != null && root.getCause() != root) root = root.getCause();

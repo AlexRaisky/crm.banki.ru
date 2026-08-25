@@ -79,7 +79,7 @@ public class IntegrationsService {
         // ------------------------------------------------- прод-БД шаблонов (notice)
         Map<String, Object> prodHealth = safe(prod::health);
         boolean prodConfigured = truthy(prodHealth.get("configured"));
-        boolean prodOk = truthy(prodHealth.get("ok"));
+        boolean prodOk = alive(prodHealth);
         nodes.add(node("prod", "Прод-БД шаблонов", "Схемы notice и callcenter: боевые шаблоны коммуникаций.",
                 !prodConfigured ? OFF : (prodOk ? OK : DOWN),
                 !prodConfigured ? "приёмник не выбран"
@@ -110,7 +110,7 @@ public class IntegrationsService {
         // ------------------------------------------------------- база событий (crmdb)
         Map<String, Object> evHealth = safe(events::health);
         boolean evConfigured = truthy(evHealth.get("configured"));
-        boolean evOk = truthy(evHealth.get("ok"));
+        boolean evOk = alive(evHealth);
         nodes.add(node("crmdb", "База событий crmdb", "Схемы tracker, scheduler, commapi: боевые события рассылок.",
                 !evConfigured ? OFF : (evOk ? OK : DOWN),
                 !evConfigured ? "база событий не выбрана"
@@ -331,6 +331,15 @@ public class IntegrationsService {
 
     private static boolean truthy(Object o) {
         return Boolean.TRUE.equals(o) || "true".equalsIgnoreCase(String.valueOf(o));
+    }
+
+    /**
+     * «Подключение отвечает» — по любому из двух ключей. Проверки соединения писались в
+     * разное время и называют успех по-разному: база событий — {@code ok}, прод-БД —
+     * {@code reachable}. Карта из-за этого показывала живую прод-базу красной.
+     */
+    private static boolean alive(Map<String, Object> health) {
+        return truthy(health.get("ok")) || truthy(health.get("reachable"));
     }
 
     private static long num(Object o) {

@@ -283,7 +283,7 @@ public class HealthService {
     private void addConnCheck(List<Map<String, Object>> checks, String id, String title,
                               Map<String, Object> health, String consequence) {
         boolean configured = Boolean.TRUE.equals(health.get("configured"));
-        boolean ok = Boolean.TRUE.equals(health.get("ok"));
+        boolean ok = alive(health);
         if (!configured) {
             checks.add(check(id, "off", title + ": не настроена", "Выберите базу в «Подключениях к БД»."));
         } else if (!ok) {
@@ -295,15 +295,25 @@ public class HealthService {
     }
 
     private Map<String, Object> connection(String title, Map<String, Object> health) {
+        boolean ok = alive(health);
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("title", title);
         m.put("configured", Boolean.TRUE.equals(health.get("configured")));
-        m.put("ok", Boolean.TRUE.equals(health.get("ok")));
-        m.put("detail", Boolean.TRUE.equals(health.get("ok"))
+        m.put("ok", ok);
+        m.put("detail", ok
                 ? str(health.get("url"))
                 : str(health.getOrDefault("error", health.getOrDefault("message", ""))));
         m.put("live", true);
         return m;
+    }
+
+    /**
+     * Отвечает ли подключение. Проверки писались в разное время и называют успех
+     * по-разному: база событий кладёт {@code ok}, прод-БД — {@code reachable}. Читать
+     * только один ключ значит однажды объявить живую базу мёртвой, что и случилось.
+     */
+    private static boolean alive(Map<String, Object> health) {
+        return Boolean.TRUE.equals(health.get("ok")) || Boolean.TRUE.equals(health.get("reachable"));
     }
 
     // ------------------------------------------------------------------ мелочи
