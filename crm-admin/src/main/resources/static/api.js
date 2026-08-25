@@ -115,7 +115,11 @@
       source: trimEdges(d.source),
       communicationName: trimEdges(d.comname),
       name: trimEdges(d.comname),
-      brief: trimEdges(d.comname),
+      /* brief у пуша — source_type, у остальных каналов по-прежнему имя коммуникации.
+         Так попросили: в пуш-таблице прода это поле читают как источник, а не как
+         название рассылки. Значение то же, что уезжает в колонку source_type, поэтому
+         берём его из одного места — иначе они разъедутся при первой же правке. */
+      brief: trimEdges(d.channel === "push" ? d.source : d.comname),
       msgText: trimEdges(d.message),
       title: trimEdges(d.title),
       deepLink: trimEdges(d.deeplink),
