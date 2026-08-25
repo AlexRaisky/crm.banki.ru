@@ -119,12 +119,12 @@ public class EventImportService {
         }
         try {
             Map<String, Object> res = importAll(incrementLimit, true);
-            long rows = num(res.get("copiedRows"));
+            long rows = cnt(res.get("copiedRows"));
             if (rows > 0) {
-                log.info("event-import инкремент: строк {}, событий {}", rows, num(res.get("eventsBuilt")));
+                log.info("event-import инкремент: строк {}, событий {}", rows, cnt(res.get("eventsBuilt")));
             }
             control.noteRun(ProcessControlService.EVENT_IMPORT,
-                    "хвост: строк " + rows + ", событий " + num(res.get("eventsBuilt")));
+                    "хвост: строк " + rows + ", событий " + cnt(res.get("eventsBuilt")));
         } catch (Exception e) {
             log.warn("event-import инкремент: {}", e.toString());
         }
@@ -147,9 +147,9 @@ public class EventImportService {
         try {
             Map<String, Object> res = importAll(fullLimit, false);
             log.info("event-import полная сверка: строк {}, событий {}",
-                    num(res.get("copiedRows")), num(res.get("eventsBuilt")));
+                    cnt(res.get("copiedRows")), cnt(res.get("eventsBuilt")));
             control.noteRun(ProcessControlService.EVENT_IMPORT,
-                    "полная сверка: строк " + num(res.get("copiedRows")) + ", событий " + num(res.get("eventsBuilt")));
+                    "полная сверка: строк " + cnt(res.get("copiedRows")) + ", событий " + cnt(res.get("eventsBuilt")));
         } catch (Exception e) {
             log.warn("event-import полная сверка: {}", e.toString());
         }
@@ -163,7 +163,9 @@ public class EventImportService {
         return max == null ? 0L : max;
     }
 
-    private static long num(Object o) {
+    /* Своё имя: num(Object) в этом классе уже есть и возвращает Long, который бывает
+       null. Для счётчиков прогона нужен ноль, а не NPE при распаковке. */
+    private static long cnt(Object o) {
         return o instanceof Number n ? n.longValue() : 0L;
     }
 
