@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Формы завода событий (раздел «События»). Повторяют пошаговые формы старой
@@ -75,7 +76,23 @@ public final class EventFormDtos {
             @NotNull(message = "Не выбран id_comm_creation") Long idCommCreation) {}
 
     /** Что создалось: id события слоя A и строки слоя B. */
-    public record EventCreated(long eventId, String eventName, List<CreatedRow> rows, List<String> warnings) {}
+    /**
+     * Результат заведения события. Поле {@code export} — что случилось с переливом в
+     * crmdb: событие заводится и уезжает одним нажатием, но перелив может не состояться
+     * (приёмник не настроен, перелив остановлен, нет прав), и молчать об этом нельзя —
+     * иначе человек уверен, что коммуникация запущена, а её в боевой базе нет.
+     */
+    public record EventCreated(long eventId, String eventName, List<CreatedRow> rows,
+                               List<String> warnings, Map<String, Object> export) {
+
+        public EventCreated(long eventId, String eventName, List<CreatedRow> rows, List<String> warnings) {
+            this(eventId, eventName, rows, warnings, null);
+        }
+
+        public EventCreated withExport(Map<String, Object> result) {
+            return new EventCreated(eventId, eventName, rows, warnings, result);
+        }
+    }
 
     public record CreatedRow(String table, long id) {}
 }

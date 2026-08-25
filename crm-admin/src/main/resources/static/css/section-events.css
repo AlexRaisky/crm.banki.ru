@@ -62,6 +62,9 @@
   .ev-msg{font-size:13px}
   .ev-msg.err{color:var(--red,#e5484d)}
   .ev-msg.ok{color:var(--green,#30a46c)}
+  /* Событие заведено, но в прод не уехало — это не успех и не поломка: жёлтый, чтобы
+     человек прочитал причину, а не проскочил мимо зелёной строки. */
+  .ev-msg.warn{color:var(--amber,#e2a336)}
 
   /* что создалось: таблица слоя B */
   .ev-rows{margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden}

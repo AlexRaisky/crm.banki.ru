@@ -172,6 +172,26 @@
     renderResult("evoResult", null);
   }
 
+  /* Кнопка называется «Запустить коммуникацию», и запуск — это две вещи: событие
+     заведено у нас И уехало в crmdb. Первая всегда состоялась, вторая может не
+     состояться, поэтому в строке ответа они разделены: «заведено и переливается» против
+     «заведено, но в прод не уехало — вот почему». Молчаливое «заведено» после неудачного
+     перелива читалось бы как «всё готово», а коммуникации в боевой базе не было бы. */
+  function startedText(res) {
+    var head = "Событие «" + res.eventName + "» заведено (id " + res.eventId + ")";
+    var ex = res && res.export;
+    if (!ex) return head;
+    if (ex.status === "ok") return head + " и перелито в прод-БД";
+    if (ex.status === "skipped") return head + ", но в прод не уехало: " + (ex.reason || "перелив не выполнен");
+    return head + ", но перелив не удался: " + (ex.reason || "неизвестная ошибка") +
+      ". Повторить можно в разделе «Перелив событий».";
+  }
+  function startedKind(res) {
+    var ex = res && res.export;
+    if (!ex || ex.status === "ok") return "ok";
+    return ex.status === "error" ? "err" : "warn";
+  }
+
   function submitOnline() {
     say("evoMsg", "Сохраняем…");
     renderResult("evoResult", null);
@@ -188,7 +208,7 @@
       idCommCreation: num("evoComm")
     };
     evReq("POST", "/online", body).then(function (res) {
-      say("evoMsg", "Событие «" + res.eventName + "» заведено (id " + res.eventId + ")", "ok");
+      say("evoMsg", startedText(res), startedKind(res));
       renderResult("evoResult", res);
       /* Имя события уникально вместе с системой — очищаем поле, чтобы повторное
          нажатие не упёрлось в «уже заведено». Остальное оставляем: соседнее событие
@@ -329,7 +349,7 @@
       steps: steps
     };
     evReq("POST", "/offline", body).then(function (res) {
-      say("evfMsg", "Событие «" + res.eventName + "» заведено (id " + res.eventId + ")", "ok");
+      say("evfMsg", startedText(res), startedKind(res));
       renderResult("evfResult", res);
       if (el("evfName")) el("evfName").value = "";
       stampNow("evfDateStart");

@@ -18,7 +18,10 @@ import ru.banki.crm.service.flow.EventFormService;
 import ru.banki.crm.service.flow.EventListService;
 import ru.banki.crm.service.prod.EventExportService;
 import ru.banki.crm.service.prod.EventImportService;
+import ru.banki.crm.service.prod.ProcessControlService;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -38,15 +41,17 @@ public class EventController {
     private final EventImportService importer;
     private final EventListService catalog;
     private final AccessGuard access;
+    private final ProcessControlService control;
 
     public EventController(EventFormService service, EventExportService export,
                            EventImportService importer, EventListService catalog,
-                           AccessGuard access) {
+                           AccessGuard access, ProcessControlService control) {
         this.service = service;
         this.export = export;
         this.importer = importer;
         this.catalog = catalog;
         this.access = access;
+        this.control = control;
     }
 
     @GetMapping("/dictionaries")
@@ -58,13 +63,54 @@ public class EventController {
     @PostMapping("/online")
     public EventCreated createOnline(@Valid @RequestBody OnlineEventForm form) {
         access.requireCapability(Capability.ADD, Sections.EV_ONLINE);
-        return service.createOnline(form);
+        return withExport(service.createOnline(form));
     }
 
     @PostMapping("/offline")
     public EventCreated createOffline(@Valid @RequestBody OfflineEventForm form) {
         access.requireCapability(Capability.ADD, Sections.EV_OFFLINE);
-        return service.createOffline(form);
+        return withExport(service.createOffline(form));
+    }
+
+    /**
+     * Завести — значит запустить: сразу после записи у нас событие уезжает в crmdb, как
+     * шаблон уезжает в прод-БД. Кнопка называется «Запустить коммуникацию», и она должна
+     * делать ровно это, а не оставлять половину дела на отдельный экран.
+     * <p>
+     * Перелив не отменяет заведения. Событие у нас уже есть, и если crmdb недоступна,
+     * приёмник не настроен или перелив остановлен человеком — возвращаем событие вместе с
+     * причиной, а не 500 на всю форму: заведённое событие переливается потом кнопкой в
+     * «Переливе событий», а вот потерянная форма набирается заново.
+     */
+    private EventCreated withExport(EventCreated created) {
+        Map<String, Object> res = new LinkedHashMap<>();
+        try {
+            if (!access.can(Capability.ADD, Sections.EV_EXPORT)) {
+                return created.withExport(skipped(res, "Нет прав на перелив событий в прод-БД"));
+            }
+            if (!control.canStart(ProcessControlService.EVENT_EXPORT)) {
+                return created.withExport(skipped(res, "Перелив событий остановлен в «Процессах переливов»"));
+            }
+            if (!Boolean.TRUE.equals(export.health().get("configured"))) {
+                return created.withExport(skipped(res, "Прод-БД событий (crmdb) не настроена"));
+            }
+            Map<String, Object> done = export.export(created.eventId());
+            res.put("status", "ok");
+            res.putAll(done);
+            return created.withExport(res);
+        } catch (RuntimeException e) {
+            res.clear();
+            res.put("status", "error");
+            res.put("reason", e instanceof ResponseStatusException rse && rse.getReason() != null
+                    ? rse.getReason() : String.valueOf(e.getMessage()));
+            return created.withExport(res);
+        }
+    }
+
+    private static Map<String, Object> skipped(Map<String, Object> res, String reason) {
+        res.put("status", "skipped");
+        res.put("reason", reason);
+        return res;
     }
 
     /**
