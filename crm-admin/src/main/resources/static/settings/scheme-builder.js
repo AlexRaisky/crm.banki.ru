@@ -53,7 +53,28 @@ const DB_TYPES = ["bigserial","serial","bigint","integer","smallint","numeric(15
   "real","double precision","money","boolean","uuid","varchar(32)","varchar(60)","varchar(128)","varchar(255)",
   "char(1)","text","jsonb","json","date","time","timestamp","timestamptz","inet","relation"];
 const REL_UI = ["lookup","multilookup","related_list"];
-const REL_TYPES = ["one_to_one","many_to_one","one_to_many","many_to_many"];
+/* Типы связи, которые предлагаем заводить. Раньше их было четыре, включая
+   many_to_many — он требует связующей таблицы и отдельного обращения с DDL, и в модели
+   этой панели пользы от него меньше, чем путаницы. Оставили две понятные формы.
+   Уже заведённые связи других типов не ломаем: их значение подставляется в список
+   отдельным пунктом (см. relTypeOpts) — иначе открытие старой связи молча меняло бы ей
+   тип на первый из списка. */
+const REL_TYPES = ["one_to_one","one_to_many"];
+const REL_TYPE_LABEL = {
+  one_to_one:  "один к одному",
+  one_to_many: "один ко многим",
+  many_to_one: "многие к одному",
+  many_to_many:"многие ко многим"
+};
+
+/* Правило ON DELETE уходит в DDL как есть, поэтому переводим только подпись: значение
+   остаётся ключевым словом SQL. */
+const ON_DELETE_LABEL = {
+  RESTRICT:   "запретить удаление, пока есть связанные",
+  CASCADE:    "удалить связанные вместе с родителем",
+  "SET NULL": "обнулить ссылку у связанных",
+  "NO ACTION":"проверить в конце транзакции"
+};
 const ON_DELETE = ["RESTRICT","CASCADE","SET NULL","NO ACTION"];
 const uiMeta = v => UI_TYPES.find(x => x.v === v) || UI_TYPES[0];
 
@@ -1167,12 +1188,14 @@ function relationFormHtml(r, isNew){
     </div>
     <div class="sb-grid2">
       <div class="sb-fg"><label>${T("Тип связи")}</label><select class="mono" id="sbR_type">
-        ${REL_TYPES.map(x => `<option ${r.relation_type===x?"selected":""}>${x}</option>`).join("")}</select></div>
-      <div class="sb-fg"><label>ON DELETE</label><select class="mono" id="sbR_del_rule">
-        ${ON_DELETE.map(x => `<option ${r.on_delete===x?"selected":""}>${x}</option>`).join("")}</select></div>
+        ${relTypeOpts(r.relation_type)}</select></div>
+      <div class="sb-fg"><label>${T("Что делать при удалении родителя")}</label><select id="sbR_del_rule">
+        ${ON_DELETE.map(x => `<option value="${esc(x)}" ${r.on_delete===x?"selected":""}>${esc(x)} — ${T(ON_DELETE_LABEL[x] || x)}</option>`).join("")}</select>
+        <i class="sb-hint" id="sbR_del_hint"></i></div>
     </div>
     <label class="sb-check"><input type="checkbox" id="sbR_null" ${r.nullable?"checked":""}> ${T("FK может быть NULL")}</label>
-    <div class="sb-fg"><label>${T("Связующая таблица (для many-to-many)")}</label><input class="mono" id="sbR_through" value="${esc(r.through||"")}"></div>
+    <div class="sb-fg" id="sbR_throughBox"><label>${T("Связующая таблица")}</label><input class="mono" id="sbR_through" value="${esc(r.through||"")}">
+      <i class="sb-hint">${T("Нужна только связям «многие ко многим» — их больше не заводят, поле осталось для уже существующих.")}</i></div>
     <div class="sb-fg"><label>${T("Описание")}</label><textarea id="sbR_desc">${esc(r.description||"")}</textarea></div>
     <div class="sb-acts">
       <button class="btn accent" id="sbR_save">${isNew ? T("Добавить") : T("Сохранить")}</button>
@@ -1184,8 +1207,45 @@ function fillRelationFields(r){
   $("#sbR_fromF").innerHTML = ((fe && fe.fields) || []).map(f => `<option ${r.from_field===f.name?"selected":""}>${esc(f.name)}</option>`).join("");
   $("#sbR_toF").innerHTML = ((te && te.fields) || []).map(f => `<option ${r.to_field===f.name?"selected":""}>${esc(f.name)}</option>`).join("");
 }
+/* Список типов связи: две рабочие формы плюс, если у связи стоит что-то другое, её
+   собственное значение отдельным пунктом. Молча подменять тип при открытии старой связи
+   нельзя — это правка, которую никто не заказывал. */
+function relTypeOpts(cur){
+  const list = REL_TYPES.slice();
+  if (cur && list.indexOf(cur) < 0) list.push(cur);
+  return list.map(x => `<option value="${esc(x)}" ${cur===x?"selected":""}>` +
+    `${esc(T(REL_TYPE_LABEL[x] || x))} · ${esc(x)}` +
+    (REL_TYPES.indexOf(x) < 0 ? " · " + T("устаревший") : "") + "</option>").join("");
+}
+
+/* Пояснение под ON DELETE своими словами: правило выбирают раз в жизни, а последствия у
+   CASCADE такие, что «каскад» в подписи мало что объясняет. */
+const ON_DELETE_HINT = {
+  RESTRICT:   "Родителя не дадут удалить, пока на него ссылаются. Безопасный вариант по умолчанию.",
+  CASCADE:    "Вместе с родителем удалятся все связанные строки. Осторожно: удаление одной записи может унести многие.",
+  "SET NULL": "Связанные строки останутся, ссылка станет пустой. Требует, чтобы FK допускал NULL.",
+  "NO ACTION":"То же, что RESTRICT, но проверка откладывается до конца транзакции."
+};
+
+/* Связующая таблица имеет смысл только у many_to_many. Новых таких связей не заводят,
+   поэтому поле показываем лишь там, где оно уже используется. */
+function relThroughVis(){
+  const box = $("#sbR_throughBox"), sel = $("#sbR_type");
+  if (box && sel) box.style.display = sel.value === "many_to_many" ? "" : "none";
+}
+
+function relDeleteHint(){
+  const el = $("#sbR_del_hint"), sel = $("#sbR_del_rule");
+  if (!el || !sel) return;
+  el.textContent = T(ON_DELETE_HINT[sel.value] || "");
+}
+
 function wireRelationForm(r){
   fillRelationFields(r);
+  relDeleteHint();
+  relThroughVis();
+  $("#sbR_del_rule").onchange = relDeleteHint;
+  $("#sbR_type").onchange = relThroughVis;
   $("#sbR_fromE").onchange = () => fillRelationFields(r);
   $("#sbR_toE").onchange = () => fillRelationFields(r);
 }
@@ -1754,7 +1814,7 @@ function openRelationModal(){
   if (model.entities.length < 2) return toast(T("Нужно хотя бы две таблицы"));
   const a = model.entities[0], b = model.entities[1];
   const r = { id:"rel_" + Date.now(), from_entity:a.id, from_field:(a.fields[0]||{}).name || "",
-    to_entity:b.id, to_field:"id", relation_type:"many_to_one", nullable:true,
+    to_entity:b.id, to_field:"id", relation_type:"one_to_many", nullable:true,
     on_delete:"RESTRICT", through:"", description:"" };
   openModal(`<h3>${T("Новая связь")}</h3>` + relationFormHtml(r, true));
   wireRelationForm(r);
