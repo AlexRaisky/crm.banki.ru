@@ -69,8 +69,62 @@ window.Deploy = (function(){
             !e.reachable ? (T("не отвечает") + (e.error ? ": " + e.error : ""))
               : (known ? (e.subject || "") : T("версия неизвестна: собрано мимо scripts/build.sh"))) + "</div>" +
         (known && e.builtAt ? '<div class="dp-env-when mono">' + T("собрано") + " " + esc(when(e.builtAt)) + "</div>" : "") +
+        rollButton(name, by) +
       "</div>";
     }).join("");
+    bindRoll();
+  }
+
+  /* Кнопка «принять версию соседа»: на препроде — из теста, на проде — из препрода.
+     Это не отдельный механизм, а быстрый выбор пары для того же плана: команда умеет
+     встать на конкретный коммит (git checkout <срез>), поэтому «принять то, что стоит
+     на тесте» выражается планом с upTo = версия теста. */
+  function rollButton(name, by){
+    var i = ORDER.indexOf(name);
+    if (i <= 0) return "";                       // на тест катить неоткуда
+    var from = ORDER[i - 1];
+    var src = by[from];
+    if (!src || !src.commit) return "";          // сосед молчит — принимать нечего
+    var same = (by[name] || {}).commit === src.commit;
+    return '<button type="button" class="dp-roll" data-target="' + esc(name) + '"' +
+      ' data-from="' + esc(from) + '" data-commit="' + esc(src.commit) + '"' +
+      (same ? " disabled" : "") + ">" +
+      (same ? T("совпадает с ") + from : T("принять из ") + from) + "</button>";
+  }
+
+  function bindRoll(){
+    var list = document.querySelectorAll("#dpEnvs .dp-roll");
+    Array.prototype.forEach.call(list, function(b){
+      b.onclick = function(){ planFor(b.dataset.target, b.dataset.from, b.dataset.commit); };
+    });
+  }
+
+  /**
+   * План «поставить на target то, что стоит на from».
+   * <p>
+   * Версия источника должна быть в истории ЭТОЙ сборки — иначе панель не знает, какие
+   * правки войдут в срез. Так бывает, когда раздел открыт на отставшем контуре: прод
+   * собран вчера и про сегодняшний коммит теста знает только со слов соседа. Тогда
+   * честнее сказать, где смотреть, чем показать пустой план.
+   */
+  function planFor(target, from, commit){
+    note(T("Считаем срез…"));
+    req("POST", "../api/admin/deploy/plan", { target: target, upTo: commit, record: false })
+      .then(function(p){
+        plan = p;
+        pend = pend && pend.target === target ? pend : null;
+        renderPlan();
+        note(T("Срез до версии ") + from + ": " + T("коммитов ") + ((p.commits || []).length));
+        var el = document.getElementById("dpPlan");
+        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      })
+      .catch(function(e){
+        plan = null; renderPlan();
+        var msg = (e && e.message) || "";
+        note(msg.indexOf("нет в истории") >= 0
+          ? T("Версия ") + from + T(" не в истории этой сборки — откройте раздел на контуре ") + from
+          : msg, true);
+      });
   }
 
   function renderPending(){
