@@ -13,6 +13,9 @@ window.Deploy = (function(){
   "use strict";
 
   var bound = false, over = null, pend = null, upTo = null, plan = null, log = [];
+  /* Состояние обработчика очереди на хосте и текущее задание. Панель сама выкат не
+     выполняет — она ставит задание, а показывает то, что обработчик о себе сообщил. */
+  var runner = null, watch = null;
 
   function T(s){ return (typeof window.t2 === "function") ? window.t2(s) : s; }
   function esc(v){ return String(v == null ? "" : v)
@@ -223,7 +226,12 @@ window.Deploy = (function(){
       "<pre><code>" + esc(plan.script) + "</code></pre>" +
       '<div class="row" style="gap:10px;margin-top:10px">' +
         '<button type="button" class="btn" id="dpCopy">' + T("Скопировать команду") + "</button>" +
-        '<button type="button" class="btn primary" id="dpRecord">' + T("Записать в журнал и катить") + "</button>" +
+        '<button type="button" class="btn" id="dpRecord">' + T("Записать в журнал") + "</button>" +
+        /* Кнопка появляется, только когда обработчик на хосте выходил на связь: иначе она
+           молча копила бы задания, а человек ждал бы выката, которого никто не делает. */
+        (runner && runner.alive
+          ? '<button type="button" class="btn primary" id="dpRun">' + T("Выкатить") + "</button>"
+          : '<span class="dp-runner-off">' + T("Выкатывает обработчик на сервере — он сейчас не отвечает, выполните команду вручную") + "</span>") +
       "</div>";
 
     document.getElementById("dpCopy").onclick = function(){
@@ -239,6 +247,19 @@ window.Deploy = (function(){
           return loadLog();
         })
         .catch(function(e){ note((e && e.message) || T("Не удалось записать"), true); });
+    };
+    var runBtn = document.getElementById("dpRun");
+    if (runBtn) runBtn.onclick = function(){
+      var mig = (plan.migrations || 0) > 0;
+      if (!confirm(T("Выкатить на ") + plan.target + T(" версию ") + (plan.upTo || "").slice(0, 7) + "?" +
+                   (mig ? "\n" + T("В срезе есть миграции — структура базы изменится и сама назад не откатится.") : ""))) return;
+      runBtn.disabled = true;
+      req("POST", "../api/admin/deploy/run", { target: plan.target, upTo: plan.upTo })
+        .then(function(){
+          note(T("Задание поставлено в очередь — обработчик возьмёт его в течение минуты."));
+          return Promise.all([loadRunner(), loadLog()]);
+        })
+        .catch(function(e){ runBtn.disabled = false; note((e && e.message) || T("Не удалось поставить задание"), true); });
     };
   }
 
@@ -301,6 +322,48 @@ window.Deploy = (function(){
       .catch(function(e){ plan = null; renderPlan(); note((e && e.message) || "", true); });
   }
 
+  function loadRunner(){
+    return req("GET", "../api/admin/deploy/runner")
+      .then(function(r){ runner = r || {}; renderRunner(); return runner; })
+      .catch(function(){ runner = { alive: false }; renderRunner(); });
+  }
+
+  /* Строка состояния: жив ли обработчик и что с текущим заданием. Пока задание в работе,
+     перечитываем раз в 10 секунд — выкат идёт минуты, и человек ждёт у экрана. */
+  function renderRunner(){
+    var host = document.getElementById("dpRunner");
+    if (!host) return;
+    var job = (runner && runner.job && runner.job.id) ? runner.job : null;
+    var alive = !!(runner && runner.alive);
+    var parts = [];
+    parts.push('<span class="dp-dot ' + (alive ? "ok" : "off") + '"></span>' +
+      (alive ? T("обработчик на связи") : T("обработчик не отвечает")) +
+      (runner && runner.agoSec >= 0 && runner.lastSeenAt
+        ? ' <span class="mono">' + T("последний раз") + " " + esc(when(runner.lastSeenAt)) + "</span>" : ""));
+    if (job){
+      var st = String(job.run_status || "");
+      var label = st === "queued" ? T("в очереди") : st === "running" ? T("катится")
+        : st === "done" ? T("выкачено") : T("ошибка");
+      parts.push('<b>' + esc(job.target_env) + "</b> " + label +
+        ' <span class="mono">' + esc(String(job.to_commit || "").slice(0, 7)) + "</span>");
+      if (st === "failed" && job.run_output){
+        parts.push('<div class="dp-run-err mono">' + esc(String(job.run_output).slice(-600)) + "</div>");
+      }
+    }
+    host.className = "dp-runner " + (alive ? "" : "off");
+    host.innerHTML = parts.join(" · ");
+
+    clearTimeout(watch);
+    if (job && (job.run_status === "queued" || job.run_status === "running")){
+      watch = setTimeout(function(){
+        loadRunner().then(function(r){
+          /* Задание закончилось — перечитываем версии контуров: на цели уже новая. */
+          if (r && r.job && (r.job.run_status === "done" || r.job.run_status === "failed")) load();
+        });
+      }, 10000);
+    }
+  }
+
   function load(){
     note("");
     return req("GET", "../api/admin/deploy")
@@ -312,6 +375,7 @@ window.Deploy = (function(){
       })
       .then(function(){ return loadPending(); })
       .then(function(){ return loadLog(); })
+      .then(function(){ return loadRunner(); })
       .catch(function(e){
         var host = document.getElementById("dpEnvs");
         if (host) host.innerHTML = '<div class="empty">' +

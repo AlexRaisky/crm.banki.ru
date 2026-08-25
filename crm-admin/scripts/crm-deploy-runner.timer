@@ -1,0 +1,14 @@
+[Unit]
+Description=CRM admin: проверять очередь выкатов раз в минуту
+
+[Timer]
+# Минута — компромисс: человек нажал кнопку и ждёт, но чаще незачем, выкат всё равно
+# идёт минуты. Persistent не ставим намеренно: догонять пропущенные запуски здесь вредно —
+# после простоя сервера обработчик взялся бы за задание, которое уже неактуально.
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Unit=crm-deploy-runner.service
+
+[Install]
+WantedBy=timers.target

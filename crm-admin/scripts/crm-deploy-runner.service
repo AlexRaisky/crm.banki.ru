@@ -1,0 +1,25 @@
+[Unit]
+# Обработчик очереди выкатов: разбирает задания, которые ставит панель.
+# Запускается таймером раз в минуту, работает одним проходом и завершается —
+# демона здесь не нужно, и незавершённый процесс не должен переживать перезагрузку.
+Description=CRM admin: обработчик очереди выкатов
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Подставьте своего пользователя — того, от которого вы запускаете docker.
+# Он обязан состоять в группе docker, иначе обработчик не сможет пересоздать контур.
+User=i.zolotonosha
+WorkingDirectory=/home/i.zolotonosha/crm.banki.ru/crm-admin
+Environment=DEPLOY_DIR=/home/i.zolotonosha/crm.banki.ru
+Environment=DEPLOY_BRANCH=admin-panel
+# База, где лежит очередь: та же, которую читает панель, куда нажимают кнопку.
+Environment=DEPLOY_DB=crm-admin-db-prod
+ExecStart=/bin/bash /home/i.zolotonosha/crm.banki.ru/crm-admin/scripts/deploy-runner.sh --once
+# Сборка образа занимает минуты; таймер за это время сработает снова, но второе задание
+# он не возьмёт — занятие идёт условием в UPDATE. Ограничение сверху на случай зависания.
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target

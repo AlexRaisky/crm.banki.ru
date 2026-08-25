@@ -888,6 +888,10 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
           <button type="button" class="btn" id="dpReload">Обновить</button>
           <span class="save-note" id="dpMsg"></span>
         </div>
+        <!-- Состояние обработчика очереди на хосте: выкат выполняет он, а не панель.
+             Пока он молчит, кнопка «Выкатить» не показывается — иначе задания копились бы
+             молча, и это выглядело бы как сломанная панель. -->
+        <div class="dp-runner off" id="dpRunner"></div>
 
         <div id="dpEnvs" class="dp-envs"></div>
 
@@ -3507,6 +3511,17 @@ window.CRM = window.CRM || (function(){
   .ch-failed td{color:var(--coral)}
   .ch-err{font-size:11px;color:var(--coral)}
   .ch-note{color:var(--faint);font-size:11.5px;margin-top:10px}
+
+  /* Обработчик выкатов: строка состояния под кнопкой «Обновить». */
+  .dp-runner{margin:10px 0 2px;font-size:12px;color:var(--dim);display:flex;flex-wrap:wrap;
+    align-items:center;gap:8px}
+  .dp-runner.off{color:var(--faint)}
+  .dp-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+  .dp-dot.ok{background:var(--green,#30a46c)}
+  .dp-dot.off{background:var(--faint)}
+  .dp-run-err{flex-basis:100%;white-space:pre-wrap;color:var(--coral);font-size:11.5px;
+    max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .dp-runner-off{font-size:12px;color:var(--faint)}
 
   /* Пары значений Jira: строка «наше → их», плюс строка добавления снизу. Список
      допустимых значений показан прямо в заголовке поля — иначе пришлось бы держать

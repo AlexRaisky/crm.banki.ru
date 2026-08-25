@@ -36,6 +36,26 @@ public class DeployController {
      * Что менялось в этом контуре за {@code days} дней — и каких объектов пакета
      * это касается. Только чтение журналов: сам перенос — в settings-pack.
      */
+    /**
+     * Поставить выкат в очередь обработчику на хосте: {target, upTo}.
+     * <p>
+     * Панель по-прежнему не выполняет docker-команд — она пишет задание, а выполняет его
+     * scripts/deploy-runner.sh на сервере. Сокет docker в контейнере равен root на хосте,
+     * и давать его панели ради кнопки нельзя.
+     */
+    @PostMapping("/api/admin/deploy/run")
+    public Map<String, Object> run(@RequestBody(required = false) JsonNode body) {
+        return deploy.enqueue(text(body, "target"), text(body, "upTo"));
+    }
+
+    /** Жив ли обработчик и что сейчас в очереди — без этого кнопка молча копила бы задания. */
+    @GetMapping("/api/admin/deploy/runner")
+    public Map<String, Object> runner() {
+        Map<String, Object> out = new java.util.LinkedHashMap<>(deploy.runner());
+        out.put("job", deploy.currentJob());
+        return out;
+    }
+
     @GetMapping("/api/admin/deploy/changes")
     public Map<String, Object> changes(@RequestParam(required = false) Integer days) {
         return changes.changes(days);

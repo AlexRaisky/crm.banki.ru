@@ -179,6 +179,72 @@ public class DeployService {
     }
 
     /**
+     * Поставить выкат в очередь обработчику на хосте.
+     * <p>
+     * Панель не катит сама и не должна: docker живёт на хосте, а сокет хоста в контейнере
+     * равен root на сервере. Поэтому здесь та же запись в журнал, что и у «Записать и
+     * катить», только помеченная как задание — её подберёт scripts/deploy-runner.sh.
+     * <p>
+     * Второе задание в очередь не пускаем: сборка идёт на одном теге crm-admin:local, и
+     * два выката разом собирали бы образ друг поверх друга.
+     */
+    @Transactional
+    public Map<String, Object> enqueue(String target, String upTo) {
+        Integer busy = jdbc.queryForObject(
+                "SELECT count(*) FROM app.deploy_log WHERE run_status IN ('queued', 'running')",
+                Integer.class);
+        if (busy != null && busy > 0) {
+            throw bad("Один выкат уже в очереди или выполняется. Дождитесь его окончания.");
+        }
+        Map<String, Object> planned = plan(target, upTo, true);
+        Object logId = planned.get("logId");
+        jdbc.update("UPDATE app.deploy_log SET run_status = 'queued', run_by = ? WHERE id = ?",
+                CurrentUser.email(), ((Number) logId).longValue());
+        planned.put("runStatus", "queued");
+        planned.put("runner", runner());
+        return planned;
+    }
+
+    /**
+     * Жив ли обработчик. Ответ на вопрос, который иначе задавать некому: без него
+     * нажатая кнопка молча копила бы задания, и это выглядело бы как «панель сломалась».
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> runner() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        try {
+            Map<String, Object> row = jdbc.queryForMap(
+                    "SELECT last_seen_at, host, version,"
+                    + " extract(epoch from (now() - last_seen_at))::bigint AS ago"
+                    + " FROM app.deploy_runner WHERE id = 1");
+            Object ago = row.get("ago");
+            long sec = ago instanceof Number n ? n.longValue() : -1;
+            out.put("lastSeenAt", row.get("last_seen_at") == null ? null : String.valueOf(row.get("last_seen_at")));
+            out.put("host", row.get("host"));
+            out.put("agoSec", sec);
+            /* Пять минут при таймере в минуту — это пропущенные четыре запуска подряд:
+               случайный сбой так долго не длится. */
+            out.put("alive", row.get("last_seen_at") != null && sec >= 0 && sec < 300);
+        } catch (RuntimeException e) {
+            out.put("alive", false);
+            out.put("error", "Таблица обработчика недоступна — миграция V48 не накачена?");
+        }
+        return out;
+    }
+
+    /** Текущее задание очереди: что катится прямо сейчас или ждёт обработчика. */
+    @Transactional(readOnly = true)
+    public Map<String, Object> currentJob() {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT id, target_env, to_commit, to_subject, run_status, run_started_at,"
+                + " run_finished_at, run_output, run_by"
+                + " FROM app.deploy_log WHERE run_status IN ('queued', 'running')"
+                + " OR (run_status IN ('done', 'failed') AND run_finished_at > now() - interval '10 minutes')"
+                + " ORDER BY id DESC LIMIT 1");
+        return rows.isEmpty() ? Map.of() : rows.get(0);
+    }
+
+    /**
      * Текст команды. Частичный выкат отдельной веткой: катить «до коммита» через checkout
      * ветки нельзя — она уедет вперёд, и на цели окажется не то, что показали.
      */
