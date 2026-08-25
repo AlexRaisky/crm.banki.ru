@@ -86,6 +86,12 @@ public class TemplateService {
         } else if (!"cc".equals(channel)) {
             r.add(new Req("Message text", TemplateDto::getMsgText));
             if ("sms".equals(channel)) r.add(new Req("Sender name", TemplateDto::getSenderName));
+            /* FA ID требует сам прод: notice.fa_template закрыт проверкой
+               chk_fa_or_msg_null, а она в обеих своих ветках требует fa_id непустым
+               (похоже на опечатку — вариант «только текст» там недостижим). Без этого
+               шаблон спокойно сохранялся у нас и падал уже в очереди доставки, где
+               причину видел не автор, а тот, кто полез разбирать ERROR. */
+            if ("fa".equals(channel)) r.add(new Req("FA ID", TemplateDto::getFaId));
         }
         return r;
     }

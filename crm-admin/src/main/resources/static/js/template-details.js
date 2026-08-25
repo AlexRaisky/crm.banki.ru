@@ -1065,6 +1065,10 @@ function sfdCreateMissing(d){
        никакого письма. При цепочке ID задаётся по дням в таблице. */
     if (d.channel === 'email' && !chainOn
         && !String(d.letteros_id == null ? '' : d.letteros_id).trim()) miss.push('Letteros ID');
+    /* FA ID требует сам прод: notice.fa_template закрыт проверкой chk_fa_or_msg_null,
+       и она в обеих ветках требует fa_id непустым. Без этой строки шаблон сохранялся
+       у нас и падал уже в очереди доставки — с ошибкой, которую видел не автор. */
+    if (d.channel === 'fa' && !String(d.fa_id == null ? '' : d.fa_id).trim()) miss.push('FA ID');
     /* Message text отдельной строкой здесь больше нет: он в SFD_REQUIRED, а карточка
        при включённой цепочке сама убирает по-дневные поля — проверка идёт по ним. */
     return miss;
