@@ -179,6 +179,31 @@ window.Deploy = (function(){
     });
   }
 
+  /* Копирование в буфер.
+     navigator.clipboard живёт только в защищённом контексте — HTTPS или localhost.
+     Панель отдаётся по http://crm.banki.ru, поэтому объекта там просто НЕТ, и обращение
+     к нему падало с TypeError: кнопка «Скопировать команду» не делала ничего. Запасной
+     путь через скрытое поле и execCommand устарел, но работает без HTTPS. Такой же
+     обход уже стоит в Конструкторе source — держим их одинаковыми. */
+  function copyText(value){
+    if (navigator.clipboard && window.isSecureContext){
+      return navigator.clipboard.writeText(value);
+    }
+    return new Promise(function(resolve, reject){
+      var ta = document.createElement("textarea");
+      ta.value = value;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;top:-1000px;opacity:0";
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch(e){ ok = false; }
+      document.body.removeChild(ta);
+      ok ? resolve() : reject(new Error("execCommand"));
+    });
+  }
+
   function renderPlan(){
     var host = document.getElementById("dpPlan");
     if (!host) return;
@@ -202,7 +227,7 @@ window.Deploy = (function(){
       "</div>";
 
     document.getElementById("dpCopy").onclick = function(){
-      navigator.clipboard.writeText(plan.script).then(
+      copyText(plan.script).then(
         function(){ note(T("Команда скопирована")); },
         function(){ note(T("Не вышло скопировать — выделите текст вручную"), true); });
     };
