@@ -162,8 +162,14 @@ public class ProdSyncService {
             ok++;
 
             /* Локальная бухгалтерия — после и отдельно. Её падение больше не может
-               привести к повторной отправке: доставка уже зафиксирована. */
-            if ("INSERT".equals(operation) && prodCode != localCode) {
+               привести к повторной отправке: доставка уже зафиксирована.
+               <p>
+               Смотрим на то, что вернул прод, а не на название операции. UPDATE, не нашедший
+               своей строки, вставляет её как новую (ProdDbService: «строки в проде нет —
+               превращаем в INSERT») и возвращает свежий код. Пока здесь стояла проверка
+               operation = INSERT, такой случай проходил мимо: в проде шаблон получал id 19,
+               у нас оставался 20, и коды расходились молча. */
+            if (prodCode != localCode) {
                 try {
                     tx.executeWithoutResult(s -> unified.applyProdCode(channel, localCode, prodCode));
                 } catch (Exception ex) {
