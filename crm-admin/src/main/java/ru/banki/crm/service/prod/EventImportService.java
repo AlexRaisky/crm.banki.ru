@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import ru.banki.crm.security.CurrentUser;
@@ -78,6 +80,17 @@ public class EventImportService {
 
     private final ProcessControlService control;
 
+    /** Автоматическая сверка с продом: выключена по умолчанию — включают на контуре. */
+    @Value("${app.event-import.enabled:false}")
+    private boolean importEnabled;
+
+    /** Потолок строк на таблицу: у хвоста маленький, у вечерней сверки большой. */
+    @Value("${app.event-import.increment-limit:500}")
+    private int incrementLimit;
+
+    @Value("${app.event-import.full-limit:5000}")
+    private int fullLimit;
+
     public EventImportService(JdbcTemplate jdbc, EventDbService eventDb,
                               AdminLogService adminLog, ObjectMapper om,
                               ProcessControlService control) {
@@ -86,6 +99,72 @@ public class EventImportService {
         this.adminLog = adminLog;
         this.om = om;
         this.control = control;
+    }
+
+    // ================================================================= расписание
+
+    /**
+     * Частая сверка: не появилось ли в проде строк новее наших.
+     * <p>
+     * Дёшево именно потому, что смотрит только «хвост» — строки с id больше нашей
+     * отметки по каждой таблице. Раз в несколько минут спрашивать так можно, а
+     * вычитывать все восемь таблиц целиком — нет.
+     */
+    @Scheduled(fixedDelayString = "${app.event-import.interval-ms:300000}",
+               initialDelayString = "${app.event-import.initial-delay-ms:90000}")
+    public void tickIncremental() {
+        if (!importEnabled || !eventDb.configured()
+                || !control.canStart(ProcessControlService.EVENT_IMPORT)) {
+            return;
+        }
+        try {
+            Map<String, Object> res = importAll(incrementLimit, true);
+            long rows = num(res.get("copiedRows"));
+            if (rows > 0) {
+                log.info("event-import инкремент: строк {}, событий {}", rows, num(res.get("eventsBuilt")));
+            }
+            control.noteRun(ProcessControlService.EVENT_IMPORT,
+                    "хвост: строк " + rows + ", событий " + num(res.get("eventsBuilt")));
+        } catch (Exception e) {
+            log.warn("event-import инкремент: {}", e.toString());
+        }
+    }
+
+    /**
+     * Вечерняя полная сверка: проходим таблицы целиком.
+     * <p>
+     * Нужна не «на всякий случай». Инкремент идёт по хвосту и не возвращается назад, а
+     * строка могла быть пропущена из-за неприехавшей зависимости — например, шаг
+     * выборки приехал раньше своей настройки запуска. Такие остаются позади отметки, и
+     * подбирает их только этот прогон.
+     */
+    @Scheduled(cron = "${app.event-import.full-cron:0 30 22 * * *}")
+    public void tickFull() {
+        if (!importEnabled || !eventDb.configured()
+                || !control.canStart(ProcessControlService.EVENT_IMPORT)) {
+            return;
+        }
+        try {
+            Map<String, Object> res = importAll(fullLimit, false);
+            log.info("event-import полная сверка: строк {}, событий {}",
+                    num(res.get("copiedRows")), num(res.get("eventsBuilt")));
+            control.noteRun(ProcessControlService.EVENT_IMPORT,
+                    "полная сверка: строк " + num(res.get("copiedRows")) + ", событий " + num(res.get("eventsBuilt")));
+        } catch (Exception e) {
+            log.warn("event-import полная сверка: {}", e.toString());
+        }
+    }
+
+    /** Последний продовый id, который мы уже затянули по этой таблице. */
+    private long lastProdId(String table) {
+        Long max = jdbc.queryForObject(
+                "SELECT coalesce(max(prod_id), 0) FROM flow.t_event_link" +
+                " WHERE our_table = ? AND direction = 'IMPORT'", Long.class, table);
+        return max == null ? 0L : max;
+    }
+
+    private static long num(Object o) {
+        return o instanceof Number n ? n.longValue() : 0L;
     }
 
     // ==================================================================== разведка
@@ -171,6 +250,11 @@ public class EventImportService {
      * полусобранное, которое следующий прогон посчитает готовым.
      */
     public Map<String, Object> importAll(int limitPerTable) {
+        return importAll(limitPerTable, false);
+    }
+
+    /** @param sinceLastId частая сверка: только строки новее нашей отметки по каждой таблице. */
+    public Map<String, Object> importAll(int limitPerTable, boolean sinceLastId) {
         if (!eventDb.configured()) {
             throw bad("База событий (crmdb) не выбрана: /settings -> Подключения к БД, галка «база событий».");
         }
@@ -203,7 +287,7 @@ public class EventImportService {
                    написано в ответе прямым текстом, а не подразумевается. */
                 try {
                     int[] pending = {0};
-                    int n = copyTable(c, table, limitPerTable, pending);
+                    int n = copyTable(c, table, limitPerTable, pending, sinceLastId);
                     row.put("status", "ok");
                     row.put("rows", n);
                     if (pending[0] > 0) row.put("pending", pending[0]);
@@ -260,14 +344,31 @@ public class EventImportService {
 
     /** Копирует строки одной прод-таблицы, которых у нас ещё нет. Возвращает их число. */
     private int copyTable(Connection c, String table, int limit, int[] pending) throws Exception {
-        Set<Long> known = new HashSet<>(jdbc.queryForList(
+        return copyTable(c, table, limit, pending, false);
+    }
+
+    /**
+     * @param sinceLastId тянуть только строки с id больше нашего последнего.
+     *                    Это режим частой сверки: в проде id растут, и вопрос «появилось
+     *                    ли что-то новое» отвечается одним сравнением вместо вычитывания
+     *                    всей таблицы каждые пять минут. Платим за это тем, что строки,
+     *                    пропущенные из-за неприехавшей зависимости, остаются позади
+     *                    отметки и назад мы за ними не возвращаемся — их подбирает
+     *                    вечерний полный прогон, который идёт по всей таблице.
+     */
+    private int copyTable(Connection c, String table, int limit, int[] pending, boolean sinceLastId)
+            throws Exception {
+        Set<Long> known = sinceLastId ? Set.of() : new HashSet<>(jdbc.queryForList(
                 "SELECT prod_id FROM flow.t_event_link WHERE our_table = ?", Long.class, table));
+        long watermark = sinceLastId ? lastProdId(table) : 0L;
         Map<String, Map<Long, Long>> maps = new HashMap<>();
 
         List<Object[]> links = new ArrayList<>();
         int done = 0;
-        try (PreparedStatement ps = c.prepareStatement(
-                "SELECT id, to_jsonb(t)::text FROM " + table + " t ORDER BY id");
+        String sql = sinceLastId
+                ? "SELECT id, to_jsonb(t)::text FROM " + table + " t WHERE id > " + watermark + " ORDER BY id"
+                : "SELECT id, to_jsonb(t)::text FROM " + table + " t ORDER BY id";
+        try (PreparedStatement ps = c.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next() && done < limit) {
                 long prodId = rs.getLong(1);

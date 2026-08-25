@@ -90,6 +90,15 @@ app:
     overlap-minutes: ${ETL_OVERLAP_MINUTES:0}     # 0: метки в проде выставлены разом, перекрытие тянуло бы всю таблицу
     initial-delay-ms: ${ETL_INITIAL_DELAY_MS:60000}
     full-cron: ${ETL_FULL_CRON:0 0 22 * * *}      # полный прогон в 22:00
+  # Сверка событий с crmdb: частый опрос «что новее нашего последнего id»
+  # плюс вечерний полный проход — он подбирает то, что хвост пропустил из-за неприехавших связей.
+  event-import:
+    enabled: ${EVENT_IMPORT_ENABLED:false}
+    interval-ms: ${EVENT_IMPORT_INTERVAL_MS:300000}     # хвост раз в 5 минут
+    initial-delay-ms: ${EVENT_IMPORT_INITIAL_DELAY_MS:90000}
+    full-cron: ${EVENT_IMPORT_FULL_CRON:0 30 22 * * *}  # полная сверка в 22:30, после ETL шаблонов
+    increment-limit: ${EVENT_IMPORT_INCREMENT_LIMIT:500}
+    full-limit: ${EVENT_IMPORT_FULL_LIMIT:5000}
   proddb:
     url: ${PROD_DB_URL:}
     user: ${PROD_DB_USER:}
