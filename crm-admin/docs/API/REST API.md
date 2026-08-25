@@ -289,6 +289,7 @@ Query-параметры списка (все опциональны, множе
 | `GET /api/admin/deploy/pending` | что есть у нас и чего ещё нет на целевом контуре | ADMIN |
 | `POST /api/admin/deploy/plan` | срез коммитов и готовая команда; `record=true` пишет намерение в журнал | ADMIN |
 | `GET /api/admin/deploy/history` | журнал выкаток | ADMIN |
+| `GET /api/admin/deploy/changes?days=N` | что менялось в контуре и каких объектов пакета это касается | ADMIN |
 | `POST /api/admin/deploy/reconcile` | закрыть записи журнала, версия которых уже стоит на цели | ADMIN |
 | `GET /api/admin/health` | состояние системы: таблицы, переливы, очередь, подключения, версия, миграции | READ в `set-dbconn`, `set-sync`, `set-procs` или `set-diag` |
 | `GET /api/admin/settings-pack` | что можно перенести между контурами и сколько записей в каждом объекте | ADMIN |

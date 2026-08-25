@@ -867,6 +867,7 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
         <div class="dp-tabs" id="dpTabs">
           <button type="button" class="dp-tab on" data-tab="code">Код</button>
           <button type="button" class="dp-tab" data-tab="settings">Настройки</button>
+          <button type="button" class="dp-tab" data-tab="changes">Изменения</button>
         </div>
 
         <div class="dp-tab-body" id="dpTab-code">
@@ -911,6 +912,39 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
 
           <h2 style="margin-top:30px">Слепки «как было»</h2>
           <div id="spSnaps" class="empty">Слепков нет: настройки ещё не переносили</div>
+        </div>
+
+        <!-- ===== Что менялось в контуре =====
+             Сводка из двух журналов: конструктор схемы и построчные правки. Отметки
+             стоят у объектов, а не у отдельных правок — пакет переносит объект целиком.
+             Рисует settings/changes.js. -->
+        <div class="dp-tab-body" id="dpTab-changes" hidden>
+          <div class="sub" style="margin-top:16px">Что трогали в этом контуре: правки конструктора схемы
+            и построчные изменения настроек, сведённые в один список. Отметьте, что пора везти дальше, —
+            панель соберёт из отмеченного тот же пакет, что и на вкладке «Настройки».</div>
+
+          <div class="row" style="gap:10px;align-items:center;margin:16px 0 4px">
+            <select class="dbc-in" id="chDays" style="max-width:190px">
+              <option value="7">за неделю</option>
+              <option value="14" selected>за две недели</option>
+              <option value="30">за месяц</option>
+              <option value="90">за три месяца</option>
+            </select>
+            <button type="button" class="btn" id="chReload">Обновить</button>
+            <button type="button" class="btn primary" id="chExport" disabled>Собрать пакет</button>
+            <span class="save-note" id="chMsg"></span>
+          </div>
+          <div class="mono" id="chHead" style="color:var(--faint);font-size:11.5px;margin-bottom:12px"></div>
+
+          <h2 style="margin-top:20px">Что менялось</h2>
+          <div class="sub">Галочка у объекта, а не у отдельной правки: пакет переносит объект целиком.
+            Отметив «менялись роли», вы увезёте все роли — иначе матрица прав приедет полурассыпанной.</div>
+          <div id="chGroups" class="empty" style="margin-top:12px">Читаем журналы…</div>
+
+          <h2 style="margin-top:30px">Правки по одной</h2>
+          <div class="sub">Отвечает на вопрос «почему это стоит везти». Изменения данных
+            (шаблоны, промо, заявки) сюда не попадают — переносить их между контурами нельзя.</div>
+          <div id="chList" class="empty" style="margin-top:12px">—</div>
         </div>
       </section>
 
@@ -3321,6 +3355,25 @@ window.CRM = window.CRM || (function(){
   .sp-item-title{display:block;font-size:13.5px;font-weight:600}
   .sp-item-about{display:block;font-size:12px;color:var(--dim);margin-top:2px}
   .sp-item-count{flex:0 0 auto;font-size:12px;color:var(--faint);padding-top:2px}
+
+  /* Изменения контура. Сводка сверху — то, что переносится; таблица под ней читается
+     глазами и потому плотная, с моноширинным временем для ровной колонки. */
+  .ch-groups{display:grid;gap:8px;margin-top:12px}
+  .ch-group{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border:1px solid var(--line);
+    border-radius:9px;background:var(--card);cursor:pointer}
+  .ch-group:hover{border-color:var(--blue)}
+  .ch-group input{margin-top:3px;flex:0 0 auto}
+  .ch-g-main{flex:1;min-width:0}
+  .ch-g-title{display:block;font-size:13.5px;font-weight:600}
+  .ch-g-sub{display:block;font-size:12px;color:var(--dim);margin-top:2px}
+  .ch-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+  .ch-tbl th{text-align:left;font-weight:600;color:var(--faint);font-size:11px;text-transform:uppercase;
+    letter-spacing:.04em;padding:6px 10px;border-bottom:1px solid var(--line)}
+  .ch-tbl td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  .ch-tbl tr:hover td{background:var(--card)}
+  .ch-failed td{color:var(--coral)}
+  .ch-err{font-size:11px;color:var(--coral)}
+  .ch-note{color:var(--faint);font-size:11.5px;margin-top:10px}
   .sp-preview{margin-top:14px}
   .sp-preview .sp-from{font-size:13px;margin-bottom:10px}
   .sp-preview .sp-warn{background:var(--amber-bg);color:var(--amber);border-radius:9px;
@@ -3435,5 +3488,6 @@ window.CRM = window.CRM || (function(){
 <script src="deploy.js?v=1"></script>
 <!-- Перенос настроек между контурами — вкладка «Настройки» того же раздела -->
 <script src="settings-pack.js?v=1"></script>
+<script src="changes.js?v=1"></script>
 </body>
 </html>

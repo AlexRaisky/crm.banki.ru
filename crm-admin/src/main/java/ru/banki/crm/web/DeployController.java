@@ -7,6 +7,7 @@ import org.springframework.web.server.ResponseStatusException;
 import ru.banki.crm.security.CurrentUser;
 import ru.banki.crm.service.deploy.BuildInfoService;
 import ru.banki.crm.service.deploy.DeployService;
+import ru.banki.crm.service.deploy.EnvChangesService;
 
 import java.util.List;
 import java.util.Map;
@@ -23,10 +24,21 @@ public class DeployController {
 
     private final DeployService deploy;
     private final BuildInfoService build;
+    private final EnvChangesService changes;
 
-    public DeployController(DeployService deploy, BuildInfoService build) {
+    public DeployController(DeployService deploy, BuildInfoService build, EnvChangesService changes) {
         this.deploy = deploy;
         this.build = build;
+        this.changes = changes;
+    }
+
+    /**
+     * Что менялось в этом контуре за {@code days} дней — и каких объектов пакета
+     * это касается. Только чтение журналов: сам перенос — в settings-pack.
+     */
+    @GetMapping("/api/admin/deploy/changes")
+    public Map<String, Object> changes(@RequestParam(required = false) Integer days) {
+        return changes.changes(days);
     }
 
     /**
