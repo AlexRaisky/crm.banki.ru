@@ -300,7 +300,7 @@ Query-параметры списка (все опциональны, множе
 | `POST /api/admin/deploy/jobs/{id}/cancel` | снять задание, пока его не взяли | ADMIN |
 | `POST /api/admin/deploy/jobs/{id}/retry` | повторить неудавшееся задание | ADMIN |
 | `POST /api/admin/deploy/reconcile` | закрыть записи журнала, версия которых уже стоит на цели | ADMIN |
-| `GET /api/admin/health` | состояние системы: таблицы, переливы, очередь, подключения, версия, миграции | READ в `set-dbconn`, `set-sync`, `set-procs` или `set-diag` |
+| `GET /api/admin/health` | состояние системы: проверки, нагрузка, сутки очереди по часам, возраст последних доставок, состав данных, место в базе, две недели правок, переливы, подключения, версия | READ в `set-dbconn`, `set-sync`, `set-procs` или `set-diag` |
 | `GET /api/admin/settings-pack` | что можно перенести между контурами и сколько записей в каждом объекте | ADMIN |
 | `POST /api/admin/settings-pack/export` | собрать пакет из выбранных объектов | ADMIN |
 | `POST /api/admin/settings-pack/preview` | что произойдёт при применении присланного пакета | ADMIN |

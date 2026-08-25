@@ -83,12 +83,21 @@ public class HealthService {
         out.put("uptimeMs", ManagementFactory.getRuntimeMXBean().getUptime());
         out.put("generatedAt", java.time.Instant.now().toString());
         out.put("database", database());
+        out.put("runtime", runtime(checks));
         out.put("tables", tables());
         List<Map<String, Object>> procs = processes(checks);
         out.put("processes", procs);
         out.put("queue", queue(checks, byCode(procs)));
         out.put("etl", etlBlock(checks, byCode(procs)));
         out.put("connections", connections(checks));
+        /* Ниже — то, что на числах не видно: как система вела себя во времени. Сутки
+           очереди отвечают на «работал ли перелив ночью», две недели правок — на «живёт
+           ли контур вообще», а «когда последний раз» ловит то, что отвалилось молча. */
+        out.put("pulse", pulse());
+        out.put("activity", activity());
+        out.put("freshness", freshness());
+        out.put("content", content());
+        out.put("storage", storage());
         out.put("checks", checks);
         /* Итог страницы одним словом: худшее из проверок. Читают его первым, а иногда и
            единственным — например с телефона. */
@@ -140,6 +149,190 @@ public class HealthService {
             out.add(m);
         }
         return out;
+    }
+
+    // ------------------------------------------------------------------ машина
+
+    /**
+     * Память, потоки, соединения — единственное место страницы, где мы смотрим не на
+     * данные, а на саму машину. Всё остальное можно пересчитать запросом, а нехватку
+     * памяти или упёршийся в потолок пул соединений видно только отсюда.
+     * <p>
+     * Проверку заводим одну — на соединения. Занятая куча в JVM сама по себе ни о чём не
+     * говорит: перед сборкой мусора она штатно доходит до потолка, и порог по ней сделал
+     * бы страницу вечно жёлтой. Её показываем цифрой, а решение оставляем человеку.
+     */
+    private Map<String, Object> runtime(List<Map<String, Object>> checks) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        Runtime rt = Runtime.getRuntime();
+        long max = rt.maxMemory(), used = rt.totalMemory() - rt.freeMemory();
+        m.put("heapUsed", used);
+        m.put("heapMax", max);
+        m.put("heapPct", max > 0 ? Math.round(used * 100.0 / max) : 0);
+        m.put("threads", ManagementFactory.getThreadMXBean().getThreadCount());
+        m.put("cpus", rt.availableProcessors());
+        double load = ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
+        m.put("load", load < 0 ? null : Math.round(load * 100) / 100.0);
+
+        long conns = num(one("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()"));
+        long limit = num(one("SELECT setting::bigint FROM pg_settings WHERE name = 'max_connections'"));
+        long active = num(one("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()"
+                + " AND state = 'active'"));
+        m.put("dbConnections", conns);
+        m.put("dbActive", active);
+        m.put("dbMaxConnections", limit);
+        m.put("dbConnPct", limit > 0 ? Math.round(conns * 100.0 / limit) : 0);
+        if (limit > 0 && conns * 100.0 / limit > 80) {
+            checks.add(check("connections", "warn", "Соединений к базе " + conns + " из " + limit,
+                    "Пул почти выбран. Обычно это забытый долгий запрос — посмотрите pg_stat_activity."));
+        }
+        return m;
+    }
+
+    // ------------------------------------------------------------------ время
+
+    /**
+     * Сутки очереди по часам. Отвечает на вопрос, который числом «в очереди 0» не
+     * закрывается: очередь пуста, потому что всё доехало, или потому что ночью ничего
+     * не отправлялось. Поставленные и доставленные считаем по разным колонкам —
+     * {@code timestamp_cr} и {@code timestamp_upd}, — иначе одна запись попала бы в час
+     * постановки, а не в час доставки, и провал в переливе был бы не виден.
+     */
+    private List<Map<String, Object>> pulse() {
+        if (!has("app.prod_sync")) return List.of();
+        return rows("WITH hours AS (SELECT generate_series(date_trunc('hour', now()) - interval '23 hours',"
+                + "   date_trunc('hour', now()), interval '1 hour') AS h)"
+                + " SELECT to_char(hours.h, 'HH24:MI') AS label, to_char(hours.h, 'DD.MM HH24:MI') AS at,"
+                + "   coalesce(c.n, 0)::bigint AS queued, coalesce(d.ok, 0)::bigint AS ok,"
+                + "   coalesce(d.err, 0)::bigint AS err"
+                + " FROM hours"
+                + " LEFT JOIN (SELECT date_trunc('hour', timestamp_cr) AS h, count(*) AS n FROM app.prod_sync"
+                + "   WHERE timestamp_cr > now() - interval '24 hours' GROUP BY 1) c ON c.h = hours.h"
+                + " LEFT JOIN (SELECT date_trunc('hour', timestamp_upd) AS h,"
+                + "     count(*) FILTER (WHERE status = 'OK') AS ok,"
+                + "     count(*) FILTER (WHERE status = 'ERROR') AS err"
+                + "   FROM app.prod_sync WHERE timestamp_upd > now() - interval '24 hours'"
+                + "   GROUP BY 1) d ON d.h = hours.h"
+                + " ORDER BY hours.h");
+    }
+
+    /** Две недели правок в панели: по дням, и над чем именно работали. */
+    private Map<String, Object> activity() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (!has("arch.t_admin_log")) return m;
+        m.put("days", rows("WITH days AS (SELECT generate_series(current_date - 13, current_date,"
+                + "   interval '1 day')::date AS d)"
+                + " SELECT to_char(days.d, 'DD.MM') AS label, to_char(days.d, 'YYYY-MM-DD') AS day,"
+                + "   coalesce(a.n, 0)::bigint AS n, coalesce(a.users, 0)::bigint AS users"
+                + " FROM days LEFT JOIN (SELECT timestamp_cr::date AS d, count(*) AS n,"
+                + "     count(DISTINCT action_user) AS users FROM arch.t_admin_log"
+                + "   WHERE timestamp_cr >= current_date - 13 GROUP BY 1) a ON a.d = days.d"
+                + " ORDER BY days.d"));
+        m.put("tables", rows("SELECT coalesce(nullif(table_name, ''), '—') AS table_name, count(*)::bigint AS n"
+                + " FROM arch.t_admin_log WHERE timestamp_cr >= current_date - 13"
+                + " GROUP BY 1 ORDER BY 2 DESC LIMIT 6"));
+        m.put("people", rows("SELECT coalesce(nullif(action_user, ''), '—') AS who, count(*)::bigint AS n"
+                + " FROM arch.t_admin_log WHERE timestamp_cr >= current_date - 13"
+                + " GROUP BY 1 ORDER BY 2 DESC LIMIT 6"));
+        return m;
+    }
+
+    /**
+     * «Когда последний раз». Самая полезная строка страницы при разборе: перелив,
+     * отвалившийся молча, виден не по ошибке — ошибок нет, — а по тому, что последняя
+     * удачная доставка была вчера.
+     * <p>
+     * Возраст считаем на сервере в секундах, а не отдаём отметку времени: у контуров и
+     * браузеров разные часовые пояса, и «два часа назад» из-за этого превращалось бы
+     * в «через три часа».
+     */
+    private List<Map<String, Object>> freshness() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        /* Последний параметр — через сколько секунд молчание становится подозрительным.
+           Ноль значит «не следим»: заведение шаблона или выкат делает человек, и «два дня
+           назад» здесь нормально. Красить всё подряд по возрасту нельзя — страница
+           краснела бы на выходных. */
+        fresh(out, "Заведён шаблон", "template.d_template", "timestamp_cr", "",
+                "последнее заведение или правка в панели", 0);
+        fresh(out, "Шаблон доставлен в прод", "app.prod_sync", "timestamp_upd", "status = 'OK'",
+                "последняя удачная запись в боевую базу", 6 * 3600);
+        fresh(out, "Заведено событие", "flow.d_event", "timestamp_cr", "",
+                "последнее онлайн-событие или событие по расписанию", 0);
+        fresh(out, "Событие уехало в crmdb", "flow.t_event_export", "exported_at", "",
+                "последний перелив события в боевую базу", 0);
+        fresh(out, "Обратный ETL прочитал прод", "app.sync_watermark", "last_prod_ts", "",
+                "самый свежий водяной знак по каналам", 6 * 3600);
+        fresh(out, "Правка в панели", "arch.t_admin_log", "timestamp_cr", "",
+                "любое действие над данными", 0);
+        fresh(out, "Выкат", "app.deploy_log", "timestamp_cr", "",
+                "последняя запись в журнале выкаток", 0);
+        return out;
+    }
+
+    private void fresh(List<Map<String, Object>> out, String title, String table,
+                       String column, String where, String hint, long warnAfterSec) {
+        if (!has(table)) return;
+        List<Map<String, Object>> r = rows("SELECT to_char(max(" + column + "), 'DD.MM HH24:MI') AS at,"
+                + " extract(epoch from (now() - max(" + column + ")::timestamptz))::bigint AS ago"
+                + " FROM " + table + (where.isEmpty() ? "" : " WHERE " + where));
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("title", title);
+        m.put("hint", hint);
+        m.put("at", r.isEmpty() ? "" : str(r.get(0).get("at")));
+        m.put("ago", r.isEmpty() ? null : r.get(0).get("ago"));
+        m.put("warnAfter", warnAfterSec);
+        out.add(m);
+    }
+
+    // ------------------------------------------------------------------ содержимое
+
+    /** Из чего состоят данные контура: каналы шаблонов, виды событий, статусы очереди. */
+    private Map<String, Object> content() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (has("template.d_template")) {
+            m.put("templates", rows("SELECT channel, count(*)::bigint AS n,"
+                    + " (count(*) FILTER (WHERE active_flag))::bigint AS active"
+                    + " FROM template.d_template GROUP BY 1 ORDER BY 2 DESC"));
+            /* Месяц заведений — чтобы всплеск или тишина были видны без выгрузки в Excel. */
+            m.put("trend", rows("WITH days AS (SELECT generate_series(current_date - 29, current_date,"
+                    + "   interval '1 day')::date AS d)"
+                    + " SELECT to_char(days.d, 'DD.MM') AS label, coalesce(t.n, 0)::bigint AS n"
+                    + " FROM days LEFT JOIN (SELECT timestamp_cr::date AS d, count(*) AS n"
+                    + "   FROM template.d_template WHERE timestamp_cr >= current_date - 29 GROUP BY 1) t"
+                    + " ON t.d = days.d ORDER BY days.d"));
+        }
+        if (has("flow.d_event")) {
+            m.put("events", rows("SELECT kind, count(*)::bigint AS n,"
+                    + " (count(*) FILTER (WHERE is_active))::bigint AS active"
+                    + " FROM flow.d_event GROUP BY 1 ORDER BY 2 DESC"));
+        }
+        if (has("app.prod_sync")) {
+            m.put("queue", rows("SELECT status, count(*)::bigint AS n FROM app.prod_sync"
+                    + " GROUP BY 1 ORDER BY 2 DESC"));
+        }
+        return m;
+    }
+
+    /**
+     * Где лежит место. Считаем по всей базе, а не по списку {@link #TABLES}: место
+     * обычно съедает как раз то, о чём не думали, — журнал, очередь, чужая таблица,
+     * приехавшая переносом.
+     */
+    private Map<String, Object> storage() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        String from = " FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+                + " WHERE c.relkind IN ('r', 'p') AND n.nspname NOT IN ('pg_catalog', 'information_schema')"
+                + " AND n.nspname NOT LIKE 'pg_%'";
+        m.put("tables", rows("SELECT n.nspname || '.' || c.relname AS table_name,"
+                + " pg_total_relation_size(c.oid)::bigint AS bytes,"
+                + " pg_size_pretty(pg_total_relation_size(c.oid)) AS size,"
+                + " coalesce(c.reltuples, 0)::bigint AS rows_estimate"
+                + from + " ORDER BY 2 DESC LIMIT 10"));
+        m.put("schemas", rows("SELECT n.nspname AS schema_name, count(*)::bigint AS tables,"
+                + " sum(pg_total_relation_size(c.oid))::bigint AS bytes,"
+                + " pg_size_pretty(sum(pg_total_relation_size(c.oid))) AS size"
+                + from + " GROUP BY 1 ORDER BY 3 DESC"));
+        return m;
     }
 
     // ------------------------------------------------------------------ переливы
@@ -345,6 +538,24 @@ public class HealthService {
         } catch (RuntimeException e) {
             return Map.of("configured", true, "ok", false, "error", String.valueOf(e.getMessage()));
         }
+    }
+
+    /**
+     * Строки для графиков. Ошибку глушим так же, как в {@link #one}, но полагаться на
+     * это нельзя: упавший оператор обрывает транзакцию целиком, и все следующие запросы
+     * вернули бы пустоту. Поэтому к прикладным таблицам ходим только через {@link #has}.
+     */
+    private List<Map<String, Object>> rows(String sql) {
+        try {
+            return jdbc.queryForList(sql);
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
+    /** Есть ли таблица на этом контуре: у теста и прода набор разный. */
+    private boolean has(String table) {
+        return one("SELECT to_regclass('" + table + "')") != null;
     }
 
     private Object one(String sql) {

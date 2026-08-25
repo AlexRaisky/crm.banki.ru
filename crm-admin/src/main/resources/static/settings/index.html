@@ -858,13 +858,39 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
           <div id="hlTop"></div>
           <div id="hlChecks" class="hl-checks"></div>
 
-          <h2 style="margin-top:28px">Данные</h2>
+          <!-- Машина: память, соединения, потоки. Здесь единственные цифры страницы,
+               которые нельзя пересчитать запросом. -->
+          <h2 class="hl-h">Нагрузка</h2>
+          <div id="hlRuntime" class="hl-gauges"></div>
+
+          <!-- Сутки очереди по часам. Пустая очередь ничего не значит сама по себе:
+               важно, отправлялось ли что-то ночью. -->
+          <h2 class="hl-h">Очередь синка за сутки</h2>
+          <div class="sub hl-sub">Столбик — час. Зелёное доставлено в прод, красное отказано,
+            синее поставлено в очередь. Провал в зелёном при непустой очереди значит, что доставка стояла.</div>
+          <div id="hlPulse" class="hl-panel"></div>
+
+          <!-- Отвалившийся молча перелив виден не по ошибке, а по возрасту последней
+               удачной записи. -->
+          <h2 class="hl-h">Когда последний раз</h2>
+          <div id="hlFresh" class="hl-fresh"></div>
+
+          <h2 class="hl-h">Данные</h2>
+          <div id="hlContent" class="hl-two"></div>
           <div id="hlTables" class="hl-tables"></div>
 
-          <h2 style="margin-top:28px">Переливы</h2>
+          <h2 class="hl-h">Место в базе</h2>
+          <div class="sub hl-sub">Считается по всей базе, а не по списку выше: место обычно
+            съедает то, о чём не думали, — журнал, очередь или таблица, приехавшая переносом.</div>
+          <div id="hlStorage" class="hl-two"></div>
+
+          <h2 class="hl-h">Работа в панели за две недели</h2>
+          <div id="hlActivity" class="hl-panel"></div>
+
+          <h2 class="hl-h">Переливы</h2>
           <div id="hlProcs"></div>
 
-          <h2 style="margin-top:28px">Подключения</h2>
+          <h2 class="hl-h">Подключения</h2>
           <div id="hlConns" class="empty">Читаем подключения…</div>
         </div>
       </section>
@@ -1396,7 +1422,7 @@ const PANES = [
      которому всё равно решает роль, значило бы обещать то, чего нет. */
   /* Состояние — первым в группе: с него начинают, когда «что-то не так», и им же
      проверяют утром, что ночь прошла спокойно. */
-  { id:"health", acl:"set-diag", group:"Служебное", label:"Состояние системы", desc:"Сколько данных в таблицах, работают ли переливы, докуда доехала очередь, отвечают ли базы и какая версия собрана.",
+  { id:"health", acl:"set-diag", group:"Служебное", label:"Состояние системы", desc:"Проверки, нагрузка, сутки очереди по часам, возраст последних доставок, состав данных и место в базе — одной страницей.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-7 4 14L16 12h5"/></svg>' },
   { id:"deploy", adminOnly:true, group:"Служебное", label:"Выкатки", desc:"Какая версия стоит на каждом контуре, что ещё не доехало до следующего и какой командой это доставить.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h16M4 18h10"/><path d="M17 3l3 3-3 3M17 15l3 3-3 3"/></svg>' },
@@ -3521,6 +3547,117 @@ window.CRM = window.CRM || (function(){
   #hlHost .hl-proc-sub, #hlConns .hl-conn-sub{display:block;font-size:11px;color:var(--faint);margin-top:2px;
     overflow-wrap:anywhere}
   #hlConns .hl-stale{color:var(--faint);font-size:11px}
+
+  /* ---- Состояние системы: графики ----
+     Ни одной библиотеки: графики рисуются как SVG прямо в разметке. Цвет берётся из
+     переменных темы, поэтому одна и та же картинка читается и в тёмной, и в светлой —
+     захардкоженный #3CFAB4 на светлом фоне пропал бы. */
+  #hlHost .hl-h{margin-top:30px;font-size:15px;letter-spacing:.01em}
+  #hlHost .hl-sub{margin-top:4px;font-size:12px;color:var(--dim)}
+  #hlHost .hl-panel{margin-top:12px;border:1px solid var(--line);border-radius:12px;
+    background:var(--card);padding:14px 16px 10px}
+  #hlHost .hl-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-top:12px}
+  #hlHost .hl-two .hl-panel{margin-top:0}
+  #hlHost .hl-panel-t{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);
+    margin-bottom:10px;display:flex;align-items:baseline;gap:8px}
+  #hlHost .hl-panel-t b{margin-left:auto;color:var(--ink);font-size:13px;font-weight:600;
+    letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums}
+
+  /* Кольцевые индикаторы: доля показывается длиной дуги, а число — в центре. Полоса
+     здесь читалась бы хуже: у четырёх карточек подряд глаз сравнивает круги. */
+  #hlHost .hl-gauges{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px}
+  #hlHost .hl-gauge{display:flex;align-items:center;gap:14px;border:1px solid var(--line);border-radius:12px;
+    background:var(--card);padding:13px 15px}
+  #hlHost .hl-ring{width:64px;height:64px;flex:0 0 auto}
+  #hlHost .hl-ring .track{fill:none;stroke:var(--card2);stroke-width:7}
+  #hlHost .hl-ring .arc{fill:none;stroke-width:7;stroke-linecap:round;stroke:var(--blue);
+    transform:rotate(-90deg);transform-origin:50% 50%}
+  #hlHost .hl-ring.ok .arc{stroke:var(--green)}
+  #hlHost .hl-ring.warn .arc{stroke:var(--amber)}
+  #hlHost .hl-ring.down .arc{stroke:var(--coral)}
+  #hlHost .hl-ring .val{fill:var(--ink);font-size:15px;font-weight:600;text-anchor:middle;
+    font-family:var(--mono)}
+  #hlHost .hl-gauge-main{min-width:0}
+  #hlHost .hl-gauge-l{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+  #hlHost .hl-gauge-v{font-size:15px;font-weight:600;margin-top:2px;overflow-wrap:anywhere}
+  #hlHost .hl-gauge-s{font-size:11.5px;color:var(--dim);margin-top:2px;overflow-wrap:anywhere}
+
+  /* Общие части графиков */
+  #hlHost .hl-chart{width:100%;height:auto;display:block;overflow:visible}
+  #hlHost .hl-chart .grid{stroke:var(--line);stroke-width:1}
+  #hlHost .hl-chart .axis{fill:var(--faint);font-size:9.5px;font-family:var(--mono)}
+  #hlHost .hl-chart .axis.mid{font-size:9px}
+  #hlHost .hl-chart .b-ok{fill:var(--green)}
+  #hlHost .hl-chart .b-err{fill:var(--coral)}
+  #hlHost .hl-chart .b-queued{fill:var(--blue);opacity:.55}
+  #hlHost .hl-chart .b-plain{fill:var(--blue);opacity:.8}
+  #hlHost .hl-chart .b-zero{fill:var(--line)}
+  #hlHost .hl-chart .hover{fill:transparent}
+  #hlHost .hl-chart .hover:hover{fill:var(--blue);opacity:.10}
+  #hlHost .hl-chart .line{fill:none;stroke:var(--blue);stroke-width:2;stroke-linejoin:round}
+  #hlHost .hl-chart .area{fill:url(#hlFade);opacity:.85}
+  #hlHost .hl-chart .dot{fill:var(--blue)}
+  #hlHost .hl-chart .today{stroke:var(--amber);stroke-width:1;stroke-dasharray:3 3}
+  #hlHost .hl-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:11.5px;color:var(--dim)}
+  #hlHost .hl-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;
+    vertical-align:baseline}
+  #hlHost .hl-legend .ok{background:var(--green)}
+  #hlHost .hl-legend .err{background:var(--coral)}
+  #hlHost .hl-legend .queued{background:var(--blue);opacity:.55}
+
+  /* Донат: доли каналов. Подписи рядом списком — на самом кольце они не помещаются. */
+  #hlHost .hl-donut{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  #hlHost .hl-donut svg{width:132px;height:132px;flex:0 0 auto}
+  #hlHost .hl-donut .seg{fill:none;stroke-width:16;transform:rotate(-90deg);transform-origin:50% 50%}
+  #hlHost .hl-donut .c0{stroke:var(--green)} #hlHost .hl-donut .c1{stroke:var(--blue)}
+  #hlHost .hl-donut .c2{stroke:var(--amber)} #hlHost .hl-donut .c3{stroke:var(--coral)}
+  #hlHost .hl-donut .c4{stroke:var(--faint)}
+  #hlHost .hl-donut .mid{fill:var(--ink);font-size:19px;font-weight:600;text-anchor:middle;font-family:var(--mono)}
+  #hlHost .hl-donut .midsub{fill:var(--faint);font-size:8px;text-anchor:middle;text-transform:uppercase;
+    letter-spacing:.08em}
+  #hlHost .hl-keys{display:grid;gap:6px;min-width:150px;flex:1}
+  #hlHost .hl-key{display:flex;align-items:center;gap:8px;font-size:12.5px}
+  #hlHost .hl-key i{width:9px;height:9px;border-radius:2px;flex:0 0 auto}
+  #hlHost .hl-key .k0{background:var(--green)} #hlHost .hl-key .k1{background:var(--blue)}
+  #hlHost .hl-key .k2{background:var(--amber)} #hlHost .hl-key .k3{background:var(--coral)}
+  #hlHost .hl-key .k4{background:var(--faint)}
+  #hlHost .hl-key b{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600}
+  #hlHost .hl-key span{color:var(--dim);font-size:11.5px}
+
+  /* Горизонтальные полосы: место в базе, кто и над чем работал. Полоса лежит под
+     текстом фоном строки — так сравниваются длины, а подписи остаются читаемыми. */
+  #hlHost .hl-rows{display:grid;gap:4px}
+  #hlHost .hl-row{position:relative;display:flex;align-items:center;gap:10px;padding:6px 9px;
+    border-radius:7px;font-size:12.5px;overflow:hidden}
+  #hlHost .hl-row .bar{position:absolute;left:0;top:0;bottom:0;background:var(--blue);opacity:.16;
+    border-radius:7px}
+  #hlHost .hl-row .nm{position:relative;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #hlHost .hl-row .vv{position:relative;margin-left:auto;font-variant-numeric:tabular-nums;color:var(--dim);
+    white-space:nowrap}
+  #hlHost .hl-row .vv b{color:var(--ink);font-weight:600}
+
+  /* Свежесть: плитки «сколько прошло». Возраст красится порогами, чтобы вчерашняя
+     доставка бросалась в глаза без чтения цифр. */
+  #hlHost .hl-fresh{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:10px;margin-top:12px}
+  #hlHost .hl-fresh-i{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:11px 13px;
+    border-left:3px solid var(--faint)}
+  #hlHost .hl-fresh-i.ok{border-left-color:var(--green)}
+  #hlHost .hl-fresh-i.warn{border-left-color:var(--amber)}
+  #hlHost .hl-fresh-i.old{border-left-color:var(--coral)}
+  #hlHost .hl-fresh-t{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
+  #hlHost .hl-fresh-v{font-size:15px;font-weight:600;margin-top:3px}
+  #hlHost .hl-fresh-s{font-size:11.5px;color:var(--dim);margin-top:2px;font-family:var(--mono)}
+  #hlHost .hl-fresh-h{font-size:11px;color:var(--faint);margin-top:3px}
+
+  /* Полоса объёма прямо в строке таблицы данных: числа сравниваются глазом плохо,
+     длина — хорошо. */
+  #hlHost .hl-tbl .hl-inbar{position:relative;height:5px;border-radius:3px;background:var(--card2);
+    margin-top:5px;overflow:hidden}
+  #hlHost .hl-tbl .hl-inbar i{position:absolute;left:0;top:0;bottom:0;background:var(--blue);opacity:.7;
+    border-radius:3px}
+  /* На узком экране таблица прокручивается внутри себя. Без этого правая колонка
+     с размером просто обрезалась: страница по горизонтали не едет. */
+  #hlHost .hl-tables{overflow-x:auto}
 
   /* вкладки раздела «Выкатки» */
   .dp-tabs{display:flex;gap:8px;margin:18px 0 0;border-bottom:1px solid var(--line)}
