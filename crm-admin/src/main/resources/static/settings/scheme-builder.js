@@ -1134,7 +1134,28 @@ function renderRelationForm(out){
   };
 }
 function relationFormHtml(r, isNew){
-  const entOpts = (sel) => model.entities.map(e => `<option value="${esc(e.id)}" ${sel===e.id?"selected":""}>${esc(e.label)}</option>`).join("");
+  /* Список таблиц для связи.
+     Раньше здесь стоял голый e.label — и таблица без метки давала ПУСТОЙ пункт: выбрать
+     её было нельзя просто потому, что не видно, что выбираешь. Метки нет у всего, что
+     принято из базы кнопкой «В модель», а это как раз соседние таблицы одной сущности,
+     между которыми связь и нужна.
+     Группируем по сущностям и дописываем схема.таблица: две «Ссылки» из разных сущностей
+     иначе неразличимы. */
+  const entOpts = (sel) => {
+    const bySchema = new Map();
+    model.entities.forEach(e => {
+      const s = schemaOf(e);
+      if (!bySchema.has(s)) bySchema.set(s, []);
+      bySchema.get(s).push(e);
+    });
+    return Array.from(bySchema.entries()).map(([sid, list]) => {
+      const sc = model.schemas.filter(x => x.id === sid)[0];
+      const opts = list.map(e =>
+        `<option value="${esc(e.id)}" ${sel===e.id?"selected":""}>` +
+        `${esc(e.label || e.table || e.id)} · ${esc(sid)}.${esc(e.table || e.id)}</option>`).join("");
+      return `<optgroup label="${esc((sc && sc.label) || sid)}">${opts}</optgroup>`;
+    }).join("");
+  };
   return `<div class="sb-form">
     <div class="sb-grid2">
       <div class="sb-fg"><label>${T("Из таблицы")}</label><select id="sbR_fromE">${entOpts(r.from_entity)}</select></div>
@@ -1742,7 +1763,20 @@ function openRelationModal(){
     Object.assign(r, readRelationForm());
     model.relations.push(r);
     state.relation = r.id; setTab("relation");
-    closeModal(); commit("create", "relation", r.id, r); toast(T("Связь добавлена"));
+    closeModal(); commit("create", "relation", r.id, r);
+    /* Связи внутри одной сущности по умолчанию скрыты, чтобы не засорять холст. Но
+       скрыть только что созданное — значит показать человеку, что ничего не произошло:
+       включаем показ и говорим об этом. */
+    const fe = entityById(r.from_entity), te = entityById(r.to_entity);
+    const inner = fe && te && schemaOf(fe) === schemaOf(te);
+    if (inner && !sbView.internal){
+      sbView.internal = true;
+      saveView();
+      render();
+      toast(T("Связь добавлена. Показ связей внутри сущности включён — иначе её не видно на холсте."));
+    } else {
+      toast(T("Связь добавлена"));
+    }
   };
 }
 
