@@ -67,6 +67,17 @@ public class DeployController {
         return deploy.retryJob(id);
     }
 
+    /**
+     * Структура базы по контурам: насколько каждая отстала от своей модели.
+     * <p>
+     * Своё считаем сами, соседей спрашиваем. Применить DDL можно только у себя — заочно
+     * менять структуру чужого контура панель не станет.
+     */
+    @GetMapping("/api/admin/deploy/schema")
+    public Map<String, Object> schemaState() {
+        return deploy.schemaState();
+    }
+
     /** История заданий обработчика. */
     @GetMapping("/api/admin/deploy/jobs")
     public List<Map<String, Object>> jobs(@RequestParam(defaultValue = "50") int limit) {

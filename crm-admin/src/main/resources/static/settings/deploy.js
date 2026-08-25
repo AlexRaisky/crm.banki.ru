@@ -15,7 +15,7 @@ window.Deploy = (function(){
   var bound = false, over = null, pend = null, upTo = null, plan = null, log = [];
   /* Состояние обработчика очереди на хосте и текущее задание. Панель сама выкат не
      выполняет — она ставит задание, а показывает то, что обработчик о себе сообщил. */
-  var runner = null, watch = null;
+  var runner = null, watch = null, schemaState = null;
 
   function T(s){ return (typeof window.t2 === "function") ? window.t2(s) : s; }
   function esc(v){ return String(v == null ? "" : v)
@@ -322,6 +322,52 @@ window.Deploy = (function(){
       .catch(function(e){ plan = null; renderPlan(); note((e && e.message) || "", true); });
   }
 
+  /* Структура базы по контурам. Отвечает на вопрос, который до сих пор задавали psql:
+     модель переехала пакетом, а таблицы и колонки на приёмнике не создались, потому что
+     их создаёт отдельная кнопка. */
+  function loadSchema(){
+    return req("GET", "../api/admin/deploy/schema")
+      .then(function(j){ schemaState = j || {}; renderSchema(); })
+      .catch(function(){ schemaState = null; renderSchema(); });
+  }
+
+  function renderSchema(){
+    var host = document.getElementById("dpSchema");
+    if (!host) return;
+    if (!schemaState){
+      host.className = "empty";
+      host.textContent = T("Не удалось прочитать структуру контуров");
+      return;
+    }
+    var envs = schemaState.envs || [];
+    host.className = "dp-envs";
+    host.innerHTML = envs.map(function(e){
+      var ok = e.reachable && !e.missing;
+      var cls = !e.reachable ? "down" : (e.missing ? "warn" : "ok");
+      var by = e.bySchema || {};
+      var names = Object.keys(by).sort(function(a, b){ return by[b] - by[a]; }).slice(0, 4);
+      return '<div class="dp-env ' + esc(e.env) + " " + cls + '">' +
+        '<div class="dp-env-name">' + esc(e.env) + (e.self ? " · " + T("вы здесь") : "") + "</div>" +
+        '<div class="dp-env-ver">' + (!e.reachable ? "—" : (e.missing || 0)) + "</div>" +
+        '<div class="dp-env-sub">' + esc(
+          !e.reachable ? (T("не отвечает") + (e.error ? ": " + e.error : ""))
+            : (ok ? T("база совпадает с моделью")
+                  : T("объектов не создано") + (names.length ? ": " + names.map(function(n){ return n + " (" + by[n] + ")"; }).join(", ") : ""))) +
+        "</div>" +
+        (e.self && e.missing
+          ? '<button type="button" class="dp-roll" id="dpApplyDdl">' + T("применить к базе") + "</button>"
+          : "") +
+      "</div>";
+    }).join("");
+    var b = document.getElementById("dpApplyDdl");
+    /* Применение — в конструкторе: там предпросмотр DDL, охрана защищённых схем и
+       журнал. Дублировать всё это здесь значило бы завести вторую точку правды. */
+    if (b) b.onclick = function(){
+      note(T("Открываю конструктор — применение идёт там, с предпросмотром."));
+      if (typeof window.openPane === "function") window.openPane("scheme");
+    };
+  }
+
   function loadRunner(){
     return req("GET", "../api/admin/deploy/runner")
       .then(function(r){ runner = r || {}; renderRunner(); return runner; })
@@ -376,6 +422,7 @@ window.Deploy = (function(){
       .then(function(){ return loadPending(); })
       .then(function(){ return loadLog(); })
       .then(function(){ return loadRunner(); })
+      .then(function(){ return loadSchema(); })
       .catch(function(e){
         var host = document.getElementById("dpEnvs");
         if (host) host.innerHTML = '<div class="empty">' +

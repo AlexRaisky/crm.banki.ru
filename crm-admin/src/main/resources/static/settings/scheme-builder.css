@@ -319,6 +319,10 @@
 .sb-item.sb-orphan{ cursor:default; opacity:.75 }
 .sb-item.sb-orphan .dot{ background:var(--faint) }
 .sb-item.sb-orphan:hover{ background:transparent; opacity:1 }
+/* Нарисовано, но не создано. Отличаем от «есть в базе, но не в модели» цветом точки:
+   там серое — «панель этого не знает», здесь янтарное — «база этого ещё не знает». */
+.sb-item.sb-drift{ cursor:default }
+.sb-item.sb-drift .dot{ background:var(--amber,#e2a336) }
 .sb-form .btn.tiny, .sb-item .btn.tiny{ padding:2px 9px; font-size:11px; border-radius:7px; margin-left:auto }
 .sb-item .btn.tiny{ margin-left:0 }
 .sb-col-del{ width:20px; height:20px; line-height:1; padding:0; border-radius:6px; cursor:pointer;

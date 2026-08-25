@@ -116,6 +116,46 @@ public class SchemaDdlService {
     /** Слепок базы на один заход: что трогать нельзя и что уже создано. */
     private record Snapshot(List<Skip> skips, Set<String> have) {}
 
+    /**
+     * Насколько база отстала от модели — коротко и по сущностям.
+     * <p>
+     * Тот же расчёт, что и у предпросмотра, но свёрнутый до чисел: сколько объектов
+     * нарисовано и не создано, в каких схемах. Нужен в двух местах сразу — в конструкторе,
+     * чтобы расхождение было видно рядом с сущностью, и в «Выкатках», где структуру
+     * везут с контура на контур. Раньше ответ на этот вопрос добывался запросом в psql:
+     * модель показывала поле, база о нём не знала, и заметить это можно было только
+     * случайно.
+     * <p>
+     * Пропущенное охраной (защищённые схемы) в расхождения не считаем: это не отставание,
+     * а запрет — «применить» его всё равно не сможет.
+     */
+    public Map<String, Object> drift(JsonNode model) {
+        Map<String, Object> pv = preview(model);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> stmts = (List<Map<String, Object>>) pv.get("statements");
+
+        List<Map<String, Object>> missing = new ArrayList<>();
+        Map<String, Integer> bySchema = new LinkedHashMap<>();
+        for (Map<String, Object> st : stmts) {
+            if (Boolean.TRUE.equals(st.get("skip")) || Boolean.TRUE.equals(st.get("exists"))) {
+                continue;
+            }
+            missing.add(st);
+            String schema = String.valueOf(st.getOrDefault("schema", ""));
+            bySchema.merge(schema, 1, Integer::sum);
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("missing", missing.size());
+        out.put("items", missing.size() > 200 ? missing.subList(0, 200) : missing);
+        out.put("bySchema", bySchema);
+        out.put("already", pv.get("already"));
+        out.put("skipped", pv.get("skipped"));
+        out.put("problems", pv.get("problems"));
+        out.put("sql", pv.get("sql"));
+        return out;
+    }
+
     // ------------------------------------------------------------- ПРИМЕНЕНИЕ
 
     /** Выполнить план. Одна транзакция на всё: упало на середине — откатилось целиком. */

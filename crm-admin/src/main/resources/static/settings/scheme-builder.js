@@ -800,6 +800,36 @@ function adoptTables(schemaId, tables){
     .catch(e => toast((e && e.message) || T("Не удалось добавить таблицы")));
 }
 
+/* Обратная сторона: нарисовано в модели, но в базе не создано.
+   Раньше об этом не говорил никто: конструктор показывал поле, база о нём не знала, и
+   заметить расхождение можно было только случайно — или запросом в psql, как это и
+   вышло с event_name_unique_part. Считает сервер (тот же расчёт, что у предпросмотра),
+   мы лишь показываем свою схему и даём применить. */
+let driftData = null, driftBusy = false;
+
+function loadDrift(){
+  if (driftBusy) return Promise.resolve(driftData);
+  driftBusy = true;
+  return fetch("/api/schema/ddl/drift", { credentials:"same-origin", headers:{ Accept:"application/json" } })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { driftData = j || { missing:0, bySchema:{} }; driftBusy = false; return driftData; })
+    .catch(() => { driftData = { missing:0, bySchema:{} }; driftBusy = false; return driftData; });
+}
+
+function driftHtml(schemaId){
+  if (driftData === null){ loadDrift().then(() => renderInspector()); return ""; }
+  const n = (driftData.bySchema || {})[schemaId] || 0;
+  if (!n) return "";
+  const items = (driftData.items || []).filter(x => x.schema === schemaId);
+  return `<div class="sb-sub-head">${T("Есть в модели, но не в базе")} <span class="n">${n}</span>
+      <button class="btn tiny accent" id="sbS_applyDrift">${T("Применить к базе")}</button></div>
+    ${items.slice(0, 20).map(x => `<div class="sb-item sb-drift">
+        <span class="dot"></span>
+        <span class="lbl">${esc(x.name || x.table || x.kind)}<i class="sb-ent-sub mono">${esc(x.kind)}${x.table ? " · " + esc(x.table) : ""}</i></span>
+      </div>`).join("")}
+    ${items.length > 20 ? `<div class="sb-empty">${T("и ещё")} ${items.length - 20}</div>` : ""}`;
+}
+
 /* Блок «есть в базе, но не в модели». Пока структура базы не прочитана, блока нет,
    но чтение запускается — и карточка перерисуется сама, когда ответ придёт. */
 function orphansHtml(schemaId){
@@ -877,6 +907,7 @@ function renderSchemaForm(out){
         <span class="cnt">${e.fields.length}</span></div>`).join("")
       : `<div class="sb-empty">${T("В сущности пока нет таблиц")}</div>`}
     ${orphansHtml(s.id)}
+    ${driftHtml(s.id)}
   </div>`;
   $("#sbS_save").onclick = () => {
     const id = slug($("#sbS_id").value);
@@ -897,6 +928,11 @@ function renderSchemaForm(out){
   });
   const adoptAll = $("#sbS_adoptAll");
   if (adoptAll) adoptAll.onclick = () => adoptTables(s.id, orphanTables(s.id).map(t => t.name));
+  /* Кнопка ведёт в общий предпросмотр применения: он показывает ВЕСЬ план, а не только
+     эту схему. Так честнее — DDL всё равно выполняется целиком, и прятать остальное
+     значило бы обещать точечную правку, которой не будет. */
+  const applyDrift = $("#sbS_applyDrift");
+  if (applyDrift) applyDrift.onclick = () => { driftData = null; applyToDb(); };
   $$("#sbInspector [data-adopt]").forEach(b => b.onclick = ev => {
     ev.stopPropagation();
     adoptTables(s.id, [b.dataset.adopt]);
@@ -1311,6 +1347,7 @@ function entitiesOfSchema(schema){
 }
 
 async function applyToDb(){
+  driftData = null;   /* план меняет базу — старая сводка расхождений больше не верна */
   openModal(`<h3>${T("Применить к базе")}</h3>
     <div class="sb-modal-note">${T("Считаем, что нужно сделать в базе…")}</div>`);
   let plan, dropPlan;

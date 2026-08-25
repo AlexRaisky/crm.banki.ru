@@ -13,7 +13,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- ?v — метка версии: без неё браузер держит старый файл из HTTP-кеша
      и правки раздела доезжают к пользователю с задержкой. Поднимать при изменениях. -->
-<link rel="stylesheet" href="scheme-builder.css?v=24">
+<link rel="stylesheet" href="scheme-builder.css?v=25">
 <link rel="stylesheet" href="object-manager.css?v=4">
 <style>
   /* ============================================================
@@ -898,6 +898,15 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
 
         <div id="dpEnvs" class="dp-envs"></div>
 
+        <!-- Структура базы. Код и настройки едут своими путями, а таблицы и колонки —
+             третьим: модель переносится пакетом, а создаёт их «Применить к базе» уже на
+             приёмнике. Здесь видно, где структура отстала от модели. -->
+        <h2 style="margin-top:26px">Структура базы</h2>
+        <div class="sub">Сколько объектов нарисовано в конструкторе, но не создано в базе контура.
+          Модель переносится пакетом на вкладке «Настройки», а таблицы и колонки создаёт кнопка
+          «Применить к базе» — её нажимают в панели того контура, который меняют.</div>
+        <div id="dpSchema" class="empty" style="margin-top:12px">Читаем структуру…</div>
+
         <h2 style="margin-top:26px">Что не доехало</h2>
         <div id="dpList" class="empty">Читаем разницу между контурами…</div>
         <div id="dpPlan" class="dp-plan"></div>
@@ -1412,6 +1421,7 @@ document.addEventListener("click", function(ev){
 
 const snav = $("#snav");
 let curPane = "over";   /* нужен, чтобы после смены языка вернуться в тот же раздел */
+/* модулям разделов нужен переход между страницами настроек */
 function openPane(id){
   curPane = id;
   document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.id === id));
@@ -3397,7 +3407,7 @@ window.CRM = window.CRM || (function(){
   border:1px solid var(--line);color:var(--ink);padding:11px 15px;border-radius:11px;font-size:13px;
   box-shadow:0 14px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(8px);transition:.18s;pointer-events:none"></div>
 <style>#sbToast.show{opacity:1;transform:none}</style>
-<script src="scheme-builder.js?v=34"></script>
+<script src="scheme-builder.js?v=35"></script>
 <!-- «Сущности»: общий с панелью расчёт раскладки + сам раздел. Порядок важен:
      object-manager.js работает с хранилищем схемы из scheme-builder.js. -->
 <script src="../js/entity-layout.js?v=4"></script>
@@ -3713,10 +3723,11 @@ window.CRM = window.CRM || (function(){
 <!-- «Состояние системы»: таблицы, переливы, очередь, подключения, версия -->
 <script src="health.js?v=1"></script>
 <!-- «Выкатки»: версии контуров, разница между ними и команда на выкат -->
-<script src="deploy.js?v=2"></script>
+<script src="deploy.js?v=3"></script>
 <!-- Перенос настроек между контурами — вкладка «Настройки» того же раздела -->
 <script src="settings-pack.js?v=1"></script>
 <script src="changes.js?v=1"></script>
 <script src="runner.js?v=1"></script>
+<script>window.openPane = openPane;</script>
 </body>
 </html>

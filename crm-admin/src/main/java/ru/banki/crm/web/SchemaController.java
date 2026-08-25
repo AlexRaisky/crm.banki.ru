@@ -31,15 +31,43 @@ public class SchemaController {
     private final ru.banki.crm.service.schema.SchemaDdlService ddl;
     private final ru.banki.crm.service.schema.SchemaInspectService inspect;
     private final ru.banki.crm.security.AccessGuard access;
+    private final ru.banki.crm.service.deploy.DeployService deploy;
 
     public SchemaController(SchemaModelService service,
                             ru.banki.crm.service.schema.SchemaDdlService ddl,
                             ru.banki.crm.service.schema.SchemaInspectService inspect,
-                            ru.banki.crm.security.AccessGuard access) {
+                            ru.banki.crm.security.AccessGuard access,
+                            ru.banki.crm.service.deploy.DeployService deploy) {
         this.service = service;
         this.ddl = ddl;
         this.inspect = inspect;
         this.access = access;
+        this.deploy = deploy;
+    }
+
+    /**
+     * Отставание структуры для соседнего контура: только числа, без SQL.
+     * <p>
+     * Спрашивает не человек, а панель другого контура — своей куки у неё нет, поэтому
+     * пропуск тот же, что у {@code /api/build}: общий секрет DEPLOY_PEER_TOKEN. Отдаём
+     * ровно сводку: сколько объектов нарисовано и не создано, по схемам. Текст DDL
+     * наружу не уходит — соседу он не нужен, а структура базы это не то, что стоит
+     * раздавать по сети без надобности.
+     */
+    @GetMapping("/ddl/drift-peer")
+    public Map<String, Object> ddlDriftPeer(
+            @org.springframework.web.bind.annotation.RequestHeader(value = "X-Peer-Token", required = false) String token) {
+        boolean insider = ru.banki.crm.security.CurrentUser.principal().isPresent() || deploy.peerTokenValid(token);
+        if (!insider) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED, "Не авторизован");
+        }
+        Map<String, Object> d = ddl.drift(modelOf(null));
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("missing", d.get("missing"));
+        out.put("bySchema", d.get("bySchema"));
+        out.put("already", d.get("already"));
+        return out;
     }
 
     /**
@@ -98,6 +126,17 @@ public class SchemaController {
     @PostMapping("/ddl/preview")
     public Map<String, Object> ddlPreview(@RequestBody(required = false) JsonNode body) {
         return ddl.preview(modelOf(body));
+    }
+
+    /**
+     * Насколько база отстала от модели: числа и список недостающих объектов.
+     * <p>
+     * Отдельно от предпросмотра, потому что спрашивают об этом чаще и мельче — рядом с
+     * сущностью в конструкторе и в «Выкатках», где структуру везут между контурами.
+     */
+    @GetMapping("/ddl/drift")
+    public Map<String, Object> ddlDrift() {
+        return ddl.drift(modelOf(null));
     }
 
     /** Применить модель к базе: схемы, таблицы, колонки, внешние ключи. Только аддитивно. */

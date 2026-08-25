@@ -292,6 +292,9 @@ Query-параметры списка (все опциональны, множе
 | `GET /api/admin/deploy/changes?days=N` | что менялось в контуре и каких объектов пакета это касается | ADMIN |
 | `POST /api/admin/deploy/run` | поставить выкат в очередь обработчику на хосте: `{target, upTo}` | ADMIN |
 | `GET /api/admin/deploy/runner` | жив ли обработчик и что сейчас в очереди | ADMIN |
+| `GET /api/admin/deploy/schema` | отставание структуры базы от модели по контурам | ADMIN |
+| `GET /api/schema/ddl/drift` | что есть в модели, но не создано в базе | READ в `set-schema` |
+| `GET /api/schema/ddl/drift-peer` | то же для соседнего контура (X-Peer-Token) | вошедший или секрет |
 | `POST /api/admin/deploy/runner/pause` | пауза обработчика: `{paused}`; текущее задание не прерывается | ADMIN |
 | `GET /api/admin/deploy/jobs?limit=N` | история заданий обработчика | ADMIN |
 | `POST /api/admin/deploy/jobs/{id}/cancel` | снять задание, пока его не взяли | ADMIN |

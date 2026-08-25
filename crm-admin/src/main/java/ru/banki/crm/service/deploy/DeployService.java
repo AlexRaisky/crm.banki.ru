@@ -47,6 +47,9 @@ public class DeployService {
     private final BuildInfoService build;
     private final ObjectMapper json;
     private final HttpClient http;
+    /* Структура базы: своя считается здесь же, чужая спрашивается у соседа. */
+    private final ru.banki.crm.service.schema.SchemaDdlService ddl;
+    private final ru.banki.crm.service.SchemaModelService model;
 
     @Value("${app.env.name:prod}")
     private String envName;
@@ -66,10 +69,14 @@ public class DeployService {
     @Value("${app.deploy.dir:~/crm.banki.ru}")
     private String deployDir;
 
-    public DeployService(JdbcTemplate jdbc, BuildInfoService build, ObjectMapper json) {
+    public DeployService(JdbcTemplate jdbc, BuildInfoService build, ObjectMapper json,
+                         ru.banki.crm.service.schema.SchemaDdlService ddl,
+                         ru.banki.crm.service.SchemaModelService model) {
         this.jdbc = jdbc;
         this.build = build;
         this.json = json;
+        this.ddl = ddl;
+        this.model = model;
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     }
 
@@ -389,6 +396,76 @@ public class DeployService {
             if (!name.isEmpty() && !url.isEmpty() && !name.equals(envName)) out.put(name, url);
         }
         return out;
+    }
+
+    /**
+     * Структура базы по контурам: насколько каждая отстала от своей модели.
+     * <p>
+     * Своё считаем сами, соседей спрашиваем — у них свои базы и свои модели, и снаружи
+     * это никак не узнать. Применить DDL можно только у себя: панель ходит в свою базу,
+     * и заочно менять структуру соседа она не должна — такое делают, глядя на предпросмотр
+     * того контура, который меняешь.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> schemaState() {
+        List<Map<String, Object>> envs = new ArrayList<>();
+        Map<String, Object> mine = new LinkedHashMap<>();
+        mine.put("env", envName);
+        mine.put("self", true);
+        mine.put("reachable", true);
+        try {
+            Map<String, Object> d = ddl.drift(model.currentAsNode());
+            mine.put("missing", d.get("missing"));
+            mine.put("bySchema", d.get("bySchema"));
+        } catch (RuntimeException e) {
+            mine.put("reachable", false);
+            mine.put("error", String.valueOf(e.getMessage()));
+        }
+        envs.add(mine);
+
+        peers().forEach((name, url) -> envs.add(peerDrift(name, url)));
+        envs.sort((a, b) -> Integer.compare(ORDER.indexOf(a.get("env")), ORDER.indexOf(b.get("env"))));
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("envs", envs);
+        return out;
+    }
+
+    private static final List<String> ORDER = List.of("test", "preprod", "prod");
+
+    private Map<String, Object> peerDrift(String name, String url) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("env", name);
+        m.put("self", false);
+        if (url == null || url.isBlank()) {
+            m.put("reachable", false);
+            m.put("error", "адрес контура не задан");
+            return m;
+        }
+        try {
+            HttpRequest req = HttpRequest.newBuilder(
+                            URI.create(url.replaceAll("/+$", "") + "/api/schema/ddl/drift-peer"))
+                    .timeout(Duration.ofSeconds(6))
+                    .header("Accept", "application/json")
+                    .header("X-Peer-Token", peerToken)
+                    .GET().build();
+            HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() != 200) {
+                m.put("reachable", false);
+                m.put("error", "ответ " + res.statusCode());
+                return m;
+            }
+            JsonNode b = json.readTree(res.body());
+            m.put("reachable", true);
+            m.put("missing", b.path("missing").asInt(0));
+            Map<String, Object> by = new LinkedHashMap<>();
+            b.path("bySchema").fields().forEachRemaining(e -> by.put(e.getKey(), e.getValue().asInt(0)));
+            m.put("bySchema", by);
+        } catch (Exception e) {
+            m.put("reachable", false);
+            m.put("error", e.getClass().getSimpleName());
+        }
+        return m;
     }
 
     private Map<String, Object> peer(String name, String url) {
