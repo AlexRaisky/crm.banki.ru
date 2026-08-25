@@ -446,12 +446,31 @@ function schemaXY(s){
 /* Настройки вида — в localStorage, а не в модели: модель общая для всех,
    а «что мне показывать на холсте» дело каждого. */
 const SB_VIEW_KEY = "crmpanel:schemeView";
-const SB_VIEW_DEF = { external:true, internal:false, columns:true, types:true };
+const SB_VIEW_DEF = { external:true, internal:false, columns:true, types:true,
+  /* Свёрнутость боковых панелей — тоже вид: у каждого своя привычка, и переживать
+     перезагрузку она должна вместе с остальными настройками холста. */
+  foldList:false, foldInspect:false };
 let sbView = (function(){
   try { return Object.assign({}, SB_VIEW_DEF, JSON.parse(localStorage.getItem(SB_VIEW_KEY)) || {}); }
   catch(e){ return Object.assign({}, SB_VIEW_DEF); }
 })();
 function saveView(){ try { localStorage.setItem(SB_VIEW_KEY, JSON.stringify(sbView)); } catch(e){} }
+
+function applyFold(){
+  const shell = $("#sbShell");
+  if (!shell) return;
+  shell.classList.toggle("no-list", !!sbView.foldList);
+  shell.classList.toggle("no-inspect", !!sbView.foldInspect);
+}
+
+function setFold(key, on){
+  sbView[key] = on;
+  saveView();
+  applyFold();
+  /* Холст изменил ширину — узлы и связи считаются от неё, поэтому пересчитываем.
+     Без этого стрелки остаются на старых местах, пока не тронешь блок. */
+  relayout();
+}
 
 function renderNodes(){
   const host = $("#sbNodes");
@@ -628,8 +647,14 @@ function renderCrumbs(){
     if (f) parts.push(`<span class="sb-crumb-sep">›</span>` +
       `<span class="sb-crumb on">${esc(f.name)}</span>`);
   }
+  /* Кнопку сворачивания рисуем здесь же: контейнер вкладок переписывается целиком при
+     каждом переходе по уровням, и статичная кнопка из разметки исчезала после первого
+     же клика по сущности. */
+  parts.push(`<button type="button" class="sb-fold" id="sbFoldInspect" title="${T("Свернуть панель")}">›</button>`);
   bar.innerHTML = parts.join("");
   bar.className = "sb-crumbs";
+  const fold = $("#sbFoldInspect");
+  if (fold) fold.onclick = () => setFold("foldInspect", true);
   $$("#sbTabs .sb-crumb[data-go]").forEach(b => b.onclick = () => {
     if (b.dataset.go === "schema"){ state.entity = null; state.field = null; }
     if (b.dataset.go === "table"){ state.field = null; }
@@ -2023,6 +2048,15 @@ async function boot(){
   const canvas = $("#sbCanvas");
   if (!canvas) return;
   booted = true;
+
+  /* Сворачивание боковых панелей. Свёрнутая колонка уходит из сетки, и её место
+     достаётся холсту — ради этого всё и делается. Вернуть её можно язычком у края
+     холста: другой кнопки для этого нет, а искать её в тулбаре среди девяти прочих
+     человек не станет. */
+  applyFold();
+  $("#sbFoldList").onclick = () => setFold("foldList", true);
+  $("#sbShowList").onclick = () => setFold("foldList", false);
+  $("#sbShowInspect").onclick = () => setFold("foldInspect", false);
 
   /* тулбар */
   $("#sbAddEntity").onclick = openSchemaModal;

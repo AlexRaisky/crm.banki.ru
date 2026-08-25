@@ -46,6 +46,30 @@
    вычитаются из холста, и слишком щедрый минимум душит схему на ноутбучном экране. */
 .sb-shell{display:grid;grid-template-columns:minmax(240px,18%) minmax(0,1fr) minmax(340px,26%);gap:12px;
   height:clamp(460px,calc(100vh - 270px),1200px)}
+/* Свёрнутая колонка убирается из сетки целиком, а не прячется под ноль ширины: холст
+   должен получить её место, иначе сворачивание не имеет смысла — ради этого всё и есть. */
+.sb-shell.no-list{grid-template-columns:minmax(0,1fr) minmax(340px,26%)}
+.sb-shell.no-inspect{grid-template-columns:minmax(240px,18%) minmax(0,1fr)}
+.sb-shell.no-list.no-inspect{grid-template-columns:minmax(0,1fr)}
+.sb-shell.no-list > .sb-list,
+.sb-shell.no-inspect > .sb-inspect{display:none}
+
+/* Язычки развёрнутой панели. Держим их поверх холста у самого края: свёрнутую колонку
+   иначе нечем вернуть, а отдельная кнопка в тулбаре теряется среди девяти других. */
+.sb-canvas-col{position:relative}
+.sb-tab-back{position:absolute;top:10px;z-index:5;display:none;align-items:center;gap:6px;
+  background:var(--card2);border:1px solid var(--line);border-radius:9px;color:var(--dim);
+  font-family:var(--sans);font-size:11.5px;padding:6px 9px;cursor:pointer}
+.sb-tab-back:hover{border-color:var(--blue);color:var(--blue)}
+.sb-tab-back.left{left:10px}
+.sb-tab-back.right{right:52px}          /* правее — кнопки масштаба */
+.sb-shell.no-list .sb-tab-back.left,
+.sb-shell.no-inspect .sb-tab-back.right{display:inline-flex}
+
+/* Кнопка сворачивания в шапке колонки. */
+.sb-fold{margin-left:auto;background:none;border:none;color:var(--faint);cursor:pointer;
+  font-size:14px;line-height:1;padding:2px 4px;border-radius:6px}
+.sb-fold:hover{color:var(--blue);background:var(--bg2)}
 .sb-col{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;
   display:flex;flex-direction:column;min-width:0}
 .sb-col-head{padding:10px 13px;background:var(--card2);border-bottom:1px solid var(--line);
@@ -199,7 +223,14 @@
    поэтому канвас сжимался до нечитаемых ~230px. Складываем всё в одну
    колонку — схема получает полную ширину контента. */
 @media(max-width:1180px){
-  .sb-shell{grid-template-columns:1fr;height:auto !important}
+  .sb-shell,
+  .sb-shell.no-list,
+  .sb-shell.no-inspect,
+  .sb-shell.no-list.no-inspect{grid-template-columns:1fr;height:auto !important}
+  /* Узкий экран и так кладёт колонки одну под другую — прятать нечего и незачем. */
+  .sb-shell.no-list > .sb-list,
+  .sb-shell.no-inspect > .sb-inspect{display:flex}
+  .sb-tab-back{display:none !important}
   .sb-col.sb-list{height:210px}
   .sb-col.sb-canvas-col{height:min(58vh,480px)}
   .sb-col.sb-inspect{height:auto}          /* форма по содержимому — без второго скролла */

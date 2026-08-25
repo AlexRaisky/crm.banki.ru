@@ -13,7 +13,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- ?v — метка версии: без неё браузер держит старый файл из HTTP-кеша
      и правки раздела доезжают к пользователю с задержкой. Поднимать при изменениях. -->
-<link rel="stylesheet" href="scheme-builder.css?v=23">
+<link rel="stylesheet" href="scheme-builder.css?v=24">
 <link rel="stylesheet" href="object-manager.css?v=4">
 <style>
   /* ============================================================
@@ -463,9 +463,10 @@
           <dd data-i18n="Кладёт модель в файл репозитория, чтобы она уехала вместе с кодом. К базе отношения не имеет.">Кладёт модель в файл репозитория, чтобы она уехала вместе с кодом. К базе отношения не имеет.</dd>
         </dl>
 
-        <div class="sb-shell">
+        <div class="sb-shell" id="sbShell">
           <div class="sb-col sb-list">
-            <div class="sb-col-head"><span data-i18n="Схемы и таблицы">Схемы и таблицы</span><span class="n" id="sbEntityCount">0</span></div>
+            <div class="sb-col-head"><span data-i18n="Схемы и таблицы">Схемы и таблицы</span><span class="n" id="sbEntityCount">0</span>
+              <button type="button" class="sb-fold" id="sbFoldList" title="Свернуть список">‹</button></div>
             <div class="sb-col-body" id="sbEntityList"></div>
             <div class="sb-col-head"><span data-i18n="Связи">Связи</span><span class="n" id="sbRelationCount">0</span></div>
             <!-- Связей всегда меньше, чем таблиц, а треть колонки они занимали наравне.
@@ -475,6 +476,8 @@
           </div>
 
           <div class="sb-col sb-canvas-col">
+            <button type="button" class="sb-tab-back left" id="sbShowList" title="Показать список">› <span data-i18n="Схемы">Схемы</span></button>
+            <button type="button" class="sb-tab-back right" id="sbShowInspect" title="Показать инспектор"><span data-i18n="Свойства">Свойства</span> ‹</button>
             <div class="sb-canvas" id="sbCanvas">
               <div class="sb-viewport" id="sbViewport">
                 <svg class="sb-edges" id="sbEdges"></svg>
@@ -3394,7 +3397,7 @@ window.CRM = window.CRM || (function(){
   border:1px solid var(--line);color:var(--ink);padding:11px 15px;border-radius:11px;font-size:13px;
   box-shadow:0 14px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(8px);transition:.18s;pointer-events:none"></div>
 <style>#sbToast.show{opacity:1;transform:none}</style>
-<script src="scheme-builder.js?v=33"></script>
+<script src="scheme-builder.js?v=34"></script>
 <!-- «Сущности»: общий с панелью расчёт раскладки + сам раздел. Порядок важен:
      object-manager.js работает с хранилищем схемы из scheme-builder.js. -->
 <script src="../js/entity-layout.js?v=4"></script>
@@ -3710,7 +3713,7 @@ window.CRM = window.CRM || (function(){
 <!-- «Состояние системы»: таблицы, переливы, очередь, подключения, версия -->
 <script src="health.js?v=1"></script>
 <!-- «Выкатки»: версии контуров, разница между ними и команда на выкат -->
-<script src="deploy.js?v=1"></script>
+<script src="deploy.js?v=2"></script>
 <!-- Перенос настроек между контурами — вкладка «Настройки» того же раздела -->
 <script src="settings-pack.js?v=1"></script>
 <script src="changes.js?v=1"></script>
