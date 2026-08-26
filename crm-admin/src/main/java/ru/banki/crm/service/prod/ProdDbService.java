@@ -332,13 +332,20 @@ public class ProdDbService {
        они дадут операторам два разных текста под одним согласованием. */
     private static final String SMS_APPROVED = "notice.d_com_sms_approved_template";
 
-    /** Выражение разложения. {@code %s} — алиас таблицы шаблонов. */
+    /**
+     * Выражение разложения. {@code %s} — алиас таблицы шаблонов.
+     * <p>
+     * Текст, уже написанный в операторском виде, разбирать повторно нельзя: правило
+     * чисел съедает границы квантификатора и превращает {@code %w{1,3}} в
+     * {@code %w{%d}}. Такой текст берём как есть — его уже написал человек.
+     */
     private static final String SMS_APPROVED_EXPR =
-            "regexp_replace(regexp_replace(regexp_replace(coalesce(%s.msg_text, ''),"
+            "CASE WHEN coalesce(%1$s.msg_text, '') ~ '%%[wd]' THEN %1$s.msg_text ELSE"
+            + " regexp_replace(regexp_replace(regexp_replace(coalesce(%1$s.msg_text, ''),"
             + " '##[A-Za-z0-9_]+##', '%%w', 'g'),"
             + " '(https?://)?(www\\.)?[A-Za-z0-9][A-Za-z0-9-]*\\.(ru|com|net|org|su|рф)"
             + "(/[^[:space:]]*[A-Za-z0-9/])?', '%%w', 'g'),"
-            + " '(?<![0-9.-])[0-9]+(,[0-9]+)?(?![0-9]*[.-][0-9])', '%%d', 'g')";
+            + " '(?<![0-9.-])[0-9]+(,[0-9]+)?(?![0-9]*[.-][0-9])', '%%d', 'g') END";
 
     /** Предел операторов: не больше двадцати переменных на шаблон. */
     private static final int SMS_APPROVED_MAX_VARS = 20;

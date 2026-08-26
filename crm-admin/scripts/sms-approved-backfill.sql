@@ -55,12 +55,18 @@
 -- --------------------------------------------------------------------------
 
 CREATE FUNCTION pg_temp.sms_tpl(msg text) RETURNS text AS $fn$
-    SELECT regexp_replace(
-               regexp_replace(
-                   regexp_replace(coalesce($1, ''),
-                       '##[A-Za-z0-9_]+##', '%w', 'g'),
-                   '(https?://)?(www\.)?[A-Za-z0-9][A-Za-z0-9-]*\.(ru|com|net|org|su|рф)(/[^[:space:]]*[A-Za-z0-9/])?', '%w', 'g'),
-               '(?<![0-9.-])[0-9]+(,[0-9]+)?(?![0-9]*[.-][0-9])', '%d', 'g')
+    -- Текст, уже написанный в операторском виде, разбирать повторно НЕЛЬЗЯ: правило
+    -- чисел съедает границы квантификатора и превращает %w{1,3} в %w{%d}. Такой
+    -- текст берём как есть — его уже написал человек, и наше дело его не портить.
+    SELECT CASE
+        WHEN coalesce($1, '') ~ '%[wd]' THEN $1
+        ELSE regexp_replace(
+                 regexp_replace(
+                     regexp_replace(coalesce($1, ''),
+                         '##[A-Za-z0-9_]+##', '%w', 'g'),
+                     '(https?://)?(www\.)?[A-Za-z0-9][A-Za-z0-9-]*\.(ru|com|net|org|su|рф)(/[^[:space:]]*[A-Za-z0-9/])?', '%w', 'g'),
+                 '(?<![0-9.-])[0-9]+(,[0-9]+)?(?![0-9]*[.-][0-9])', '%d', 'g')
+    END
 $fn$ LANGUAGE sql IMMUTABLE;
 
 -- Сколько переменных вышло: и %w, и %d, по два символа каждая.
