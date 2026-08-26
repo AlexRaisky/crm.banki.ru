@@ -126,9 +126,15 @@ var PROMO_BASES = ['Вклады', 'ОСАГО', 'Каско', 'НС', 'Инве
                    'КПЗН', 'Ипотека', 'КВ', 'Бизнес', 'Диалог', 'ИС', 'МФО', 'Тотал'];
 var PROMO_OWNERS = [];        /* имена для выпадашки ответственных, приезжают с сервера */
 var PROMO_COLS = 16;          /* колонок до кнопки «+» в строке-дате */
-/* Заказчик — справочник направлений (chain.chain + gorizontal.gorizontal), приходит
-   с сервера. Пустой список не беда: поле останется свободным вводом. */
-var PROMO_CUSTOMERS = [];
+/* Заказчик — вертикаль. Список закрытый и зашит здесь: справочник направлений
+   (chain.chain, gorizontal.gorizontal) заведён не на всех контурах, и там, где его нет,
+   поле оставалось свободным вводом — а значит и опечатками, по которым потом не
+   сгруппировать план.
+   Значение, заведённое до появления списка, из строки не пропадает: оно добавляется
+   в выпадашку отдельным пунктом (см. promoCustomerOpts). */
+var PROMO_VERTICALS = ['Вклады', 'Потребкредиты', 'Кредитные карты', 'Дебетовые карты',
+                       'Ипотека', 'Автокредиты', 'Страхование', 'ОСАГО', 'Инвестиции',
+                       'МФО', 'Бизнес', 'Общее'];
 
 /* Строка баз → список. Разделители — запятая, точка с запятой и перевод строки:
    в накопленных данных встречаются все три. */
@@ -358,7 +364,6 @@ function promoLoad(){
   if (_promoLoading) return Promise.resolve();
   _promoLoading = true;
   promoLoadOwners();
-  promoLoadCustomers();
   return promoReq('GET', '').then(function(rows){
     PROMO_ROWS = (rows || []).map(function(r){ r.chan = promoNormChan(r.chan); return r; });
     promoRender();
@@ -383,18 +388,15 @@ function promoLoadOwners(){
   }).catch(function(){ PROMO_OWNERS = []; });
 }
 
-/* Справочник заказчиков — направления из chain.chain и gorizontal.gorizontal. Тянем
-   один раз за открытие раздела, как и ответственных. Не приехал (таблиц ещё нет на
-   контуре) — поле остаётся свободным вводом, а не пустым списком в никуда. */
-var _promoCustomersAsked = false;
-function promoLoadCustomers(){
-  if (_promoCustomersAsked) return;
-  _promoCustomersAsked = true;
-  promoReq('GET', '/customers').then(function(list){
-    PROMO_CUSTOMERS = list || [];
-    promoFillCustomerList();
-    promoRender();
-  }).catch(function(){ PROMO_CUSTOMERS = []; });
+/* Опции выпадашки заказчика. Кроме зашитых вертикалей показываем то, что уже стоит
+   в строке: список закрытый, но обнулять задним числом записи, заведённые до него,
+   он не должен — иначе первое же открытие ячейки стёрло бы заказчика. */
+function promoCustomerOpts(sel, emptyLabel){
+  var list = PROMO_VERTICALS.slice();
+  if (sel && list.indexOf(sel) === -1) list = [sel].concat(list);
+  return '<option value="">' + pmEsc(emptyLabel || '—') + '</option>' + list.map(function(c){
+    return '<option value="' + pmAttr(c) + '"' + (c === sel ? ' selected' : '') + '>' + pmEsc(c) + '</option>';
+  }).join('');
 }
 
 /* Пока раздел открыт — подтягиваем чужие правки. Во время правки ячейки
@@ -880,12 +882,12 @@ function promoRowHtml(x){
         ? '<span class="src-name" title="' + pmT('Название из импорта') + '">' + pmEsc(r.commName) + '</span>'
         : '<span class="need" title="' + pmT('Название собирается автоматически') + '">' + pmT('нужно заполнить') + ': ' + pmEsc(nm.miss.join(', ')) + '</span>');
 
-  /* Заказчик — направление из справочника. Список может не приехать (таблиц ещё нет на
-     контуре) или значение может быть заведено до появления справочника, поэтому это
-     input со списком-подсказкой, а не жёсткий select: подсказываем, но не запрещаем. */
+  /* Заказчик — вертикаль из закрытого списка. Прежде было свободным вводом, и одна и та
+     же вертикаль писалась по-разному. Значение, заведённое до списка, остаётся выбранным
+     и не теряется при первом же открытии ячейки. */
   var custVal = draft != null ? draft : (r.customer || '');
-  var custEd = '<input class="cell-in" list="promoCustomerList" value="' + pmAttr(custVal) +
-    '" placeholder="' + pmT('Заказчик') + '" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
+  var custEd = '<select class="cell-in" onchange="promoDraft(this.value)">' +
+    promoCustomerOpts(custVal) + '</select>';
   var custHtml = r.customer ? pmEsc(r.customer) : '—';
 
   /* Ссылка и описание — их заполняет постановщик, и они же уезжают в задачу Jira
@@ -995,6 +997,18 @@ function promoNewOpen(iso){
   if (wrap) wrap.scrollTop = 0;
 }
 function promoNewClose(){ PROMO_NEW = null; promoRender(); }
+/* Заполнена ли форма хоть чем-нибудь. Дата не в счёт: она проставляется сама при
+   открытии, и терять в ней нечего. */
+function promoNewDirty(){
+  var n = PROMO_NEW;
+  if (!n) return false;
+  if (n.customer || n.product || n.partner || n.base || n.baseExtra) return true;
+  if (n.uniq || n.link || n.content || n.task || n.note || n.owner) return true;
+  if (n.total || (n.chan && n.chan.length)) return true;
+  if (n.status && n.status !== PROMO_STATUS_NEW) return true;
+  var byChan = n.taskByChan || {};
+  return Object.keys(byChan).some(function(c){ return !!byChan[c]; });
+}
 function promoNewSet(k, v){ if (PROMO_NEW){ PROMO_NEW[k] = v; promoNewPreview(); } }
 /* База в форме новой записи — та же механика, что и в редакторе ячейки. */
 function promoNewBase(b, on){
@@ -1104,10 +1118,8 @@ function promoNewRowHtml(){
   return '<tr class="new-row">' +
     '<td class="c-d"><input type="date" id="promoNewDate" class="cell-in" value="' + pmAttr(n.d) +
       '" onchange="promoNewSet(\'d\',this.value)"></td>' +
-    /* Заказчик — список-подсказка, а не жёсткий выбор: справочник может не приехать,
-       и тогда поле должно остаться рабочим, а не пустым перечнем. */
-    '<td><input class="cell-in" list="promoCustomerList" placeholder="' + pmT('Заказчик') + '" value="' +
-      pmAttr(n.customer) + '" oninput="promoNewSet(\'customer\',this.value)"></td>' +
+    '<td><select class="cell-in" onchange="promoNewSet(\'customer\',this.value)">' +
+      promoCustomerOpts(n.customer, pmT('Заказчик') + '…') + '</select></td>' +
     '<td><select class="cell-in" onchange="promoNewSet(\'product\',this.value)">' +
       '<option value="">' + pmT('Продукт') + '…</option>' +
       prodOpts.map(function(p){ return '<option value="' + pmAttr(p) + '"' + (p === n.product ? ' selected' : '') + '>' + pmEsc(p) + '</option>'; }).join('') +
@@ -1298,12 +1310,14 @@ function promoDelRow(i){
 /* клик мимо ячейки = сохранить; клик по другой ячейке сразу открывает её */
 document.addEventListener('mousedown', function(e){
   var t0 = e.target;
-  /* режим заведения промо: клик по пустой части страницы (не по форме и
-     не по кнопке, которая её открывает) — выходим без сохранения */
+  /* Режим заведения промо. Пустую форму клик по странице закрывает — терять нечего.
+     Заполненную не трогаем: раньше промах мимо формы сворачивал её вместе со всем
+     введённым, и полтора десятка полей приходилось набивать заново. Закрыть начатое
+     можно кнопкой «Отмена» — это осознанное действие, а не случайный клик. */
   if (PROMO_NEW && t0.closest){
     var inForm = t0.closest('.new-row') || t0.closest('.new-foot');
     var reopen = t0.closest('[onclick^="promoNewOpen"]');   /* «+» и кнопка сами переоткроют */
-    if (!inForm && !reopen) promoNewClose();
+    if (!inForm && !reopen && !promoNewDirty()) promoNewClose();
   }
   if (!PROMO_EDIT) return;
   if (t0.closest && (t0.closest('.cell-edit') || t0.closest('.new-row') || t0.closest('.new-foot'))) return;
@@ -1417,14 +1431,6 @@ function promoRenderPartnerList(list){
   var dl = document.getElementById('promoPartnerList');
   if (!dl) return;
   dl.innerHTML = (list || []).map(function(p){ return '<option value="' + pmAttr(p) + '">'; }).join('');
-}
-/* Заказчики в datalist. Отдельная функция рядом с партнёрской: список тот же по смыслу
-   (подсказка к свободному вводу), но источник другой — ручка плана, а не справочник
-   партнёров. */
-function promoFillCustomerList(){
-  var dl = document.getElementById('promoCustomerList');
-  if (!dl) return;
-  dl.innerHTML = PROMO_CUSTOMERS.map(function(c){ return '<option value="' + pmAttr(c) + '">'; }).join('');
 }
 function promoFillPartnerList(){
   promoRenderPartnerList(PROMO_PARTNERS);
