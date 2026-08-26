@@ -18,6 +18,9 @@
 # Использование:
 #   NOTICE_ENV=prod bash scripts/sms-approved-rehearsal.sh
 #
+# Читать боевой notice, но ничего не писать в прод-контур:
+#   SANDBOX_ENV=test NOTICE_ENV=prod bash scripts/sms-approved-rehearsal.sh
+#
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
@@ -25,7 +28,7 @@ cd "$(dirname "$0")/.." || exit 1
 
 notice_conn || exit $?
 echo "→ читаю из ${NOTICE_ENV_NAME}: ${NOTICE_HOST}:${NOTICE_PORT}/${NOTICE_DB}" >&2
-echo "→ пишу в нашу базу того же контура (${OUR_DB_CONTAINER}), схема check_sms" >&2
+echo "→ пишу в ${SANDBOX_ENV_NAME}, наша база (${OUR_DB_CONTAINER}), схема check_sms" >&2
 echo >&2
 
 # --------------------------------------------------------------- 1. песочница
