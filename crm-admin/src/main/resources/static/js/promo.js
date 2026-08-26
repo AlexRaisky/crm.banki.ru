@@ -125,7 +125,7 @@ var PROMO_STATUSES = ['', PROMO_STATUS_NEW, 'запланировано', 'в р
 var PROMO_BASES = ['Вклады', 'ОСАГО', 'Каско', 'НС', 'Инвестиции', 'КК', 'ДК', 'ПК',
                    'КПЗН', 'Ипотека', 'КВ', 'Бизнес', 'Диалог', 'ИС', 'МФО', 'Тотал'];
 var PROMO_OWNERS = [];        /* имена для выпадашки ответственных, приезжают с сервера */
-var PROMO_COLS = 16;          /* колонок до кнопки «+» в строке-дате */
+var PROMO_COLS = 17;          /* колонок до кнопки «+» в строке-дате */
 /* Заказчик — вертикаль. Список закрытый и зашит здесь: справочник направлений
    (chain.chain, gorizontal.gorizontal) заведён не на всех контурах, и там, где его нет,
    поле оставалось свободным вводом — а значит и опечатками, по которым потом не
@@ -882,6 +882,17 @@ function promoRowHtml(x){
         ? '<span class="src-name" title="' + pmT('Название из импорта') + '">' + pmEsc(r.commName) + '</span>'
         : '<span class="need" title="' + pmT('Название собирается автоматически') + '">' + pmT('нужно заполнить') + ': ' + pmEsc(nm.miss.join(', ')) + '</span>');
 
+  /* Название задачи — то, что человек прочтёт в шапке Jira. Пишет его маркетолог или
+     постановщик, поэтому это свободный текст, а не сборка из полей. Пустое поле не
+     ошибка: тогда заголовок соберётся автоматически, как было до появления колонки. */
+  var titleEd = '<input class="cell-in" placeholder="' + pmT('О чём задача') + '" value="' +
+    pmAttr(draft != null ? draft : (r.title || '')) +
+    '" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
+  var titleHtml = r.title
+    ? '<span class="multi" title="' + pmAttr(r.title) + '">' + pmEsc(r.title) + '</span>'
+    : '<span class="need" title="' + pmT('Без него заголовок задачи соберётся из полей строки') + '">' +
+      pmT('соберётся из полей') + '</span>';
+
   /* Заказчик — вертикаль из закрытого списка. Прежде было свободным вводом, и одна и та
      же вертикаль писалась по-разному. Значение, заведённое до списка, остаётся выбранным
      и не теряется при первом же открытии ячейки. */
@@ -958,6 +969,7 @@ function promoRowHtml(x){
   return '<tr class="' + (r.total ? 'total-row ' : '') + (clash.length ? 'base-clash ' : '') +
       (f.bad.length ? 'rule-bad' : '') + '">' +
     promoCell(x, 'd', dateHtml, dateEd) +
+    promoCell(x, 'title', titleHtml, titleEd) +
     promoCell(x, 'customer', custHtml, custEd) +
     promoCell(x, 'product', badIcon + (pmEsc(r.product) || '—'), prodEd) +
     promoCell(x, 'partner', pmEsc(r.partner) || '—', partEd) +
@@ -987,7 +999,7 @@ function promoRowHtml(x){
 function promoNewOpen(iso){
   if (!promoCan('add')) return;
   PROMO_EDIT = null;
-  PROMO_NEW = { d: iso || promoToday(), customer:'', product:'', partner:'', base:'', baseExtra:'', chan: [],
+  PROMO_NEW = { d: iso || promoToday(), title:'', customer:'', product:'', partner:'', base:'', baseExtra:'', chan: [],
                 total:false, uniq:'', link:'', content:'', task:'', taskByChan:{}, owner:'',
                 status: PROMO_STATUS_NEW, note:'', err:'' };
   promoRender();
@@ -1002,7 +1014,7 @@ function promoNewClose(){ PROMO_NEW = null; promoRender(); }
 function promoNewDirty(){
   var n = PROMO_NEW;
   if (!n) return false;
-  if (n.customer || n.product || n.partner || n.base || n.baseExtra) return true;
+  if (n.title || n.customer || n.product || n.partner || n.base || n.baseExtra) return true;
   if (n.uniq || n.link || n.content || n.task || n.note || n.owner) return true;
   if (n.total || (n.chan && n.chan.length)) return true;
   if (n.status && n.status !== PROMO_STATUS_NEW) return true;
@@ -1086,7 +1098,7 @@ function promoNewSave(){
   if (!n.d || !n.chan.length) return;
   if (n.uniq && !promoUniqOk(n.uniq)) return;
   if (!promoCan('add')){ alert(pmT('Нет прав на добавление записей.')); return; }
-  var common = { d:n.d, customer:n.customer, product:n.product, partner:n.partner, base:n.base,
+  var common = { d:n.d, title:n.title, customer:n.customer, product:n.product, partner:n.partner, base:n.base,
                  baseExtra:n.baseExtra, total:!!n.total, uniq:n.uniq, link:n.link, content:n.content,
                  owner:n.owner, status:n.status || PROMO_STATUS_NEW, note:n.note };
   var chans = n.chan.slice();
@@ -1118,6 +1130,9 @@ function promoNewRowHtml(){
   return '<tr class="new-row">' +
     '<td class="c-d"><input type="date" id="promoNewDate" class="cell-in" value="' + pmAttr(n.d) +
       '" onchange="promoNewSet(\'d\',this.value)"></td>' +
+    '<td><input class="cell-in" placeholder="' + pmT('О чём задача') + '" value="' + pmAttr(n.title) +
+      '" oninput="promoNewSet(\'title\',this.value)">' +
+      '<div class="hint-s">' + pmT('Заголовок задачи в Jira. Пусто — соберётся из полей строки') + '</div></td>' +
     '<td><select class="cell-in" onchange="promoNewSet(\'customer\',this.value)">' +
       promoCustomerOpts(n.customer, pmT('Заказчик') + '…') + '</select></td>' +
     '<td><select class="cell-in" onchange="promoNewSet(\'product\',this.value)">' +
@@ -1341,14 +1356,14 @@ document.addEventListener('click', function(e){
 });
 
 function promoExportCsv(){
-  var head = ['Дата','День недели','Заказчик','Продукт','Партнёр','База','Доп. условия','Канал','Тотал',
+  var head = ['Дата','День недели','Название','Заказчик','Продукт','Партнёр','База','Доп. условия','Канал','Тотал',
               'Уникальное имя','Название коммуникации','Ссылка','Описание','Задача','Ответственный','Статус',
               'Комментарий','Замечания'];
   var rows = promoFiltered().map(function(x){
     var r = x.r, f = PROMO_FLAGS[x.i] || { bad: [], warn: [] };
     var key = promoTaskKey(r.task);
     var nm = promoBuildName(r);
-    return [promoFmtDate(r.d), promoDow(r.d), r.customer || '', r.product, r.partner, r.base, r.baseExtra,
+    return [promoFmtDate(r.d), promoDow(r.d), r.title || '', r.customer || '', r.product, r.partner, r.base, r.baseExtra,
             (r.chan || []).join(', '), r.total ? 'TRUE' : 'FALSE', r.uniq,
             nm.ok ? nm.value : (r.commName || ''), r.link || '', r.content || '',
             key ? PROMO_JIRA_BASE + key : '', r.owner,

@@ -110,6 +110,11 @@
   .date-pick .dv{font-family:var(--mono);font-size:12px;color:var(--ink)}
   td.c-d.editable:hover .date-pick .cal-ico{color:var(--ink)}
   td.c-d .cell-in{min-width:140px}
+  /* Название задачи — то, ради чего строку читают глазами. Даём ей ширину сразу за
+     датой: в узкой колонке заголовок обрежется на втором слове и перестанет работать. */
+  td.c-title{min-width:190px}
+  td.c-title .cell-in{min-width:210px}
+  td.c-title .multi{-webkit-line-clamp:3;max-width:240px;font-weight:500}
   /* Длинный текст в ячейке. Три правила про три разные беды:
      line-clamp — строка таблицы не растёт на десять строк из-за одного комментария
        (полный текст в подсказке, а по клику открывается редактор с ним же);

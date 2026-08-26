@@ -43,7 +43,8 @@ public class PromoPlanService {
             Map.entry("status", "status"),
             Map.entry("customer", "customer"),
             Map.entry("link", "link"),
-            Map.entry("content", "content"));
+            Map.entry("content", "content"),
+            Map.entry("title", "title"));
     /** note вынесен отдельно: Map.of ограничен 10 парами. */
     private static final String NOTE_COLUMN = "note";
 
@@ -56,7 +57,10 @@ public class PromoPlanService {
     private static final String ROW_COLUMNS =
             "id, plan_date, product, partner, base, channel, is_total," +
             " uniq_name, task_key, owner_name, status, note, communication_name, base_extra," +
-            " customer, link, content, timestamp_upd";
+            /* Новые колонки дописываются в КОНЕЦ, даже если по смыслу им место в середине:
+               toDto читает Object[] по индексам, и вставка в середину молча сдвинула бы
+               всё, что правее. */
+            " customer, link, content, timestamp_upd, title";
 
     private static final String STATUS_PLANNED = "запланировано";
     private static final String STATUS_SENT = "отправлено";
@@ -112,6 +116,9 @@ public class PromoPlanService {
         data.put("segment", firstNonEmpty(joinNonEmpty(str(r[4]), str(r[13])), ""));
         data.put("analyst", str(r[9]));
         data.put("source", text(source));
+        /* Заголовок задачи. Написан человеком — уходит как есть; не написан — JiraService
+           соберёт его из полей строки, как делал до появления этого поля. */
+        data.put("summary", str(r[18]));
         data.put("reporterEmail", CurrentUser.email());
 
         Map<String, Object> res = jira.createIssue(data);
@@ -244,6 +251,7 @@ public class PromoPlanService {
         m.put("link", str(r[15]));       // основная ссылка, куда ведём получателя
         m.put("content", str(r[16]));    // что учесть в тексте или визуале
         m.put("ver", instant(r[17]));
+        m.put("title", str(r[18]));      // название задачи словами — заголовок в Jira
         return m;
     }
 
@@ -293,9 +301,9 @@ public class PromoPlanService {
             em.createNativeQuery(
                             "INSERT INTO app.promo_plan (id, plan_date, product, partner, base, base_extra," +
                             " channel, is_total, uniq_name, task_key, owner_name, status, note," +
-                            " customer, link, content, created_by, updated_by)" +
+                            " customer, link, content, title, created_by, updated_by)" +
                             " VALUES (:id, :d, :product, :partner, :base, :baseExtra, :ch, :total, :uniq," +
-                            " :task, :owner, :status, :note, :customer, :link, :content, :u, :u)")
+                            " :task, :owner, :status, :note, :customer, :link, :content, :title, :u, :u)")
                     .setParameter("id", id)
                     .setParameter("d", date)
                     .setParameter("product", text(body.get("product")))
@@ -312,6 +320,7 @@ public class PromoPlanService {
                     .setParameter("customer", text(body.get("customer")))
                     .setParameter("link", text(body.get("link")))
                     .setParameter("content", text(body.get("content")))
+                    .setParameter("title", text(body.get("title")))
                     .setParameter("u", CurrentUser.email())
                     .executeUpdate();
             ids.add(id);
@@ -387,11 +396,12 @@ public class PromoPlanService {
             em.createNativeQuery(
                             "INSERT INTO app.promo_plan (plan_date, product, partner, base, base_extra," +
                             " channel, is_total, uniq_name, task_key, owner_name, status, note," +
-                            " communication_name, customer, link, content, created_by, updated_by)" +
+                            " communication_name, customer, link, content, title, created_by, updated_by)" +
                             /* task_key копируем намеренно: у копии свой канал, но задача пока
                                общая — до тех пор, пока для нового канала не заведут свою. */
                             " SELECT plan_date, product, partner, base, base_extra, :ch, is_total, uniq_name," +
-                            " task_key, owner_name, status, note, communication_name, customer, link, content, :u, :u" +
+                            " task_key, owner_name, status, note, communication_name, customer, link, content," +
+                            " title, :u, :u" +
                             " FROM app.promo_plan WHERE id = :id")
                     .setParameter("ch", ch)
                     .setParameter("u", CurrentUser.email())
