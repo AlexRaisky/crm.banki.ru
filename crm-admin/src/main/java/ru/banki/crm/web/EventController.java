@@ -75,6 +75,39 @@ public class EventController {
         return chains.chain(id);
     }
 
+    /**
+     * Завести цепочку: строка на шаг в commapi.events_chain.
+     * <p>
+     * Право то же, что на заведение самого онлайн-события: цепочка без события
+     * не существует, и разделять их значило бы выдать право писать в crmdb тому,
+     * кому не доверили завести событие.
+     */
+    @PostMapping("/chains")
+    public Map<String, Object> createChain(@RequestBody Map<String, Object> body) throws Exception {
+        access.requireCapability(Capability.ADD, Sections.EV_ONLINE);
+        long eventId;
+        try {
+            eventId = Long.parseLong(String.valueOf(body.get("eventId")));
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Не выбрано событие: у узла Income event пустое поле «Событие».");
+        }
+        Object raw = body.get("steps");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> steps = raw instanceof List<?> l
+                ? (List<Map<String, Object>>) l : List.of();
+        try {
+            return chains.create(eventId, String.valueOf(body.getOrDefault("exitCondition", "")), steps);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            /* Отказы этого метода — про то, что человек нарисовал или чего нет в базе.
+               Отдаём их текстом и 400/409, а не пятисоткой: чинит их он, а не мы. */
+            throw new ResponseStatusException(
+                    e instanceof IllegalStateException ? org.springframework.http.HttpStatus.CONFLICT
+                                                       : org.springframework.http.HttpStatus.BAD_REQUEST,
+                    e.getMessage());
+        }
+    }
+
     @GetMapping("/dictionaries")
     public Map<String, Object> dictionaries() {
         access.requireAnySection(Sections.EV_ONLINE, Sections.EV_OFFLINE);

@@ -155,6 +155,116 @@ public class EventChainService {
         return out;
     }
 
+    /**
+     * Завести цепочку: строка на шаг в {@code commapi.events_chain}.
+     * <p>
+     * Только новые. Правку существующей не делаем намеренно: переписать строки значит
+     * снести их и вставить заново, а по ним движок прямо сейчас ведёт живых людей —
+     * посреди дня такое делать нельзя. Есть строки — отказываем и говорим об этом.
+     * <p>
+     * Проверки отдельными строками не становятся: {@code exit_condition} и
+     * {@code exit_step} — колонки той же строки, что и шаблон. Один шаг = одна строка.
+     *
+     * @param eventId  {@code t_event_comm_id} — id события в {@code tracker.t_event_comm}
+     * @param exitCondition событие, обрывающее весь поток; пусто — цепочку не обрывает ничто
+     * @param steps    шаги по порядку: {@code waitTime} (мин от прихода события),
+     *                 {@code templateId}, {@code exitStep}, {@code active}
+     */
+    public Map<String, Object> create(long eventId, String exitCondition,
+                                      List<Map<String, Object>> steps) throws Exception {
+        if (steps == null || steps.isEmpty()) {
+            throw new IllegalArgumentException("В цепочке нет ни одного шага.");
+        }
+        if (!events.configured()) {
+            throw new IllegalStateException("База событий (crmdb) не настроена.");
+        }
+        if (!exists()) {
+            throw new IllegalStateException("Таблицы " + TABLE + " нет в базе событий.");
+        }
+
+        try (Connection c = events.connection()) {
+            c.setAutoCommit(false);
+            try {
+                String eventName = null, system = null;
+                try (PreparedStatement ps = c.prepareStatement(
+                        "SELECT event_name, \"system\" FROM " + EVENTS + " WHERE id = ?")) {
+                    ps.setLong(1, eventId);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (!rs.next()) {
+                            throw new IllegalArgumentException(
+                                    "События " + eventId + " нет в " + EVENTS + ".");
+                        }
+                        eventName = rs.getString(1);
+                        system = rs.getString(2);
+                    }
+                }
+                try (PreparedStatement ps = c.prepareStatement(
+                        "SELECT count(*) FROM " + TABLE + " WHERE t_event_comm_id = ?")) {
+                    ps.setLong(1, eventId);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next() && rs.getInt(1) > 0) {
+                            throw new IllegalStateException("У события «" + eventName
+                                    + "» цепочка уже заведена. Правка существующих пока не делается:"
+                                    + " по этим строкам движок ведёт людей прямо сейчас.");
+                        }
+                    }
+                }
+
+                String sql = "INSERT INTO " + TABLE
+                        + " (t_event_comm_id, is_active, \"order\", event_name, \"system\","
+                        + "  wait_time, exit_condition, exit_step, communication_template_id)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                int order = 0;
+                try (PreparedStatement ps = c.prepareStatement(sql)) {
+                    for (Map<String, Object> s : steps) {
+                        order++;
+                        ps.setLong(1, eventId);
+                        ps.setBoolean(2, !Boolean.FALSE.equals(s.get("active")));
+                        ps.setInt(3, order);
+                        ps.setString(4, eventName);
+                        ps.setString(5, system);
+                        setNullable(ps, 6, s.get("waitTime"));
+                        /* Условие выхода — во все строки, КРОМЕ первой. Первый шаг идёт
+                           сразу за событием, и обрывать там ещё нечего. */
+                        ps.setString(7, order == 1 ? null : blankToNull(exitCondition));
+                        ps.setString(8, blankToNull(s.get("exitStep")));
+                        setNullable(ps, 9, s.get("templateId"));
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                }
+                c.commit();
+                Map<String, Object> out = new LinkedHashMap<>();
+                out.put("id", eventId);
+                out.put("eventName", eventName);
+                out.put("steps", order);
+                return out;
+            } catch (Exception e) {
+                c.rollback();
+                throw e;
+            } finally {
+                c.setAutoCommit(true);
+            }
+        }
+    }
+
+    private static void setNullable(PreparedStatement ps, int idx, Object v) throws java.sql.SQLException {
+        if (v == null || String.valueOf(v).isBlank()) {
+            ps.setNull(idx, java.sql.Types.INTEGER);
+            return;
+        }
+        try {
+            ps.setLong(idx, Long.parseLong(String.valueOf(v).trim()));
+        } catch (NumberFormatException e) {
+            ps.setNull(idx, java.sql.Types.INTEGER);
+        }
+    }
+
+    private static String blankToNull(Object v) {
+        String s = v == null ? "" : String.valueOf(v).trim();
+        return s.isEmpty() ? null : s;
+    }
+
     /** Есть ли таблица: на старой базе событий её может не быть вовсе. */
     private boolean exists() {
         try (Connection c = events.connection();

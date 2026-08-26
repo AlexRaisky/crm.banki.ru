@@ -18,7 +18,7 @@
 <!-- Drawflow: интерактивная блок-схема цепочек (вендорен локально — без зависимости от CDN) -->
 <link rel="stylesheet" href="drawflow.min.css">
 <script src="drawflow.min.js"></script>
-<script src="journeys.js?v=2" defer></script>
+<script src="journeys.js?v=3" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2374,6 +2374,9 @@
         <button type="button" class="jr-btn jr-new"     onclick="jrNew()"><span data-i18n="Новая">Новая</span></button>
         <button type="button" class="jr-btn jr-save"    onclick="jrSave()"><span data-i18n="Сохранить">Сохранить</span></button>
         <button type="button" class="jr-btn jr-preview" onclick="jrPreview()"><span data-i18n="Предпросмотр">Предпросмотр</span></button>
+        <!-- Заведение цепочки в commapi.events_chain: строка на шаг. Отдельно от
+             «Сохранить» намеренно — то пишет нашу схему, это боевую таблицу crmdb. -->
+        <button type="button" class="jr-btn" onclick="jrChainCreate()"><span data-i18n="Завести цепочку">Завести цепочку</span></button>
         <button type="button" class="jr-btn jr-delete"  onclick="jrDelete()"><span data-i18n="Удалить">Удалить</span></button>
         <span id="jrHint" class="jr-hint">Двойной клик по блоку — настройки. Ctrl+клик / Shift+рамка — выделить несколько (двигаются вместе, Delete удаляет). Клик по связи — кнопка удаления, двойной клик — точка излома.</span>
       </div>

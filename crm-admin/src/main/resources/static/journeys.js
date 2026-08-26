@@ -1084,6 +1084,63 @@
     addNodeAt(type, {}, Math.max(10, x), Math.max(10, y));
   };
 
+  /* Заведение цепочки в commapi.events_chain — строка на шаг.
+     Отдельная кнопка, а не часть «Сохранить»: то пишет нашу схему (app.journeys),
+     это боевую таблицу в crmdb, и смешивать их в одном действии нельзя.
+
+     Проверки отдельными строками не становятся: exit_condition и exit_step —
+     колонки той же строки, что и шаблон. Один шаг = одна строка. */
+  window.jrChainCreate = function () {
+    if (!editor || !canEdit()) { alert("Раздел открыт только на просмотр."); return; }
+    var raw = editor.export().drawflow.Home.data;
+    var start = null, comms = [];
+    Object.keys(raw).forEach(function (k) {
+      var n = raw[k], d = n.data || {};
+      if (n.name === "startIncome") start = d;
+      else if (n.name === "comm") comms.push({ key: parseInt(k, 10), d: d });
+    });
+    if (!start) { alert("В цепочке нет узла Income event."); return; }
+    if (!start.t_event_comm_id) {
+      alert("У Income event не выбрано событие: оно берётся из tracker.t_event_comm.");
+      return;
+    }
+    if (!comms.length) { alert("В цепочке нет ни одного Communication Alert."); return; }
+
+    /* Порядок шагов — по узлам холста. Drawflow нумерует их в порядке создания,
+       и это ближайшее к тому, что человек видит сверху вниз. */
+    comms.sort(function (a, b) { return a.key - b.key; });
+    var steps = comms.map(function (c) {
+      return {
+        waitTime: c.d.wait_time || "0",
+        templateId: c.d.template || "",
+        exitStep: c.d.exit_step || "",
+        active: c.d.active !== "false"
+      };
+    });
+    var noTpl = steps.filter(function (s) { return !s.templateId; }).length;
+    if (noTpl && !confirm("Шагов без шаблона: " + noTpl + ". Такой шаг ничего не отправит. Всё равно завести?")) return;
+
+    fetch("api/events/chains", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        eventId: start.t_event_comm_id,
+        exitCondition: start.exit_condition || "",
+        steps: steps
+      })
+    }).then(function (r) {
+      return r.text().then(function (t) {
+        var j = null; try { j = JSON.parse(t); } catch (e) {}
+        if (!r.ok) throw new Error((j && j.message) || t || ("HTTP " + r.status));
+        return j;
+      });
+    }).then(function (res) {
+      alert("Цепочка заведена: событие «" + (res.eventName || res.id) + "», шагов " + res.steps + ".");
+    }).catch(function (e) {
+      alert("Не удалось завести цепочку:\n" + e.message);
+    });
+  };
+
   window.jrNew = function () {
     if (!editor) return;
     document.getElementById("jrSelect").value = "";
