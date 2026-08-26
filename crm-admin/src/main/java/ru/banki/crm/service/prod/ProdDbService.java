@@ -225,6 +225,7 @@ public class ProdDbService {
                     case "INSERT" -> {
                         long assigned = insert(c, ct, localCode, payloadJson);
                         smsTypeEnsure(c, channel, assigned);
+                        smsApprovedEnsure(c, channel, assigned);
                         yield assigned;
                     }
                     case "UPDATE" -> {
@@ -232,6 +233,10 @@ public class ProdDbService {
                         // строки в проде нет (исторически не доехала) — превращаем в INSERT
                         long assigned = n > 0 ? localCode : insert(c, ct, localCode, payloadJson);
                         smsTypeEnsure(c, channel, assigned);
+                        /* И при правке тоже: у шаблонов, уехавших до появления этой таблицы,
+                           строки согласования нет вовсе — правка их дозаведёт. Уже
+                           заполненную строку вызов не трогает. */
+                        smsApprovedEnsure(c, channel, assigned);
                         yield assigned;
                     }
                     case "DELETE" -> {
@@ -292,6 +297,73 @@ public class ProdDbService {
             ps.setString(4, SMS_TYPE_SENDER);
             ps.setLong(5, code);
             ps.setLong(6, code);
+            ps.executeUpdate();
+        }
+    }
+
+    // ------------------------------------------------- согласование текста у операторов
+
+    /* Второй спутник sms-шаблона: текст в том виде, в каком его согласовывают сотовые
+       операторы. Строка на шаблон в notice.d_com_sms_approved_template, флаги
+       approved_* проставляют люди по итогам согласования — мы их не трогаем никогда.
+
+       Разложение — ровно две замены, и обе живут ЗДЕСЬ, одной строкой на оба пути
+       (заведение нового шаблона и разовая доливка существующих записей). Разъехавшись,
+       эти два пути дали бы операторам два разных текста под одним согласованием.
+
+       1) ##любая_переменная## -> %w. Именно %w, а не %d: он покрывает буквы, цифры и
+          спецсимволы, то есть верен и для имени, и для суммы. В значения переменных
+          не смотрим — по имени переменной её содержимое всё равно не угадать.
+       2) Короткая ссылка banki.ru/q/XXXX -> banki.ru/q/%w. Домен и путь остаются
+          текстом: оператор при согласовании смотрит именно на то, куда ведёт ссылка,
+          и шаблон, где вместо неё голое %w, вызывает больше вопросов, а не меньше.
+          Шаблон привязан к /q/ намеренно — иначе выражение съело бы и обычные
+          статические ссылки вроде banki.ru/products/deposits.
+
+       Правила операторов (МегаФон через МТС) запрещают %w+, запрещают две групповые
+       переменные подряд и ограничивают совокупное число слов двадцатью. Первые два
+       запрета нарушить нечем: мы не выпускаем ни %w+, ни %w{1,n}, ни %d+ — только
+       одиночные %w. Остаётся счёт: тексты, где переменных больше двадцати, не
+       заполняем совсем — такую строку должен написать человек. */
+    private static final String SMS_APPROVED = "notice.d_com_sms_approved_template";
+
+    /** Выражение разложения. {@code %s} — источник текста (алиас таблицы шаблонов). */
+    private static final String SMS_APPROVED_EXPR =
+            "regexp_replace(regexp_replace(coalesce(%s.msg_text, ''),"
+            + " '##[A-Za-z0-9_]+##', '%%w', 'g'),"
+            + " '(banki\\.ru/q/)[A-Za-z0-9]+', '\\1%%w', 'g')";
+
+    /** Предел операторов: не больше двадцати переменных на шаблон. */
+    private static final int SMS_APPROVED_MAX_VARS = 20;
+
+    /**
+     * Завести строку согласования для sms-шаблона, если её ещё нет.
+     * <p>
+     * template_id ссылается на {@code notice.d_com_sms_template.id}, а не на code:
+     * в этой схеме принято различать их именем колонки — у соседнего спутника
+     * ({@link #SMS_TYPE}) поле называется template_code и хранит именно код.
+     * Берём id той же строки, которую только что записали, подзапросом по коду —
+     * локальный id здесь не годится, в проде он свой.
+     * <p>
+     * Существующую строку не трогаем — как и у спутника-типа, и по более серьёзной
+     * причине: рядом лежат флаги согласования с операторами. Переписать текст под уже
+     * проставленным approved_* значило бы выдать за согласованное то, чего оператор
+     * не видел.
+     */
+    private void smsApprovedEnsure(Connection c, String channel, long code) throws Exception {
+        if (!"sms".equals(channel)) return;
+        String expr = String.format(SMS_APPROVED_EXPR, "t");
+        String sql = "INSERT INTO " + SMS_APPROVED
+                + " (template_id, \"template\", business_communication_type)"
+                + " SELECT s.id, s.tpl, s.bct FROM ("
+                + "   SELECT t.id AS id, t.business_communication_type AS bct, " + expr + " AS tpl"
+                + "   FROM " + UnifiedTemplateService.channelTable("sms").table() + " t WHERE t.code = ?"
+                + " ) s"
+                + " WHERE s.tpl <> ''"
+                + "   AND (length(s.tpl) - length(replace(s.tpl, '%w', ''))) / 2 <= " + SMS_APPROVED_MAX_VARS
+                + "   AND NOT EXISTS (SELECT 1 FROM " + SMS_APPROVED + " a WHERE a.template_id = s.id)";
+        try (PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setLong(1, code);
             ps.executeUpdate();
         }
     }
