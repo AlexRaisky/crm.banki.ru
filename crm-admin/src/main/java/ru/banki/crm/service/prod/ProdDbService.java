@@ -343,8 +343,9 @@ public class ProdDbService {
      */
     private static final String SMS_APPROVED_EXPR =
             "CASE WHEN coalesce(%1$s.msg_text, '') ~ '%%[wd]' THEN %1$s.msg_text ELSE"
-            + " regexp_replace(regexp_replace(regexp_replace(coalesce(%1$s.msg_text, ''),"
+            + " regexp_replace(regexp_replace(regexp_replace(regexp_replace(coalesce(%1$s.msg_text, ''),"
             + " '##[^#[:cntrl:]]+##', '%%w', 'g'),"
+            + " '\\[[A-Za-z_][A-Za-z0-9_]*\\]', '%%w', 'g'),"
             + " '(https?://)?(www\\.)?[A-Za-z0-9][A-Za-z0-9-]*\\.(ru|com|net|org|su|рф)"
             + "(/[^[:space:]]*[A-Za-z0-9/])?', '%%w', 'g'),"
             + " '(?<![0-9.-])[0-9]+(,[0-9]+)?(?![0-9]*[.-][0-9])', '%%d', 'g') END";
