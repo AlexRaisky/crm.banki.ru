@@ -359,11 +359,14 @@ public class ProdDbService {
     /**
      * Завести строку согласования для sms-шаблона, если её ещё нет.
      * <p>
-     * template_id ссылается на {@code notice.d_com_sms_template.id}, а не на code:
-     * в этой схеме принято различать их именем колонки — у соседнего спутника
-     * ({@link #SMS_TYPE}) поле называется template_code и хранит именно код.
-     * Берём id той же строки, которую только что записали, подзапросом по коду —
-     * локальный id здесь не годится, в проде он свой.
+     * template_id, вопреки имени, хранит КОД шаблона, а не id прод-строки. Имя
+     * обманчиво — у соседнего спутника ({@link #SMS_TYPE}) поле называется
+     * template_code и хранит то же самое, — и на этом уже обожглись: соединение
+     * по id находило строки и выглядело верным, потому что у соседних шаблонов
+     * тексты похожи и подмену не видно глазами.
+     * <p>
+     * Код берём прод-овский — тот, что присвоил прод при вставке; локальный здесь
+     * не годится, они могут расходиться.
      * <p>
      * Существующую строку не трогаем — как и у спутника-типа, и по более серьёзной
      * причине: рядом лежат флаги согласования с операторами. Переписать текст под уже
@@ -376,14 +379,17 @@ public class ProdDbService {
         String sql = "INSERT INTO " + SMS_APPROVED
                 + " (template_id, \"template\", business_communication_type,"
                 + "  approved_mts, approved_megafon, approved_beeline, approved_t2)"
-                + " SELECT s.id, s.tpl, s.bct, '" + APPROVAL_REQUESTED + "', '" + APPROVAL_REQUESTED
+                + " SELECT s.ref, s.tpl, s.bct, '" + APPROVAL_REQUESTED + "', '" + APPROVAL_REQUESTED
                 + "', '" + APPROVAL_REQUESTED + "', '" + APPROVAL_REQUESTED + "' FROM ("
-                + "   SELECT t.id AS id, t.business_communication_type AS bct, " + expr + " AS tpl"
+                /* template_id хранит КОД шаблона, а не id прод-строки — вопреки имени
+                   колонки. Соединение по id раньше возвращало строки и потому выглядело
+                   верным: у соседних шаблонов похожие тексты, и подмену не видно. */
+                + "   SELECT t.code AS ref, t.business_communication_type AS bct, " + expr + " AS tpl"
                 + "   FROM " + UnifiedTemplateService.channelTable("sms").table() + " t WHERE t.code = ?"
                 + " ) s"
                 + " WHERE s.tpl <> ''"
                 + "   AND " + smsApprovedVars("s.tpl") + " <= " + SMS_APPROVED_MAX_VARS
-                + "   AND NOT EXISTS (SELECT 1 FROM " + SMS_APPROVED + " a WHERE a.template_id = s.id)";
+                + "   AND NOT EXISTS (SELECT 1 FROM " + SMS_APPROVED + " a WHERE a.template_id = s.ref)";
         try (PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setLong(1, code);
             ps.executeUpdate();
@@ -426,10 +432,13 @@ public class ProdDbService {
         /* Общий источник для отчёта и для записи: строки без текста, вместе с тем,
            во что разложится их msg_text. Выражение разложения появляется здесь один
            раз — второй экземпляр однажды разъехался бы с первым. */
-        String src = "SELECT a.id AS aid, t.id AS tid, t.code AS code, t.msg_text AS msg,"
+        /* Соединяем по КОДУ: template_id, вопреки имени, хранит код шаблона, а не id
+           прод-строки. По id соединение тоже что-то находило — у соседних шаблонов
+           тексты похожи, и подстановку чужого было не отличить глазами. */
+        String src = "SELECT a.id AS aid, t.code AS tid, t.code AS code, t.msg_text AS msg,"
                 + " " + expr + " AS tpl, " + smsApprovedUndecided("a") + " AS undecided"
                 + " FROM " + SMS_APPROVED + " a"
-                + " LEFT JOIN " + smsTable + " t ON t.id = a.template_id"
+                + " LEFT JOIN " + smsTable + " t ON t.code = a.template_id"
                 + " WHERE coalesce(a.\"template\", '') = ''";
 
         String reason = "CASE"
