@@ -38,9 +38,8 @@
         { k: "t_event_comm_id",     l: "Событие",            kind: "eventPick" },
         { k: "event_name",          l: "Имя события",        kind: "text", ro: true },
         { k: "system",              l: "Система",            kind: "text", ro: true },
-        /* Условие выхода обрывает ВСЮ цепочку, поэтому живёт на старте, а не на шаге:
-           на шаге оно читалось бы как «этот шаг и обрывает». */
-        { k: "exit_condition",      l: "Условие выхода (обрывает всю цепочку)", kind: "text" }
+        /* Условие выхода задаётся блоком Flow exit, а не полем: одна колонка не должна
+           заполняться из двух мест. */
         /* Полей, описывающих КАК завести событие, здесь больше нет: канал, sub channel,
            платформа, группа, send_delay, life time, allow ML, definition key, business
            key prefix. Событие теперь не заводится узлом, а выбирается из уже заведённых
@@ -72,15 +71,47 @@
       fields: [
         { k: "channel",   l: "Тип коммуникации", kind: "select", opts: ["sms", "push", "email", "cc"] },
         { k: "template",  l: "Код шаблона",      kind: "template" },
-        /* Задержка отсчитывается от прихода события, а не от предыдущей отправки:
-           так расписание всей цепочки известно в момент старта и не плывёт, если
-           один шаг задержался. Минуты — как в commapi.events_chain.wait_time. */
-        { k: "wait_time", l: "Задержка от события, мин", kind: "number", def: "0" },
-        /* Снимает ТОЛЬКО этот шаг. То, что обрывает всю цепочку, — на узле старта. */
-        { k: "exit_step", l: "Событие, снимающее шаг", kind: "text" },
+        /* Задержку и снятие шага задают блоки Таймер и Step exit, стоящие перед этим
+           шагом. Полями их не дублируем: одну колонку нельзя заполнять из двух мест —
+           однажды они разойдутся, и какое значение уехало в базу, будет не понять. */
         { k: "day",       l: "День (из шаблона)", kind: "number", ro: true },
         { k: "note",      l: "Что происходит",   kind: "textarea" },
         { k: "active",    l: "Активен",          kind: "bool" }
+      ]
+    },
+    /* ---- Блоки цепочки онлайн-события (commapi.events_chain) ----
+       Все три — накопители: сами строк не создают, а задают колонки того шага,
+       который идёт за ними по стрелке. Порядок на холсте и есть порядок применения.
+
+       Почему не Decision: у него два выхода, и «да» обязано куда-то вести. Здесь
+       «да» всегда означает стоп, вести оттуда некуда, и нарисованную стрелку было
+       бы не во что скомпилировать. Эти блоки выходов не имеют вовсе — обещать
+       нечего. */
+    timer: {
+      label: "Таймер", cls: "logic", outs: 1,
+      fields: [
+        /* Отсчёт от прихода события, а не от предыдущей отправки: так расписание всей
+           цепочки известно в момент старта и не плывёт, если один шаг задержался. */
+        { k: "wait_time", l: "Задержка от события, мин", kind: "number", def: "0" }
+      ]
+    },
+    flowExit: {
+      label: "Flow exit", cls: "logic", outs: 1,
+      fields: [
+        { k: "event_name", l: "Событие, обрывающее всю цепочку", kind: "text" }
+      ]
+    },
+    stepExit: {
+      label: "Step exit", cls: "logic", outs: 1,
+      fields: [
+        { k: "event_name", l: "Событие, снимающее следующий шаг", kind: "text" }
+      ]
+    },
+    ifCheck: {
+      label: "Проверка (if)", cls: "logic", outs: 1,
+      fields: [
+        { k: "expr", l: "Условие", kind: "text" },
+        { k: "note", l: "Что проверяем", kind: "textarea" }
       ]
     },
     subflow: {
@@ -1088,30 +1119,71 @@
   window.jrChainCreate = function () {
     if (!editor || !canEdit()) { alert("Раздел открыт только на просмотр."); return; }
     var raw = editor.export().drawflow.Home.data;
-    var start = null, comms = [];
-    Object.keys(raw).forEach(function (k) {
-      var n = raw[k], d = n.data || {};
-      if (n.name === "startIncome") start = d;
-      else if (n.name === "comm") comms.push({ key: parseInt(k, 10), d: d });
-    });
-    if (!start) { alert("В цепочке нет узла Income event."); return; }
+    var startKey = null;
+    Object.keys(raw).forEach(function (k) { if (raw[k].name === "startIncome") startKey = k; });
+    if (!startKey) { alert("В цепочке нет узла Income event."); return; }
+    var start = raw[startKey].data || {};
     if (!start.t_event_comm_id) {
       alert("У Income event не выбрано событие: оно берётся из tracker.t_event_comm.");
       return;
     }
-    if (!comms.length) { alert("В цепочке нет ни одного Communication Alert."); return; }
 
-    /* Порядок шагов — по узлам холста. Drawflow нумерует их в порядке создания,
-       и это ближайшее к тому, что человек видит сверху вниз. */
-    comms.sort(function (a, b) { return a.key - b.key; });
-    var steps = comms.map(function (c) {
-      return {
-        waitTime: c.d.wait_time || "0",
-        templateId: c.d.template || "",
-        exitStep: c.d.exit_step || "",
-        active: c.d.active !== "false"
-      };
+    /* Идём ПО СТРЕЛКАМ от старта, а не по порядку создания узлов. Таймер и Step exit —
+       накопители: они задают колонки того шага, который идёт за ними. По порядку
+       создания накопитель лёг бы не на тот шаг, стоило человеку переставить блок. */
+    var seq = [], seen = {}, cur = startKey;
+    while (cur && !seen[cur]) {
+      seen[cur] = true;
+      seq.push(cur);
+      var outs = (raw[cur].outputs || {}).output_1;
+      var link = outs && outs.connections && outs.connections[0];
+      cur = link ? String(link.node) : null;
+    }
+
+    var steps = [], exitCondition = "", pendingWait = "", pendingExit = "", ignored = {};
+    seq.forEach(function (k) {
+      var n = raw[k], d = n.data || {};
+      switch (n.name) {
+        case "startIncome": break;
+        case "timer":    pendingWait = d.wait_time || "0"; break;
+        case "stepExit": pendingExit = d.event_name || ""; break;
+        case "flowExit":
+          /* Условие выхода одно на цепочку. Второй Flow exit — почти наверняка
+             ошибка, и молча взять последний хуже, чем сказать. */
+          if (exitCondition && d.event_name && d.event_name !== exitCondition) {
+            alert("Flow exit встречается дважды с разными событиями: «" + exitCondition +
+                  "» и «" + d.event_name + "». Условие выхода одно на всю цепочку.");
+            exitCondition = null;
+            return;
+          }
+          exitCondition = d.event_name || exitCondition;
+          break;
+        case "comm":
+          steps.push({
+            waitTime: pendingWait || "0",
+            templateId: d.template || "",
+            exitStep: pendingExit || "",
+            active: d.active !== "false"
+          });
+          pendingWait = ""; pendingExit = "";
+          break;
+        default:
+          if (n.name !== "startTime") ignored[NODE_TYPES[n.name] ? NODE_TYPES[n.name].label : n.name] = true;
+      }
     });
+    if (exitCondition === null) return;   // разные Flow exit — уже сказали, дальше не идём
+    if (!steps.length) { alert("В цепочке нет ни одного Communication Alert."); return; }
+
+    /* Блоки, которые движок пока не исполняет, в таблицу не уедут. Молча их проглотить
+       значило бы отдать в бой не то, что нарисовано. */
+    var lost = Object.keys(ignored);
+    if (lost.length && !confirm("Эти блоки пока не исполняются и в таблицу не уедут: " +
+        lost.join(", ") + ".\nЗавести цепочку без них?")) return;
+    if (pendingWait || pendingExit) {
+      alert("После последнего Communication Alert стоят Таймер или Step exit — им нечего задавать."
+            + " Поставьте их перед шагом.");
+      return;
+    }
     var noTpl = steps.filter(function (s) { return !s.templateId; }).length;
     if (noTpl && !confirm("Шагов без шаблона: " + noTpl + ". Такой шаг ничего не отправит. Всё равно завести?")) return;
 
@@ -1120,7 +1192,7 @@
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         eventId: start.t_event_comm_id,
-        exitCondition: start.exit_condition || "",
+        exitCondition: exitCondition || "",
         steps: steps
       })
     }).then(function (r) {
