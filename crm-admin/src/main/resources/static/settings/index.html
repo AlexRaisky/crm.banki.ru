@@ -2667,14 +2667,17 @@ window.ProcessControl = (function(){
     }
     var may = mayToggle();
     var on = !!p.enabled;
+    smsOn = on;
     host.innerHTML =
       "<h2>" + esc(p.title) + "</h2>" +
       '<div class="sub">Раскладывает текст смс в вид, который согласовывают сотовые операторы: ' +
         "переменные и ссылки заменяются на <b>%w</b>, числа на <b>%d</b>, даты и остальной текст " +
         "остаются как есть. Заполняются только пустые строки; уже заполненные не трогаются — " +
         "под ними стоят отметки согласования.</div>" +
-      '<div class="sub" style="margin-top:6px">Пишет в <b>боевую</b> таблицу. По умолчанию выключен: ' +
-        "сначала «Проверить», потом решение.</div>" +
+      '<div class="sub" style="margin-top:6px">Пишет в <b>боевую</b> таблицу, поэтому по умолчанию выключен. ' +
+        "«Проверить» показывает, что получится, и ничего не меняет. «Запустить» разрешает " +
+        "плановый прогон — он идёт раз в сутки, немедленного прохода не делает. " +
+        "Пройти по всем существующим шаблонам сейчас — «Проверить», затем «Записать в прод».</div>" +
       '<div class="card" style="margin-top:14px">' +
         '<div class="row" style="gap:14px;align-items:center;flex-wrap:wrap">' +
           '<div><div class="hint-s">Состояние</div><div style="color:' +
@@ -2698,6 +2701,8 @@ window.ProcessControl = (function(){
   /* ---- Сверка текстов смс для согласования у операторов ----
      Два шага намеренно: сначала показать, что изменится, и только потом писать.
      Запись идёт в БОЕВУЮ базу шаблонов, и «нажал и посмотрим» здесь не годится. */
+  var smsOn = false;   /* включён ли процесс — от этого зависит, предлагать ли запись */
+
   function sweepBox(html){
     var b = $("#procSweep");
     if (b) b.innerHTML = html;
@@ -2754,8 +2759,13 @@ window.ProcessControl = (function(){
         }).join("") + "</tbody></table></div>";
     }
     if (!applied && willFill > 0 && mayToggle()){
-      html += '<div style="margin-top:14px"><button class="btn accent" id="procSweepApply">' +
-        "Записать в прод (" + willFill + ")</button></div>";
+      /* Запись уважает выключатель — так же, как и на сервере. Показывать кнопку,
+         которая ответит отказом, значит предлагать наступить на грабли. */
+      html += smsOn
+        ? '<div style="margin-top:14px"><button class="btn accent" id="procSweepApply">' +
+            "Записать в прод (" + willFill + ")</button></div>"
+        : '<div class="sub" style="margin-top:14px">Процесс остановлен — записать нельзя. ' +
+            "Нажмите «Запустить» выше, если готовы.</div>";
     }
     sweepBox(html);
     var ab = $("#procSweepApply");

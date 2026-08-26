@@ -69,6 +69,14 @@ public class SmsApprovedService {
             out.put("message", "Прод-БД шаблонов не настроена — сверять нечего.");
             return out;
         }
+        /* Запись уважает выключатель, показ — нет. Выключатель здесь существует ровно
+           затем, чтобы перекрыть поток в боевую базу, и кнопка не должна его обходить:
+           иначе во время инцидента остановленный процесс всё равно туда напишет.
+           Сухой прогон при этом остаётся доступным — он ничего не меняет, а понять,
+           что происходит, при остановленном процессе нужно тем более. */
+        if (apply) {
+            control.requireEnabled(ProcessControlService.SMS_APPROVED);
+        }
         Map<String, Object> out = new LinkedHashMap<>(prod.smsApprovedSweep(apply));
         out.put("configured", true);
         return out;
