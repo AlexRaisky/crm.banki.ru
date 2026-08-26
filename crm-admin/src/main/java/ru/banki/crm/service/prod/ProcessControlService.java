@@ -35,6 +35,7 @@ public class ProcessControlService {
     public static final String ETL_NOTICE = "etl-notice";
     public static final String EVENT_IMPORT = "event-import";
     public static final String EVENT_EXPORT = "event-export";
+    public static final String SMS_APPROVED = "sms-approved";
 
     /** Сколько миллисекунд доверять прочитанному флагу, не переспрашивая базу. */
     private static final long CACHE_MS = 1000;

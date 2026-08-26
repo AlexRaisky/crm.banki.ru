@@ -353,6 +353,9 @@ public class ProdDbService {
     /** Предел операторов: не больше двадцати переменных на шаблон. */
     private static final int SMS_APPROVED_MAX_VARS = 20;
 
+    /** «Отправлено на согласование» — то, что ставим во все четыре колонки вместе с текстом. */
+    private static final String APPROVAL_REQUESTED = "R";
+
     /**
      * Завести строку согласования для sms-шаблона, если её ещё нет.
      * <p>
@@ -371,19 +374,114 @@ public class ProdDbService {
         if (!"sms".equals(channel)) return;
         String expr = String.format(SMS_APPROVED_EXPR, "t");
         String sql = "INSERT INTO " + SMS_APPROVED
-                + " (template_id, \"template\", business_communication_type)"
-                + " SELECT s.id, s.tpl, s.bct FROM ("
+                + " (template_id, \"template\", business_communication_type,"
+                + "  approved_mts, approved_megafon, approved_beeline, approved_t2)"
+                + " SELECT s.id, s.tpl, s.bct, '" + APPROVAL_REQUESTED + "', '" + APPROVAL_REQUESTED
+                + "', '" + APPROVAL_REQUESTED + "', '" + APPROVAL_REQUESTED + "' FROM ("
                 + "   SELECT t.id AS id, t.business_communication_type AS bct, " + expr + " AS tpl"
                 + "   FROM " + UnifiedTemplateService.channelTable("sms").table() + " t WHERE t.code = ?"
                 + " ) s"
                 + " WHERE s.tpl <> ''"
-                + "   AND (length(s.tpl) - length(replace(replace(s.tpl, '%w', ''), '%d', ''))) / 2 <= "
-                + SMS_APPROVED_MAX_VARS
+                + "   AND " + smsApprovedVars("s.tpl") + " <= " + SMS_APPROVED_MAX_VARS
                 + "   AND NOT EXISTS (SELECT 1 FROM " + SMS_APPROVED + " a WHERE a.template_id = s.id)";
         try (PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setLong(1, code);
             ps.executeUpdate();
         }
+    }
+
+    /** Сколько переменных в готовом тексте: и %w, и %d, по два символа каждая. */
+    private static String smsApprovedVars(String tpl) {
+        return "((length(" + tpl + ") - length(replace(replace(" + tpl + ", '%w', ''), '%d', ''))) / 2)";
+    }
+
+    /**
+     * Есть ли по строке решение оператора. Пусто и {@code R} решением не считаются:
+     * первое значит «не спрашивали», второе — «спросили, ответа нет». Всё остальное
+     * поставил человек, и трогать такую строку мы не вправе.
+     */
+    private static String smsApprovedUndecided(String a) {
+        return "replace(coalesce(" + a + ".approved_mts::text, '') || coalesce(" + a + ".approved_megafon::text, '')"
+                + " || coalesce(" + a + ".approved_beeline::text, '') || coalesce(" + a + ".approved_t2::text, ''),"
+                + " '" + APPROVAL_REQUESTED + "', '') = ''";
+    }
+
+    /**
+     * Сверка текстов согласования: добрать всё, что доставка не поймала.
+     * <p>
+     * Доставка создаёт строку в момент, когда шаблон уезжает в прод, — то есть ловит
+     * только то, что заводят и правят сейчас. Шаблоны, уехавшие до появления этого
+     * правила, и те, у кого доставка когда-то падала, остаются без текста навсегда.
+     * Этот проход их добирает.
+     *
+     * @param apply {@code false} — только посчитать и показать, ничего не записывая
+     * @return сводка: сколько по каким причинам и примеры «было → станет»
+     */
+    public Map<String, Object> smsApprovedSweep(boolean apply) throws Exception {
+        String smsTable = UnifiedTemplateService.channelTable("sms").table();
+        String expr = String.format(SMS_APPROVED_EXPR, "t");
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("applied", apply);
+
+        /* Общий источник для отчёта и для записи: строки без текста, вместе с тем,
+           во что разложится их msg_text. Выражение разложения появляется здесь один
+           раз — второй экземпляр однажды разъехался бы с первым. */
+        String src = "SELECT a.id AS aid, t.id AS tid, t.code AS code, t.msg_text AS msg,"
+                + " " + expr + " AS tpl, " + smsApprovedUndecided("a") + " AS undecided"
+                + " FROM " + SMS_APPROVED + " a"
+                + " LEFT JOIN " + smsTable + " t ON t.id = a.template_id"
+                + " WHERE coalesce(a.\"template\", '') = ''";
+
+        String reason = "CASE"
+                + " WHEN tid IS NULL THEN 'нет шаблона по template_id'"
+                + " WHEN coalesce(msg, '') = '' THEN 'у шаблона пустой msg_text'"
+                + " WHEN NOT undecided THEN 'текст пуст, но согласование проставлено'"
+                + " WHEN " + smsApprovedVars("tpl") + " > " + SMS_APPROVED_MAX_VARS
+                + "   THEN 'переменных больше двадцати'"
+                + " ELSE 'заполнится' END";
+
+        try (Connection c = ds().getConnection()) {
+            Map<String, Object> counts = new LinkedHashMap<>();
+            try (PreparedStatement ps = c.prepareStatement(
+                    "SELECT " + reason + " AS reason, count(*) AS n FROM (" + src + ") s GROUP BY 1 ORDER BY 2 DESC");
+                 ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) counts.put(rs.getString(1), rs.getLong(2));
+            }
+            out.put("counts", counts);
+
+            List<Map<String, Object>> samples = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement(
+                    "SELECT code, msg, tpl FROM (" + src + ") s"
+                    + " WHERE tid IS NOT NULL AND coalesce(msg, '') <> '' AND undecided"
+                    + "   AND " + smsApprovedVars("tpl") + " <= " + SMS_APPROVED_MAX_VARS
+                    + " ORDER BY code LIMIT 20");
+                 ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("code", rs.getLong(1));
+                    m.put("before", rs.getString(2));
+                    m.put("after", rs.getString(3));
+                    samples.add(m);
+                }
+            }
+            out.put("samples", samples);
+
+            if (!apply) {
+                return out;
+            }
+            /* Текст и R пишутся одной записью: строка согласования без отметки
+               «отправлено на согласование» значила бы «неизвестно», а не «ждём ответа». */
+            String upd = "UPDATE " + SMS_APPROVED + " a SET \"template\" = s.tpl,"
+                    + " approved_mts = ?, approved_megafon = ?, approved_beeline = ?, approved_t2 = ?"
+                    + " FROM (" + src + ") s"
+                    + " WHERE a.id = s.aid AND s.tid IS NOT NULL AND s.undecided AND s.tpl <> ''"
+                    + "   AND " + smsApprovedVars("s.tpl") + " <= " + SMS_APPROVED_MAX_VARS;
+            try (PreparedStatement ps = c.prepareStatement(upd)) {
+                for (int i = 1; i <= 4; i++) ps.setString(i, APPROVAL_REQUESTED);
+                out.put("filled", ps.executeUpdate());
+            }
+        }
+        return out;
     }
 
     /**

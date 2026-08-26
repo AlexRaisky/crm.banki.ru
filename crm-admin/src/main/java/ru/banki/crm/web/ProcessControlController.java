@@ -6,6 +6,7 @@ import ru.banki.crm.security.AccessGuard;
 import ru.banki.crm.service.Sections;
 import ru.banki.crm.service.prod.NoticeEtlService;
 import ru.banki.crm.service.prod.ProcessControlService;
+import ru.banki.crm.service.prod.SmsApprovedService;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -25,12 +26,14 @@ public class ProcessControlController {
 
     private final ProcessControlService control;
     private final NoticeEtlService etl;
+    private final SmsApprovedService smsApproved;
     private final AccessGuard access;
 
     public ProcessControlController(ProcessControlService control, NoticeEtlService etl,
-                                    AccessGuard access) {
+                                    SmsApprovedService smsApproved, AccessGuard access) {
         this.control = control;
         this.etl = etl;
+        this.smsApproved = smsApproved;
         this.access = access;
     }
 
@@ -58,5 +61,23 @@ public class ProcessControlController {
         access.requireCapability(Capability.EDIT, Sections.SET_PROCS);
         boolean enabled = Boolean.TRUE.equals(body.get("enabled"));
         return control.set(code, enabled);
+    }
+
+    /**
+     * Ручной проход сверки текстов согласования.
+     * <p>
+     * Право спрашивается по делу, а не по единому правилу раздела: сухой прогон только
+     * считает и потому доступен всем, кому виден раздел, а запись идёт в боевую базу —
+     * на неё нужно право правки.
+     */
+    @PostMapping("/sms-approved/run")
+    public Map<String, Object> runSmsApproved(@RequestParam(defaultValue = "false") boolean apply)
+            throws Exception {
+        if (apply) {
+            access.requireCapability(Capability.EDIT, Sections.SET_PROCS);
+        } else {
+            access.requireAnySection(Sections.SET_PROCS);
+        }
+        return smsApproved.run(apply);
     }
 }
