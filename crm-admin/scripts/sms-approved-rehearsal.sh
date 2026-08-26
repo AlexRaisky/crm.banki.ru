@@ -70,6 +70,11 @@ notice_psql -q -c "COPY (SELECT id, code, msg_text, business_communication_type
                          FROM notice.d_com_sms_template) TO STDOUT" </dev/null \
   | our_psql -q -c "COPY check_sms.sms FROM STDIN" || exit 1
 
+# Кто был пустым ДО заполнения. Без этой отметки наши строки и те, что приехали
+# из прода уже заполненными, в таблице не различить — а путают их постоянно.
+our_psql -q -c "CREATE TABLE check_sms.ours AS
+                SELECT id FROM check_sms.approved WHERE coalesce(\"template\", '') = ''" || exit 1
+
 echo >&2
 echo "заполняю копию тем же скриптом, что поедет в бой…" >&2
 
@@ -78,9 +83,25 @@ our_psql -v approved_table=check_sms.approved \
          -v sms_table=check_sms.sms \
          -v apply=1 < scripts/sms-approved-backfill.sql
 
+# --------------------------------------------------------------- 4. что чьё
+our_psql <<'SQL'
+\echo ''
+\echo '=== Разделение: где наша работа, а где данные из прода ==='
+SELECT CASE WHEN u.id IS NULL THEN 'приехало из прода заполненным (не трогали)'
+            ELSE 'заполнили мы' END AS "чьё",
+       count(*) AS "строк"
+FROM check_sms.approved a
+LEFT JOIN check_sms.ours u ON u.id = a.id
+WHERE coalesce(a."template", '') <> ''
+GROUP BY 1 ORDER BY 2 DESC;
+SQL
+
 echo >&2
-echo "Копия осталась в схеме check_sms нашей базы. Посмотреть:" >&2
-echo "  docker exec ${OUR_DB_CONTAINER} psql -U ${OUR_DB_USER} -d ${OUR_DB_NAME} -c 'SELECT * FROM check_sms.approved LIMIT 5'" >&2
+echo "Копия осталась в схеме check_sms нашей базы." >&2
+echo "ТОЛЬКО то, что заполнили мы:" >&2
+echo "  docker exec ${OUR_DB_CONTAINER} psql -U ${OUR_DB_USER} -d ${OUR_DB_NAME} -c 'SELECT a.template_id, a.\"template\" FROM check_sms.approved a JOIN check_sms.ours u ON u.id = a.id LIMIT 20'" >&2
+echo "То, что приехало из прода уже заполненным (мы это не трогали):" >&2
+echo "  docker exec ${OUR_DB_CONTAINER} psql -U ${OUR_DB_USER} -d ${OUR_DB_NAME} -c 'SELECT a.template_id, a.\"template\" FROM check_sms.approved a LEFT JOIN check_sms.ours u ON u.id = a.id WHERE u.id IS NULL AND length(a.\"template\") > 0 LIMIT 20'" >&2
 echo "Убрать:" >&2
 echo "  docker exec ${OUR_DB_CONTAINER} psql -U ${OUR_DB_USER} -d ${OUR_DB_NAME} -c 'DROP SCHEMA check_sms CASCADE'" >&2
 echo >&2
