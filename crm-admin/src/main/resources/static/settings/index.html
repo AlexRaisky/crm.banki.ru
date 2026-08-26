@@ -808,6 +808,8 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
             <span class="save-note" id="procMsg"></span>
           </div>
           <div id="procBox" class="empty" style="margin-top:12px">Загружаем…</div>
+          <!-- Отчёт ручного прогона сверки текстов согласования. Пустой, пока не нажали. -->
+          <div id="procSweep"></div>
         </div>
       </section>
 
@@ -2626,7 +2628,14 @@ window.ProcessControl = (function(){
         '<td style="color:' + st.cls + '">' + st.text + "</td>" +
         "<td>" + when(p.lastRunAt) + '<div class="mono">' + esc(p.lastResult || "—") + "</div></td>" +
         "<td>" + esc(p.updatedBy || "—") + '<div class="mono">' + when(p.updatedAt) + "</div></td>" +
-        '<td style="text-align:right"><button class="btn' + (p.enabled ? " ghost-danger" : " accent") +
+        '<td style="text-align:right">' +
+          /* Сверка текстов согласования — единственный процесс, который осмысленно
+             гонять руками: он идёт раз в сутки, а шаблоны заводят чаще. Прогон
+             ничего не пишет, поэтому доступен и тем, у кого нет права правки. */
+          (p.code === "sms-approved"
+            ? '<button class="btn" id="procSweepBtn" style="margin-right:8px">Проверить</button>'
+            : "") +
+          '<button class="btn' + (p.enabled ? " ghost-danger" : " accent") +
           '" data-proc="' + esc(p.code) + '" data-on="' + (p.enabled ? "0" : "1") + '"' +
           (may ? "" : " disabled") + ">" + (p.enabled ? "Остановить" : "Запустить") + "</button></td></tr>";
     });
@@ -2634,6 +2643,75 @@ window.ProcessControl = (function(){
     document.querySelectorAll("#procBox [data-proc]").forEach(function(b){
       b.onclick = function(){ toggle(b.getAttribute("data-proc"), b.getAttribute("data-on") === "1", b); };
     });
+    var sb = $("#procSweepBtn");
+    if (sb) sb.onclick = function(){ sweep(false, sb); };
+  }
+
+  /* ---- Сверка текстов смс для согласования у операторов ----
+     Два шага намеренно: сначала показать, что изменится, и только потом писать.
+     Запись идёт в БОЕВУЮ базу шаблонов, и «нажал и посмотрим» здесь не годится. */
+  function sweepBox(html){
+    var b = $("#procSweep");
+    if (b) b.innerHTML = html;
+  }
+
+  function sweep(apply, btn){
+    if (busy) return;
+    if (apply && !confirm("Записать тексты в боевую таблицу согласований?\n" +
+                          "Заполнены будут только пустые строки; уже заполненные не меняются.")) return;
+    busy = true;
+    if (btn) btn.disabled = true;
+    note(apply ? "Записываем…" : "Считаем…");
+    req("POST", "../api/admin/processes/sms-approved/run" + (apply ? "?apply=true" : ""))
+      .then(function(r){
+        busy = false;
+        if (btn) btn.disabled = false;
+        note(apply ? "Записано" : "");
+        renderSweep(r || {}, apply);
+        if (apply) load("Записано");
+      })
+      .catch(function(e){
+        busy = false;
+        if (btn) btn.disabled = false;
+        note((e && e.message) || "Прогон не удался", true);
+      });
+  }
+
+  function renderSweep(r, applied){
+    if (r.configured === false){
+      sweepBox('<div class="sub" style="margin-top:14px">' + esc(r.message || "Прод-БД не настроена") + "</div>");
+      return;
+    }
+    var counts = r.counts || {}, keys = Object.keys(counts);
+    var willFill = counts["заполнится"] || 0;
+    var html = '<h2 style="margin-top:26px">Сверка текстов согласования</h2>';
+    if (applied){
+      html += '<div class="sub">Записано строк: <b>' + (r.filled || 0) + "</b></div>";
+    }
+    html += '<div class="sub" style="margin-top:8px">Строки без текста, по причинам:</div>' +
+      '<ul class="rules" style="margin-top:6px">' +
+      (keys.length
+        ? keys.map(function(k){ return "<li>" + esc(k) + ": <b>" + counts[k] + "</b></li>"; }).join("")
+        : "<li>пустых строк нет</li>") +
+      "</ul>";
+
+    var s = r.samples || [];
+    if (s.length){
+      html += '<div class="sub" style="margin-top:12px">Как разложится (первые ' + s.length + "):</div>" +
+        '<div style="overflow-x:auto"><table style="margin-top:6px"><thead><tr>' +
+        "<th>Код</th><th>Было</th><th>Станет</th></tr></thead><tbody>" +
+        s.map(function(x){
+          return '<tr><td class="mono">' + esc(x.code) + "</td><td>" + esc(x.before) +
+            '</td><td class="mono">' + esc(x.after) + "</td></tr>";
+        }).join("") + "</tbody></table></div>";
+    }
+    if (!applied && willFill > 0 && mayToggle()){
+      html += '<div style="margin-top:14px"><button class="btn accent" id="procSweepApply">' +
+        "Записать в прод (" + willFill + ")</button></div>";
+    }
+    sweepBox(html);
+    var ab = $("#procSweepApply");
+    if (ab) ab.onclick = function(){ sweep(true, ab); };
   }
 
   function toggle(code, enable, btn){
