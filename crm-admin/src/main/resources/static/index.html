@@ -18,7 +18,7 @@
 <!-- Drawflow: интерактивная блок-схема цепочек (вендорен локально — без зависимости от CDN) -->
 <link rel="stylesheet" href="drawflow.min.css">
 <script src="drawflow.min.js"></script>
-<script src="journeys.js?v=5" defer></script>
+<script src="journeys.js?v=6" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2372,6 +2372,9 @@
         </select>
         <span class="jr-sep"></span>
         <button type="button" class="jr-btn jr-new"     onclick="jrNew()"><span data-i18n="Новая">Новая</span></button>
+        <!-- Готовая цепочка на холст: посмотреть, как складываются блоки. Ничего
+             не сохраняет и никуда не пишет — это черновик, как «Новая». -->
+        <button type="button" class="jr-btn" onclick="jrExample()"><span data-i18n="Пример">Пример</span></button>
         <button type="button" class="jr-btn jr-save"    onclick="jrSave()"><span data-i18n="Сохранить">Сохранить</span></button>
         <button type="button" class="jr-btn jr-preview" onclick="jrPreview()"><span data-i18n="Предпросмотр">Предпросмотр</span></button>
         <!-- Заведение цепочки в commapi.events_chain: строка на шаг. Отдельно от

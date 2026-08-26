@@ -1208,6 +1208,53 @@
     });
   };
 
+  /* Пример цепочки — та самая «брошенная анкета»: событие, через 15 минут первое
+     письмо, через сутки второе, через неделю третье; всю цепочку обрывает оформление
+     вклада, второй шаг снимается кликом.
+
+     Кладём на холст как черновик и ничего не сохраняем: пример нужен, чтобы понять,
+     как складываются блоки, а не чтобы завестись в проде. Событие намеренно НЕ
+     выбрано — его выбирают из tracker.t_event_comm того контура, где открыли панель,
+     и подставить сюда чужой id значило бы предложить завести цепочку не тому. */
+  window.jrExample = function () {
+    if (!editor) { alert("Холст не готов."); return; }
+    if (!canEdit()) { alert("Раздел открыт только на просмотр."); return; }
+    var X = [40, 300, 560, 820], Y = [40, 210, 380];
+    function n(id, type, col, row, props, extra) {
+      return Object.assign({ id: id, type: type, posX: X[col], posY: Y[row], props: props || {} }, extra || {});
+    }
+    renderJourney({
+      id: null,
+      name: "Пример: брошенная анкета по вкладу",
+      kind: "online",
+      nodes: [
+        n("e1", "startIncome", 0, 0),
+        n("e2", "flowExit",    1, 0, { event_name: "deposit_open" }),
+        n("e3", "timer",       2, 0, { wait_time: "15" }),
+        n("e4", "comm",        3, 0, {}, { channel: "sms", templateCode: "3253", active: true,
+                                           note: "Первое касание — через 15 минут после события" }),
+        n("e5", "timer",       0, 1, { wait_time: "1440" }),
+        n("e6", "stepExit",    1, 1, { event_name: "deposit_click" }),
+        n("e7", "comm",        2, 1, {}, { channel: "sms", templateCode: "3270", active: true,
+                                           note: "Второе касание — через сутки; снимается, если человек кликнул" }),
+        n("e8", "timer",       0, 2, { wait_time: "10080" }),
+        n("e9", "comm",        1, 2, {}, { channel: "sms", templateCode: "3272", active: true,
+                                           note: "Третье касание — через неделю" })
+      ],
+      edges: [
+        { from: "e1", to: "e2" }, { from: "e2", to: "e3" }, { from: "e3", to: "e4" },
+        { from: "e4", to: "e5" }, { from: "e5", to: "e6" }, { from: "e6", to: "e7" },
+        { from: "e7", to: "e8" }, { from: "e8", to: "e9" }
+      ]
+    });
+    /* currentId сбрасываем: «Сохранить» должен создать новую цепочку, а не перезаписать
+       ту, что была открыта до нажатия «Пример». */
+    currentId = null;
+    document.getElementById("jrSelect").value = "";
+    alert("Пример разложен на холсте. Осталось выбрать событие в блоке Income event —"
+          + " оно берётся из tracker.t_event_comm этого контура.");
+  };
+
   window.jrNew = function () {
     if (!editor) return;
     document.getElementById("jrSelect").value = "";
