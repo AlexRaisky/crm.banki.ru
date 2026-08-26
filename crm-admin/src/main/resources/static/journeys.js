@@ -708,6 +708,23 @@
     return trackerEventsP;
   }
 
+  /* Один путь на все кнопки: поднять холст, если он ещё не поднят, и сказать
+     внятно, если не вышло. Раньше каждая кнопка жаловалась по-своему, а «Пример»
+     вообще не пробовал повторить — и «Холст не готов» было тупиком. */
+  function ensureEditor() {
+    if (editor) return true;
+    if (typeof window.initJourneysSection === "function") window.initJourneysSection();
+    if (editor) return true;
+    var host = document.getElementById("jrCanvas");
+    var why = host && host.textContent && host.textContent.trim();
+    alert(why
+      ? "Холст не готов, конструктор не запустился. Причина: " + why
+      : "Холст не готов: конструктор не запустился, и причина на холсте не написана."
+        + " Похоже, initJourneysSection вообще не вызывался — откройте раздел из меню,"
+        + " а не по прямой ссылке, и обновите страницу с Ctrl+F5.");
+    return false;
+  }
+
   function editControl(f, value) {
     var el;
     switch (f.kind) {
@@ -1089,17 +1106,7 @@
      нажатие хуже любой ошибки: человек жмёт ещё раз и решает, что сломан весь раздел. */
   window.jrAddNode = function (type) {
     if (!NODE_TYPES[type]) { alert("Неизвестный тип узла: " + type); return; }
-    if (!editor) {
-      /* Пробуем поднять холст прямо сейчас: раздел могли открыть в обход навигации,
-         и тогда initJourneysSection просто не вызывался. Если не выйдет — причина
-         останется на самом холсте, и она конкретнее любого текста здесь. */
-      if (typeof window.initJourneysSection === "function") window.initJourneysSection();
-      if (!editor) {
-        alert("Холст не готов: конструктор не запустился. Причина написана на самом"
-              + " холсте; если там пусто — обновите страницу.");
-        return;
-      }
-    }
+    if (!ensureEditor()) return;
     if (!canEdit()) {
       alert("Раздел открыт только на просмотр: нет права на правку.");
       return;
@@ -1117,7 +1124,8 @@
      Проверки отдельными строками не становятся: exit_condition и exit_step —
      колонки той же строки, что и шаблон. Один шаг = одна строка. */
   window.jrChainCreate = function () {
-    if (!editor || !canEdit()) { alert("Раздел открыт только на просмотр."); return; }
+    if (!ensureEditor()) return;
+    if (!canEdit()) { alert("Раздел открыт только на просмотр."); return; }
     var raw = editor.export().drawflow.Home.data;
     var startKey = null;
     Object.keys(raw).forEach(function (k) { if (raw[k].name === "startIncome") startKey = k; });
@@ -1217,7 +1225,7 @@
      выбрано — его выбирают из tracker.t_event_comm того контура, где открыли панель,
      и подставить сюда чужой id значило бы предложить завести цепочку не тому. */
   window.jrExample = function () {
-    if (!editor) { alert("Холст не готов."); return; }
+    if (!ensureEditor()) return;
     if (!canEdit()) { alert("Раздел открыт только на просмотр."); return; }
     var X = [40, 300, 560, 820], Y = [40, 210, 380];
     function n(id, type, col, row, props, extra) {
