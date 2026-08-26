@@ -544,6 +544,22 @@
         <span class="ev-msg" id="evoMsg"></span>
       </div>
       <div id="evoResult"></div>
+
+      <!-- ===== Цепочка онлайн-события =====
+           Рисуется по commapi.events_chain в crmdb — то есть по тому, что реально
+           исполняется, а не по нашей модели. Только чтение: второй способ менять
+           цепочку означал бы два источника истины. -->
+      <div class="ev-chain" id="evChain">
+        <h2>Цепочка</h2>
+        <p class="sub">Что происходит после прихода события: сколько ждём, каким шаблоном отвечаем
+          и какое событие обрывает шаг или весь поток. Читается из <code>commapi.events_chain</code>.</p>
+        <div class="row" style="gap:10px;align-items:center;margin:14px 0">
+          <select id="evChainPick" class="ev-pick"></select>
+          <button class="ev-btn ghost" id="evChainReload" type="button">Обновить</button>
+          <span class="ev-msg" id="evChainMsg"></span>
+        </div>
+        <div id="evChainBody"></div>
+      </div>
     </section>
 
     <!-- ===== События → Событие по расписанию ===== -->
@@ -2467,6 +2483,7 @@
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
 <script src="js/events.js"></script>
+<script src="js/event-chain.js"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->
 <!-- фиксированный попап подсказок полей (showFieldHelp): не обрезается краями карточек -->

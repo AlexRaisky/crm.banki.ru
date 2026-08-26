@@ -950,6 +950,8 @@ function openSection(sid, cid){
   if (sid === "journeys" && typeof initJourneysSection === "function") initJourneysSection();
   /* завод событий: справочники тянутся при первом открытии формы, не на старте панели */
   if (target.view === "sec-event-online" && typeof initEventOnlineSection === "function") initEventOnlineSection();
+  /* цепочка читается из чужой базы (crmdb) — тянем при первом показе раздела */
+  if (target.view === "sec-event-online" && window.EventChain) window.EventChain.open();
   if (target.view === "sec-event-offline" && typeof initEventOfflineSection === "function") initEventOfflineSection();
   if (target.view === "sec-event-list" && typeof initEventListSection === "function") initEventListSection();
   if (target.view === "sec-deviations") setTimeout(() => {

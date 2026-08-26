@@ -14,6 +14,7 @@ import ru.banki.crm.dto.EventFormDtos.OfflineEventForm;
 import ru.banki.crm.dto.EventFormDtos.OnlineEventForm;
 import ru.banki.crm.security.AccessGuard;
 import ru.banki.crm.service.Sections;
+import ru.banki.crm.service.flow.EventChainService;
 import ru.banki.crm.service.flow.EventFormService;
 import ru.banki.crm.service.flow.EventListService;
 import ru.banki.crm.service.prod.EventExportService;
@@ -40,18 +41,38 @@ public class EventController {
     private final EventExportService export;
     private final EventImportService importer;
     private final EventListService catalog;
+    private final EventChainService chains;
     private final AccessGuard access;
     private final ProcessControlService control;
 
     public EventController(EventFormService service, EventExportService export,
                            EventImportService importer, EventListService catalog,
-                           AccessGuard access, ProcessControlService control) {
+                           EventChainService chains, AccessGuard access,
+                           ProcessControlService control) {
         this.service = service;
         this.export = export;
         this.importer = importer;
         this.catalog = catalog;
+        this.chains = chains;
         this.access = access;
         this.control = control;
+    }
+
+    /**
+     * Цепочки онлайн-событий — то, что реально исполняется: commapi.events_chain в crmdb.
+     * Только чтение: заводят и правят цепочки не здесь, и второй способ их менять
+     * означал бы два источника истины.
+     */
+    @GetMapping("/chains")
+    public List<Map<String, Object>> chains() {
+        access.requireAnySection(Sections.EV_ONLINE);
+        return chains.list();
+    }
+
+    @GetMapping("/chains/{id}")
+    public Map<String, Object> chain(@PathVariable long id) {
+        access.requireAnySection(Sections.EV_ONLINE);
+        return chains.chain(id);
     }
 
     @GetMapping("/dictionaries")

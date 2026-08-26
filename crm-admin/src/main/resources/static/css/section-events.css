@@ -88,4 +88,45 @@
 
   .ev-warn{border:1px solid var(--amber,#f5a524);border-radius:10px;color:var(--amber,#f5a524);
     font-size:12.5px;margin-top:12px;padding:10px 12px}
+
+  /* ---------- цепочка онлайн-события ----------
+     Рисуется по commapi.events_chain. Раскладка повторяет то, как её рисуют на
+     бумаге: шаги в строку, а условие выхода — полосой под всеми сразу, потому что
+     оно обрывает весь поток, а не один шаг. */
+  .ev-chain{border-top:1px solid var(--line);margin-top:34px;padding-top:22px}
+  .ev-chain h2{font-size:19px;font-weight:700;letter-spacing:-.01em;margin:0}
+  .ev-pick{background:var(--card);border:1px solid var(--line);border-radius:9px;color:var(--ink);
+    font-family:var(--sans);font-size:13px;max-width:520px;padding:8px 10px}
+  .ev-pick:disabled{opacity:.55}
+
+  /* Длинная цепочка прокручивается внутри себя: страница вбок ехать не должна. */
+  .evc-scroll{overflow-x:auto;padding-bottom:6px}
+  .evc-flow{align-items:stretch;display:flex;gap:8px;min-width:max-content}
+  .evc-node{background:var(--card);border:1px solid var(--line);border-radius:11px;
+    border-top:2px solid var(--line);display:flex;flex-direction:column;gap:3px;
+    min-width:170px;padding:11px 13px}
+  .evc-node .evc-l{color:var(--faint);font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase}
+  .evc-node .evc-v{font-size:14.5px;font-weight:600}
+  .evc-node .evc-s{color:var(--dim);font-size:11.5px}
+  .evc-node.start{border-top-color:var(--amber,#f5a524)}
+  .evc-node.send{border-top-color:var(--green)}
+  .evc-node.wait{border-top-color:var(--line)}
+  .evc-node.off{border-top-color:var(--faint);opacity:.6}
+  /* Шаг без шаблона ничего не отправит — это видно цветом, а не только подписью. */
+  .evc-node.bad{border-top-color:var(--coral);border-color:var(--coral)}
+  .evc-arrow{align-items:center;color:var(--faint);display:flex;flex:0 0 auto;font-size:15px}
+
+  .evc-band{border:1px dashed var(--coral);border-radius:11px;background:var(--coral-bg);
+    display:flex;flex-direction:column;gap:2px;margin-top:14px;padding:11px 14px}
+  .evc-band .evc-l{color:var(--coral);font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase}
+  .evc-band .evc-v{font-size:14.5px;font-weight:600}
+  .evc-band .evc-s{color:var(--dim);font-size:11.5px}
+  /* Условия выхода нет — это не ошибка, но и не мелочь: цепочку не обрывает ничего. */
+  .evc-band.none{border-color:var(--line);background:transparent}
+  .evc-band.none .evc-l{color:var(--faint)}
+  .evc-band.none .evc-v{color:var(--dim);font-weight:500}
+
+  .evc-empty{color:var(--faint);font-size:13px;padding:14px 0}
 }
