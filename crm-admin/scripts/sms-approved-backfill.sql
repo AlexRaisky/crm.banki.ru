@@ -74,6 +74,32 @@ CREATE FUNCTION pg_temp.sms_vars(tpl text) RETURNS int AS $fn$
     SELECT ((length($1) - length(replace(replace($1, '%w', ''), '%d', ''))) / 2)::int
 $fn$ LANGUAGE sql IMMUTABLE;
 
+-- Режим проверки одного шаблона: bash scripts/notice-psql.sh … -v probe=273
+-- Показывает, что разложение делает с конкретным текстом, и ничего больше.
+\if :{?probe}
+\echo ''
+\echo '=== Проверка одного шаблона ==='
+
+SELECT t.id, t.code,
+       t.msg_text                                     AS "было",
+       pg_temp.sms_tpl(t.msg_text)                    AS "станет",
+       (pg_temp.sms_tpl(t.msg_text) = t.msg_text)     AS "не изменилось",
+       pg_temp.sms_vars(pg_temp.sms_tpl(t.msg_text))  AS "переменных"
+FROM :sms_table t
+WHERE t.code = :probe OR t.id = :probe;
+
+\echo ''
+\echo 'Это только разложение исходного текста. Что сейчас лежит в таблице согласований:'
+
+SELECT a.template_id,
+       coalesce(a."template", '') = '' AS "пусто",
+       a."template"                    AS "лежит сейчас"
+FROM :approved_table a
+JOIN :sms_table t ON t.id = a.template_id
+WHERE t.code = :probe OR t.id = :probe;
+
+\else
+
 \echo ''
 \echo '=== 1. Что будет заполнено (первые 40 строк) ==='
 
@@ -149,4 +175,6 @@ SELECT count(*) FROM :approved_table WHERE coalesce("template", '') = '';
 \else
 \echo ''
 \echo 'Это сухой прогон. Чтобы применить, повтори с  -v apply=1'
+\endif
+
 \endif
