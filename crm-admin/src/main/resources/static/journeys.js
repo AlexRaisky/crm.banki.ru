@@ -40,18 +40,13 @@
         { k: "system",              l: "Система",            kind: "text", ro: true },
         /* Условие выхода обрывает ВСЮ цепочку, поэтому живёт на старте, а не на шаге:
            на шаге оно читалось бы как «этот шаг и обрывает». */
-        { k: "exit_condition",      l: "Условие выхода (обрывает всю цепочку)", kind: "text" },
-        { k: "notify_channel",      l: "Канал (notify)",     kind: "select", opts: NOTIFY_CHANNELS },
-        { k: "sub_channel",         l: "Sub channel",        kind: "text" },
-        { k: "platform",            l: "Платформа",          kind: "text" },
-        { k: "group_event_descr",   l: "Группа событий",     kind: "text" },
-        { k: "send_delay",          l: "Задержка (send_delay)", kind: "number" },
-        { k: "life_time",           l: "Life time",          kind: "number" },
-        { k: "allow_ml",            l: "Allow ML",           kind: "bool", def: "false" },
-        { k: "definition_key",      l: "Definition key",     kind: "select", opts: DEFINITION_KEYS },
-        { k: "business_key_prefix", l: "Business key prefix", kind: "select", opts: BUSINESS_KEY_PREFIXES },
-        /* активность события: раньше в прод всегда уезжало is_active = true */
-        { k: "is_active",           l: "Событие активно",    kind: "bool", def: "true" }
+        { k: "exit_condition",      l: "Условие выхода (обрывает всю цепочку)", kind: "text" }
+        /* Полей, описывающих КАК завести событие, здесь больше нет: канал, sub channel,
+           платформа, группа, send_delay, life time, allow ML, definition key, business
+           key prefix. Событие теперь не заводится узлом, а выбирается из уже заведённых
+           в tracker.t_event_comm — и все эти параметры у него свои. Оставить их значило
+           бы показывать поля, которые ни на что не влияют, а заполненные ещё и врут:
+           человек правит канал, а у события в трекере остаётся прежний. */
       ]
     },
     startTime: {
