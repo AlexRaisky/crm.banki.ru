@@ -619,6 +619,12 @@
   function applyReadonly() {
     if (canEdit()) return;
     editor.editor_mode = "fixed"; // канву двигать можно, редактировать нельзя
+    /* Кнопки тулбокса гасим сразу: кликабельная кнопка, которая ничего не делает,
+       читается как поломка, а не как «вам сюда нельзя». */
+    document.querySelectorAll("#sec-journeys .jr-tb-item").forEach(function (b) {
+      b.disabled = true;
+      b.title = "Раздел открыт только на просмотр";
+    });
   }
 
   // ---------------------------------------------------------------- список цепочек
@@ -982,8 +988,20 @@
   };
 
   // ---------------------------------------------------------------- действия тулбокса/тулбара
+  /* Раньше кнопка молча ничего не делала при трёх разных причинах — и понять, что
+     именно не так, было нельзя ни по экрану, ни по консоли. Молчание в ответ на
+     нажатие хуже любой ошибки: человек жмёт ещё раз и решает, что сломан весь раздел. */
   window.jrAddNode = function (type) {
-    if (!editor || !canEdit() || !NODE_TYPES[type]) return;
+    if (!NODE_TYPES[type]) { alert("Неизвестный тип узла: " + type); return; }
+    if (!editor) {
+      alert("Холст не готов: конструктор не инициализировался. Обычно это значит,"
+            + " что не загрузился drawflow.min.js — обновите страницу.");
+      return;
+    }
+    if (!canEdit()) {
+      alert("Раздел открыт только на просмотр: нет права на правку.");
+      return;
+    }
     var host = document.getElementById("jrCanvas");
     var x = (host.clientWidth / 2 - editor.canvas_x) / editor.zoom - 115 + (Math.random() * 60 - 30);
     var y = (host.clientHeight / 2 - editor.canvas_y) / editor.zoom - 90 + (Math.random() * 60 - 30);
