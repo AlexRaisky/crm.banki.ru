@@ -6,85 +6,121 @@
 -- текст под проставленным согласованием значило бы выдать за согласованное то, чего
 -- оператор не видел.
 --
--- Разложение — те же две замены, что и в ProdDbService.SMS_APPROVED_EXPR. Меняешь
--- здесь — меняй и там, иначе доливка и заведение новых шаблонов дадут операторам
--- два разных текста под одним согласованием.
---
---   ##любая_переменная##      -> %w
---   banki.ru/q/XXXX           -> banki.ru/q/%w
---
--- Правила (МегаФон через МТС) запрещают %w+ и две групповые переменные подряд —
--- нарушить нечем: выпускаем только одиночные %w. Остаётся предел в двадцать
--- переменных на шаблон: такие строки пропускаем, их пишет человек.
+-- Тот же файл гоняет репетиция (scripts/sms-approved-rehearsal.sh) — по копиям
+-- таблиц в нашей базе. Поэтому имена таблиц вынесены в переменные: один скрипт,
+-- одно выражение, и репетиция проверяет ровно то, что потом поедет в бой.
 --
 -- Запуск:
---   сухой прогон   psql -h <host> -U <user> -d notice -f scripts/sms-approved-backfill.sql
---   применение     psql -h <host> -U <user> -d notice -v apply=1 -f scripts/sms-approved-backfill.sql
+--   сухой прогон   bash scripts/notice-psql.sh scripts/sms-approved-backfill.sql
+--   применение     bash scripts/notice-psql.sh scripts/sms-approved-backfill.sql -v apply=1
 
 \set ON_ERROR_STOP on
+
+\if :{?approved_table} \else \set approved_table 'notice.d_com_sms_approved_template' \endif
+\if :{?sms_table}      \else \set sms_table      'notice.d_com_sms_template'          \endif
+
+-- --------------------------------------------------------------------------
+-- Разложение — временная функция, а не выражение, скопированное в каждый запрос:
+-- ниже оно нужно пять раз, и пять копий однажды разъехались бы. Функция живёт
+-- в pg_temp, то есть только внутри этого соединения: в базе после выхода ничего
+-- не остаётся, и особых прав на её создание не нужно.
+--
+-- Три замены, и порядок здесь несущий.
+--
+--   1) ##любая_переменная##  -> %w
+--      В значения переменных не смотрим: по имени содержимое не угадать, а %w
+--      покрывает и буквы, и цифры, и спецсимволы, то есть верен в любом случае.
+--
+--   2) ссылка целиком        -> %w
+--      Ссылкой считается и https://…, и www…, и голый домен с путём вида
+--      banki.ru/q/32RhjA8. Хвост пути обязан кончаться буквой, цифрой или слешем —
+--      иначе точка в конце предложения уезжала бы внутрь переменной.
+--      Ссылки идут ДО чисел: иначе цифры внутри адреса стали бы %d и ссылка
+--      перестала бы опознаваться.
+--
+--   3) числа, кроме дат      -> %d
+--      Дату отсекают ограничители: числу нельзя стоять сразу после цифры, точки
+--      или дефиса и нельзя иметь такую же группу после себя. Поэтому 12.05.2026
+--      и 2026-05-12 остаются как есть, а 1500 и 4821 становятся %d.
+--      Цена решения: сумма с точкой как разделителем (1500.50) тоже принята за
+--      дату и останется текстом. В русских смс разделитель обычно запятая,
+--      а 1500,50 разбирается правильно.
+--
+-- Выпускаем ТОЛЬКО одиночные %w и %d — ни %w+, ни %w{1,n}, ни %d+. Поэтому два
+-- запрета операторов (на %w+ и на две групповые переменные подряд) нарушить нечем,
+-- и остаётся один предел: не больше двадцати переменных на шаблон.
+--
+-- Второй экземпляр этого выражения живёт в ProdDbService.SMS_APPROVED_EXPR — он
+-- заполняет строку при заведении нового шаблона. Менять их можно только вместе.
+-- --------------------------------------------------------------------------
+
+CREATE FUNCTION pg_temp.sms_tpl(msg text) RETURNS text AS $fn$
+    SELECT regexp_replace(
+               regexp_replace(
+                   regexp_replace(coalesce($1, ''),
+                       '##[A-Za-z0-9_]+##', '%w', 'g'),
+                   '(https?://)?(www\.)?[A-Za-z0-9][A-Za-z0-9-]*\.(ru|com|net|org|su|рф)(/[^[:space:]]*[A-Za-z0-9/])?', '%w', 'g'),
+               '(?<![0-9.-])[0-9]+(,[0-9]+)?(?![0-9]*[.-][0-9])', '%d', 'g')
+$fn$ LANGUAGE sql IMMUTABLE;
+
+-- Сколько переменных вышло: и %w, и %d, по два символа каждая.
+CREATE FUNCTION pg_temp.sms_vars(tpl text) RETURNS int AS $fn$
+    SELECT ((length($1) - length(replace(replace($1, '%w', ''), '%d', ''))) / 2)::int
+$fn$ LANGUAGE sql IMMUTABLE;
 
 \echo ''
 \echo '=== 1. Что будет заполнено (первые 40 строк) ==='
 
-WITH src AS (
-    SELECT a.id,
-           a.template_id,
-           t.code,
-           t.msg_text,
-           regexp_replace(
-               regexp_replace(coalesce(t.msg_text, ''), '##[A-Za-z0-9_]+##', '%w', 'g'),
-               '(banki\.ru/q/)[A-Za-z0-9]+', '\1%w', 'g') AS tpl
-    FROM notice.d_com_sms_approved_template a
-    JOIN notice.d_com_sms_template t ON t.id = a.template_id
-    WHERE coalesce(a."template", '') = ''
-)
-SELECT code,
-       left(msg_text, 70) AS "было",
-       left(tpl, 70)      AS "станет"
-FROM src
-WHERE tpl <> ''
-  AND (length(tpl) - length(replace(tpl, '%w', ''))) / 2 <= 20
-ORDER BY code
+SELECT t.code,
+       left(t.msg_text, 66)                 AS "было",
+       left(pg_temp.sms_tpl(t.msg_text), 66) AS "станет"
+FROM :approved_table a
+JOIN :sms_table t ON t.id = a.template_id
+WHERE coalesce(a."template", '') = ''
+  AND pg_temp.sms_tpl(t.msg_text) <> ''
+  AND pg_temp.sms_vars(pg_temp.sms_tpl(t.msg_text)) <= 20
+ORDER BY t.code
 LIMIT 40;
 
 \echo ''
 \echo '=== 2. Пропускаем: переменных больше двадцати (пишет человек) ==='
 
-WITH src AS (
-    SELECT t.code,
-           regexp_replace(
-               regexp_replace(coalesce(t.msg_text, ''), '##[A-Za-z0-9_]+##', '%w', 'g'),
-               '(banki\.ru/q/)[A-Za-z0-9]+', '\1%w', 'g') AS tpl
-    FROM notice.d_com_sms_approved_template a
-    JOIN notice.d_com_sms_template t ON t.id = a.template_id
-    WHERE coalesce(a."template", '') = ''
-)
-SELECT code, (length(tpl) - length(replace(tpl, '%w', ''))) / 2 AS "переменных", left(tpl, 90) AS "текст"
-FROM src
-WHERE (length(tpl) - length(replace(tpl, '%w', ''))) / 2 > 20
+SELECT t.code,
+       pg_temp.sms_vars(pg_temp.sms_tpl(t.msg_text)) AS "переменных",
+       left(pg_temp.sms_tpl(t.msg_text), 90)          AS "текст"
+FROM :approved_table a
+JOIN :sms_table t ON t.id = a.template_id
+WHERE coalesce(a."template", '') = ''
+  AND pg_temp.sms_vars(pg_temp.sms_tpl(t.msg_text)) > 20
 ORDER BY 2 DESC;
 
 \echo ''
-\echo '=== 3. Требуют глаз: в тексте есть знак процента ==='
-\echo '    Это единственное место, где литерал совпадает с синтаксисом переменной.'
+\echo '=== 3. Требуют глаз: знак процента в тексте ==='
+\echo '    единственное место, где литерал совпадает с синтаксисом переменной'
 
 SELECT t.code, left(t.msg_text, 90) AS "текст"
-FROM notice.d_com_sms_approved_template a
-JOIN notice.d_com_sms_template t ON t.id = a.template_id
+FROM :approved_table a
+JOIN :sms_table t ON t.id = a.template_id
 WHERE coalesce(a."template", '') = ''
   AND t.msg_text LIKE '%\%%'
-ORDER BY t.code;
+ORDER BY t.code
+LIMIT 20;
 
 \echo ''
-\echo '=== 4. Сводка ==='
+\echo '=== 4. Что останется пустым и почему ==='
 
-SELECT count(*)                                                          AS "пустых всего",
-       count(*) FILTER (WHERE coalesce(t.msg_text, '') = '')             AS "без текста",
-       count(*) FILTER (WHERE t.msg_text LIKE '%##%')                    AS "с переменными",
-       count(*) FILTER (WHERE t.msg_text LIKE '%banki.ru/q/%')           AS "с короткой ссылкой"
-FROM notice.d_com_sms_approved_template a
-JOIN notice.d_com_sms_template t ON t.id = a.template_id
-WHERE coalesce(a."template", '') = '';
+SELECT CASE
+         WHEN t.id IS NULL                                             THEN 'нет шаблона по template_id'
+         WHEN coalesce(t.msg_text, '') = ''                            THEN 'у шаблона пустой msg_text'
+         WHEN pg_temp.sms_vars(pg_temp.sms_tpl(t.msg_text)) > 20       THEN 'переменных больше двадцати'
+         ELSE 'заполнится'
+       END AS "причина",
+       count(*) AS "строк"
+FROM :approved_table a
+LEFT JOIN :sms_table t ON t.id = a.template_id
+WHERE coalesce(a."template", '') = ''
+GROUP BY 1
+ORDER BY 2 DESC;
 
 \if :{?apply}
 \echo ''
@@ -92,25 +128,18 @@ WHERE coalesce(a."template", '') = '';
 
 BEGIN;
 
-UPDATE notice.d_com_sms_approved_template a
-SET "template" = s.tpl
-FROM (
-    SELECT a2.id,
-           regexp_replace(
-               regexp_replace(coalesce(t.msg_text, ''), '##[A-Za-z0-9_]+##', '%w', 'g'),
-               '(banki\.ru/q/)[A-Za-z0-9]+', '\1%w', 'g') AS tpl
-    FROM notice.d_com_sms_approved_template a2
-    JOIN notice.d_com_sms_template t ON t.id = a2.template_id
-    WHERE coalesce(a2."template", '') = ''
-) s
-WHERE a.id = s.id
-  AND s.tpl <> ''
-  AND (length(s.tpl) - length(replace(s.tpl, '%w', ''))) / 2 <= 20;
+UPDATE :approved_table a
+SET "template" = pg_temp.sms_tpl(t.msg_text)
+FROM :sms_table t
+WHERE t.id = a.template_id
+  AND coalesce(a."template", '') = ''
+  AND pg_temp.sms_tpl(t.msg_text) <> ''
+  AND pg_temp.sms_vars(pg_temp.sms_tpl(t.msg_text)) <= 20;
 
 COMMIT;
 
 \echo 'Готово. Осталось пустых:'
-SELECT count(*) FROM notice.d_com_sms_approved_template WHERE coalesce("template", '') = '';
+SELECT count(*) FROM :approved_table WHERE coalesce("template", '') = '';
 \else
 \echo ''
 \echo 'Это сухой прогон. Чтобы применить, повтори с  -v apply=1'

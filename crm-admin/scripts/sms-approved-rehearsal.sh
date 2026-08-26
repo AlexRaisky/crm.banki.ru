@@ -8,8 +8,10 @@
 # а «оператор увидел не то». Проверять на выдуманных текстах бессмысленно: вся
 # сложность как раз в том, что реально пишут в смс.
 #
-# Поэтому: обе таблицы читаются из notice (только SELECT), кладутся в схему
-# check_sms НАШЕЙ базы, и заполнение прогоняется уже там. В notice не уходит ничего.
+# Обе таблицы читаются из notice (только SELECT), кладутся в схему check_sms НАШЕЙ
+# базы, и по копиям запускается ТОТ ЖЕ scripts/sms-approved-backfill.sql, что потом
+# поедет в бой, — с подменёнными именами таблиц. Свою копию логики репетиция не
+# держит намеренно: репетиция по другому коду ничего не доказывает.
 #
 # Схема check_sms каждый раз пересоздаётся — это черновик, а не данные.
 #
@@ -65,63 +67,13 @@ notice_psql -q -c "COPY (SELECT id, code, msg_text, business_communication_type
                          FROM notice.d_com_sms_template) TO STDOUT" </dev/null \
   | our_psql -q -c "COPY check_sms.sms FROM STDIN" || exit 1
 
+echo >&2
+echo "заполняю копию тем же скриптом, что поедет в бой…" >&2
+
 # --------------------------------------------------------------- 3. заполнение копии
-# Выражение — то же, что в ProdDbService.SMS_APPROVED_EXPR и в
-# scripts/sms-approved-backfill.sql. Если оно здесь другое — репетиция врёт.
-our_psql <<'SQL'
-\echo ''
-\echo '=== Что в копии до заполнения ==='
-SELECT count(*) AS "строк всего",
-       count(*) FILTER (WHERE coalesce("template", '') = '') AS "с пустым текстом"
-FROM check_sms.approved;
-
-UPDATE check_sms.approved a
-SET "template" = s.tpl
-FROM (
-    SELECT a2.id,
-           regexp_replace(
-               regexp_replace(coalesce(t.msg_text, ''), '##[A-Za-z0-9_]+##', '%w', 'g'),
-               '(banki\.ru/q/)[A-Za-z0-9]+', '\1%w', 'g') AS tpl
-    FROM check_sms.approved a2
-    JOIN check_sms.sms t ON t.id = a2.template_id
-    WHERE coalesce(a2."template", '') = ''
-) s
-WHERE a.id = s.id
-  AND s.tpl <> ''
-  AND (length(s.tpl) - length(replace(s.tpl, '%w', ''))) / 2 <= 20;
-
-\echo ''
-\echo '=== Что получилось (20 строк с переменными) ==='
-SELECT t.code, left(t.msg_text, 62) AS "было", left(a."template", 62) AS "стало"
-FROM check_sms.approved a JOIN check_sms.sms t ON t.id = a.template_id
-WHERE a."template" LIKE '%\%w%'
-ORDER BY t.code LIMIT 20;
-
-\echo ''
-\echo '=== Осталось пустым и почему ==='
-SELECT CASE
-         WHEN coalesce(t.id, 0) = 0                                  THEN 'нет шаблона по template_id'
-         WHEN coalesce(t.msg_text, '') = ''                          THEN 'у шаблона пустой msg_text'
-         ELSE 'переменных больше двадцати'
-       END AS "причина",
-       count(*) AS "строк"
-FROM check_sms.approved a LEFT JOIN check_sms.sms t ON t.id = a.template_id
-WHERE coalesce(a."template", '') = ''
-GROUP BY 1 ORDER BY 2 DESC;
-
-\echo ''
-\echo '=== Требуют глаз: знак процента в тексте ==='
-\echo '    единственное место, где литерал совпадает с синтаксисом переменной'
-SELECT t.code, left(t.msg_text, 80) AS "текст"
-FROM check_sms.approved a JOIN check_sms.sms t ON t.id = a.template_id
-WHERE t.msg_text LIKE '%\%%' ORDER BY t.code LIMIT 15;
-
-\echo ''
-\echo '=== Итог ==='
-SELECT count(*) FILTER (WHERE coalesce("template", '') <> '') AS "заполнено",
-       count(*) FILTER (WHERE coalesce("template", '') = '')  AS "осталось пустых"
-FROM check_sms.approved;
-SQL
+our_psql -v approved_table=check_sms.approved \
+         -v sms_table=check_sms.sms \
+         -v apply=1 < scripts/sms-approved-backfill.sql
 
 echo >&2
 echo "Копия осталась в схеме check_sms нашей базы. Посмотреть:" >&2
@@ -129,6 +81,6 @@ echo "  docker exec ${OUR_DB_CONTAINER} psql -U ${OUR_DB_USER} -d ${OUR_DB_NAME}
 echo "Убрать:" >&2
 echo "  docker exec ${OUR_DB_CONTAINER} psql -U ${OUR_DB_USER} -d ${OUR_DB_NAME} -c 'DROP SCHEMA check_sms CASCADE'" >&2
 echo >&2
-echo "Если в «осталось пустым» почти всё с причиной «нет шаблона по template_id» —" >&2
+echo "Если в «что останется пустым» почти всё с причиной «нет шаблона по template_id» —" >&2
 echo "значит template_id ссылается не на id, а на code, и это надо поправить" >&2
 echo "в ProdDbService.smsApprovedEnsure и в scripts/sms-approved-backfill.sql." >&2
