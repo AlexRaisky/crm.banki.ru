@@ -31,8 +31,16 @@
     startIncome: {
       label: "Income event", cls: "start", ins: 0, outs: 1,
       fields: [
-        { k: "event_name",          l: "Имя события",        kind: "text" },
-        { k: "system",              l: "Система",            kind: "text" },
+        /* Событие не набирается руками, а выбирается из tracker.t_event_comm: его id
+           и есть t_event_comm_id, по которому лежит цепочка в commapi.events_chain.
+           Набранное руками имя разошлось бы с тем, что уже заведено в трекере, —
+           и цепочка повисла бы ни на чём. */
+        { k: "t_event_comm_id",     l: "Событие",            kind: "eventPick" },
+        { k: "event_name",          l: "Имя события",        kind: "text", ro: true },
+        { k: "system",              l: "Система",            kind: "text", ro: true },
+        /* Условие выхода обрывает ВСЮ цепочку, поэтому живёт на старте, а не на шаге:
+           на шаге оно читалось бы как «этот шаг и обрывает». */
+        { k: "exit_condition",      l: "Условие выхода (обрывает всю цепочку)", kind: "text" },
         { k: "notify_channel",      l: "Канал (notify)",     kind: "select", opts: NOTIFY_CHANNELS },
         { k: "sub_channel",         l: "Sub channel",        kind: "text" },
         { k: "platform",            l: "Платформа",          kind: "text" },
@@ -67,11 +75,17 @@
     comm: {
       label: "Communication Alert", cls: "comm", outs: 1,
       fields: [
-        { k: "channel",  l: "Тип коммуникации", kind: "select", opts: ["sms", "push", "email", "cc"] },
-        { k: "template", l: "Код шаблона",      kind: "template" },
-        { k: "day",      l: "День (из шаблона)", kind: "number", ro: true },
-        { k: "note",     l: "Что происходит",   kind: "textarea" },
-        { k: "active",   l: "Активен",          kind: "bool" }
+        { k: "channel",   l: "Тип коммуникации", kind: "select", opts: ["sms", "push", "email", "cc"] },
+        { k: "template",  l: "Код шаблона",      kind: "template" },
+        /* Задержка отсчитывается от прихода события, а не от предыдущей отправки:
+           так расписание всей цепочки известно в момент старта и не плывёт, если
+           один шаг задержался. Минуты — как в commapi.events_chain.wait_time. */
+        { k: "wait_time", l: "Задержка от события, мин", kind: "number", def: "0" },
+        /* Снимает ТОЛЬКО этот шаг. То, что обрывает всю цепочку, — на узле старта. */
+        { k: "exit_step", l: "Событие, снимающее шаг", kind: "text" },
+        { k: "day",       l: "День (из шаблона)", kind: "number", ro: true },
+        { k: "note",      l: "Что происходит",   kind: "textarea" },
+        { k: "active",    l: "Активен",          kind: "bool" }
       ]
     },
     subflow: {
@@ -654,6 +668,20 @@
   // ------------------------------------------- модалка настроек блока (двойной клик)
   var editingId = null; // df-id редактируемого узла
 
+  /* Онлайн-события из tracker.t_event_comm. Их id и есть t_event_comm_id, по которому
+     лежит цепочка в commapi.events_chain. Тянем один раз: список меняется редко,
+     а запрос идёт в чужую базу (crmdb). */
+  var trackerEvents = null, trackerEventsP = null;
+  function loadTrackerEvents() {
+    if (trackerEventsP) return trackerEventsP;
+    trackerEventsP = fetch("api/events/chains", {
+        credentials: "same-origin", headers: { Accept: "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (list) { trackerEvents = list || []; return trackerEvents; })
+      .catch(function () { trackerEvents = []; return trackerEvents; });
+    return trackerEventsP;
+  }
+
   function editControl(f, value) {
     var el;
     switch (f.kind) {
@@ -741,6 +769,48 @@
         cur.length = n;
         renderSteps(cur);
       });
+      return wrap;
+    }
+
+    if (f.kind === "eventPick") {
+      var esel = document.createElement("select");
+      esel.dataset.k = f.k;
+      var fill = function (list) {
+        esel.innerHTML = "";
+        var o0 = document.createElement("option");
+        o0.value = "";
+        o0.textContent = (list && list.length) ? "— выберите событие —"
+                       : (list ? "— событий не найдено —" : "— загружаем… —");
+        esel.appendChild(o0);
+        (list || []).forEach(function (ev) {
+          var op = document.createElement("option");
+          op.value = String(ev.id);
+          op.textContent = (ev.eventName || ("#" + ev.id)) + (ev.system ? " · " + ev.system : "") +
+            (ev.steps ? " · шагов: " + ev.steps : " · цепочки нет");
+          esel.appendChild(op);
+        });
+        esel.value = v;
+      };
+      fill(trackerEvents);
+      if (!trackerEvents) loadTrackerEvents().then(fill);
+      /* Выбор подставляет имя и систему в соседние поля: они уезжают в прод при
+         материализации, а руками их набирать нельзя — разойдутся с трекером. */
+      esel.onchange = function () {
+        var hit = (trackerEvents || []).filter(function (x) { return String(x.id) === esel.value; })[0];
+        /* jrEditBody — настройки узла; jrModalBody рядом, но это предпросмотр
+           материализации, и промах между ними ничего бы не подставил. */
+        var body = document.getElementById("jrEditBody");
+        if (!body) return;
+        var n = body.querySelector('[data-k="event_name"]');
+        var s = body.querySelector('[data-k="system"]');
+        if (n) n.value = hit ? (hit.eventName || "") : "";
+        if (s) s.value = hit ? (hit.system || "") : "";
+      };
+      wrap.appendChild(esel);
+      var hint = document.createElement("div");
+      hint.style.cssText = "color:var(--faint);font-size:11.5px;margin-top:4px";
+      hint.textContent = "Из tracker.t_event_comm. Его id и есть t_event_comm_id, по которому лежит цепочка.";
+      wrap.appendChild(hint);
       return wrap;
     }
 
