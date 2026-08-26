@@ -994,9 +994,15 @@
   window.jrAddNode = function (type) {
     if (!NODE_TYPES[type]) { alert("Неизвестный тип узла: " + type); return; }
     if (!editor) {
-      alert("Холст не готов: конструктор не инициализировался. Обычно это значит,"
-            + " что не загрузился drawflow.min.js — обновите страницу.");
-      return;
+      /* Пробуем поднять холст прямо сейчас: раздел могли открыть в обход навигации,
+         и тогда initJourneysSection просто не вызывался. Если не выйдет — причина
+         останется на самом холсте, и она конкретнее любого текста здесь. */
+      if (typeof window.initJourneysSection === "function") window.initJourneysSection();
+      if (!editor) {
+        alert("Холст не готов: конструктор не запустился. Причина написана на самом"
+              + " холсте; если там пусто — обновите страницу.");
+        return;
+      }
     }
     if (!canEdit()) {
       alert("Раздел открыт только на просмотр: нет права на правку.");
@@ -1052,11 +1058,23 @@
         '<div style="padding:30px;color:#FF6B8A">Drawflow не загрузился.</div>';
       return;
     }
-    inited = true;
     var host = document.getElementById("jrCanvas");
-    editor = new Drawflow(host);
-    editor.reroute = true;
-    editor.start();
+    if (!host) return;   // разметки раздела нет — пробовать будем при следующем открытии
+    /* Флаг «инициализировано» ставится ТОЛЬКО после успешного запуска. Раньше он
+       взводился раньше времени: любое падение конструктора оставляло editor пустым,
+       а все следующие заходы выходили по этому флагу сразу — раздел умирал до
+       перезагрузки страницы и молчал о причине. */
+    try {
+      editor = new Drawflow(host);
+      editor.reroute = true;
+      editor.start();
+    } catch (e) {
+      editor = null;
+      host.innerHTML = '<div style="padding:30px;color:#FF6B8A">Конструктор не запустился: ' +
+        esc(e && e.message ? e.message : e) + "</div>";
+      return;
+    }
+    inited = true;
     // двойной клик по блоку — модалка настроек
     host.addEventListener("dblclick", function (e) {
       var el = e.target.closest(".drawflow-node");
