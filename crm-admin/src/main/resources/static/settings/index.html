@@ -808,7 +808,12 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
             <span class="save-note" id="procMsg"></span>
           </div>
           <div id="procBox" class="empty" style="margin-top:12px">Загружаем…</div>
-          <!-- Отчёт ручного прогона сверки текстов согласования. Пустой, пока не нажали. -->
+
+          <!-- Сверка текстов согласования стоит отдельным блоком, а не строкой в таблице:
+               у неё свой порядок работы (сначала посмотреть, потом записать) и своя
+               цена ошибки — запись идёт в боевую таблицу шаблонов. -->
+          <div id="procSms" style="margin-top:30px"></div>
+          <!-- Отчёт прогона. Живёт вне блока: перерисовка блока не должна его стирать. -->
           <div id="procSweep"></div>
         </div>
       </section>
@@ -2619,6 +2624,13 @@ window.ProcessControl = (function(){
 
   function render(rows){
     if (!rows.length) { box("Процессы не заведены — не прогнали миграцию V39?", true); return; }
+    /* Сверку текстов согласования вынимаем из общей таблицы: у неё свой блок ниже.
+       Два места управления одним процессом путали бы больше, чем помогали. */
+    var sms = null;
+    rows = rows.filter(function(p){
+      if (p.code === "sms-approved"){ sms = p; return false; }
+      return true;
+    });
     var may = mayToggle();
     var html = "<table><thead><tr><th>Процесс</th><th>Состояние</th><th>Последний прогон</th>" +
       "<th>Кто переключил</th><th></th></tr></thead><tbody>";
@@ -2628,14 +2640,7 @@ window.ProcessControl = (function(){
         '<td style="color:' + st.cls + '">' + st.text + "</td>" +
         "<td>" + when(p.lastRunAt) + '<div class="mono">' + esc(p.lastResult || "—") + "</div></td>" +
         "<td>" + esc(p.updatedBy || "—") + '<div class="mono">' + when(p.updatedAt) + "</div></td>" +
-        '<td style="text-align:right">' +
-          /* Сверка текстов согласования — единственный процесс, который осмысленно
-             гонять руками: он идёт раз в сутки, а шаблоны заводят чаще. Прогон
-             ничего не пишет, поэтому доступен и тем, у кого нет права правки. */
-          (p.code === "sms-approved"
-            ? '<button class="btn" id="procSweepBtn" style="margin-right:8px">Проверить</button>'
-            : "") +
-          '<button class="btn' + (p.enabled ? " ghost-danger" : " accent") +
+        '<td style="text-align:right"><button class="btn' + (p.enabled ? " ghost-danger" : " accent") +
           '" data-proc="' + esc(p.code) + '" data-on="' + (p.enabled ? "0" : "1") + '"' +
           (may ? "" : " disabled") + ">" + (p.enabled ? "Остановить" : "Запустить") + "</button></td></tr>";
     });
@@ -2643,8 +2648,51 @@ window.ProcessControl = (function(){
     document.querySelectorAll("#procBox [data-proc]").forEach(function(b){
       b.onclick = function(){ toggle(b.getAttribute("data-proc"), b.getAttribute("data-on") === "1", b); };
     });
+    renderSms(sms);
+  }
+
+  /* ---- Блок «Тексты смс для согласования у операторов» ----
+     Отдельно от таблицы по двум причинам. Порядок работы у него свой: сначала
+     посмотреть, что получится, и только потом писать. И цена ошибки своя — запись
+     идёт в боевую таблицу шаблонов, а не в нашу. Поэтому он выключен по умолчанию:
+     включённым он сходил бы туда через две минуты после выката, ещё до того, как
+     человек успеет открыть раздел. */
+  function renderSms(p){
+    var host = $("#procSms");
+    if (!host) return;
+    if (!p){
+      host.innerHTML = '<h2>Тексты смс для согласования у операторов</h2>' +
+        '<div class="sub">Процесс не заведён — не прогнали миграцию V51?</div>';
+      return;
+    }
+    var may = mayToggle();
+    var on = !!p.enabled;
+    host.innerHTML =
+      "<h2>" + esc(p.title) + "</h2>" +
+      '<div class="sub">Раскладывает текст смс в вид, который согласовывают сотовые операторы: ' +
+        "переменные и ссылки заменяются на <b>%w</b>, числа на <b>%d</b>, даты и остальной текст " +
+        "остаются как есть. Заполняются только пустые строки; уже заполненные не трогаются — " +
+        "под ними стоят отметки согласования.</div>" +
+      '<div class="sub" style="margin-top:6px">Пишет в <b>боевую</b> таблицу. По умолчанию выключен: ' +
+        "сначала «Проверить», потом решение.</div>" +
+      '<div class="card" style="margin-top:14px">' +
+        '<div class="row" style="gap:14px;align-items:center;flex-wrap:wrap">' +
+          '<div><div class="hint-s">Состояние</div><div style="color:' +
+            (on ? "var(--green)" : "var(--coral)") + ';font-weight:600">' +
+            (on ? "работает" : "остановлен") + "</div></div>" +
+          '<div><div class="hint-s">Последний прогон</div><div>' + when(p.lastRunAt) +
+            '<span class="mono" style="color:var(--faint)"> ' + esc(p.lastResult || "—") + "</span></div></div>" +
+          '<div style="margin-left:auto;display:flex;gap:8px">' +
+            '<button class="btn" id="procSweepBtn">Проверить</button>' +
+            '<button class="btn' + (on ? " ghost-danger" : " accent") + '" id="procSmsToggle"' +
+              (may ? "" : " disabled") + ">" + (on ? "Остановить" : "Запустить") + "</button>" +
+          "</div>" +
+        "</div>" +
+      "</div>";
     var sb = $("#procSweepBtn");
     if (sb) sb.onclick = function(){ sweep(false, sb); };
+    var tb = $("#procSmsToggle");
+    if (tb) tb.onclick = function(){ toggle(p.code, !on, tb); };
   }
 
   /* ---- Сверка текстов смс для согласования у операторов ----
