@@ -66,10 +66,16 @@
       return;
     }
     sel.disabled = false;
+    /* В списке ВСЕ онлайн-события, а не только те, у кого цепочка заведена: событие
+       существует само по себе, и спрятать бесцепочные значило бы спрятать ровно те,
+       ради которых сюда и приходят. Сколько шагов — видно прямо в строке. */
     sel.innerHTML = chains.map(function(c){
-      var off = c.stepsActive < c.steps ? " · выключенных шагов: " + (c.steps - c.stepsActive) : "";
+      var tail = !c.steps
+        ? " · цепочки нет"
+        : " · шагов: " + c.steps +
+          (c.stepsActive < c.steps ? " (выключено " + (c.steps - c.stepsActive) + ")" : "");
       return '<option value="' + esc(c.id) + '">' + esc(c.eventName || ("#" + c.id)) +
-        (c.system ? " · " + esc(c.system) : "") + " · шагов: " + c.steps + esc(off) + "</option>";
+        (c.system ? " · " + esc(c.system) : "") + esc(tail) + "</option>";
     }).join("");
   }
 
@@ -92,7 +98,12 @@
     }
     var steps = c.steps || [];
     if (!steps.length){
-      host.innerHTML = '<div class="evc-empty">У этого события шагов не заведено.</div>';
+      host.innerHTML = '<div class="evc-scroll"><div class="evc-flow">' +
+          node("start", "Событие · старт", c.eventName || "—",
+               c.system ? "система: " + c.system : "") +
+        "</div></div>" +
+        '<div class="evc-empty">Цепочка не заведена: событие приходит, но дальше ничего не' +
+        " происходит. Шаги лежат в <code>commapi.events_chain</code>.</div>";
       return;
     }
 
@@ -138,7 +149,7 @@
     return req("api/events/chains")
       .then(function(list){
         chains = list || [];
-        msg(chains.length ? "" : "Цепочек не найдено");
+        msg(chains.length ? "" : "Онлайн-событий не найдено");
         renderPicker();
         if (chains.length) loadChain(chains[0].id); else renderChain(null);
       })

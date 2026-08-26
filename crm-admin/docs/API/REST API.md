@@ -301,7 +301,7 @@ Query-параметры списка (все опциональны, множе
 | `POST /api/admin/deploy/jobs/{id}/retry` | повторить неудавшееся задание | ADMIN |
 | `POST /api/admin/deploy/reconcile` | закрыть записи журнала, версия которых уже стоит на цели | ADMIN |
 | `GET /api/admin/health` | состояние системы: проверки, нагрузка, сутки очереди по часам, возраст последних доставок, состав данных, место в базе, две недели правок, переливы, подключения, версия | READ в `set-dbconn`, `set-sync`, `set-procs` или `set-diag` |
-| `GET /api/events/chains` | цепочки онлайн-событий из `commapi.events_chain` (crmdb): по строке на `t_event_comm_id` | READ в `ev-online` |
+| `GET /api/events/chains` | онлайн-события из `tracker.t_event_comm` (crmdb) со счётчиком шагов их цепочки; события без цепочки тоже в списке | READ в `ev-online` |
 | `GET /api/events/chains/{id}` | одна цепочка шагами по `order`: пауза, шаблон, событие снятия шага; условие выхода поднято на уровень цепочки | READ в `ev-online` |
 | `POST /api/admin/processes/sms-approved/run` | сверка текстов смс для согласования у операторов; без параметров — сухой прогон, с `?apply=true` — запись в боевую базу | READ в `set-procs` для прогона, EDIT — для записи |
 | `GET /api/admin/settings-pack` | что можно перенести между контурами и сколько записей в каждом объекте | ADMIN |

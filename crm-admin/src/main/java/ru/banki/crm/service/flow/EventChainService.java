@@ -31,6 +31,9 @@ public class EventChainService {
 
     private static final String TABLE = "commapi.events_chain";
 
+    /** Откуда берётся само событие: t_event_comm_id — это id вот этой таблицы. */
+    private static final String EVENTS = "tracker.t_event_comm";
+
     /** Колонки в кавычках: order и system — зарезервированные слова. */
     private static final String COLUMNS =
             "id, t_event_comm_id, is_active, \"order\", event_name, \"system\","
@@ -43,34 +46,43 @@ public class EventChainService {
     }
 
     /**
-     * Список цепочек: по строке на {@code t_event_comm_id}.
+     * Онлайн-события из {@code tracker.t_event_comm} — то, из чего выбирают цепочку.
      * <p>
-     * Имя события берём из первого шага — по таблице оно у шагов одной цепочки
-     * повторяется, и {@code min} здесь просто способ взять любое, не разворачивая
-     * группировку в подзапрос.
+     * Список строится по событиям, а не по цепочкам: {@code t_event_comm_id} и есть
+     * {@code id} этой таблицы, и событие существует само по себе — цепочки у него
+     * может ещё не быть. Показать только те, у кого шаги заведены, значило бы спрятать
+     * ровно те события, ради которых сюда и приходят.
+     * <p>
+     * Имя и система берутся отсюда же. В {@code events_chain} они тоже лежат, но там
+     * это копия: разойдётся — верной будет та, по которой работает движок.
      */
     public List<Map<String, Object>> list() {
-        if (!events.configured() || !exists()) {
+        if (!events.configured()) {
             return List.of();
         }
-        String sql = "SELECT t_event_comm_id, min(event_name) AS event_name, min(\"system\") AS system,"
-                + " count(*) AS steps,"
-                + " count(*) FILTER (WHERE is_active) AS steps_active,"
-                + " max(ts_cr) AS ts_cr"
-                + " FROM " + TABLE
-                + " GROUP BY t_event_comm_id ORDER BY min(event_name), t_event_comm_id";
+        boolean withChains = exists();
+        String steps = withChains
+                ? "(SELECT count(*) FROM " + TABLE + " ch WHERE ch.t_event_comm_id = e.id)"
+                : "0";
+        String active = withChains
+                ? "(SELECT count(*) FROM " + TABLE + " ch WHERE ch.t_event_comm_id = e.id AND ch.is_active)"
+                : "0";
+        String sql = "SELECT e.id, e.event_name, e.\"system\", e.is_active,"
+                + " " + steps + " AS steps, " + active + " AS steps_active"
+                + " FROM " + EVENTS + " e"
+                + " ORDER BY e.event_name, e.id";
         List<Map<String, Object>> out = new ArrayList<>();
         try (Connection c = events.connection();
              PreparedStatement ps = c.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 Map<String, Object> m = new LinkedHashMap<>();
-                m.put("id", rs.getLong("t_event_comm_id"));
+                m.put("id", rs.getLong("id"));
                 m.put("eventName", rs.getString("event_name"));
                 m.put("system", rs.getString("system"));
+                m.put("active", rs.getBoolean("is_active"));
                 m.put("steps", rs.getInt("steps"));
                 m.put("stepsActive", rs.getInt("steps_active"));
-                m.put("createdAt", str(rs.getTimestamp("ts_cr")));
                 out.add(m);
             }
         } catch (Exception e) {
@@ -92,19 +104,33 @@ public class EventChainService {
         out.put("id", tEventCommId);
         List<Map<String, Object>> steps = new ArrayList<>();
         out.put("steps", steps);
-        if (!events.configured() || !exists()) {
+        if (!events.configured()) {
             out.put("available", false);
             return out;
         }
         out.put("available", true);
+        out.put("chainTable", exists());
 
-        String sql = "SELECT " + COLUMNS + " FROM " + TABLE
-                + " WHERE t_event_comm_id = ? ORDER BY \"order\", id";
+        /* Имя и систему берём из tracker.t_event_comm, а не из копии в events_chain:
+           разойдутся — верной будет та, по которой работает движок. Соединение левое:
+           у события может не быть ни одного шага, и показать его всё равно надо. */
+        String sql = "SELECT e.event_name AS ev_name, e.\"system\" AS ev_system, e.is_active AS ev_active,"
+                + " ch." + COLUMNS.replace(", ", ", ch.")
+                + " FROM " + EVENTS + " e LEFT JOIN " + TABLE + " ch ON ch.t_event_comm_id = e.id"
+                + " WHERE e.id = ? ORDER BY ch.\"order\", ch.id";
         try (Connection c = events.connection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setLong(1, tEventCommId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
+                    if (!out.containsKey("eventName")) {
+                        out.put("eventName", rs.getString("ev_name"));
+                        out.put("system", rs.getString("ev_system"));
+                        out.put("eventActive", rs.getBoolean("ev_active"));
+                    }
+                    if (rs.getObject("id") == null) {
+                        continue;   // событие есть, шагов нет
+                    }
                     Map<String, Object> s = new LinkedHashMap<>();
                     s.put("id", rs.getLong("id"));
                     s.put("order", rs.getInt("order"));
@@ -113,10 +139,6 @@ public class EventChainService {
                     s.put("templateId", num(rs, "communication_template_id"));
                     s.put("exitStep", rs.getString("exit_step"));
                     steps.add(s);
-                    if (!out.containsKey("eventName")) {
-                        out.put("eventName", rs.getString("event_name"));
-                        out.put("system", rs.getString("system"));
-                    }
                     /* Условие выхода одно на цепочку, но лежит у каждого шага.
                        Берём первое непустое: если у шагов оно разное, это ошибка
                        заведения, и показать надо то, что стоит в начале потока. */
