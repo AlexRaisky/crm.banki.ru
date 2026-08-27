@@ -896,7 +896,29 @@
       });
       if (selectId) sel.value = selectId;
       return listCache;
+    }).catch(function (e) {
+      /* Список сохранённых цепочек — не вся работа раздела: завести новую можно, не
+         открыв ни одной. Раньше отказ /api/journeys рвал всю цепочку промисов, и
+         дальше не выполнялось ничего: ни списка, ни модалки заведения, ни причины —
+         раздел просто оставался пустым до первого нажатия кнопки. Теперь отказ
+         остаётся внутри списка и о нём написано. */
+      if (window.console) console.error("Цепочки: /api/journeys не ответил", e);
+      listCache = [];
+      var sel = document.getElementById("jrSelect");
+      if (sel) sel.innerHTML = '<option value="">— список не загрузился —</option>';
+      sectionNote("Список сохранённых цепочек не загрузился: " +
+        (e && e.message ? e.message : e) + ". Завести новую можно, открыть сохранённую — нет.");
+      return [];
     });
+  }
+
+  /* Сообщение о неполадке в строке подсказок: alert посреди открытия раздела человек
+     закрывает не читая, а молчание он принимает за «раздел сломан целиком». */
+  function sectionNote(text) {
+    var hint = document.getElementById("jrHint");
+    if (!hint) return;
+    hint.textContent = text;
+    hint.style.color = "var(--coral)";
   }
 
   function loadSelected() {
@@ -1990,6 +2012,12 @@
       /* Показывать пустой холст незачем: положить на него нечего, пока не заведена
          цепочка. Открываем модалку сразу — это и есть первый шаг работы, а не
          препятствие перед ней. Читателю не открываем: заводить ему нельзя. */
+      if (canEdit()) window.jrNew();
+    }).catch(function (e) {
+      /* Последняя сетка. Что бы ни отказало при открытии раздела, он обязан открыться
+         рабочим: молчащий раздел человек чинит перезагрузкой и не узнаёт причину. */
+      if (window.console) console.error("Цепочки: открытие раздела", e);
+      sectionNote("Раздел открылся не полностью: " + (e && e.message ? e.message : e));
       if (canEdit()) window.jrNew();
     });
     document.getElementById("jrSelect").addEventListener("change", loadSelected);
