@@ -47,24 +47,24 @@
     },
     steps: [
       /* ---------- входы: откуда процесс берёт сырые события ---------- */
-      { id: "x10", type: "extTable", from: [],
+      { id: "x10", role: "source", from: [],
         table: "cidb.t_queue_offer_list_stat\ncidb.t_application_info",
         note: "Показы витрины предложений и анкеты — исходные события" },
-      { id: "x12", type: "extTable", from: [],
+      { id: "x12", role: "source", from: [],
         table: "cidb.t_application_info\ncidb.t_application_client_data",
         note: "Анкеты и их привязка к mybid" },
-      { id: "x13", type: "extTable", from: [],
+      { id: "x13", role: "source", from: [],
         table: "core.get_product_offer_list_log",
         note: "Лог запросов витрины: mybId в ответе" },
-      { id: "x20", type: "extTable", from: [],
+      { id: "x20", role: "source", from: [],
         table: "mybanki.t_mybanki_tracker_event_offline",
         note: "Трекер: просмотры раздела МФО" },
-      { id: "x30", type: "extTable", from: [],
+      { id: "x30", role: "source", from: [],
         table: "core_test.itog\ngp.core.selection_t_partner_prescoring_result\nmybanki.t_mybanki_tracker_event_online",
         note: "Клики, прескоринг и отправки в КЦ" },
 
       /* ---------- шаги ---------- */
-      { id: "s10", type: "sqlStep", from: ["x10"], order: 10,
+      { id: "s10", role: "step", from: ["x10"], order: 10,
         table: "core.mfo_sms_funnel_001_1", dist: "acdb_id",
         note: "Брошенный сплэш: максимум даты по анкете за 45 дней",
         sql: sql(
@@ -77,7 +77,7 @@
           "  and tai.activity_code not in (14, 17)",
           "group by 1") },
 
-      { id: "s11", type: "sqlStep", from: ["s10"], order: 11,
+      { id: "s11", role: "step", from: ["s10"], order: 11,
         table: "core.mfo_sms_funnel_001", dist: "mybid",
         note: "Тот же сплэш, но в разрезе mybid (через t_application_client_data)",
         sql: sql(
@@ -87,7 +87,7 @@
           "where mybid is not null",
           "group by 1") },
 
-      { id: "s12", type: "sqlStep", from: ["x12"], order: 12,
+      { id: "s12", role: "step", from: ["x12"], order: 12,
         table: "core.mfo_sms_funnel_002", dist: "mybid",
         note: "Брошенная анкета: максимум даты по mybid за 45 дней",
         sql: sql(
@@ -102,7 +102,7 @@
           "  and tai.activity_code not in (14, 17)",
           "group by 1") },
 
-      { id: "s13", type: "sqlStep", from: ["x13"], order: 13,
+      { id: "s13", role: "step", from: ["x13"], order: 13,
         table: "core.mfo_sms_funnel_003", dist: "myb",
         note: "Показ витрины из лога: mybId и дата последнего запроса",
         sql: sql(
@@ -113,7 +113,7 @@
           "  and (request->'params'->>'purposeCode') = '12'",
           "group by 1") },
 
-      { id: "s14", type: "sqlStep", from: ["s11", "s12", "s13"], order: 14,
+      { id: "s14", role: "step", from: ["s11", "s12", "s13"], order: 14,
         table: "core.mfo_sms_funnel_004", dist: "mybid",
         note: "Свести сплэши, анкеты и показы витрины в одну строку на mybid",
         sql: sql(
@@ -129,7 +129,7 @@
           "       max(max_splash_dt) as max_splash_dt",
           "from t3 group by mybid") },
 
-      { id: "s20", type: "sqlStep", from: ["x20"], order: 20,
+      { id: "s20", role: "step", from: ["x20"], order: 20,
         table: "core.mfo_sms_funnel_2", dist: "mybanki_id",
         note: "Максимум даты просмотра раздела МФО. От остальных шагов не зависит —"
             + " считается параллельно, номер 20 об этом не говорит",
@@ -140,7 +140,7 @@
           "  and event_type = 'mfo'",
           "group by 1") },
 
-      { id: "s30", type: "sqlStep", from: ["x30"], order: 30,
+      { id: "s30", role: "step", from: ["x30"], order: 30,
         table: "core.mfo_sms_funnel_3", dist: "mybanki_id",
         note: "Клик, одобрение, выдача, отказ — максимум по каждому. Питает сразу два"
             + " шага (40 и 62): трогать опаснее прочих",
@@ -176,7 +176,7 @@
           "                    and product_type in ('deposit', 'credit'))",
           "group by 1") },
 
-      { id: "s40", type: "sqlStep", from: ["s14", "s30", "s20"], order: 40,
+      { id: "s40", role: "step", from: ["s14", "s30", "s20"], order: 40,
         table: "core.mfo_sms_funnel_4_1", dist: "myb_id",
         note: "Полное объединение анкет, кликов и просмотров — все даты рядом",
         sql: sql(
@@ -193,7 +193,7 @@
           "from t",
           "full join core.mfo_sms_funnel_2 t1_1 on t.myb_id = t1_1.mybanki_id") },
 
-      { id: "s50", type: "sqlStep", from: ["s40"], order: 50,
+      { id: "s50", role: "step", from: ["s40"], order: 50,
         table: "core.mfo_sms_funnel_4", dist: "myb_id",
         note: "Последнее действие: самая поздняя из дат и её имя (event_check)",
         sql: sql(
@@ -211,7 +211,7 @@
           "       end as event_check",
           "from core.mfo_sms_funnel_4_1 t4") },
 
-      { id: "s60", type: "sqlStep", from: ["s50"], order: 60,
+      { id: "s60", role: "step", from: ["s50"], order: 60,
         table: "core.mfo_sms_funnel_01_5", dist: "—",
         note: "Матрица шаблонов: событие × «дней назад» → templateId."
             + " 7 событий, до 30 дней — около 90 клеток одним CASE на 120 строк."
@@ -237,7 +237,7 @@
           "*",
           "from core.mfo_sms_funnel_4 t4") },
 
-      { id: "s61", type: "sqlStep", from: ["s60"], order: 61,
+      { id: "s61", role: "step", from: ["s60"], order: 61,
         table: "core.mfo_sms_funnel_02_5", dist: "—",
         note: "Анкеты отобранных mybid — из cidb.t_application_client_data",
         sql: sql(
@@ -246,7 +246,7 @@
           "  and tacd.mybid is not null",
           "  and tacd.purpose in (12, 1)") },
 
-      { id: "s62", type: "sqlStep", from: ["s60", "s61", "s30"], order: 62,
+      { id: "s62", role: "step", from: ["s60", "s61", "s30"], order: 62,
         table: "core.mfo_sms_funnel_03_5", dist: "—",
         note: "Подставить acdb_id к каждому шаблону; строки без шаблона отбрасываются",
         sql: sql(
@@ -256,7 +256,7 @@
           "left join core.mfo_sms_funnel_3 tt on tt.mybanki_id = t.myb_id",
           "where \"templateId\" is not null") },
 
-      { id: "s63", type: "sqlStep", from: ["s62"], order: 63,
+      { id: "s63", role: "step", from: ["s62"], order: 63,
         table: "core.mfo_sms_funnel_04_5", dist: "—",
         note: "Отсечь анкеты с activity_code 14 и 17 — из cidb.t_application_info",
         sql: sql(
@@ -264,7 +264,7 @@
           "where acdb_id in (select acdb_id from core.mfo_sms_funnel_03_5)",
           "  and coalesce(tai.activity_code, 2) not in (14, 17)") },
 
-      { id: "s64", type: "sqlStep", from: ["s62", "s63"], order: 64,
+      { id: "s64", role: "step", from: ["s62", "s63"], order: 64,
         table: "core.mfo_sms_funnel_5", dist: "—",
         note: "Одна анкета на mybid и минус стоп-лист рынка (wnd_crm_market_exc)",
         sql: sql(
@@ -286,7 +286,7 @@
           "                        where myb_id is not null",
           "                          and product_type in ('deposit', 'credit'))") },
 
-      { id: "s80", type: "sqlStep", from: ["s64"], order: 80, returns: true,
+      { id: "s80", role: "audience", from: ["s64"], order: 80,
         table: "— выборка —", dist: "—",
         note: "Аудитория одного шаблона: myb_id и анкета, минус пролонгации страховок."
             + " Единственный шаг, который возвращает строки, а не создаёт таблицу",
@@ -309,33 +309,33 @@
        день цепочки от старта: у оффлайна нет момента входа, воронка каждый день
        пересчитывается заново и смотрит, когда человек был активен в последний раз. */
     comms: [
-      { event: "view", note: "Смотрел раздел МФО и не пошёл дальше",
+      { event: "view", label: "просмотр раздела", dateCol: "max_view_dt", note: "Смотрел раздел МФО и не пошёл дальше",
         days: [[1, 643], [2, 722], [3, 299], [4, 723], [5, 724],
                [12, 1014], [13, 1015], [14, 1016],
                [26, 5246], [27, 5247], [28, 5248]] },
-      { event: "aband_applic", note: "Бросил анкету",
+      { event: "aband_applic", label: "брошенная анкета", dateCol: "max_applic_dt", note: "Бросил анкету",
         days: [[1, 172], [2, 735], [3, 173], [4, 736], [5, 174],
                [12, 1017], [13, 1018], [14, 1019],
                [26, 5249], [27, 5250], [28, 5251]] },
-      { event: "splash", note: "Бросил витрину предложений",
+      { event: "splash", label: "брошенная витрина", dateCol: "max_splash_dt", note: "Бросил витрину предложений",
         days: [[1, 495], [2, 496], [3, 166], [4, 725], [5, 167], [6, 1010], [7, 163],
                [12, 1020], [13, 1021], [14, 1022], [15, 164], [21, 165],
                [26, 5252], [27, 5253], [28, 5254]] },
-      { event: "click", note: "Кликнул в предложение партнёра",
+      { event: "click", label: "клик к партнёру", dateCol: "max_click", note: "Кликнул в предложение партнёра",
         days: [[1, 302], [2, 499], [3, 644], [4, 733], [5, 303], [6, 1011],
                [12, 1023], [13, 1024], [14, 1025], [15, 304], [21, 347],
                [26, 5255], [27, 5256], [28, 5257]] },
-      { event: "approve", note: "Заявку одобрили",
+      { event: "approve", label: "одобрение", dateCol: "max_approve", note: "Заявку одобрили",
         days: [[1, 336], [2, 649], [3, 650], [4, 730], [5, 337], [6, 731], [7, 1128],
                [12, 1026], [13, 1027], [14, 1028], [15, 338],
                [26, 5258], [27, 5259], [28, 5260], [30, 339]] },
-      { event: "issue", note: "Заём выдан — самая длинная ветка, 26 шаблонов",
+      { event: "issue", label: "выдача займа", dateCol: "max_issue", note: "Заём выдан — самая длинная ветка, 26 шаблонов",
         days: [[1, 651], [2, 652], [3, 653], [4, 727], [5, 1085], [6, 728], [7, 729],
                [8, 1029], [9, 1030], [10, 1086], [11, 1087], [12, 1031], [13, 1032],
                [14, 1033], [16, 1088], [17, 5283], [18, 5284], [19, 5285], [20, 320],
                [21, 1129], [22, 1130], [25, 1089], [26, 5261], [27, 5262], [28, 5263],
                [30, 1131]] },
-      { event: "reject", note: "Заявку отклонили",
+      { event: "reject", label: "отказ", dateCol: "max_reject", note: "Заявку отклонили",
         days: [[1, 1063], [2, 1075], [3, 1076], [4, 1077], [5, 1078], [6, 1124], [7, 1125],
                [12, 1079], [13, 1080], [14, 1081],
                [26, 2213], [27, 1126], [28, 1127]] }

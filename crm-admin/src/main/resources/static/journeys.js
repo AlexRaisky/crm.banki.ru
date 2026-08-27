@@ -140,44 +140,11 @@
         { k: "h",     l: "Высота, px",      kind: "number", def: "170" }
       ]
     },
-    /* ---- Блоки оффлайн-процесса (scheduler.t_execution_steps) ----
-       Показывают то, что уже исполняется: шаг — строка flow.d_event_step, стрелка —
-       чтение таблицы, созданной предыдущим шагом. Кнопок в тулбоксе у них нет:
-       движок собирает процесс из SQL-шагов события, а не из нарисованных блоков, и
-       кнопка обещала бы то, чего пока нет. */
-    extTable: {
-      label: "Внешняя таблица", cls: "data", ins: 0, outs: 1,
-      fields: [
-        { k: "table", l: "Таблица (или несколько)", kind: "textarea" },
-        { k: "note",  l: "Что берём",               kind: "textarea" }
-      ]
-    },
-    sqlStep: {
-      label: "Шаг выборки", cls: "data", outs: 1,
-      fields: [
-        { k: "order_num", l: "Номер шага (ORDER_NUM)", kind: "number" },
-        { k: "table",     l: "Создаёт таблицу",        kind: "text" },
-        { k: "note",      l: "Что делает",             kind: "textarea" },
-        { k: "dist",      l: "Ключ распределения",     kind: "text" },
-        /* Обвязка (drop / create / distributed by / GRANT) сюда не входит: она
-           одинакова у всех шагов и генерируется, а не пишется руками. */
-        { k: "sql",       l: "SQL шага (без обвязки)", kind: "textarea" },
-        { k: "returns",   l: "Возвращает выборку",     kind: "bool", def: "false" },
-        { k: "active",    l: "Шаг активен",            kind: "bool", def: "true" }
-      ]
-    },
-    /* Что уходит из оффлайн-процесса. Блок на событие, а не на шаблон: шаблонов в
-       воронке МФО сто пять, и сто пять блоков — это не схема, а список. Внутри блока
-       расписание «день → шаблон», по которому и видно, когда уходит какой. */
-    commSet: {
-      label: "Коммуникации", cls: "comm", outs: 0,
-      fields: [
-        { k: "event",    l: "Событие (event_check)",      kind: "text" },
-        { k: "channel",  l: "Канал",                      kind: "select", opts: ["sms", "push", "email", "cc"] },
-        { k: "note",     l: "Что случилось с человеком",  kind: "textarea" },
-        { k: "schedule", l: "День → шаблон",              kind: "textarea" }
-      ]
-    },
+    /* Своих блоков под оффлайн-процесс нет и не будет: он раскладывается тем же
+       набором, что и всё остальное. Внешняя таблица — это Get Records, шаг, который
+       создаёт таблицу, — Create Records, ветка матрицы шаблонов — Decision, отправка —
+       Communication Alert. Заводить «Внешнюю таблицу» и «Шаг выборки» значило бы
+       завести второе имя тому, что уже есть. */
     /* Карточка-примечание: ни входов, ни выходов. Нужна для того, что к схеме
        относится, но данных не даёт, — расписание, база, оговорки по процессу.
        Вести к такому стрелку значило бы соврать: стрелка на схеме — поток данных. */
@@ -245,7 +212,10 @@
       fields: [
         { k: "title",     l: "Название",           kind: "text" },
         { k: "object",    l: "Таблица / объект",   kind: "text" },
-        { k: "fieldsMap", l: "Поля (поле=значение)", kind: "textarea" }
+        /* Здесь же живёт тело шага оффлайн-процесса: он не перечисляет поля, а целиком
+           задаётся запросом. Обвязка (drop / create / distributed by / GRANT) сюда не
+           входит — она одинакова у всех шагов и пишется не руками. */
+        { k: "fieldsMap", l: "Поля (поле=значение) или SQL шага", kind: "textarea" }
       ]
     },
     updateRecords: {
@@ -451,22 +421,15 @@
           : "условие не задано";
       case "ifCheck":
         return [condWords(d.expr) || "условие не задано", d.note].filter(Boolean).join("\n");
-      case "extTable":
-        return [d.table, d.note].filter(Boolean).join("\n");
-      case "sqlStep": {
-        var head = (d.order_num ? "шаг " + d.order_num + " · " : "") +
-          (d.returns === "true" ? "возвращает выборку" : (d.table || "таблица не задана"));
-        return [head, d.note,
-                (d.dist && d.dist !== "—") ? "ключ: " + d.dist : null,
-                d.active === "false" ? "⏸ выключен" : null].filter(Boolean).join("\n");
-      }
-      case "commSet": {
-        var lines = String(d.schedule || "").split("\n").filter(Boolean);
-        return [(d.channel ? d.channel.toUpperCase() + " · " : "") +
-                  lines.length + " " + plural(lines.length, "шаблон", "шаблона", "шаблонов"),
-                d.note,
-                lines.length ? "дни: " + dayRanges(lines) : null].filter(Boolean).join("\n");
-      }
+      /* Блоки данных: сверху что делает шаг, снизу таблица. Условие отбора и SQL —
+         в подсказке при наведении: на карточке в 230 пикселей они не помещаются, а
+         обрезанный по середине запрос хуже отсутствующего. */
+      case "getRecords":
+      case "createRecords":
+      case "updateRecords":
+      case "deleteRecords":
+        return [d.title, d.object, d.into ? "→ " + d.into : null]
+          .filter(Boolean).join("\n");
       case "noteCard":
         return d.note || "";
       case "subflow": {
@@ -496,8 +459,8 @@
     if (type === "flowExit" || type === "stepExit") return d.event_name || "";
     if (type === "ifCheck") return d.expr || "";
     if (type === "decision") return d.sql || "";
-    if (type === "sqlStep") return d.sql || "";
-    if (type === "commSet") return d.schedule || "";
+    if (type === "createRecords" || type === "updateRecords") return d.fieldsMap || "";
+    if (type === "getRecords" || type === "deleteRecords") return d.filter || "";
     if (type === "comm") return d.note || "";
     return "";
   }
@@ -1989,36 +1952,98 @@
       alert("Файл примера js/journeys-offline-example.js не загрузился — обновите страницу с Ctrl+F5.");
       return;
     }
+
+    /* ---- 1. Подготовка данных: те же блоки, что и везде.
+       Внешняя таблица — это Get Records, шаг, создающий таблицу, — Create Records,
+       финальная выборка — снова Get Records: она возвращает строки, а не создаёт
+       таблицу. Отдельных «Внешней таблицы» и «Шага выборки» не заводим: это было бы
+       второе имя тому, что уже есть. */
     var items = ex.steps.map(function (s) {
-      return { id: s.id, from: (s.from || []).slice(), src: s };
+      var props, type;
+      if (s.role === "source") {
+        type = "getRecords";
+        props = { title: s.note || "", object: s.table || "", filter: "", into: "" };
+      } else if (s.role === "audience") {
+        type = "getRecords";
+        props = { title: "Шаг " + s.order + " · " + (s.note || ""),
+                  object: "core.mfo_sms_funnel_5", filter: s.sql || "", into: "аудитория шаблона" };
+      } else {
+        type = "createRecords";
+        /* Ключ распределения дописываем к запросу комментарием: он часть той самой
+           обвязки, отдельного поля под него нет, а терять его нельзя — в Greenplum
+           от него зависит, разъедется таблица по сегментам или ляжет в один. */
+        props = { title: "Шаг " + s.order + " · " + (s.note || ""),
+                  object: s.table || "",
+                  fieldsMap: (s.sql || "") +
+                    (s.dist && s.dist !== "—" ? "\n-- distributed by (" + s.dist + ")" : "") };
+      }
+      return { id: s.id, from: (s.from || []).slice(), type: type, props: props };
     });
-    /* Коммуникации вешаем на шаг выборки: именно он запускает отправку, и делает это
-       по одному шаблону за раз («templateId = 722» в исходном скрипте). Сто пять
-       шаблонов — сто пять таких выборок; на схеме они сведены по событию. */
-    (ex.comms || []).forEach(function (c) {
-      items.push({ id: "c_" + c.event, from: ["s80"], src: {
-        id: "c_" + c.event, type: "commSet", event: c.event, channel: "sms",
-        note: c.note,
-        schedule: c.days.map(function (p) { return "день " + p[0] + " → шаблон " + p[1]; }).join("\n")
-      } });
+
+    /* ---- 2. Матрица шаблонов лестницей Decision, как она и написана в шаге 60:
+       сперва «какое последнее действие», внутри — «сколько дней назад», и на каждый
+       шаблон своя коммуникация. Ветка ДА ведёт к отправке, ветка НЕТ — к следующей
+       проверке: ровно так CASE и выбирает первое совпадение. */
+    var comms = ex.comms || [], prevEvent = null;
+    comms.forEach(function (c, ci) {
+      var eid = "ev_" + c.event;
+      items.push({ id: eid, from: prevEvent ? [] : ["s80"], type: "decision", props: {
+        title: "Последнее действие — " + c.label + "?",
+        sql: "event_check = '" + c.event + "'",
+        step_exit: "false"
+      }, lane: ci });
+      /* Первая проверка висит на выборке, остальные — на ветке НЕТ предыдущей:
+         человек попадает ровно в одну ветку, и лестница это показывает. */
+      if (prevEvent) items[items.length - 1].fromNo = prevEvent;
+      prevEvent = eid;
+
+      var prevDay = null;
+      c.days.forEach(function (pair, di) {
+        var day = pair[0], tpl = pair[1];
+        var did = "d_" + c.event + "_" + day;
+        items.push({ id: did, from: prevDay ? [] : [eid], type: "decision", props: {
+          title: day + " " + plural(day, "день", "дня", "дней") + " назад",
+          sql: c.dateCol + "::date = current_date - " + day,
+          step_exit: "false"
+        }, lane: ci, rung: di });
+        if (prevDay) items[items.length - 1].fromNo = prevDay;
+        prevDay = did;
+
+        items.push({ id: "t_" + tpl, from: [], type: "comm", fromYes: did,
+          lane: ci, rung: di,
+          props: { channel: "sms", template: String(tpl), day: String(day),
+                   note: c.label + " · " + day + " " + plural(day, "день", "дня", "дней") + " назад",
+                   active: "true" } });
+      });
     });
-    layoutDag(items);
+
+    /* ---- 3. Раскладка. Конвейер данных — слева графом по зависимостям; лестница
+       отправок — своей парой колонок на каждое событие: одна под проверки дней, вторая
+       под шаблоны. Сто пять шаблонов в один столбец дали бы схему высотой в двадцать
+       тысяч точек, в которой не найти ни одного. */
+    var flow = items.filter(function (it) { return it.lane == null; });
+    layoutDag(flow);
+    var right = Math.max.apply(null, flow.map(function (it) { return it.posX; })) + DAG.pitch;
+    items.forEach(function (it) {
+      if (it.lane == null) return;
+      if (it.rung == null) {                       // проверка события — общий столбец
+        it.posX = right;
+        it.posY = DAG.y0 + it.lane * DAG.row;
+      } else {                                     // проверка дня и её шаблон
+        it.posX = right + DAG.pitch * (1 + it.lane * 2) + (it.type === "comm" ? DAG.pitch : 0);
+        it.posY = DAG.y0 + it.rung * DAG.row;
+      }
+    });
+
     var nodes = items.map(function (it) {
-      var s = it.src;
-      return {
-        id: s.id, type: s.type, posX: it.posX, posY: it.posY,
-        props: {
-          order_num: s.order == null ? "" : String(s.order),
-          table: s.table || "", note: s.note || "", dist: s.dist || "",
-          sql: s.sql || "", returns: s.returns ? "true" : "false",
-          active: s.active === false ? "false" : "true",
-          event: s.event || "", channel: s.channel || "", schedule: s.schedule || ""
-        }
-      };
+      return { id: it.id, type: it.type, posX: it.posX, posY: it.posY, props: it.props };
     });
     var edges = [];
     items.forEach(function (it) {
-      it.from.forEach(function (f) { edges.push({ from: f, to: it.id }); });
+      (it.from || []).forEach(function (f) { edges.push({ from: f, to: it.id }); });
+      /* ДА — первый выход, НЕТ — второй. Об этом же говорят подписи у точек. */
+      if (it.fromYes) edges.push({ from: it.fromYes, to: it.id, fromPort: "output_1" });
+      if (it.fromNo) edges.push({ from: it.fromNo, to: it.id, fromPort: "output_2" });
     });
     /* Паспорт процесса — слева от схемы и без стрелок: расписание и база данных не
        дают, а стрелка здесь означает поток данных. Слева, а не сверху: высота карточки
