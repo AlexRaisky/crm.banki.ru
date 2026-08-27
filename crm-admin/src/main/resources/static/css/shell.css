@@ -384,9 +384,18 @@
      под ней лежат блоки и связи, и перехватывать по ним клики она не должна. */
   #jrExitScope{position:absolute;z-index:0;pointer-events:none;border-radius:18px;
     border:1.5px dashed rgba(255,107,138,.5);background:rgba(255,107,138,.045)}
-  .jr-exit-tag{position:absolute;top:-11px;left:18px;padding:2px 10px;border-radius:999px;
-    background:var(--bg2);border:1px solid rgba(255,107,138,.5);color:var(--coral);
-    font-family:var(--sans);font-size:11px;font-weight:700;white-space:nowrap}
+  /* Шапка области: подпись и события, обрывающие поток, — каждое отдельной плашкой.
+     Строкой через запятую десять имён читаются как один длинный идентификатор. */
+  .jr-exit-tag{position:absolute;top:10px;left:16px;right:16px;display:flex;flex-wrap:wrap;
+    align-items:center;gap:6px;font-family:var(--sans);line-height:1.2}
+  .jr-exit-tag b{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--coral);margin-right:2px}
+  /* flex:0 0 auto обязателен: без него плашки не переносятся, а ужимаются, и имена
+     событий обрезаются посреди слова — как раз то, ради чего их сюда и вынесли. */
+  .jr-exit-tag i{flex:0 0 auto;font-style:normal;font-family:var(--mono);font-size:10.5px;
+    color:var(--coral);padding:2px 8px;border-radius:999px;background:var(--bg2);
+    border:1px solid rgba(255,107,138,.45)}
+  .jr-exit-tag i.jr-exit-raw{font-family:var(--sans);max-width:100%;overflow:hidden;text-overflow:ellipsis}
   /* мультивыделение нод и рамка выделения */
   #jrCanvas .drawflow-node.jr-msel{outline:2px dashed var(--amber);outline-offset:3px}
   #jrBand{position:absolute;z-index:65;border:1.5px dashed var(--blue);

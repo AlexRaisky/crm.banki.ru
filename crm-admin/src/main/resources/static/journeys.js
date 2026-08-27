@@ -277,12 +277,30 @@
      полтора экрана: показать его как есть значило бы вместо схемы получить простыню,
      а спрятать совсем — соврать, что условия нет. Поэтому вытаскиваем имена событий,
      ради которых запрос и написан, а полный текст оставляем в подсказке при наведении. */
+  /* Имена событий из условия. Смотрим именно на event_name: в запросе есть и другие
+     строковые литералы, и брать подряд всё в кавычках значит однажды выдать за событие
+     кусок чужого сравнения. Оба написания разбираем — и цепочку OR, и IN (...).
+
+     Если шаблон не наш, возвращаемся к «всё, что в кавычках»: показать лишнее лучше,
+     чем промолчать о том, что условие вообще есть. */
+  function eventNames(v) {
+    var s = String(v == null ? "" : v);
+    var re = /event_name\s*(?:=|!=|<>)\s*'([^']*)'|event_name\s+in\s*\(([^)]*)\)/gi;
+    var out = [], m;
+    while ((m = re.exec(s))) {
+      if (m[1]) out.push(m[1]);
+      else (m[2].match(/'[^']*'/g) || []).forEach(function (q) { out.push(q.slice(1, -1)); });
+    }
+    if (!out.length) {
+      out = (s.match(/'[A-Za-z_][A-Za-z0-9_.]*'/g) || []).map(function (q) { return q.slice(1, -1); });
+    }
+    return out.filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+  }
+
   function condWords(v) {
     var s = String(v == null ? "" : v).trim();
     if (!s) return "";
-    var names = (s.match(/'[A-Za-z_][A-Za-z0-9_.]*'/g) || [])
-      .map(function (x) { return x.slice(1, -1); })
-      .filter(function (x, i, a) { return a.indexOf(x) === i; });
+    var names = eventNames(s);
     if (!names.length) return s.length > 64 ? s.slice(0, 61) + "…" : s;
     if (names.length === 1) return names[0];
     return names[0] + " и ещё " + (names.length - 1) + " " +
@@ -1584,7 +1602,7 @@
     if (!box) {
       box = document.createElement("div");
       box.id = "jrExitScope";
-      box.innerHTML = '<span class="jr-exit-tag"></span>';
+      box.innerHTML = '<div class="jr-exit-tag"></div>';
       editor.precanvas.insertBefore(box, editor.precanvas.firstChild);
     }
     var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
@@ -1594,12 +1612,28 @@
       x2 = Math.max(x2, el.offsetLeft + el.offsetWidth);
       y2 = Math.max(y2, el.offsetTop + el.offsetHeight);
     });
-    var pad = 28;
+    /* Сверху места больше: там перечислены события, обрывающие поток. Ради этого
+       список и вынесен на холст — «и ещё девять событий» на карточке не отвечает на
+       вопрос, ради которого его читают: какие именно. */
+    var pad = 28, padTop = 66;
     box.style.left = (x1 - pad) + "px";
-    box.style.top = (y1 - pad) + "px";
+    box.style.top = (y1 - padTop) + "px";
     box.style.width = (x2 - x1 + pad * 2) + "px";
-    box.style.height = (y2 - y1 + pad * 2) + "px";
-    box.querySelector(".jr-exit-tag").textContent = "Отменяет всю цепочку · " + condWords(cond);
+    box.style.height = (y2 - y1 + padTop + pad) + "px";
+    var names = eventNames(cond);
+    var tag = box.querySelector(".jr-exit-tag");
+    tag.innerHTML =
+      "<b>Отменяют цепочку</b>" + (names.length
+        ? names.map(function (nm) { return "<i>" + esc(nm) + "</i>"; }).join("")
+        : '<i class="jr-exit-raw">' + esc(condWords(cond)) + "</i>");
+    /* У короткой цепочки область узкая, и десять событий переносятся на несколько
+       строк. Меряем, сколько их получилось, и раздвигаем шапку — иначе список лёг бы
+       поверх первых блоков. */
+    var need = tag.offsetHeight + 22;
+    if (need > padTop) {
+      box.style.top = (y1 - need) + "px";
+      box.style.height = (y2 - y1 + need + pad) + "px";
+    }
     box.title = cond;
   }
 
