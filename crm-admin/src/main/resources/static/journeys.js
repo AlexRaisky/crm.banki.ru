@@ -906,8 +906,8 @@
       listCache = [];
       var sel = document.getElementById("jrSelect");
       if (sel) sel.innerHTML = '<option value="">— список не загрузился —</option>';
-      sectionNote("Список сохранённых цепочек не загрузился: " +
-        (e && e.message ? e.message : e) + ". Завести новую можно, открыть сохранённую — нет.");
+      sectionNote("Список сохранённых цепочек не загрузился: " + why(e) +
+        ". Завести новую можно, открыть сохранённую — нет.");
       return [];
     });
   }
@@ -919,6 +919,14 @@
     if (!hint) return;
     hint.textContent = text;
     hint.style.color = "var(--coral)";
+  }
+
+  /* Причина отказа одной строкой. В сообщении может лежать целая страница ошибки от
+     сервера — вывалить её в подсказку значит закрыть простынёй весь раздел. */
+  function why(e) {
+    var s = (e && e.message ? e.message : String(e == null ? "" : e)).trim();
+    s = s.split("\n")[0];
+    return s.length > 120 ? s.slice(0, 117) + "…" : (s || "причина не названа");
   }
 
   function loadSelected() {
@@ -2004,6 +2012,11 @@
       applyReadonly();
       return refreshList(null);
     }).then(function (list) {
+      /* За время запроса человек мог успеть нажать «Пример» или «Новая». Открыть
+         поверх сохранённую цепочку значило бы стереть нарисованное без объяснений —
+         именно так и выглядело: что ни нажми, на холсте оказывалась чужая цепочка. */
+      if (Object.keys(editor.export().drawflow.Home.data).length ||
+          document.getElementById("jrNewChain").style.display !== "none") return;
       if (list && list.length) {
         document.getElementById("jrSelect").value = list[0].id;
         loadSelected();
@@ -2017,9 +2030,25 @@
       /* Последняя сетка. Что бы ни отказало при открытии раздела, он обязан открыться
          рабочим: молчащий раздел человек чинит перезагрузкой и не узнаёт причину. */
       if (window.console) console.error("Цепочки: открытие раздела", e);
-      sectionNote("Раздел открылся не полностью: " + (e && e.message ? e.message : e));
+      sectionNote("Раздел открылся не полностью: " + why(e));
       if (canEdit()) window.jrNew();
     });
     document.getElementById("jrSelect").addEventListener("change", loadSelected);
   };
+
+  /* Подстраховка на случай, если раздел открыли раньше, чем выполнился этот файл.
+     Порядок подключения скриптов мы поправили, но полагаться только на него нельзя:
+     проверка в оболочке молчаливая — не оказалось функции, и раздел просто не ожил,
+     без ошибки и без следа. Здесь же мы точно знаем, что функция есть, и если раздел
+     уже на экране — поднимаем его сами. Повторный вызов безопасен: initJourneysSection
+     выходит по флагу inited. */
+  function initIfAlreadyOpen() {
+    var sec = document.getElementById("sec-journeys");
+    if (sec && sec.classList.contains("active")) window.initJourneysSection();
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initIfAlreadyOpen);
+  } else {
+    initIfAlreadyOpen();
+  }
 })();

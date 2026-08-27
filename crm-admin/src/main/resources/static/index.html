@@ -18,7 +18,11 @@
 <!-- Drawflow: интерактивная блок-схема цепочек (вендорен локально — без зависимости от CDN) -->
 <link rel="stylesheet" href="drawflow.min.css">
 <script src="drawflow.min.js"></script>
-<script src="journeys.js?v=18" defer></script>
+<!-- Без defer: оболочка (boot.js) — обычный скрипт в конце body и выполняется РАНЬШЕ
+     любого отложенного. Восстанавливая последний открытый раздел, она проверяет
+     typeof initJourneysSection === "function" — у отложенного скрипта функции ещё нет,
+     проверка молча не срабатывает, и раздел остаётся мёртвым до первого нажатия. -->
+<script src="journeys.js?v=20"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
