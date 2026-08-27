@@ -532,19 +532,21 @@
       var id = parseInt(el.id.slice(5), 10);
       setSel(id, !groupSel.has(id));
     });
-    // клик по пустой канве без модификаторов — сброс выделения
-    host.addEventListener("mousedown", function (e) {
-      if (e.target.closest(".drawflow-node")) return;
-      if (!e.ctrlKey && !e.metaKey && !e.shiftKey) clearSel();
-    });
-
-    // рамка по пустому месту (capture — чтобы Drawflow не начал панораму канвы)
+    /* Рамка по пустому месту (capture — чтобы Drawflow не начал панораму канвы).
+       Сброс выделения делается здесь же, а не отдельным обработчиком: этот стоит на
+       перехвате и глушит событие, так что до обработчиков на всплытии оно не доходит —
+       отдельный «сбросить по клику мимо» просто не вызывался, и выделение не
+       отпускалось. Одно нажатие — одно место, где решают, что с выделением. */
     host.addEventListener("mousedown", function (e) {
       if (!canEdit() || e.button !== 0) return;
       if (e.shiftKey) return;                       // Shift — панорама холста, её ведёт Drawflow
       if (e.target.closest(".drawflow-node")) return;
       e.preventDefault();
       e.stopPropagation();
+      /* Ctrl — добавить к выделению рамкой, без него — начать заново. Поэтому простой
+         щелчок мимо блоков и снимает выделение: рамка нулевого размера ничего не
+         добавит, а сброс уже случился. */
+      if (!e.ctrlKey && !e.metaKey) clearSel();
       var r = host.getBoundingClientRect();
       band = { x0: e.clientX - r.left, y0: e.clientY - r.top, rect: null };
       bandEl = document.createElement("div");
@@ -560,6 +562,9 @@
       var el = e.target.closest(".drawflow-node");
       if (!el) return;
       var id = parseInt(el.id.slice(5), 10);
+      /* Взяли блок мимо выделения — выделение снимается: тащить хотят именно его,
+         а оставленная подсветка на других блоках обещала бы, что поедут и они. */
+      if (!e.ctrlKey && !e.metaKey && !groupSel.has(id)) clearSel();
       var ids = null;
       if (nodeType(id) === "group") {
         ids = [id].concat(nodesOnGroup(id));
