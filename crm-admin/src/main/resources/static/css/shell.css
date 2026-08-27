@@ -292,6 +292,10 @@
   .jrn-logic .jrn-head{background:rgba(255,184,77,.10);color:var(--amber)}
   .jrn-data .jrn-head{background:rgba(255,107,138,.10);color:var(--coral)}
   .jrn-start .jrn-head{background:rgba(178,140,255,.12);color:#B99CFF}
+  /* Примечание: карточка без входов и выходов — не участник потока, а подпись к нему,
+     поэтому нейтральная, без цвета группы. */
+  .jrn-note .jrn-head{background:var(--card2);color:var(--dim)}
+  .jrn-note .jrn-sum{white-space:pre-line}
   /* Рамка группировки. Прозрачная и без тени: она подложка под блоками шага, а не
      ещё один блок — иначе на схеме два уровня карточек и не понять, что главное.
      Ширина и высота приходят инлайном из данных узла: у остальных блоков ширина одна,

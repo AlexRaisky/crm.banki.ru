@@ -140,6 +140,42 @@
         { k: "h",     l: "Высота, px",      kind: "number", def: "170" }
       ]
     },
+    /* ---- Блоки оффлайн-процесса (scheduler.t_execution_steps) ----
+       Показывают то, что уже исполняется: шаг — строка flow.d_event_step, стрелка —
+       чтение таблицы, созданной предыдущим шагом. Кнопок в тулбоксе у них нет:
+       движок собирает процесс из SQL-шагов события, а не из нарисованных блоков, и
+       кнопка обещала бы то, чего пока нет. */
+    extTable: {
+      label: "Внешняя таблица", cls: "data", ins: 0, outs: 1,
+      fields: [
+        { k: "table", l: "Таблица (или несколько)", kind: "textarea" },
+        { k: "note",  l: "Что берём",               kind: "textarea" }
+      ]
+    },
+    sqlStep: {
+      label: "Шаг выборки", cls: "data", outs: 1,
+      fields: [
+        { k: "order_num", l: "Номер шага (ORDER_NUM)", kind: "number" },
+        { k: "table",     l: "Создаёт таблицу",        kind: "text" },
+        { k: "note",      l: "Что делает",             kind: "textarea" },
+        { k: "dist",      l: "Ключ распределения",     kind: "text" },
+        /* Обвязка (drop / create / distributed by / GRANT) сюда не входит: она
+           одинакова у всех шагов и генерируется, а не пишется руками. */
+        { k: "sql",       l: "SQL шага (без обвязки)", kind: "textarea" },
+        { k: "returns",   l: "Возвращает выборку",     kind: "bool", def: "false" },
+        { k: "active",    l: "Шаг активен",            kind: "bool", def: "true" }
+      ]
+    },
+    /* Карточка-примечание: ни входов, ни выходов. Нужна для того, что к схеме
+       относится, но данных не даёт, — расписание, база, оговорки по процессу.
+       Вести к такому стрелку значило бы соврать: стрелка на схеме — поток данных. */
+    noteCard: {
+      label: "Примечание", cls: "note", ins: 0, outs: 0,
+      fields: [
+        { k: "title", l: "Заголовок", kind: "text" },
+        { k: "note",  l: "Текст",     kind: "textarea" }
+      ]
+    },
     subflow: {
       label: "Subflow", cls: "subflow", outs: 1,
       fields: [
@@ -383,6 +419,17 @@
           : "условие не задано";
       case "ifCheck":
         return [condWords(d.expr) || "условие не задано", d.note].filter(Boolean).join("\n");
+      case "extTable":
+        return [d.table, d.note].filter(Boolean).join("\n");
+      case "sqlStep": {
+        var head = (d.order_num ? "шаг " + d.order_num + " · " : "") +
+          (d.returns === "true" ? "возвращает выборку" : (d.table || "таблица не задана"));
+        return [head, d.note,
+                (d.dist && d.dist !== "—") ? "ключ: " + d.dist : null,
+                d.active === "false" ? "⏸ выключен" : null].filter(Boolean).join("\n");
+      }
+      case "noteCard":
+        return d.note || "";
       case "subflow": {
         var j = listCache.filter(function (x) { return x.id === d.journey; })[0];
         return j ? "→ " + j.name : "цепочка не выбрана";
@@ -410,6 +457,7 @@
     if (type === "flowExit" || type === "stepExit") return d.event_name || "";
     if (type === "ifCheck") return d.expr || "";
     if (type === "decision") return d.sql || "";
+    if (type === "sqlStep") return d.sql || "";
     if (type === "comm") return d.note || "";
     return "";
   }
@@ -1847,6 +1895,89 @@
     document.getElementById("jrKind").value = kind === "offline" ? "offline" : "online";
     window.jrKindChanged();
     renderNewTypes();
+  };
+
+  /* ------------------------------------------ раскладка оффлайн-процесса (граф)
+     Шаг встаёт в колонку по длине самого длинного пути до него: слева то, с чего
+     процесс начинается, справа — то, что зависит от всего остального. Раскладывать
+     по номерам ORDER_NUM было бы неверно: у воронки МФО двадцатый шаг не зависит ни
+     от чего и мог бы считаться первым, а номер ставит его в середину.
+
+     Колонки выравниваются по общей середине: длинная цепочка идёт прямой линией, а
+     веер входов расходится вокруг неё, а не жмётся к верхнему краю. */
+  var DAG = { x0: 60, y0: 70, pitch: 300, row: 190 };
+
+  function layoutDag(items) {
+    var byId = {};
+    items.forEach(function (n) { byId[n.id] = n; });
+    var level = {};
+    function lvl(id) {
+      if (level[id] != null) return level[id];
+      level[id] = 0;                       // на время счёта: защита от кольца в данных
+      var m = 0;
+      (byId[id].from || []).forEach(function (f) {
+        if (byId[f]) m = Math.max(m, lvl(f) + 1);
+      });
+      level[id] = m;
+      return m;
+    }
+    items.forEach(function (n) { lvl(n.id); });
+
+    var cols = {}, tallest = 0;
+    items.forEach(function (n) {
+      var k = level[n.id];
+      (cols[k] = cols[k] || []).push(n);
+      tallest = Math.max(tallest, cols[k].length);
+    });
+    Object.keys(cols).forEach(function (k) {
+      var col = cols[k], off = (tallest - col.length) / 2;
+      col.forEach(function (n, i) {
+        n.posX = DAG.x0 + Number(k) * DAG.pitch;
+        n.posY = DAG.y0 + (off + i) * DAG.row;
+      });
+    });
+    return items;
+  }
+
+  /* Пример оффлайн-процесса — настоящая воронка МФО из прода. Данные лежат отдельным
+     файлом: это большой кусок SQL, и мешать его с логикой раздела незачем. */
+  window.jrExampleOffline = function () {
+    if (!ensureEditor()) return;
+    if (!canEdit()) { alert("Раздел открыт только на просмотр."); return; }
+    var ex = window.JR_OFFLINE_EXAMPLE;
+    if (!ex) {
+      alert("Файл примера js/journeys-offline-example.js не загрузился — обновите страницу с Ctrl+F5.");
+      return;
+    }
+    var items = ex.steps.map(function (s) {
+      return { id: s.id, from: (s.from || []).slice(), src: s };
+    });
+    layoutDag(items);
+    var nodes = items.map(function (it) {
+      var s = it.src;
+      return {
+        id: s.id, type: s.type, posX: it.posX, posY: it.posY,
+        props: {
+          order_num: s.order == null ? "" : String(s.order),
+          table: s.table || "", note: s.note || "", dist: s.dist || "",
+          sql: s.sql || "", returns: s.returns ? "true" : "false",
+          active: s.active === false ? "false" : "true"
+        }
+      };
+    });
+    var edges = [];
+    items.forEach(function (it) {
+      it.from.forEach(function (f) { edges.push({ from: f, to: it.id }); });
+    });
+    /* Паспорт процесса — слева от схемы и без стрелок: расписание и база данных не
+       дают, а стрелка здесь означает поток данных. Слева, а не сверху: высота карточки
+       зависит от длины текста, и над первой колонкой она рано или поздно на неё ляжет. */
+    nodes.push({ id: "pass", type: "noteCard", posX: DAG.x0 - 330, posY: DAG.y0,
+                 props: { title: ex.note.title, note: ex.note.text } });
+    renderJourney({ id: null, name: ex.name, kind: "offline", nodes: nodes, edges: edges });
+    currentId = null;
+    document.getElementById("jrSelect").value = "";
+    window.jrFit();
   };
 
   window.jrNew = function () {

@@ -22,7 +22,10 @@
      любого отложенного. Восстанавливая последний открытый раздел, она проверяет
      typeof initJourneysSection === "function" — у отложенного скрипта функции ещё нет,
      проверка молча не срабатывает, и раздел остаётся мёртвым до первого нажатия. -->
-<script src="journeys.js?v=23"></script>
+<script src="journeys.js?v=25"></script>
+<!-- Данные примера оффлайн-процесса: большой кусок SQL, вынесен из journeys.js.
+     Читается только по нажатию кнопки, поэтому порядок подключения не важен. -->
+<script src="js/journeys-offline-example.js?v=1"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2375,7 +2378,10 @@
         <button type="button" class="jr-btn jr-new"     onclick="jrNew()"><span data-i18n="Новая">Новая</span></button>
         <!-- Готовая цепочка на холст: посмотреть, как складываются блоки. Ничего
              не сохраняет и никуда не пишет — это черновик, как «Новая». -->
-        <button type="button" class="jr-btn" onclick="jrExample()"><span data-i18n="Пример">Пример</span></button>
+        <button type="button" class="jr-btn" onclick="jrExample()"><span data-i18n="Пример: онлайн">Пример: онлайн</span></button>
+        <!-- Второй пример: настоящий оффлайн-процесс (воронка МФО), разложенный по
+             шагам. Стрелки — зависимости по таблицам, а не порядок ORDER_NUM. -->
+        <button type="button" class="jr-btn" onclick="jrExampleOffline()"><span data-i18n="Пример: оффлайн">Пример: оффлайн</span></button>
         <button type="button" class="jr-btn jr-save"    onclick="jrSave()"><span data-i18n="Сохранить">Сохранить</span></button>
         <button type="button" class="jr-btn jr-preview" onclick="jrPreview()"><span data-i18n="Предпросмотр">Предпросмотр</span></button>
         <!-- Заведение цепочки в commapi.events_chain: строка на шаг. Отдельно от
