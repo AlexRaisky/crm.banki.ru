@@ -38,51 +38,73 @@ var PROMO_CHAN_SRC = { 'callcenter':'contact', 'sms':'sms', 'e-mail':'email', 'm
 /* каналы, по которым считаются лимиты промо на продукт */
 var PROMO_MAIN_CHAN = ['e-mail', 'mobile-push', 'sms'];
 
-/* продукты: crm_product_segment (код + описание) */
+/* Продукты — ровно тот список, который принимает поле «Тип продукта» в Jira: значение
+   уходит в задачу как есть, и всё, чего в этом списке нет, Jira отвергает с ошибкой.
+   Порядок тоже её — чтобы глаз искал пункт там же, где на форме Jira.
+
+   Код рядом — наш сегмент (crm_product_segment), из него собирается source-имя
+   коммуникации. С написанием Jira он совпадает не всегда: у нас factoring, у них
+   Faktoring, — поэтому пара «код + имя», а не одно поле на оба смысла. */
 var PROMO_PRODUCTS = [
-  { code:'cash_register',       name:'Онлайн-кассы' },
-  { code:'kpk',                 name:'Кредитование потребительского кооператива (КПК)' },
-  { code:'business_credits',    name:'Кредиты для бизнеса' },
-  { code:'insurance_vzr',       name:'Выезд за рубеж (ВЗР)' },
-  { code:'insurance_health',    name:'Ипотечное страхование жизни и здоровья' },
-  { code:'insurance_combo',     name:'Ипотечное страхование комбо' },
-  { code:'insurance_estate',    name:'Ипотечное страхование недвижимости' },
-  { code:'insurance_mrtgg',     name:'Ипотечное страхование (объединённое)' },
-  { code:'kasko',               name:'Каско' },
-  { code:'general',             name:'Общие' },
-  { code:'insurance_etc',       name:'Страхование другое' },
-  { code:'acquiring',           name:'Эквайринг' },
-  { code:'autocredits',         name:'Автокредиты' },
-  { code:'bank_guarantees',     name:'Банковские гарантии' },
-  { code:'business_microloans', name:'Займы для бизнеса' },
-  { code:'creditcards',         name:'Кредитные карты' },
-  { code:'credits',             name:'Потребительские кредиты' },
-  { code:'cryptocurrency',      name:'Криптовалюта' },
-  { code:'debitcards',          name:'Дебетовые карты' },
-  { code:'deposits',            name:'Вклады' },
-  { code:'estate',              name:'Недвижимость' },
-  { code:'exchange_rate',       name:'Курсы валют (КВ)' },
-  { code:'factoring',           name:'Факторинг' },
-  { code:'investments',         name:'Инвестиции' },
-  { code:'leasing',             name:'Лизинг' },
-  { code:'lsre',                name:'Кредит под залог недвижимости (КПЗН)' },
-  { code:'microloans',          name:'Микрозаймы' },
-  { code:'mortgage_broker',     name:'Ипотечный брокер' },
-  { code:'mortgages',           name:'Ипотека' },
-  { code:'rvk',                 name:'РВК Страхование' },
-  { code:'savings_account',     name:'Накопительные счета' },
-  { code:'osago',               name:'ОСАГО' },
-  { code:'rko',                 name:'Расчётно-кассовое обслуживание (РКО)' }
+  { code:'autocredits',         name:'Autocredits' },
+  { code:'acquiring',           name:'Acquiring' },
+  { code:'business_credits',    name:'Business_credits' },
+  { code:'business_microloans', name:'Business_microloans' },
+  { code:'creditcards',         name:'Creditcards' },
+  { code:'credits',             name:'Credits' },
+  { code:'debitcards',          name:'Debitcards' },
+  { code:'deposits',            name:'Deposits' },
+  { code:'exchange_rate',       name:'Exchange_rate' },
+  { code:'factoring',           name:'Faktoring' },
+  { code:'general',             name:'General' },
+  { code:'leasing',             name:'Leasing' },
+  { code:'insurance_estate',    name:'Insurance_estate' },
+  { code:'insurance_etc',       name:'Insurance_etc' },
+  { code:'investments',         name:'Investments' },
+  { code:'kasko',               name:'Kasko' },
+  { code:'lsre',                name:'LSRE' },
+  { code:'microloans',          name:'Microloans' },
+  { code:'mortgages',           name:'Mortgages' },
+  { code:'osago',               name:'OSAGO' },
+  { code:'rko',                 name:'RKO' },
+  { code:'savings_account',     name:'Savings_account' }
 ];
-/* сокращения из прежней таблицы → продукт справочника */
+/* Продукты, которых в списке Jira нет, а в накопленном плане они встречаются.
+   В выпадашку не попадают: предложить их значило бы пообещать задачу, которую Jira не
+   примет. Но код по ним по-прежнему находится — старые строки не теряют source-имя и
+   не начинают считаться «продукт не указан». */
+var PROMO_PRODUCTS_LEGACY = [
+  { code:'cash_register',    name:'Онлайн-кассы' },
+  { code:'kpk',              name:'Кредитование потребительского кооператива (КПК)' },
+  { code:'insurance_vzr',    name:'Выезд за рубеж (ВЗР)' },
+  { code:'insurance_health', name:'Ипотечное страхование жизни и здоровья' },
+  { code:'insurance_combo',  name:'Ипотечное страхование комбо' },
+  { code:'insurance_mrtgg',  name:'Ипотечное страхование (объединённое)' },
+  { code:'bank_guarantees',  name:'Банковские гарантии' },
+  { code:'cryptocurrency',   name:'Криптовалюта' },
+  { code:'estate',           name:'Недвижимость' },
+  { code:'mortgage_broker',  name:'Ипотечный брокер' },
+  { code:'rvk',              name:'РВК Страхование' }
+];
+/* Прежние написания продукта → нынешнее. Сокращения из старой таблицы и русские
+   названия, стоявшие в плане до перехода на список Jira: строка, заведённая вчера,
+   не должна сегодня оказаться без продукта. */
 var PROMO_PROD_ALIAS = {
-  'КК':'Кредитные карты', 'ДК':'Дебетовые карты', 'ПК':'Потребительские кредиты',
-  'КВ':'Курсы валют (КВ)', 'НС':'Накопительные счета', 'ИС':'Ипотечное страхование (объединённое)',
-  'КПЗН':'Кредит под залог недвижимости (КПЗН)', 'МФО':'Микрозаймы',
-  'Ипотека':'Ипотека', 'ОСАГО':'ОСАГО', 'Вклады':'Вклады',
-  'РКО':'Расчётно-кассовое обслуживание (РКО)', 'general':'Общие',
-  'Кредит для бизнеса':'Кредиты для бизнеса', 'Бизнес':'Кредиты для бизнеса',
-  'Каско':'Каско', 'Инвестиции':'Инвестиции'
+  'КК':'Creditcards', 'ДК':'Debitcards', 'ПК':'Credits', 'КВ':'Exchange_rate',
+  'НС':'Savings_account', 'КПЗН':'LSRE', 'МФО':'Microloans', 'РКО':'RKO',
+  'Бизнес':'Business_credits', 'Кредит для бизнеса':'Business_credits',
+  'Ипотека':'Mortgages', 'ОСАГО':'OSAGO', 'Вклады':'Deposits', 'Каско':'Kasko',
+  'Инвестиции':'Investments', 'general':'General', 'Общие':'General',
+  'Кредитные карты':'Creditcards', 'Дебетовые карты':'Debitcards',
+  'Потребительские кредиты':'Credits', 'Автокредиты':'Autocredits',
+  'Накопительные счета':'Savings_account', 'Курсы валют (КВ)':'Exchange_rate',
+  'Микрозаймы':'Microloans', 'Эквайринг':'Acquiring', 'Лизинг':'Leasing',
+  'Факторинг':'Faktoring', 'Кредиты для бизнеса':'Business_credits',
+  'Займы для бизнеса':'Business_microloans', 'Инвестиции ':'Investments',
+  'Кредит под залог недвижимости (КПЗН)':'LSRE',
+  'Ипотечное страхование недвижимости':'Insurance_estate',
+  'Страхование другое':'Insurance_etc',
+  'Расчётно-кассовое обслуживание (РКО)':'RKO'
 };
 
 /* Партнёры: фолбэк на случай недоступного справочника. Основной источник —
@@ -126,15 +148,18 @@ var PROMO_BASES = ['Вклады', 'ОСАГО', 'Каско', 'НС', 'Инве
                    'КПЗН', 'Ипотека', 'КВ', 'Бизнес', 'Диалог', 'ИС', 'МФО', 'Тотал'];
 var PROMO_OWNERS = [];        /* имена для выпадашки ответственных, приезжают с сервера */
 var PROMO_COLS = 17;          /* колонок до кнопки «+» в строке-дате */
-/* Заказчик — вертикаль. Список закрытый и зашит здесь: справочник направлений
-   (chain.chain, gorizontal.gorizontal) заведён не на всех контурах, и там, где его нет,
-   поле оставалось свободным вводом — а значит и опечатками, по которым потом не
+/* Заказчик — вертикаль. Список тот же, что в поле «Заказчик» в Jira, и в том же
+   порядке: значение уходит в задачу как есть, а всё, чего в этом списке нет, Jira
+   отвергает. Пустой пункт («None» на её форме) подставляет promoCustomerOpts.
+   Зашит здесь, а не читается справочником: направления (chain.chain,
+   gorizontal.gorizontal) заведены не на всех контурах, и там, где их нет, поле
+   оставалось свободным вводом — а значит и опечатками, по которым потом не
    сгруппировать план.
    Значение, заведённое до появления списка, из строки не пропадает: оно добавляется
    в выпадашку отдельным пунктом (см. promoCustomerOpts). */
-var PROMO_VERTICALS = ['Вклады', 'Потребкредиты', 'Кредитные карты', 'Дебетовые карты',
-                       'Ипотека', 'Автокредиты', 'Страхование', 'ОСАГО', 'Инвестиции',
-                       'МФО', 'Бизнес', 'Общее'];
+var PROMO_VERTICALS = ['Бизнес', 'Ипотека', 'Карты', 'Кредиты', 'Сбережения',
+                       'Страхование', 'Маркетплейс', 'Мобильное приложение',
+                       'Лояльность', 'Диалог', 'Народный Рейтинг', 'Новости'];
 
 /* Строка баз → список. Разделители — запятая, точка с запятой и перевод строки:
    в накопленных данных встречаются все три. */
@@ -231,7 +256,8 @@ function promoNormProduct(v){
   var out = [];
   parts.forEach(function(p){
     var name = PROMO_PROD_ALIAS[p] || p;
-    var byCode = PROMO_PRODUCTS.filter(function(x){ return x.code === p; })[0];
+    var byCode = PROMO_PRODUCTS.concat(PROMO_PRODUCTS_LEGACY)
+      .filter(function(x){ return x.code === p; })[0];
     if (byCode) name = byCode.name;
     if (out.indexOf(name) === -1) out.push(name);
   });
@@ -412,9 +438,13 @@ function promoAutoRefresh(){
 }
 
 /* ---------- название коммуникации (формат Конструктора source) ---------- */
+/* Код сегмента по названию продукта. Ищем и среди отменённых названий: строку,
+   заведённую до перехода на список Jira, source-имя терять не должно — она уже
+   отправлена, и «продукт не указан» на ней означало бы поломку на ровном месте. */
 function promoProdCode(product){
   var first = String(product || '').split(',')[0].trim();
-  var p = PROMO_PRODUCTS.filter(function(x){ return x.name === first; })[0];
+  var p = PROMO_PRODUCTS.concat(PROMO_PRODUCTS_LEGACY)
+    .filter(function(x){ return x.name === first; })[0];
   return p ? p.code : '';
 }
 function promoDatePart(iso, chan){
