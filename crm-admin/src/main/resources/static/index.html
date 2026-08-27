@@ -18,7 +18,7 @@
 <!-- Drawflow: интерактивная блок-схема цепочек (вендорен локально — без зависимости от CDN) -->
 <link rel="stylesheet" href="drawflow.min.css">
 <script src="drawflow.min.js"></script>
-<script src="journeys.js?v=10" defer></script>
+<script src="journeys.js?v=11" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2363,13 +2363,10 @@
       <div class="jr-toolbar">
         <select id="jrSelect" title="Выбор цепочки"></select>
         <input id="jrName" placeholder="Название цепочки" data-i18n-ph="Название цепочки" title="Название цепочки">
-        <select id="jrKind" title="Тип цепочки: online — от входящего события, offline — по расписанию (ретеншен)" onchange="jrKindChanged()">
-          <option value="online">online</option>
-          <option value="offline">offline</option>
-        </select>
-        <select id="jrContinues" title="Продолжением какой online-цепочки является (метка)" style="display:none">
-          <option value="">— продолжение (метка) —</option>
-        </select>
+        <!-- Тип цепочки выбирается при заведении, в модалке «Новая»: онлайн и оффлайн —
+             развилка в начале, а не настройка готовой схемы. Здесь только показываем,
+             какая цепочка открыта. -->
+        <span id="jrKindLabel" class="jr-hint">online · от события</span>
         <span class="jr-sep"></span>
         <button type="button" class="jr-btn jr-new"     onclick="jrNew()"><span data-i18n="Новая">Новая</span></button>
         <!-- Готовая цепочка на холст: посмотреть, как складываются блоки. Ничего
@@ -2413,7 +2410,8 @@
                Выходов у них по одному — обещать ветвление, которого нет, нельзя. -->
           <div class="jr-tb-group" data-i18n="Цепочка">Цепочка</div>
           <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('timer')">Таймер</button>
-          <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('flowExit')">Flow exit</button>
+          <!-- Flow exit кнопкой не ставится: условие выхода действует всё время, а не
+               на своём месте в ряду, и живёт полем в блоке Income event. -->
           <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('stepExit')">Step exit</button>
           <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('ifCheck')">Проверка (if)</button>
           <!-- Рамка: ничего не исполняет, объединяет блоки одного шага. Что на ней
@@ -2491,6 +2489,17 @@
           </div>
           <div class="jr-modal-body">
             <div class="jre-field">
+              <label data-i18n="Тип цепочки">Тип цепочки</label>
+              <!-- карточки строит journeys.js: выбранная помечается галкой -->
+              <div id="jrNewTypes" class="jr-cards"></div>
+              <!-- Значение читают collectJourney и renderJourney — селект остаётся,
+                   но им управляют карточки выше, а не человек напрямую. -->
+              <select id="jrKind" style="display:none" onchange="jrKindChanged()">
+                <option value="online">online</option>
+                <option value="offline">offline</option>
+              </select>
+            </div>
+            <div class="jre-field jr-only-online">
               <label data-i18n="Стартовое событие">Стартовое событие — из tracker.t_event_comm</label>
               <input id="jrNewFilter" placeholder="поиск по имени события, системе или id" oninput="jrNewFilterChanged()">
               <div id="jrNewList" class="jr-cards"></div>
@@ -2503,17 +2512,20 @@
               <label data-i18n="Система">Система</label>
               <input id="jrNewSystem" placeholder="подставится из события">
             </div>
-            <div class="jre-field">
+            <div class="jre-field jr-only-online">
               <label data-i18n="Отменяющее событие">Отменяющее событие — SQL, одно на всю цепочку</label>
               <textarea id="jrNewExit" placeholder='{"SELECT 1 FROM tracker.t_event t3 WHERE t3.event_name IN (...) AND t3.user_id = :userId AND t3.timestamp_cr >= current_date"}'></textarea>
-              <span class="jr-hint">Обрывает весь поток, а не отдельный шаг, и задаётся один раз. Оставьте пустым — цепочку не оборвёт ничто.</span>
+              <span class="jr-hint">Обрывает весь поток, а не отдельный шаг, и задаётся один раз — потом лежит в блоке Income event. Пусто — цепочку не оборвёт ничто.</span>
+            </div>
+            <div class="jre-field jr-only-offline" style="display:none">
+              <label data-i18n="Продолжение цепочки">Продолжение online-цепочки (метка)</label>
+              <select id="jrContinues" title="Продолжением какой online-цепочки является (метка)">
+                <option value="">— продолжение (метка) —</option>
+              </select>
+              <span class="jr-hint">Оффлайн стартует по крону: расписание и SQL-выборку задают в блоке Time event на холсте.</span>
             </div>
           </div>
           <div class="jr-modal-foot">
-            <!-- Оффлайн-цепочка (ретеншен по расписанию) начинается не с события, а с
-                 Time event, и этих полей у неё нет. Чтобы модалка её не хоронила —
-                 выход на пустой холст, как было раньше. -->
-            <button type="button" class="jr-modal-close" onclick="jrNewBlank()">Пустой холст (оффлайн-цепочка)</button>
             <span class="jr-hint">Шаги добавляются потом, на холсте: Таймер, Step exit и Communication Alert.</span>
             <button type="button" class="jr-btn jr-save" onclick="jrNewCreate()"><span data-i18n="Создать">Создать</span></button>
           </div>

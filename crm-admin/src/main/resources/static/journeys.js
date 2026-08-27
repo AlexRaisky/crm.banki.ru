@@ -38,8 +38,14 @@
         { k: "t_event_comm_id",     l: "Событие",            kind: "eventPick" },
         { k: "event_name",          l: "Имя события",        kind: "text", ro: true },
         { k: "system",              l: "Система",            kind: "text", ro: true },
-        /* Условие выхода задаётся блоком Flow exit, а не полем: одна колонка не должна
-           заполняться из двух мест. */
+        /* Условие выхода живёт здесь, а не отдельным блоком. Блок в цепочке означает
+           «случилось на этом месте», а условие выхода действует всё время, от прихода
+           события до последнего шага: поставить его в ряд со ступенями значило бы
+           соврать про момент, когда оно работает. Здесь же оно ровно там, где начинается
+           поток, и одно на весь поток. На холсте его область показана подсветкой вокруг
+           всей цепочки — сам блок её не рисует. */
+        { k: "exit_condition",      l: "Отменяющее событие — SQL (обрывает всю цепочку)",
+          kind: "textarea" },
         /* Полей, описывающих КАК завести событие, здесь больше нет: канал, sub channel,
            платформа, группа, send_delay, life time, allow ML, definition key, business
            key prefix. Событие теперь не заводится узлом, а выбирается из уже заведённых
@@ -306,8 +312,11 @@
   function nodeSummary(type, d) {
     d = d || {};
     switch (type) {
-      case "startIncome":
-        return [d.event_name || "событие не задано", d.system].filter(Boolean).join(" · ");
+      case "startIncome": {
+        var head = [d.event_name || "событие не задано", d.system].filter(Boolean).join(" · ");
+        return [head, d.exit_condition ? "отменяет всё: " + condWords(d.exit_condition) : null]
+          .filter(Boolean).join("\n");
+      }
       case "startTime": {
         var n = parseSteps(d.sql_steps).filter(function (s) { return s.sql.trim(); }).length;
         return [d.event_name || "событие не задано",
@@ -361,6 +370,7 @@
      но проверить, какой именно SQL стоит в блоке, надо уметь не открывая модалку. */
   function nodeTip(type, d) {
     d = d || {};
+    if (type === "startIncome") return d.exit_condition || "";
     if (type === "flowExit" || type === "stepExit") return d.event_name || "";
     if (type === "ifCheck") return d.expr || "";
     if (type === "comm") return d.note || "";
@@ -593,6 +603,7 @@
         if (ne && d) { d.pos_x = ne.offsetLeft; d.pos_y = ne.offsetTop; }
       });
       gDrag = null;
+      renderExitScope();   // рамка группировки уехала — область условия за ней
     });
 
     // Delete — удалить всю группу (когда фокус не в поле ввода)
@@ -781,6 +792,10 @@
   window.jrKindChanged = function () {
     var offline = document.getElementById("jrKind").value === "offline";
     document.getElementById("jrContinues").style.display = offline ? "" : "none";
+    /* Сам переключатель уехал в модалку заведения, но тип открытой цепочки надо видеть
+       и потом: от него зависит, что вообще значат блоки на холсте. */
+    var lab = document.getElementById("jrKindLabel");
+    if (lab) lab.textContent = offline ? "offline · по расписанию" : "online · от события";
   };
 
   function refreshContinuesOptions(selectedId) {
@@ -1116,6 +1131,7 @@
     });
     editor.updateNodeDataFromId(editingId, data);
     updateNodeCard(editingId);
+    renderExitScope();   // условие могли поменять прямо сейчас
     window.jrEditClose();
   };
 
@@ -1303,7 +1319,11 @@
       cur = link ? String(link.node) : null;
     }
 
-    var steps = [], exitCondition = "", pendingWait = "", pendingExit = "", ignored = {};
+    /* Условие выхода берём из блока Income event: оно одно на цепочку и лежит там.
+       Блок Flow exit остался только у схем, нарисованных до этой правки, — их читаем
+       по-старому, чтобы уже нарисованное не пришлось перекладывать заново. */
+    var steps = [], exitCondition = String(start.exit_condition || "").trim();
+    var pendingWait = "", pendingExit = "", ignored = {};
     seq.forEach(function (k) {
       var n = raw[k], d = n.data || {};
       switch (n.name) {
@@ -1311,15 +1331,16 @@
         case "timer":    pendingWait = d.wait_time || "0"; break;
         case "stepExit": pendingExit = d.event_name || ""; break;
         case "flowExit":
-          /* Условие выхода одно на цепочку. Второй Flow exit — почти наверняка
-             ошибка, и молча взять последний хуже, чем сказать. */
+          /* Старая схема: условие стояло отдельным блоком. Берём его, только если в
+             Income event пусто — там теперь источник, и молча перекрыть его блоком
+             значило бы завести не то, что человек видит в стартовом узле. */
           if (exitCondition && d.event_name && d.event_name !== exitCondition) {
-            alert("Flow exit встречается дважды с разными событиями: «" + exitCondition +
-                  "» и «" + d.event_name + "». Условие выхода одно на всю цепочку.");
-            exitCondition = null;
-            return;
+            alert("Условие выхода задано и в блоке Income event, и в старом блоке Flow exit,"
+                  + " и они разные. Оставлено то, что в Income event: условие одно на цепочку."
+                  + "\nЛишний блок Flow exit лучше убрать с холста.");
+            break;
           }
-          exitCondition = d.event_name || exitCondition;
+          exitCondition = exitCondition || d.event_name || "";
           break;
         case "comm":
           steps.push({
@@ -1334,7 +1355,6 @@
           if (n.name !== "startTime") ignored[NODE_TYPES[n.name] ? NODE_TYPES[n.name].label : n.name] = true;
       }
     });
-    if (exitCondition === null) return;   // разные Flow exit — уже сказали, дальше не идём
     if (!steps.length) { alert("В цепочке нет ни одного Communication Alert."); return; }
 
     /* Блоки, которые движок пока не исполняет, в таблицу не уедут. Молча их проглотить
@@ -1377,9 +1397,9 @@
      края: стрелка между шагами уходит по диагонали вниз, и порядок читается сверху
      вниз, не заставляя каждый раз возвращаться глазами к началу строки.
 
-     Условие выхода стоит одним блоком сразу за событием, хотя в таблице лежит у
-     каждой строки: оно обрывает весь поток, а не отдельный шаг, и рисовать его у
-     каждого шага значило бы показывать три разных условия там, где оно одно.
+     Условия выхода в ряду нет вовсе: оно действует всё время, а не на своём месте
+     в цепочке. Лежит оно в блоке Income event, а докуда достаёт — видно по подсветке
+     вокруг всей схемы (renderExitScope).
 
      Рамок вокруг шагов нет. Шаг и так читается дорожкой, а рамка добавляла второй
      уровень карточек ровно с той же границей — обводить очевидное значит мешать.
@@ -1407,13 +1427,10 @@
          В примере он остаётся пустым: чужой id предложил бы завести цепочку не тому. */
       t_event_comm_id: opts.bindEvent && ch.id != null ? String(ch.id) : "",
       event_name: ch.eventName || "",
-      system: ch.system || ""
+      system: ch.system || "",
+      exit_condition: exit
     });
     x += LAY.pitch;
-    if (exit) {
-      block("flowExit", x, y, { event_name: exit });
-      x += LAY.pitch;
-    }
 
     steps.forEach(function (s, i) {
       var blocks = [];
@@ -1442,6 +1459,50 @@
     });
 
     return { id: null, name: name, kind: "online", nodes: nodes, edges: edges };
+  }
+
+  /* Область действия отменяющего события. Условие обрывает поток на любом шаге, а не
+     на своём месте в ряду, — значит и на схеме ему не место в ряду. Рисуем его
+     подсветкой вокруг всей цепочки: сразу видно, докуда оно достаёт, и ни одна
+     ступень не делает вид, будто условие относится к ней одной.
+
+     Это не узел. У узла есть координаты, которые кто-то передвинет, и своя копия
+     условия, которая разойдётся с полем в Income event. Полоса живёт на самом холсте
+     и каждый раз пересчитывается от того, что на нём сейчас лежит, — расходиться
+     нечему. */
+  function renderExitScope() {
+    if (!editor || !editor.precanvas) return;
+    var box = document.getElementById("jrExitScope");
+    var start = findNodeByType("startIncome");
+    var n = start == null ? null : editor.getNodeFromId(start);
+    var cond = n ? String((n.data || {}).exit_condition || "").trim() : "";
+    var els = document.querySelectorAll("#jrCanvas .drawflow-node");
+    /* Пока в цепочке один блок, обводить нечего: подсветка вокруг одного узла
+       читалась бы как свойство этого узла — ровно то, от чего мы уходим. */
+    if (!cond || els.length < 2) {
+      if (box) box.remove();
+      return;
+    }
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "jrExitScope";
+      box.innerHTML = '<span class="jr-exit-tag"></span>';
+      editor.precanvas.insertBefore(box, editor.precanvas.firstChild);
+    }
+    var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    els.forEach(function (el) {
+      x1 = Math.min(x1, el.offsetLeft);
+      y1 = Math.min(y1, el.offsetTop);
+      x2 = Math.max(x2, el.offsetLeft + el.offsetWidth);
+      y2 = Math.max(y2, el.offsetTop + el.offsetHeight);
+    });
+    var pad = 28;
+    box.style.left = (x1 - pad) + "px";
+    box.style.top = (y1 - pad) + "px";
+    box.style.width = (x2 - x1 + pad * 2) + "px";
+    box.style.height = (y2 - y1 + pad * 2) + "px";
+    box.querySelector(".jr-exit-tag").textContent = "Отменяет всю цепочку · " + condWords(cond);
+    box.title = cond;
   }
 
   /* Уместить всё на экран. Раскладка уходит вправо по диагонали, и у цепочки из
@@ -1554,6 +1615,42 @@
      нет. Появится справочник — заменим поле, запрос останется тем же. */
   var newPick = null;   // выбранное в модалке событие из tracker.t_event_comm
 
+  /* Тип цепочки спрашивается здесь же, первым вопросом, и из шапки холста уехал.
+     Онлайн и оффлайн — это не настройка уже нарисованной цепочки, а развилка в самом
+     начале: у них разные стартовые блоки и разный смысл почти всех полей. Переключатель
+     над готовым холстом обещал, что цепочку можно переобуть на ходу, — а нельзя. */
+  var NEW_TYPES = [
+    { k: "online", t: "Онлайн-цепочка",
+      d: "Стартует от входящего события из tracker.t_event_comm. Шаги отсчитываются от прихода события." },
+    { k: "offline", t: "Оффлайн-цепочка",
+      d: "Ретеншен по расписанию: стартует Time event по крону, кого брать — задаётся SQL-шагами." }
+  ];
+
+  function renderNewTypes() {
+    var kind = document.getElementById("jrKind").value === "offline" ? "offline" : "online";
+    var box = document.getElementById("jrNewTypes");
+    if (box) {
+      box.innerHTML = NEW_TYPES.map(function (t) {
+        return '<button type="button" class="jr-card' + (t.k === kind ? " sel" : "") +
+          '" onclick="jrNewType(\'' + t.k + '\')">' +
+          '<div class="jr-card-t">' + esc(t.t) + '</div>' +
+          '<div class="jr-card-d">' + esc(t.d) + "</div></button>";
+      }).join("");
+    }
+    document.querySelectorAll("#jrNewChain .jr-only-online").forEach(function (el) {
+      el.style.display = kind === "online" ? "" : "none";
+    });
+    document.querySelectorAll("#jrNewChain .jr-only-offline").forEach(function (el) {
+      el.style.display = kind === "offline" ? "" : "none";
+    });
+  }
+
+  window.jrNewType = function (kind) {
+    document.getElementById("jrKind").value = kind === "offline" ? "offline" : "online";
+    window.jrKindChanged();
+    renderNewTypes();
+  };
+
   window.jrNew = function () {
     if (!ensureEditor()) return;
     if (!canEdit()) { alert("Раздел открыт только на просмотр."); return; }
@@ -1562,6 +1659,9 @@
       var el = document.getElementById(id);
       if (el) el.value = "";
     });
+    document.getElementById("jrKind").value = "online";
+    refreshContinuesOptions(null);
+    renderNewTypes();
     document.getElementById("jrNewChain").style.display = "";
     renderNewList("");
     loadTrackerEvents().then(function () { renderNewList(document.getElementById("jrNewFilter").value); });
@@ -1571,15 +1671,6 @@
 
   window.jrNewClose = function () {
     document.getElementById("jrNewChain").style.display = "none";
-  };
-
-  /* Пустой холст — для оффлайн-цепочки: она начинается с Time event, и ни стартового
-     события, ни условия выхода у неё нет. Модалка спрашивает ровно то, чего у оффлайна
-     не бывает, — значит, для него нужен выход мимо неё. */
-  window.jrNewBlank = function () {
-    window.jrNewClose();
-    document.getElementById("jrSelect").value = "";
-    renderJourney(null);
   };
 
   window.jrNewFilterChanged = function () {
@@ -1632,26 +1723,38 @@
   };
 
   window.jrNewCreate = function () {
-    if (!newPick) { alert("Выберите стартовое событие: цепочка начинается с него."); return; }
-    var name = (document.getElementById("jrNewName").value || "").trim() || (newPick.eventName || "");
+    var kind = document.getElementById("jrKind").value === "offline" ? "offline" : "online";
+    var name = (document.getElementById("jrNewName").value || "").trim();
     var system = (document.getElementById("jrNewSystem").value || "").trim();
-    var exit = (document.getElementById("jrNewExit").value || "").trim();
-    if (newPick.steps && !confirm("У события «" + (newPick.eventName || newPick.id) +
-        "» уже заведена цепочка (шагов " + newPick.steps + ").\nЗавести поверх неё не выйдет:" +
-        " правку существующих не делаем, по этим строкам движок ведёт людей прямо сейчас.\n" +
-        "Открыть холст всё равно — как черновик?")) return;
 
-    var nodes = [{
-      id: "s1", type: "startIncome", posX: LAY.x0, posY: LAY.y0,
-      props: { t_event_comm_id: String(newPick.id), event_name: newPick.eventName || "", system: system }
-    }];
-    var edges = [];
-    if (exit) {
-      nodes.push({ id: "s2", type: "flowExit", posX: LAY.x0 + LAY.pitch, posY: LAY.y0,
-                   props: { event_name: exit } });
-      edges.push({ from: "s1", to: "s2" });
+    if (kind === "offline") {
+      /* У оффлайна нет ни стартового события, ни условия выхода: он стартует по крону,
+         а кого брать — решает SQL-выборка в самом Time event. Спрашивать эти поля у
+         него значило бы собирать то, чему негде лечь. */
+      if (!name) { alert("Укажите название цепочки."); return; }
+      renderJourney({
+        id: null, name: name, kind: "offline",
+        continuesJourneyId: document.getElementById("jrContinues").value || null,
+        nodes: [{ id: "s1", type: "startTime", posX: LAY.x0, posY: LAY.y0,
+                  props: { event_name: name, system: system } }],
+        edges: []
+      });
+    } else {
+      if (!newPick) { alert("Выберите стартовое событие: цепочка начинается с него."); return; }
+      if (!name) name = newPick.eventName || "";
+      var exit = (document.getElementById("jrNewExit").value || "").trim();
+      if (newPick.steps && !confirm("У события «" + (newPick.eventName || newPick.id) +
+          "» уже заведена цепочка (шагов " + newPick.steps + ").\nЗавести поверх неё не выйдет:" +
+          " правку существующих не делаем, по этим строкам движок ведёт людей прямо сейчас.\n" +
+          "Открыть холст всё равно — как черновик?")) return;
+      renderJourney({
+        id: null, name: name, kind: "online",
+        nodes: [{ id: "s1", type: "startIncome", posX: LAY.x0, posY: LAY.y0,
+                  props: { t_event_comm_id: String(newPick.id), event_name: newPick.eventName || "",
+                           system: system, exit_condition: exit } }],
+        edges: []
+      });
     }
-    renderJourney({ id: null, name: name, kind: "online", nodes: nodes, edges: edges });
     currentId = null;
     document.getElementById("jrSelect").value = "";
     window.jrNewClose();
@@ -1720,6 +1823,11 @@
     });
     wireCanvasUx(host);
     wireMultiSelect(host);
+    /* Область действия отменяющего события пересчитывается от того, что лежит на
+       холсте: добавили блок, убрали, передвинули — граница поехала за ними. */
+    ["nodeCreated", "nodeRemoved", "nodeMoved"].forEach(function (ev) {
+      editor.on(ev, renderExitScope);
+    });
     /* Список событий для «Открыть цепочку»: те же, что в блоке Income event. Сколько
        шагов заведено, пишем прямо в строке — иначе выбор превращается в перебор. */
     loadTrackerEvents().then(function (list) {
