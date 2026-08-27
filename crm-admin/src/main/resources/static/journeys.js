@@ -115,7 +115,7 @@
     stepExit: {
       label: "Step exit (старый блок)", cls: "logic", outs: 1,
       fields: [
-        { k: "event_name", l: "Событие, снимающее следующий шаг — SQL", kind: "textarea" }
+        { k: "event_name", l: "Событие, отменяющее шаг — SQL", kind: "textarea" }
       ]
     },
     ifCheck: {
@@ -156,9 +156,10 @@
         { k: "note",     l: "Комментарий", kind: "textarea" }
       ]
     },
-    /* Decision — проверка перед шагом. Да — условие выполнилось, шаг снимается
-       и вести оттуда некуда; нет — идём дальше по цепочке. В таблице это exit_step
-       того шага, к которому ведёт ветка «нет». */
+    /* Decision — проверка перед шагом. Да — условие выполнилось, ЭТОТ шаг отменяется
+       и цепочка идёт к следующему; нет — шаг отрабатывает как обычно. В таблице это
+       exit_step той самой строки, чью коммуникацию проверка и отменяет: она снимает
+       текущий шаг, а не следующий, и поток на этом не заканчивается. */
     decision: {
       label: "Decision", cls: "logic", outs: 2, outLabels: ["Да", "Нет"],
       fields: [
@@ -169,7 +170,8 @@
            Отдельный тип блока под step exit мы уже убирали: два блока под одну колонку
            означали два способа сказать одно. Метка же говорит про ту же самую
            проверку, исполняется она или пока только нарисована. */
-        { k: "step_exit", l: "Это step exit — снимает следующий шаг", kind: "bool", def: "false" }
+        { k: "step_exit", l: "Это step exit — отменяет этот шаг, цепочка идёт к следующему",
+          kind: "bool", def: "false" }
       ]
     },
     /* Pause — задержка перед шагом. Отсчёт от прихода события, а не от предыдущей
@@ -359,7 +361,7 @@
           : "условие не задано";
       case "stepExit":
         return d.event_name
-          ? "снимает следующий шаг:\n" + condWords(d.event_name)
+          ? "отменяет этот шаг:\n" + condWords(d.event_name)
           : "условие не задано";
       case "ifCheck":
         return [condWords(d.expr) || "условие не задано", d.note].filter(Boolean).join("\n");
@@ -371,7 +373,7 @@
         return [d.title,
                 (d.sql || "").trim() ? condWords(d.sql) : "условие не задано",
                 d.step_exit === "true"
-                  ? "да — шаг снимается, нет — идём дальше"
+                  ? "да — шаг отменён, идём к следующему\nнет — шаг отрабатывает"
                   : "да / нет — ветки проверки"].filter(Boolean).join("\n");
       case "assignment":
         return d.variable ? d.variable + " = " + (d.value || "") : (d.title || "");
@@ -1311,6 +1313,15 @@
        не «ещё одно условие», а вторая правда о том же: в таблице под них по одной
        колонке, и при заведении пришлось бы выбирать между ними молча. Поэтому не
        добавляем второй, а открываем тот, что уже стоит. */
+    /* Блок вне цепочки — блок ни о чём: шаг существует только внутри потока, у него
+       есть событие-старт, название и условие выхода, и без них он никуда не уедет.
+       Поэтому первым делом заводят цепочку, а не кладут блок на пустой холст. */
+    if (findNodeByType("startIncome") == null && findNodeByType("startTime") == null) {
+      alert("Сначала заведите цепочку: у неё есть стартовое событие, название и"
+            + " отменяющее событие — без них блоку негде стоять.");
+      window.jrNew();
+      return;
+    }
     if (type === "flowExit" || type === "startIncome") {
       var ex = findNodeByType(type);
       if (ex != null) {
@@ -1481,12 +1492,16 @@
        продолжение цепочки идёт веткой «нет»: «да» означает, что шаг снят, и вести
        оттуда некуда. Поэтому порт запоминается, а не берётся всегда первым. */
     var prevPort = "output_1";
+    /* Проверка, чья ветка «да» ещё не привязана: она ведёт не в тупик, а к первому
+       блоку следующего шага — привязать её можно только когда тот появится. */
+    var pendingYes = null;
     function block(type, x, y, props, extra) {
       var id = "c" + (++seq);
       nodes.push(Object.assign({ id: id, type: type, posX: x, posY: y, props: props || {} }, extra || {}));
       if (prev) edges.push({ from: prev, to: id, fromPort: prevPort });
       prev = id;
       prevPort = type === "decision" ? "output_2" : "output_1";
+      return id;
     }
     var x = LAY.x0, y = LAY.y0;
     block("startIncome", x, y, {
@@ -1505,7 +1520,7 @@
       if (isFinite(w) && w > 0) blocks.push({ t: "pause", props: { wait_time: String(w) } });
       if (s.exitStep) {
         blocks.push({ t: "decision", props: { sql: s.exitStep, step_exit: "true" },
-                      extra: { title: "Событие, снимающее шаг, было?" } });
+                      extra: { title: "Событие, отменяющее шаг, было?" } });
       }
       blocks.push({ t: "comm", props: {}, extra: {
         channel: "sms",   // канала в commapi.events_chain пока нет — колонку обещали позже
@@ -1518,8 +1533,21 @@
       } });
       // дорожка не влезла по ширине — начинаем её с левого края
       if (x + blocks.length * LAY.pitch > LAY.maxX) x = LAY.x0;
+      var first = null;
       blocks.forEach(function (b) {
-        block(b.t, x, y, b.props, b.extra);
+        var id = block(b.t, x, y, b.props, b.extra);
+        if (!first) {
+          first = id;
+          /* Ветка «да» проверки из предыдущего шага ведёт сюда: условие выхода
+             выполнилось — тот шаг отменён, и цепочка продолжается со следующего.
+             Оставить «да» ни с чем значило бы нарисовать конец потока там, где он
+             на самом деле идёт дальше. */
+          if (pendingYes) {
+            edges.push({ from: pendingYes, to: id, fromPort: "output_1" });
+            pendingYes = null;
+          }
+        }
+        if (b.t === "decision") pendingYes = id;
         x += LAY.pitch;
       });
       if (i < steps.length - 1) {
@@ -1637,7 +1665,7 @@
 
   /* Пример — реальная цепочка оплаты ОСАГО: сразу ссылка на оплату, через 15 минут
      напоминание, через 45 минут ещё одно. Всю цепочку обрывает оплата полиса (любым
-     из десяти событий), второй шаг снимается отдельно — звонком телеконтакта.
+     из десяти событий), второй шаг отменяется отдельно — звонком телеконтакта.
 
      Кладём на холст как черновик и ничего не сохраняем: пример нужен, чтобы понять,
      как складываются блоки. Событие намеренно НЕ привязано — его выбирают из
@@ -1923,7 +1951,12 @@
       if (list && list.length) {
         document.getElementById("jrSelect").value = list[0].id;
         loadSelected();
+        return;
       }
+      /* Показывать пустой холст незачем: положить на него нечего, пока не заведена
+         цепочка. Открываем модалку сразу — это и есть первый шаг работы, а не
+         препятствие перед ней. Читателю не открываем: заводить ему нельзя. */
+      if (canEdit()) window.jrNew();
     });
     document.getElementById("jrSelect").addEventListener("change", loadSelected);
   };

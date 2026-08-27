@@ -331,22 +331,43 @@
     color:var(--dim);text-transform:none;letter-spacing:0;cursor:pointer}
   .jre-step-act input{margin:0;cursor:pointer}
   .jre-warn{color:var(--coral);font-size:12px;margin-top:4px}
-  /* Выбор стартового события в модалке заведения: карточки, а не выпадающий список —
-     у события есть что показать кроме имени, и в строку <option> это не влезает. */
-  #jrNewChain .jr-modal-card{width:min(680px,94%)}
-  #jrNewChain #jrNewExit{min-height:88px}
-  .jr-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;
-    max-height:230px;overflow-y:auto;margin-top:8px;padding:2px}
+  /* ---- Модалка заведения цепочки ----
+     Поля тут свои, а не унаследованные от модалки настроек блока: та стилизована
+     селектором #jrEditBody, и без собственных правил инпуты здесь оставались
+     системными — белая рамка поверх тёмной карточки. */
+  #jrNewChain .jr-modal-card{width:min(660px,94%)}
+  #jrNewChain .jr-modal-body{padding:16px 20px 20px;gap:16px}
+  #jrNewChain .jre-field{gap:7px;margin-bottom:0}
+  #jrNewChain label{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);font-weight:600}
+  #jrNewChain input,#jrNewChain textarea,#jrNewChain select{background:var(--card);color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:13.5px;
+    width:100%;box-sizing:border-box;font-family:var(--sans)}
+  #jrNewChain input::placeholder,#jrNewChain textarea::placeholder{color:var(--faint)}
+  #jrNewChain input:focus,#jrNewChain textarea:focus,#jrNewChain select:focus{outline:none;
+    border-color:var(--blue);box-shadow:0 0 0 3px rgba(80,195,255,.16)}
+  #jrNewChain textarea{min-height:74px;resize:vertical;font-family:var(--mono);
+    font-size:11.5px;line-height:1.55}
+  #jrNewChain .jr-hint{font-size:11.5px;color:var(--faint);line-height:1.45}
+  /* Тип цепочки — ровно две карточки в ряд, а не по ширине контейнера: их всегда две,
+     и «сколько влезет» здесь превратилось бы в одну на узком экране. */
+  #jrNewTypes{grid-template-columns:1fr 1fr;max-height:none;overflow:visible}
+  #jrNewList{max-height:186px}
+  #jrNewList .jr-hint{grid-column:1/-1;padding:2px 2px 4px}
+  /* Выбор стартового события: карточки, а не выпадающий список — у события есть что
+     показать кроме имени, и в строку <option> это не влезает. */
+  .jr-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:8px;
+    overflow-y:auto;padding:2px}
   .jr-card{position:relative;text-align:left;background:var(--card);color:var(--ink);
-    border:1px solid var(--line);border-radius:10px;padding:9px 11px;cursor:pointer;
-    display:flex;flex-direction:column;gap:3px}
-  .jr-card:hover{background:var(--card2)}
-  .jr-card.sel{border-color:var(--blue);box-shadow:0 0 0 1.5px rgba(80,195,255,.45)}
-  .jr-card.sel::after{content:"✓";position:absolute;top:0;right:0;width:22px;height:22px;
-    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
-    color:#fff;background:var(--blue);border-radius:0 9px 0 10px}
+    border:1px solid var(--line);border-radius:10px;padding:10px 32px 11px 12px;cursor:pointer;
+    display:flex;flex-direction:column;gap:4px}
+  .jr-card:hover{background:var(--card2);border-color:rgba(80,195,255,.3)}
+  .jr-card.sel{border-color:var(--blue);background:var(--blue-bg)}
+  .jr-card.sel::after{content:"✓";position:absolute;top:9px;right:9px;width:17px;height:17px;
+    display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;
+    color:#08131f;background:var(--blue);border-radius:50%}
   .jr-card-t{font-size:13px;font-weight:600;word-break:break-word}
-  .jr-card-d{font-size:11.5px;color:var(--faint)}
+  .jr-card-d{font-size:11.5px;color:var(--faint);line-height:1.4}
 
   /* меню «стрелка в никуда» и иконка удаления связи */
   #jrPick{position:absolute;z-index:70;width:190px;max-height:320px;overflow-y:auto;
