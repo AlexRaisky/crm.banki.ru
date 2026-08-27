@@ -93,11 +93,12 @@
        «да» всегда означает стоп, вести оттуда некуда, и нарисованную стрелку было
        бы не во что скомпилировать. Эти блоки выходов не имеют вовсе — обещать
        нечего. */
+    /* Старые блоки. Из тулбокса убраны: задержку теперь задаёт Pause, условие —
+       Decision, а условие выхода лежит полем в Income event. Описания остаются, чтобы
+       схемы, нарисованные до этой правки, открывались как были, а не рассыпались в непонятное. */
     timer: {
-      label: "Таймер", cls: "logic", outs: 1,
+      label: "Таймер (старый блок)", cls: "logic", outs: 1,
       fields: [
-        /* Отсчёт от прихода события, а не от предыдущей отправки: так расписание всей
-           цепочки известно в момент старта и не плывёт, если один шаг задержался. */
         { k: "wait_time", l: "Задержка от события, мин", kind: "number", def: "0" }
       ]
     },
@@ -112,13 +113,13 @@
       ]
     },
     stepExit: {
-      label: "Step exit", cls: "logic", outs: 1,
+      label: "Step exit (старый блок)", cls: "logic", outs: 1,
       fields: [
         { k: "event_name", l: "Событие, снимающее следующий шаг — SQL", kind: "textarea" }
       ]
     },
     ifCheck: {
-      label: "Проверка (if)", cls: "logic", outs: 1,
+      label: "Проверка (if) — старый блок", cls: "logic", outs: 1,
       fields: [
         { k: "expr", l: "Условие", kind: "text" },
         { k: "note", l: "Что проверяем", kind: "textarea" }
@@ -155,19 +156,25 @@
         { k: "note",     l: "Комментарий", kind: "textarea" }
       ]
     },
+    /* Decision — проверка перед шагом. Да — условие выполнилось, шаг снимается
+       и вести оттуда некуда; нет — идём дальше по цепочке. В таблице это exit_step
+       того шага, к которому ведёт ветка «нет». */
     decision: {
       label: "Decision", cls: "logic", outs: 2, outLabels: ["Да", "Нет"],
       fields: [
         { k: "title", l: "Название", kind: "text" },
-        { k: "sql",   l: "SQL-условие (SELECT → Да/Нет)", kind: "textarea" }
+        { k: "sql",   l: "Условие — SQL (SELECT 1 → да)", kind: "textarea" }
       ]
     },
+    /* Pause — задержка перед шагом. Отсчёт от прихода события, а не от предыдущей
+       отправки: так расписание всей цепочки известно в момент старта и не плывёт,
+       если один шаг задержался. Раньше здесь были дни и «до события» — ни того, ни
+       другого в commapi.events_chain нет, там одна колонка wait_time в минутах. */
     pause: {
       label: "Pause", cls: "logic", outs: 1,
       fields: [
-        { k: "title",    l: "Название",        kind: "text" },
-        { k: "duration", l: "Ждать (дней)",    kind: "number" },
-        { k: "until",    l: "Или до события",  kind: "text" }
+        { k: "wait_time", l: "Задержка от события, мин", kind: "number", def: "0" },
+        { k: "note",      l: "Комментарий",                 kind: "textarea" }
       ]
     },
     loop: {
@@ -336,8 +343,10 @@
       /* Блоки цепочки раньше не подписывались вовсе: на холсте стояли пустые
          прямоугольники «Таймер» и «Flow exit», и что именно в них задано, было
          видно только по двойному клику. Схема без подписей не схема. */
+      case "pause":
       case "timer":
-        return waitWords(d.wait_time) + "\nотсчёт от прихода события";
+        return [waitWords(d.wait_time) + "\nотсчёт от прихода события", d.note]
+          .filter(Boolean).join("\n");
       case "flowExit":
         return d.event_name
           ? "обрывает всю цепочку:\n" + condWords(d.event_name)
@@ -353,12 +362,11 @@
         return j ? "→ " + j.name : "цепочка не выбрана";
       }
       case "decision":
-        return [d.title, (d.sql || "").trim() ? "SQL задан" : "SQL не задан"].filter(Boolean).join("\n");
+        return [d.title,
+                (d.sql || "").trim() ? condWords(d.sql) : "условие не задано",
+                "да — шаг снимается, нет — идём дальше"].filter(Boolean).join("\n");
       case "assignment":
         return d.variable ? d.variable + " = " + (d.value || "") : (d.title || "");
-      case "pause":
-        return (d.duration && d.duration !== "0") ? "Ждать " + d.duration + " дн."
-             : (d.until ? "До события " + d.until : "");
       case "loop":
         return d.collection ? "По " + d.collection : (d.title || "");
       default:
@@ -373,6 +381,7 @@
     if (type === "startIncome") return d.exit_condition || "";
     if (type === "flowExit" || type === "stepExit") return d.event_name || "";
     if (type === "ifCheck") return d.expr || "";
+    if (type === "decision") return d.sql || "";
     if (type === "comm") return d.note || "";
     return "";
   }
@@ -427,6 +436,14 @@
     if ((type === "startTime" || type === "startIncome") && data.notify_channel) {
       data.notify_channel = String(data.notify_channel).toUpperCase();
     }
+    /* Старые Pause считали дни, новый — минуты от события: в commapi.events_chain
+       колонка одна, wait_time в минутах. Пересчитываем, а не обнуляем: у нарисованных
+       раньше схем «ждать 3 дня» — это осмысленное число, и терять его нельзя. */
+    if (type === "pause" && data.wait_time == null && data.duration != null) {
+      var days = parseInt(data.duration, 10);
+      data.wait_time = String(isFinite(days) ? days * 1440 : 0);
+      if (data.until && !data.note) data.note = "Раньше стояло «до события " + data.until + "»";
+    }
     var d = { jid: data.jid || newJid() };
     t.fields.forEach(function (f) {
       var v = data[f.k];
@@ -441,6 +458,11 @@
     });
     var ins = t.ins != null ? t.ins : 1; // у стартовых узлов входов нет
     var id = editor.addNode(type, ins, t.outs, x, y, "jrnode-" + t.cls, d, nodeHtml(type, d));
+    /* Класс по типу узла — отдельной строкой: classList.add со списком через пробел
+       падает, а Drawflow принимает ровно один класс. Нужен, чтобы подписать выходы
+       Decision («да»/«нет») в CSS: у Loop выходы те же два, но значат другое. */
+    var el = nodeElById(id);
+    if (el) el.classList.add("jrn-t-" + type);
     if (type === "group") applyGroupSize(id, d);
     return id;
   }
@@ -1307,15 +1329,21 @@
       return;
     }
 
-    /* Идём ПО СТРЕЛКАМ от старта, а не по порядку создания узлов. Таймер и Step exit —
+    /* Идём ПО СТРЕЛКАМ от старта, а не по порядку создания узлов. Pause и Decision —
        накопители: они задают колонки того шага, который идёт за ними. По порядку
-       создания накопитель лёг бы не на тот шаг, стоило человеку переставить блок. */
+       создания накопитель лёг бы не на тот шаг, стоило человеку переставить блок.
+
+       У Decision продолжение — ветка «нет» (output_2): «да» означает, что шаг снят,
+       и дальше по цепочке оттуда не идут. Если ветка «нет» никуда не ведёт, берём
+       первую — схему могли нарисовать иначе, и обрывать обход из-за этого нельзя. */
     var seq = [], seen = {}, cur = startKey;
     while (cur && !seen[cur]) {
       seen[cur] = true;
       seq.push(cur);
-      var outs = (raw[cur].outputs || {}).output_1;
-      var link = outs && outs.connections && outs.connections[0];
+      var o = raw[cur].outputs || {};
+      var port = (raw[cur].name === "decision" && o.output_2 &&
+                  (o.output_2.connections || []).length) ? o.output_2 : o.output_1;
+      var link = port && port.connections && port.connections[0];
       cur = link ? String(link.node) : null;
     }
 
@@ -1328,7 +1356,11 @@
       var n = raw[k], d = n.data || {};
       switch (n.name) {
         case "startIncome": break;
+        /* timer и stepExit — блоки старых схем, читаем наравне с новыми: перекладывать
+           уже нарисованное только ради переименования блоков незачем. */
+        case "pause":
         case "timer":    pendingWait = d.wait_time || "0"; break;
+        case "decision": pendingExit = d.sql || ""; break;
         case "stepExit": pendingExit = d.event_name || ""; break;
         case "flowExit":
           /* Старая схема: условие стояло отдельным блоком. Берём его, только если в
@@ -1415,11 +1447,16 @@
     var exit = ch.exitCondition || "";
     var nodes = [], edges = [], prev = null, seq = 0;
 
+    /* prevPort — из какого выхода предыдущего блока выходит стрелка. У Decision
+       продолжение цепочки идёт веткой «нет»: «да» означает, что шаг снят, и вести
+       оттуда некуда. Поэтому порт запоминается, а не берётся всегда первым. */
+    var prevPort = "output_1";
     function block(type, x, y, props, extra) {
       var id = "c" + (++seq);
       nodes.push(Object.assign({ id: id, type: type, posX: x, posY: y, props: props || {} }, extra || {}));
-      if (prev) edges.push({ from: prev, to: id });
+      if (prev) edges.push({ from: prev, to: id, fromPort: prevPort });
       prev = id;
+      prevPort = type === "decision" ? "output_2" : "output_1";
     }
     var x = LAY.x0, y = LAY.y0;
     block("startIncome", x, y, {
@@ -1435,8 +1472,11 @@
     steps.forEach(function (s, i) {
       var blocks = [];
       var w = Number(s.waitTime);
-      if (isFinite(w) && w > 0) blocks.push({ t: "timer", props: { wait_time: String(w) } });
-      if (s.exitStep) blocks.push({ t: "stepExit", props: { event_name: s.exitStep } });
+      if (isFinite(w) && w > 0) blocks.push({ t: "pause", props: { wait_time: String(w) } });
+      if (s.exitStep) {
+        blocks.push({ t: "decision", props: { sql: s.exitStep },
+                      extra: { title: "Событие, снимающее шаг, было?" } });
+      }
       blocks.push({ t: "comm", props: {}, extra: {
         channel: "sms",   // канала в commapi.events_chain пока нет — колонку обещали позже
         templateCode: s.templateId == null ? "" : String(s.templateId),

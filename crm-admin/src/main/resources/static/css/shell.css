@@ -230,7 +230,6 @@
   .jr-tb-item.tb-subflow::before{background:var(--blue)}
   .jr-tb-item.tb-logic::before{background:var(--amber)}
   .jr-tb-item.tb-data::before{background:var(--coral)}
-  .jr-tb-item.tb-group::before{background:transparent;border:1.5px dashed var(--dim)}
   #jrCanvas{flex:1;position:relative;background:
     radial-gradient(circle,rgba(80,195,255,.10) 1px,transparent 1px) 0 0/26px 26px,var(--bg)}
   body[data-readonly] .jr-btn.jr-save,body[data-readonly] .jr-btn.jr-delete,
@@ -252,6 +251,14 @@
   #jrCanvas .drawflow .drawflow-node .input:hover,
   #jrCanvas .drawflow .drawflow-node .output:hover{background:var(--green);border-color:var(--green);
     box-shadow:0 0 0 5px rgba(60,250,180,.25)}
+  /* Подписи выходов Decision прямо у точек: «да» и «нет» на карточке словами — это
+     список, а на схеме важно, ИЗ КАКОЙ точки вышла стрелка. У Loop выходов тоже два,
+     но значат они другое, поэтому подпись привязана к типу узла, а не к числу выходов. */
+  #jrCanvas .drawflow .jrn-t-decision .output::after{position:absolute;left:19px;top:-4px;
+    font-family:var(--sans);font-size:10px;font-weight:700;letter-spacing:.06em;
+    white-space:nowrap;pointer-events:none}
+  #jrCanvas .drawflow .jrn-t-decision .output_1::after{content:"ДА";color:var(--green)}
+  #jrCanvas .drawflow .jrn-t-decision .output_2::after{content:"НЕТ";color:var(--coral)}
   #jrCanvas .drawflow .connection .main-path{stroke:var(--blue);stroke-width:2.5px;marker-end:url(#jrArrow)}
   #jrArrow path{fill:var(--blue)}   /* наконечник стрелки следует теме */
   #jrCanvas .drawflow .connection .main-path:hover,

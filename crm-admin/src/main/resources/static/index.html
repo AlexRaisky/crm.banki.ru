@@ -18,7 +18,7 @@
 <!-- Drawflow: интерактивная блок-схема цепочек (вендорен локально — без зависимости от CDN) -->
 <link rel="stylesheet" href="drawflow.min.css">
 <script src="drawflow.min.js"></script>
-<script src="journeys.js?v=11" defer></script>
+<script src="journeys.js?v=12" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2406,17 +2406,11 @@
           <div class="jr-tb-group" data-i18n="Действия">Действия</div>
           <button type="button" class="jr-tb-item tb-comm"    onclick="jrAddNode('comm')">Communication Alert</button>
           <button type="button" class="jr-tb-item tb-subflow" onclick="jrAddNode('subflow')">Subflow</button>
-          <!-- Блоки цепочки: сами строк не создают, а задают колонки следующего шага.
-               Выходов у них по одному — обещать ветвление, которого нет, нельзя. -->
-          <div class="jr-tb-group" data-i18n="Цепочка">Цепочка</div>
-          <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('timer')">Таймер</button>
-          <!-- Flow exit кнопкой не ставится: условие выхода действует всё время, а не
-               на своём месте в ряду, и живёт полем в блоке Income event. -->
-          <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('stepExit')">Step exit</button>
-          <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('ifCheck')">Проверка (if)</button>
-          <!-- Рамка: ничего не исполняет, объединяет блоки одного шага. Что на ней
-               лежит, считается по геометрии — просто перетащи блок внутрь. -->
-          <button type="button" class="jr-tb-item tb-group" onclick="jrAddNode('group')">Группа</button>
+          <!-- Отдельной группы «Цепочка» больше нет: задержку задаёт Pause, условие —
+               Decision, и оба живут в «Логике». Свои блоки под то же самое означали бы
+               два способа сказать одно, а в таблицу уезжает всё равно одна колонка.
+               Условие выхода кнопкой не ставится вовсе — оно действует всё время и
+               лежит полем в блоке Income event. -->
           <div class="jr-tb-group" data-i18n="Логика">Логика</div>
           <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('assignment')">Assignment</button>
           <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('decision')">Decision</button>
