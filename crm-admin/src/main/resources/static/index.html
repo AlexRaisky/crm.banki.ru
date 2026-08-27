@@ -18,7 +18,7 @@
 <!-- Drawflow: интерактивная блок-схема цепочек (вендорен локально — без зависимости от CDN) -->
 <link rel="stylesheet" href="drawflow.min.css">
 <script src="drawflow.min.js"></script>
-<script src="journeys.js?v=7" defer></script>
+<script src="journeys.js?v=8" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2381,7 +2381,15 @@
              «Сохранить» намеренно — то пишет нашу схему, это боевую таблицу crmdb. -->
         <button type="button" class="jr-btn" onclick="jrChainCreate()"><span data-i18n="Завести цепочку">Завести цепочку</span></button>
         <button type="button" class="jr-btn jr-delete"  onclick="jrDelete()"><span data-i18n="Удалить">Удалить</span></button>
-        <span id="jrHint" class="jr-hint">Двойной клик по блоку — настройки. Ctrl+клик / Shift+рамка — выделить несколько (двигаются вместе, Delete удаляет). Клик по связи — кнопка удаления, двойной клик — точка излома.</span>
+        <span class="jr-sep"></span>
+        <!-- Цепочка, которая реально лежит в commapi.events_chain: только показать.
+             Правку существующих не делаем — по этим строкам движок ведёт людей. -->
+        <select id="jrChainPick" title="Событие из tracker.t_event_comm, у которого заведена цепочка">
+          <option value="">— цепочка события —</option>
+        </select>
+        <button type="button" class="jr-btn" onclick="jrChainOpen()"><span data-i18n="Показать">Показать</span></button>
+        <button type="button" class="jr-btn" onclick="jrFit()" title="Уместить всю схему на экран"><span data-i18n="Уместить">Уместить</span></button>
+        <span id="jrHint" class="jr-hint">Двойной клик по блоку — настройки. Рамкой по пустому месту или Ctrl+кликом — выделить несколько (двигаются вместе, Delete удаляет). Блок на рамке группировки едет вместе с ней. Shift+протянуть — двигать холст. Клик по связи — кнопка удаления, двойной клик — точка излома.</span>
       </div>
       <!-- Наконечник стрелки для связей Drawflow (marker-end в CSS) -->
       <svg width="0" height="0" style="position:absolute">
@@ -2408,6 +2416,9 @@
           <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('flowExit')">Flow exit</button>
           <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('stepExit')">Step exit</button>
           <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('ifCheck')">Проверка (if)</button>
+          <!-- Рамка: ничего не исполняет, объединяет блоки одного шага. Что на ней
+               лежит, считается по геометрии — просто перетащи блок внутрь. -->
+          <button type="button" class="jr-tb-item tb-group" onclick="jrAddNode('group')">Группа</button>
           <div class="jr-tb-group" data-i18n="Логика">Логика</div>
           <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('assignment')">Assignment</button>
           <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('decision')">Decision</button>

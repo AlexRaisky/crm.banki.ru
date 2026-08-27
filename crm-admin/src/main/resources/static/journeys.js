@@ -114,6 +114,21 @@
         { k: "note", l: "Что проверяем", kind: "textarea" }
       ]
     },
+    /* Рамка группировки. Ни входов, ни выходов: она ничего не исполняет и в
+       commapi.events_chain не уезжает — это подпись на холсте, объединяющая блоки
+       одного шага. Принадлежность блока группе нигде не хранится и считается по
+       геометрии в момент перетаскивания: блок внутри рамки — значит её. Хранить
+       список детей значило бы держать вторую правду о том, что и так видно
+       глазами, и расходиться она начала бы с первого же перетаскивания. */
+    group: {
+      label: "Группа", cls: "group", ins: 0, outs: 0,
+      fields: [
+        { k: "title", l: "Название группы", kind: "text" },
+        { k: "note",  l: "Подпись",         kind: "text" },
+        { k: "w",     l: "Ширина, px",      kind: "number", def: "760" },
+        { k: "h",     l: "Высота, px",      kind: "number", def: "170" }
+      ]
+    },
     subflow: {
       label: "Subflow", cls: "subflow", outs: 1,
       fields: [
@@ -214,6 +229,41 @@
     } catch (e) { return []; }
   }
 
+  // -------------------------------------------------------- подписи на блоках
+  function plural(n, one, few, many) {
+    var a = Math.abs(n) % 100, b = a % 10;
+    if (a > 10 && a < 20) return many;
+    if (b > 1 && b < 5) return few;
+    return b === 1 ? one : many;
+  }
+
+  /* Минуты словами. «через 1440 мин» человек в уме не переводит, а решение «слать
+     через сутки или через час» принимается именно по этому числу. */
+  function waitWords(min) {
+    var m = Number(min);
+    if (!isFinite(m) || m <= 0) return "сразу после события";
+    if (m < 60) return "через " + m + " " + plural(m, "минуту", "минуты", "минут");
+    if (m % 1440 === 0) return "через " + (m / 1440) + " " + plural(m / 1440, "день", "дня", "дней");
+    if (m % 60 === 0) return "через " + (m / 60) + " " + plural(m / 60, "час", "часа", "часов");
+    return "через " + Math.floor(m / 60) + " ч " + (m % 60) + " мин";
+  }
+
+  /* Условие выхода на блоке — одной строкой. В таблице оно лежит целым SQL на
+     полтора экрана: показать его как есть значило бы вместо схемы получить простыню,
+     а спрятать совсем — соврать, что условия нет. Поэтому вытаскиваем имена событий,
+     ради которых запрос и написан, а полный текст оставляем в подсказке при наведении. */
+  function condWords(v) {
+    var s = String(v == null ? "" : v).trim();
+    if (!s) return "";
+    var names = (s.match(/'[A-Za-z_][A-Za-z0-9_.]*'/g) || [])
+      .map(function (x) { return x.slice(1, -1); })
+      .filter(function (x, i, a) { return a.indexOf(x) === i; });
+    if (!names.length) return s.length > 64 ? s.slice(0, 61) + "…" : s;
+    if (names.length === 1) return names[0];
+    return names[0] + " и ещё " + (names.length - 1) + " " +
+      plural(names.length - 1, "событие", "события", "событий");
+  }
+
   // -------------------------------------------- проверка существования шаблона
   var tplCache = {}; // "sms:1" -> true|false (есть ли шаблон в справочнике)
 
@@ -266,8 +316,25 @@
           (d.day && d.day !== "0" ? " · день " + d.day : "");
         var key = d.channel && d.template ? d.channel + ":" + d.template : null;
         var warn = (!d.template || (key && tplCache[key] === false)) ? "⚠ шаблона нет" : null;
-        return [top, warn].filter(Boolean).join("\n");
+        var note = (d.note || "").trim();
+        if (note.length > 72) note = note.slice(0, 69) + "…";
+        return [top, note || null, warn].filter(Boolean).join("\n");
       }
+      /* Блоки цепочки раньше не подписывались вовсе: на холсте стояли пустые
+         прямоугольники «Таймер» и «Flow exit», и что именно в них задано, было
+         видно только по двойному клику. Схема без подписей не схема. */
+      case "timer":
+        return waitWords(d.wait_time) + "\nотсчёт от прихода события";
+      case "flowExit":
+        return d.event_name
+          ? "обрывает всю цепочку:\n" + condWords(d.event_name)
+          : "условие не задано";
+      case "stepExit":
+        return d.event_name
+          ? "снимает следующий шаг:\n" + condWords(d.event_name)
+          : "условие не задано";
+      case "ifCheck":
+        return [condWords(d.expr) || "условие не задано", d.note].filter(Boolean).join("\n");
       case "subflow": {
         var j = listCache.filter(function (x) { return x.id === d.journey; })[0];
         return j ? "→ " + j.name : "цепочка не выбрана";
@@ -286,10 +353,28 @@
     }
   }
 
+  /* Полный текст условия — в подсказке при наведении. На карточке он не помещается,
+     но проверить, какой именно SQL стоит в блоке, надо уметь не открывая модалку. */
+  function nodeTip(type, d) {
+    d = d || {};
+    if (type === "flowExit" || type === "stepExit") return d.event_name || "";
+    if (type === "ifCheck") return d.expr || "";
+    if (type === "comm") return d.note || "";
+    return "";
+  }
+
   function nodeHtml(type, d) {
     var t = NODE_TYPES[type];
+    if (type === "group") {
+      return '<div class="jrn jrn-group">' +
+        '<div class="jrn-gtitle">' + esc(d.title || "Группа") + "</div>" +
+        (d.note ? '<div class="jrn-gnote">' + esc(d.note) + "</div>" : "") +
+        "</div>";
+    }
     var chCls = (type === "comm" && d && d.channel) ? " jrn-ch-" + d.channel : "";
-    var html = '<div class="jrn jrn-' + t.cls + chCls + '">' +
+    var tip = nodeTip(type, d);
+    var html = '<div class="jrn jrn-' + t.cls + chCls + '"' +
+      (tip ? ' title="' + esc(tip) + '"' : "") + ">" +
       '<div class="jrn-head">' + t.label + "</div>" +
       '<div class="jrn-sum">' + esc(nodeSummary(type, d)) + "</div>";
     if (t.outLabels) {
@@ -305,6 +390,16 @@
     if (!n || !NODE_TYPES[n.name]) return;
     var el = document.querySelector("#jrCanvas #node-" + dfId + " .drawflow_content_node");
     if (el) el.innerHTML = nodeHtml(n.name, n.data);
+    if (n.name === "group") applyGroupSize(dfId, n.data);
+  }
+
+  /* Размер рамки — инлайном: у всех остальных блоков ширина одна и задана в CSS,
+     а группа обязана быть ровно такой, чтобы накрыть свои блоки. */
+  function applyGroupSize(dfId, d) {
+    var el = nodeElById(dfId);
+    if (!el) return;
+    el.style.width = Math.max(200, parseInt(d.w, 10) || 760) + "px";
+    el.style.height = Math.max(90, parseInt(d.h, 10) || 170) + "px";
   }
 
   function addNodeAt(type, data, x, y) {
@@ -331,12 +426,17 @@
       }
     });
     var ins = t.ins != null ? t.ins : 1; // у стартовых узлов входов нет
-    return editor.addNode(type, ins, t.outs, x, y, "jrnode-" + t.cls, d, nodeHtml(type, d));
+    var id = editor.addNode(type, ins, t.outs, x, y, "jrnode-" + t.cls, d, nodeHtml(type, d));
+    if (type === "group") applyGroupSize(id, d);
+    return id;
   }
 
   // ------------------------------------------- мультивыделение нод
-  // Ctrl+клик — добавить/убрать из выделения; Shift+рамка — выделить областью;
-  // перетаскивание любой выделенной ноды двигает всю группу; Delete — удалить группу.
+  /* Рамка по пустому месту выделяет блоки, Ctrl+клик добавляет и убирает по одному,
+     перетаскивание любого выделенного двигает всю пачку, Delete удаляет её целиком.
+     Рамка повешена на обычное протягивание, а не на Shift: выделять несколько блоков
+     приходится постоянно, а двигать холст — редко, и модификатор достался тому, что
+     чаще. Панорама переехала на Shift+протягивание, о чём написано в подсказке. */
   var groupSel = new Set(); // df-id выделенных нод
   var gDrag = null;         // групповое перетаскивание
   var band = null, bandEl = null; // рамка выделения
@@ -357,6 +457,28 @@
   function clearSel() {
     Array.from(groupSel).forEach(function (id) { setSel(id, false); });
   }
+  function nodeType(id) {
+    var n = editor.drawflow.drawflow[editor.module].data[id];
+    return n ? n.name : null;
+  }
+
+  /* Что лежит на рамке группировки. Принадлежность считается по геометрии — центр
+     блока внутри рамки, — а не хранится списком: список пришлось бы поддерживать при
+     каждом перетаскивании, и первое же расхождение с картинкой на экране стало бы
+     необъяснимым. Здесь же «положил на рамку» и «принадлежит рамке» — одно и то же. */
+  function nodesOnGroup(groupId) {
+    var g = nodeElById(groupId);
+    if (!g) return [];
+    var gx = g.offsetLeft, gy = g.offsetTop, gw = g.offsetWidth, gh = g.offsetHeight;
+    var out = [];
+    document.querySelectorAll("#jrCanvas .drawflow-node").forEach(function (el) {
+      var id = parseInt(el.id.slice(5), 10);
+      if (id === groupId) return;
+      var cx = el.offsetLeft + el.offsetWidth / 2, cy = el.offsetTop + el.offsetHeight / 2;
+      if (cx >= gx && cx <= gx + gw && cy >= gy && cy <= gy + gh) out.push(id);
+    });
+    return out;
+  }
 
   function wireMultiSelect(host) {
     // Ctrl/Cmd+клик по ноде — переключить выделение
@@ -374,9 +496,10 @@
       if (!e.ctrlKey && !e.metaKey && !e.shiftKey) clearSel();
     });
 
-    // Shift+рамка по пустому месту (capture — чтобы Drawflow не начал панораму канвы)
+    // рамка по пустому месту (capture — чтобы Drawflow не начал панораму канвы)
     host.addEventListener("mousedown", function (e) {
-      if (!canEdit() || !e.shiftKey || e.button !== 0) return;
+      if (!canEdit() || e.button !== 0) return;
+      if (e.shiftKey) return;                       // Shift — панорама холста, её ведёт Drawflow
       if (e.target.closest(".drawflow-node")) return;
       e.preventDefault();
       e.stopPropagation();
@@ -387,15 +510,23 @@
       host.appendChild(bandEl);
     }, true);
 
-    // групповое перетаскивание: mousedown по ноде из выделения
+    /* Групповое перетаскивание. Два повода тащить пачку: взяли один из выделенных
+       блоков — едет всё выделение; взяли рамку группировки — едет всё, что на ней
+       лежит. Второе и есть смысл рамки: шаг двигают целиком, а не по блоку. */
     host.addEventListener("mousedown", function (e) {
       if (!canEdit() || e.button !== 0 || band) return;
       var el = e.target.closest(".drawflow-node");
       if (!el) return;
       var id = parseInt(el.id.slice(5), 10);
-      if (!groupSel.has(id) || groupSel.size < 2) return;
-      gDrag = { grab: id, sx: e.clientX, sy: e.clientY, pos: {} };
-      groupSel.forEach(function (nid) {
+      var ids = null;
+      if (nodeType(id) === "group") {
+        ids = [id].concat(nodesOnGroup(id));
+      } else if (groupSel.has(id) && groupSel.size > 1) {
+        ids = Array.from(groupSel);
+      }
+      if (!ids || ids.length < 2) return;
+      gDrag = { grab: id, ids: ids, sx: e.clientX, sy: e.clientY, pos: {} };
+      ids.forEach(function (nid) {
         var ne = nodeElById(nid);
         if (ne) gDrag.pos[nid] = { x: ne.offsetLeft, y: ne.offsetTop };
       });
@@ -416,7 +547,7 @@
       // сам «схваченный» узел двигает Drawflow — остальным даём то же смещение
       var dx = (e.clientX - gDrag.sx) / editor.zoom;
       var dy = (e.clientY - gDrag.sy) / editor.zoom;
-      groupSel.forEach(function (nid) {
+      gDrag.ids.forEach(function (nid) {
         if (nid === gDrag.grab || !gDrag.pos[nid]) return;
         var ne = nodeElById(nid);
         if (!ne) return;
@@ -445,7 +576,7 @@
       }
       if (!gDrag) return;
       // финальные координаты остальных нод — в данные Drawflow (для сохранения)
-      groupSel.forEach(function (nid) {
+      gDrag.ids.forEach(function (nid) {
         if (nid === gDrag.grab) return;
         var ne = nodeElById(nid);
         var d = editor.drawflow.drawflow[editor.module].data[nid];
@@ -1216,51 +1347,182 @@
     });
   };
 
-  /* Пример цепочки — та самая «брошенная анкета»: событие, через 15 минут первое
-     письмо, через сутки второе, через неделю третье; всю цепочку обрывает оформление
-     вклада, второй шаг снимается кликом.
+  /* ---------------------------------------------- раскладка цепочки на холсте
+     Дорожка на шаг: слева то, что шаг задаёт (таймер, снятие шага), справа сама
+     коммуникация. Следующий шаг начинается ниже и правее предыдущего, а не с левого
+     края: стрелка между шагами уходит по диагонали вниз, и порядок читается сверху
+     вниз, не заставляя каждый раз возвращаться глазами к началу строки.
+
+     Условие выхода стоит одним блоком сразу за событием, хотя в таблице лежит у
+     каждой строки: оно обрывает весь поток, а не отдельный шаг, и рисовать его у
+     каждого шага значило бы показывать три разных условия там, где оно одно.
+
+     Каждый шаг обведён рамкой группировки — её и двигают, когда переставляют шаг
+     целиком. */
+  var LAY = { x0: 60, y0: 100, pitch: 300, row: 270, node: 230, indent: 190, maxX: 2400 };
+
+  function chainToJourney(ch, name, opts) {
+    opts = opts || {};
+    var steps = (ch.steps || []).slice().sort(function (a, b) {
+      return (a.order || 0) - (b.order || 0);
+    });
+    var exit = ch.exitCondition || "";
+    var nodes = [], edges = [], prev = null, seq = 0;
+
+    function block(type, x, y, props, extra) {
+      var id = "c" + (++seq);
+      nodes.push(Object.assign({ id: id, type: type, posX: x, posY: y, props: props || {} }, extra || {}));
+      if (prev) edges.push({ from: prev, to: id });
+      prev = id;
+    }
+    function frame(title, note, x, y, count) {
+      nodes.push({
+        id: "g" + (++seq), type: "group", posX: x - 24, posY: y - 56,
+        title: title, note: note || "",
+        props: { w: String((count - 1) * LAY.pitch + LAY.node + 48), h: "196" }
+      });
+    }
+
+    var x = LAY.x0, y = LAY.y0;
+    frame("Старт", ch.system ? "событие · " + ch.system : "входящее событие", x, y, exit ? 2 : 1);
+    block("startIncome", x, y, {
+      /* id события подставляем только когда цепочку открыли из этого же контура.
+         В примере он остаётся пустым: чужой id предложил бы завести цепочку не тому. */
+      t_event_comm_id: opts.bindEvent && ch.id != null ? String(ch.id) : "",
+      event_name: ch.eventName || "",
+      system: ch.system || ""
+    });
+    x += LAY.pitch;
+    if (exit) {
+      block("flowExit", x, y, { event_name: exit });
+      x += LAY.pitch;
+    }
+
+    steps.forEach(function (s, i) {
+      var blocks = [];
+      var w = Number(s.waitTime);
+      if (isFinite(w) && w > 0) blocks.push({ t: "timer", props: { wait_time: String(w) } });
+      if (s.exitStep) blocks.push({ t: "stepExit", props: { event_name: s.exitStep } });
+      blocks.push({ t: "comm", props: {}, extra: {
+        channel: "sms",   // канала в commapi.events_chain пока нет — колонку обещали позже
+        templateCode: s.templateId == null ? "" : String(s.templateId),
+        active: s.active !== false,
+        note: ""
+      } });
+      var num = s.order || (i + 1);
+      // дорожка не влезла по ширине — начинаем её с левого края
+      if (x + blocks.length * LAY.pitch > LAY.maxX) x = LAY.x0;
+      frame("Шаг " + num, waitWords(s.waitTime) + (s.active === false ? " · выключен" : ""),
+            x, y, blocks.length);
+      blocks.forEach(function (b) {
+        block(b.t, x, y, b.props, b.extra);
+        x += LAY.pitch;
+      });
+      if (i < steps.length - 1) {
+        y += LAY.row;
+        x = x - LAY.pitch + LAY.indent;   // ниже и правее последней коммуникации
+      }
+    });
+
+    return { id: null, name: name, kind: "online", nodes: nodes, edges: edges };
+  }
+
+  /* Уместить всё на экран. Раскладка уходит вправо по диагонали, и у цепочки из
+     трёх шагов правый край уже за пределами холста: без этой кнопки человек ищет
+     свои же блоки колесом мыши. */
+  window.jrFit = function () {
+    if (!editor || !editor.precanvas) return;
+    var els = document.querySelectorAll("#jrCanvas .drawflow-node");
+    if (!els.length) return;
+    var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    els.forEach(function (el) {
+      x1 = Math.min(x1, el.offsetLeft);
+      y1 = Math.min(y1, el.offsetTop);
+      x2 = Math.max(x2, el.offsetLeft + el.offsetWidth);
+      y2 = Math.max(y2, el.offsetTop + el.offsetHeight);
+    });
+    var host = document.getElementById("jrCanvas");
+    var pad = 30;
+    var z = Math.min((host.clientWidth - pad * 2) / Math.max(1, x2 - x1),
+                     (host.clientHeight - pad * 2) / Math.max(1, y2 - y1), 1);
+    z = Math.max(0.25, z);
+    editor.zoom = z;
+    editor.zoom_last_value = z;
+    editor.canvas_x = pad - x1 * z;
+    editor.canvas_y = pad - y1 * z;
+    editor.precanvas.style.transform =
+      "translate(" + editor.canvas_x + "px, " + editor.canvas_y + "px) scale(" + z + ")";
+  };
+
+  /* Открыть на холсте цепочку, которая реально лежит в commapi.events_chain.
+     Только чтение: правку существующих не делаем — по этим строкам движок прямо
+     сейчас ведёт живых людей. Поэтому и currentId сбрасываем: «Сохранить» после
+     этого создаст НАШУ схему, а боевой таблицы не тронет. */
+  window.jrChainOpen = function () {
+    if (!ensureEditor()) return;
+    var sel = document.getElementById("jrChainPick");
+    var id = sel && sel.value;
+    if (!id) { alert("Выберите событие: цепочка открывается по событию из tracker.t_event_comm."); return; }
+    fetch("api/events/chains/" + encodeURIComponent(id), {
+        credentials: "same-origin", headers: { Accept: "application/json" } })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (ch) {
+        if (ch.available === false) {
+          alert("База событий недоступна" + (ch.error ? ": " + ch.error : "."));
+          return;
+        }
+        if (!(ch.steps || []).length) {
+          alert("У события «" + (ch.eventName || id) + "» цепочка не заведена: в "
+                + "commapi.events_chain нет ни одной строки.");
+          return;
+        }
+        renderJourney(chainToJourney(ch, "Цепочка: " + (ch.eventName || id), { bindEvent: true }));
+        currentId = null;
+        document.getElementById("jrSelect").value = "";
+        window.jrFit();
+      })
+      .catch(function (e) { alert("Не удалось прочитать цепочку:\n" + e.message); });
+  };
+
+  /* Пример — реальная цепочка оплаты ОСАГО: сразу ссылка на оплату, через 15 минут
+     напоминание, через 45 минут ещё одно. Всю цепочку обрывает оплата полиса (любым
+     из десяти событий), второй шаг снимается отдельно — звонком телеконтакта.
 
      Кладём на холст как черновик и ничего не сохраняем: пример нужен, чтобы понять,
-     как складываются блоки, а не чтобы завестись в проде. Событие намеренно НЕ
-     выбрано — его выбирают из tracker.t_event_comm того контура, где открыли панель,
-     и подставить сюда чужой id значило бы предложить завести цепочку не тому. */
+     как складываются блоки. Событие намеренно НЕ привязано — его выбирают из
+     tracker.t_event_comm того контура, где открыли панель. */
   window.jrExample = function () {
     if (!ensureEditor()) return;
     if (!canEdit()) { alert("Раздел открыт только на просмотр."); return; }
-    var X = [40, 300, 560, 820], Y = [40, 210, 380];
-    function n(id, type, col, row, props, extra) {
-      return Object.assign({ id: id, type: type, posX: X[col], posY: Y[row], props: props || {} }, extra || {});
+    /* В таблице это цепочка из десяти OR по event_name. Здесь тот же смысл через IN:
+       на схеме важно, КАКИЕ события обрывают поток, а не как они перечислены. */
+    function paidSql(list) {
+      return '{"SELECT 1 FROM tracker.t_event t3 WHERE t3.event_name IN ('
+        + list.map(function (n) { return "'" + n + "'"; }).join(", ")
+        + ') AND t3.user_id = :userId AND t3.timestamp_cr >= current_date"}';
     }
-    renderJourney({
-      id: null,
-      name: "Пример: брошенная анкета по вкладу",
-      kind: "online",
-      nodes: [
-        n("e1", "startIncome", 0, 0),
-        n("e2", "flowExit",    1, 0, { event_name: "deposit_open" }),
-        n("e3", "timer",       2, 0, { wait_time: "15" }),
-        n("e4", "comm",        3, 0, {}, { channel: "sms", templateCode: "3253", active: true,
-                                           note: "Первое касание — через 15 минут после события" }),
-        n("e5", "timer",       0, 1, { wait_time: "1440" }),
-        n("e6", "stepExit",    1, 1, { event_name: "deposit_click" }),
-        n("e7", "comm",        2, 1, {}, { channel: "sms", templateCode: "3270", active: true,
-                                           note: "Второе касание — через сутки; снимается, если человек кликнул" }),
-        n("e8", "timer",       0, 2, { wait_time: "10080" }),
-        n("e9", "comm",        1, 2, {}, { channel: "sms", templateCode: "3272", active: true,
-                                           note: "Третье касание — через неделю" })
-      ],
-      edges: [
-        { from: "e1", to: "e2" }, { from: "e2", to: "e3" }, { from: "e3", to: "e4" },
-        { from: "e4", to: "e5" }, { from: "e5", to: "e6" }, { from: "e6", to: "e7" },
-        { from: "e7", to: "e8" }, { from: "e8", to: "e9" }
+    var PAID = ["SendPaymentLinkOsagoTelecontact", "gpnPolicyPaidEvent", "ladderPolicyPaidEvent",
+                "policyPaidEvent", "policyPaidGPNEvent", "policyPaidNSPKEvent",
+                "policyPaidOzon2500Event", "policyPaidOzonNewEvent", "policyPaidRosneftEvent",
+                "rosneftPolicyPaidEvent"];
+    renderJourney(chainToJourney({
+      id: 3264, eventName: "SendPaymentLinkOsago_1", system: "insurance",
+      exitCondition: paidSql(PAID),
+      steps: [
+        { order: 1, active: true, waitTime: 0,  templateId: 438, exitStep: null },
+        { order: 2, active: true, waitTime: 15, templateId: 440,
+          exitStep: paidSql(["SendPaymentLinkOsagoTelecontact"]) },
+        { order: 3, active: true, waitTime: 45, templateId: 487, exitStep: null }
       ]
-    });
+    }, "Пример: оплата ОСАГО (событие 3264)", { bindEvent: false }));
     /* currentId сбрасываем: «Сохранить» должен создать новую цепочку, а не перезаписать
        ту, что была открыта до нажатия «Пример». */
     currentId = null;
     document.getElementById("jrSelect").value = "";
-    alert("Пример разложен на холсте. Осталось выбрать событие в блоке Income event —"
-          + " оно берётся из tracker.t_event_comm этого контура.");
+    window.jrFit();
   };
 
   window.jrNew = function () {
@@ -1332,6 +1594,23 @@
     });
     wireCanvasUx(host);
     wireMultiSelect(host);
+    /* Список событий для «Открыть цепочку»: те же, что в блоке Income event. Сколько
+       шагов заведено, пишем прямо в строке — иначе выбор превращается в перебор. */
+    loadTrackerEvents().then(function (list) {
+      var pick = document.getElementById("jrChainPick");
+      if (!pick) return;
+      var withChain = (list || []).filter(function (e) { return e.steps > 0; });
+      if (!withChain.length) {
+        pick.innerHTML = '<option value="">— заведённых цепочек нет —</option>';
+        pick.disabled = true;
+        return;
+      }
+      pick.innerHTML = '<option value="">— цепочка события —</option>' +
+        withChain.map(function (e) {
+          return '<option value="' + esc(e.id) + '">' + esc(e.eventName || ("#" + e.id)) +
+            " · шагов: " + e.steps + "</option>";
+        }).join("");
+    });
     var ready = (window.CRM && CRM.meReady) ? CRM.meReady : Promise.resolve();
     ready.then(function () {
       applyReadonly();

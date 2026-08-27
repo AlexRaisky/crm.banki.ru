@@ -230,6 +230,7 @@
   .jr-tb-item.tb-subflow::before{background:var(--blue)}
   .jr-tb-item.tb-logic::before{background:var(--amber)}
   .jr-tb-item.tb-data::before{background:var(--coral)}
+  .jr-tb-item.tb-group::before{background:transparent;border:1.5px dashed var(--dim)}
   #jrCanvas{flex:1;position:relative;background:
     radial-gradient(circle,rgba(80,195,255,.10) 1px,transparent 1px) 0 0/26px 26px,var(--bg)}
   body[data-readonly] .jr-btn.jr-save,body[data-readonly] .jr-btn.jr-delete,
@@ -237,8 +238,10 @@
 
   /* Drawflow: тёмная тема под стиль панели */
   #jrCanvas .drawflow{width:100%;height:100%}
+  /* z-index у блоков — чтобы рамка группировки (z-index:1) всегда оставалась под ними,
+     в каком бы порядке её ни добавили на холст. */
   #jrCanvas .drawflow .drawflow-node{background:var(--card);border:1px solid var(--line);
-    border-radius:12px;color:var(--ink);padding:0;width:230px;min-height:auto;
+    border-radius:12px;color:var(--ink);padding:0;width:230px;min-height:auto;z-index:2;
     box-shadow:0 8px 24px rgba(0,0,0,.35)}
   #jrCanvas .drawflow .drawflow-node.selected{border-color:var(--blue);
     box-shadow:0 0 0 2px rgba(80,195,255,.35)}
@@ -277,6 +280,22 @@
   .jrn-logic .jrn-head{background:rgba(255,184,77,.10);color:var(--amber)}
   .jrn-data .jrn-head{background:rgba(255,107,138,.10);color:var(--coral)}
   .jrn-start .jrn-head{background:rgba(178,140,255,.12);color:#B99CFF}
+  /* Рамка группировки. Прозрачная и без тени: она подложка под блоками шага, а не
+     ещё один блок — иначе на схеме два уровня карточек и не понять, что главное.
+     Ширина и высота приходят инлайном из данных узла: у остальных блоков ширина одна,
+     у рамки — ровно та, чтобы накрыть свои блоки. */
+  /* Рамка не ловит мышь всей своей площадью, а только заголовком: иначе она накрыла
+     бы собой блоки и связи, лежащие на ней, и кликнуть по ним стало бы нельзя.
+     Тащат её за подпись — как рамку и тащат. */
+  #jrCanvas .drawflow .drawflow-node.jrnode-group{background:rgba(80,195,255,.045);
+    border:1.5px dashed var(--line);border-radius:14px;box-shadow:none;z-index:1;
+    width:auto;pointer-events:none}
+  #jrCanvas .drawflow .drawflow-node.jrnode-group.selected{border-color:var(--blue)}
+  #jrCanvas .drawflow .drawflow-node.jrnode-group .drawflow_content_node{height:100%}
+  .jrn-group{display:inline-block;padding:7px 12px 8px;font-family:var(--sans);
+    pointer-events:auto;cursor:move;border-radius:14px 0 12px 0;background:var(--bg2)}
+  .jrn-gtitle{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+  .jrn-gnote{font-size:11.5px;color:var(--faint);margin-top:2px}
   /* Communication Alert: цвет по выбранному каналу */
   .jrn-ch-sms .jrn-head{background:rgba(60,250,180,.16);color:var(--green)}
   .jrn-ch-push .jrn-head{background:rgba(255,184,77,.16);color:var(--amber)}
