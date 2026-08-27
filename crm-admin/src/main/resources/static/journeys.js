@@ -1618,10 +1618,34 @@
      нечему. */
   function renderExitScope() {
     if (!editor || !editor.precanvas) return;
-    var box = document.getElementById("jrExitScope");
     var start = findNodeByType("startIncome");
     var n = start == null ? null : editor.getNodeFromId(start);
     var cond = n ? String((n.data || {}).exit_condition || "").trim() : "";
+
+    /* Имена событий — строкой над холстом, а не на самом холсте. На холсте они ездят
+       вместе со схемой и мельчают вместе с ней: у цепочки в три шага масштаб уходит
+       к трети, и список, ради которого всё затевалось, читать нельзя. Наверху он
+       всегда на месте и всегда одного размера. */
+    var bar = document.getElementById("jrExitBar");
+    if (bar) {
+      if (!cond) {
+        bar.style.display = "none";
+        bar.innerHTML = "";
+        bar.removeAttribute("title");
+      } else {
+        var names = eventNames(cond);
+        bar.style.display = "";
+        bar.title = cond;
+        bar.innerHTML = "<b>Отменяют цепочку</b>" + (names.length
+          ? names.map(function (nm) { return "<i>" + esc(nm) + "</i>"; }).join("")
+          : '<i class="jr-exit-raw">' + esc(condWords(cond)) + "</i>");
+      }
+    }
+
+    /* На холсте остаётся сама область: докуда условие достаёт. Подпись короткая —
+       перечислять события ещё и здесь значило бы держать один список в двух местах
+       и однажды показать в них разное. */
+    var box = document.getElementById("jrExitScope");
     var els = document.querySelectorAll("#jrCanvas .drawflow-node");
     /* Пока в цепочке один блок, обводить нечего: подсветка вокруг одного узла
        читалась бы как свойство этого узла — ровно то, от чего мы уходим. */
@@ -1632,7 +1656,7 @@
     if (!box) {
       box = document.createElement("div");
       box.id = "jrExitScope";
-      box.innerHTML = '<div class="jr-exit-tag"></div>';
+      box.innerHTML = '<div class="jr-exit-tag"><b>Отменяющее событие</b></div>';
       editor.precanvas.insertBefore(box, editor.precanvas.firstChild);
     }
     var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
@@ -1642,28 +1666,11 @@
       x2 = Math.max(x2, el.offsetLeft + el.offsetWidth);
       y2 = Math.max(y2, el.offsetTop + el.offsetHeight);
     });
-    /* Сверху места больше: там перечислены события, обрывающие поток. Ради этого
-       список и вынесен на холст — «и ещё девять событий» на карточке не отвечает на
-       вопрос, ради которого его читают: какие именно. */
-    var pad = 28, padTop = 66;
+    var pad = 28, padTop = 44;
     box.style.left = (x1 - pad) + "px";
     box.style.top = (y1 - padTop) + "px";
     box.style.width = (x2 - x1 + pad * 2) + "px";
     box.style.height = (y2 - y1 + padTop + pad) + "px";
-    var names = eventNames(cond);
-    var tag = box.querySelector(".jr-exit-tag");
-    tag.innerHTML =
-      "<b>Отменяют цепочку</b>" + (names.length
-        ? names.map(function (nm) { return "<i>" + esc(nm) + "</i>"; }).join("")
-        : '<i class="jr-exit-raw">' + esc(condWords(cond)) + "</i>");
-    /* У короткой цепочки область узкая, и десять событий переносятся на несколько
-       строк. Меряем, сколько их получилось, и раздвигаем шапку — иначе список лёг бы
-       поверх первых блоков. */
-    var need = tag.offsetHeight + 22;
-    if (need > padTop) {
-      box.style.top = (y1 - need) + "px";
-      box.style.height = (y2 - y1 + need + pad) + "px";
-    }
     box.title = cond;
   }
 
