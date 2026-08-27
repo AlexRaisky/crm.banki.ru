@@ -268,6 +268,11 @@
   .jrn{font-family:var(--sans)}
   .jrn-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);
     border-radius:12px 12px 0 0;font-weight:700;font-size:13px}
+  /* Метка на заголовке блока (Decision → step exit): отличается от названия типа,
+     потому что говорит не «что это за блок», а «эта проверка исполняется». */
+  .jrn-tag{margin-left:auto;padding:1px 7px;border-radius:999px;font-size:9.5px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--coral);
+    background:var(--coral-bg);border:1px solid rgba(255,107,138,.4)}
   .jrn-body{padding:8px 10px;display:flex;flex-direction:column;gap:6px}
   .jrn-body label{font-size:10px;color:var(--faint);margin:0;letter-spacing:.05em;text-transform:uppercase}
   .jrn input,.jrn textarea,.jrn select{background:var(--bg2);color:var(--ink);border:1px solid var(--line);

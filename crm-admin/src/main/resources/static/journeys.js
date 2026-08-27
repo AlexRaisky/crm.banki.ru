@@ -163,7 +163,13 @@
       label: "Decision", cls: "logic", outs: 2, outLabels: ["Да", "Нет"],
       fields: [
         { k: "title", l: "Название", kind: "text" },
-        { k: "sql",   l: "Условие — SQL (SELECT 1 → да)", kind: "textarea" }
+        { k: "sql",   l: "Условие — SQL (SELECT 1 → да)", kind: "textarea" },
+        /* Метка, а не тип блока: движок умеет ровно одну проверку — снятие шага
+           (колонка exit_step), но проверок на схеме рисуют больше, чем он исполняет.
+           Отдельный тип блока под step exit мы уже убирали: два блока под одну колонку
+           означали два способа сказать одно. Метка же говорит про ту же самую
+           проверку, исполняется она или пока только нарисована. */
+        { k: "step_exit", l: "Это step exit — снимает следующий шаг", kind: "bool", def: "false" }
       ]
     },
     /* Pause — задержка перед шагом. Отсчёт от прихода события, а не от предыдущей
@@ -364,7 +370,9 @@
       case "decision":
         return [d.title,
                 (d.sql || "").trim() ? condWords(d.sql) : "условие не задано",
-                "да — шаг снимается, нет — идём дальше"].filter(Boolean).join("\n");
+                d.step_exit === "true"
+                  ? "да — шаг снимается, нет — идём дальше"
+                  : "да / нет — ветки проверки"].filter(Boolean).join("\n");
       case "assignment":
         return d.variable ? d.variable + " = " + (d.value || "") : (d.title || "");
       case "loop":
@@ -396,9 +404,13 @@
     }
     var chCls = (type === "comm" && d && d.channel) ? " jrn-ch-" + d.channel : "";
     var tip = nodeTip(type, d);
+    /* Метка step exit — на самой карточке: исполняется эта проверка или пока только
+       нарисована, видно на схеме, а не по двойному клику. */
+    var tag = (type === "decision" && d && d.step_exit === "true")
+      ? '<span class="jrn-tag">step exit</span>' : "";
     var html = '<div class="jrn jrn-' + t.cls + chCls + '"' +
       (tip ? ' title="' + esc(tip) + '"' : "") + ">" +
-      '<div class="jrn-head">' + t.label + "</div>" +
+      '<div class="jrn-head">' + t.label + tag + "</div>" +
       '<div class="jrn-sum">' + esc(nodeSummary(type, d)) + "</div>";
     if (t.outLabels) {
       html += '<div class="jrn-outs">' +
@@ -1338,16 +1350,22 @@
        накопители: они задают колонки того шага, который идёт за ними. По порядку
        создания накопитель лёг бы не на тот шаг, стоило человеку переставить блок.
 
-       У Decision продолжение — ветка «нет» (output_2): «да» означает, что шаг снят,
-       и дальше по цепочке оттуда не идут. Если ветка «нет» никуда не ведёт, берём
-       первую — схему могли нарисовать иначе, и обрывать обход из-за этого нельзя. */
+       У Decision с меткой step exit продолжение — ветка «нет» (output_2): «да»
+       означает, что шаг снят, и дальше по цепочке оттуда не идут. У проверки без
+       метки такого правила нет, и первой пробуем обычную ветку «да». Если выбранная
+       никуда не ведёт, берём вторую — обрывать обход из-за этого нельзя. */
     var seq = [], seen = {}, cur = startKey;
     while (cur && !seen[cur]) {
       seen[cur] = true;
       seq.push(cur);
       var o = raw[cur].outputs || {};
-      var port = (raw[cur].name === "decision" && o.output_2 &&
-                  (o.output_2.connections || []).length) ? o.output_2 : o.output_1;
+      var isStepExit = raw[cur].name === "decision" && (raw[cur].data || {}).step_exit === "true";
+      var order = isStepExit ? ["output_2", "output_1"] : ["output_1", "output_2"];
+      var port = null;
+      order.forEach(function (name) {
+        var cand = o[name];
+        if (!port && cand && (cand.connections || []).length) port = cand;
+      });
       var link = port && port.connections && port.connections[0];
       cur = link ? String(link.node) : null;
     }
@@ -1365,7 +1383,14 @@
            уже нарисованное только ради переименования блоков незачем. */
         case "pause":
         case "timer":    pendingWait = d.wait_time || "0"; break;
-        case "decision": pendingExit = d.sql || ""; break;
+        case "decision":
+          /* Без метки step exit проверку движок не исполняет: в таблице под неё нет
+             колонки. Молча взять её SQL как снятие шага значило бы завести не то,
+             что нарисовано, — поэтому такая проверка попадает в список неисполняемых
+             блоков, о котором спрашивают перед заведением. */
+          if (d.step_exit === "true") pendingExit = d.sql || "";
+          else ignored["Decision без метки «step exit»"] = true;
+          break;
         case "stepExit": pendingExit = d.event_name || ""; break;
         case "flowExit":
           /* Старая схема: условие стояло отдельным блоком. Берём его, только если в
@@ -1479,7 +1504,7 @@
       var w = Number(s.waitTime);
       if (isFinite(w) && w > 0) blocks.push({ t: "pause", props: { wait_time: String(w) } });
       if (s.exitStep) {
-        blocks.push({ t: "decision", props: { sql: s.exitStep },
+        blocks.push({ t: "decision", props: { sql: s.exitStep, step_exit: "true" },
                       extra: { title: "Событие, снимающее шаг, было?" } });
       }
       blocks.push({ t: "comm", props: {}, extra: {
