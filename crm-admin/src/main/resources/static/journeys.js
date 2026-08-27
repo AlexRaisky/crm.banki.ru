@@ -1628,17 +1628,28 @@
        всегда на месте и всегда одного размера. */
     var bar = document.getElementById("jrExitBar");
     if (bar) {
+      var pop = document.getElementById("jrExitPop");
+      var cnt = document.getElementById("jrExitCount");
       if (!cond) {
         bar.style.display = "none";
-        bar.innerHTML = "";
+        if (pop) { pop.style.display = "none"; pop.innerHTML = ""; }
         bar.removeAttribute("title");
       } else {
         var names = eventNames(cond);
         bar.style.display = "";
         bar.title = cond;
-        bar.innerHTML = "<b>Отменяют цепочку</b>" + (names.length
-          ? names.map(function (nm) { return "<i>" + esc(nm) + "</i>"; }).join("")
-          : '<i class="jr-exit-raw">' + esc(condWords(cond)) + "</i>");
+        /* Сколько их — на самой кнопке: это то единственное, что нужно знать не
+           открывая список. Имена — внутри. */
+        if (cnt) {
+          cnt.textContent = names.length
+            ? names.length + " " + plural(names.length, "событие", "события", "событий")
+            : "условие задано";
+        }
+        if (pop) {
+          pop.innerHTML = names.length
+            ? names.map(function (nm) { return "<i>" + esc(nm) + "</i>"; }).join("")
+            : '<i class="jr-exit-raw">' + esc(condWords(cond)) + "</i>";
+        }
       }
     }
 
@@ -1673,6 +1684,24 @@
     box.style.height = (y2 - y1 + padTop + pad) + "px";
     box.title = cond;
   }
+
+  /* Список отменяющих событий: развернуть и свернуть. Закрывается кликом мимо —
+     иначе висел бы поверх холста, пока о нём не вспомнят. */
+  window.jrExitToggle = function () {
+    var pop = document.getElementById("jrExitPop");
+    if (!pop) return;
+    pop.style.display = pop.style.display === "none" ? "" : "none";
+  };
+  /* На перехвате: рамка выделения слушает mousedown на холсте тоже на перехвате и
+     глушит событие stopPropagation'ом. Обычный обработчик на document до клика по
+     холсту не доходил вовсе — список оставался открытым поверх схемы. */
+  document.addEventListener("mousedown", function (e) {
+    var pop = document.getElementById("jrExitPop");
+    var bar = document.getElementById("jrExitBar");
+    if (!pop || pop.style.display === "none") return;
+    if (bar && bar.contains(e.target)) return;
+    pop.style.display = "none";
+  }, true);
 
   /* Уместить всё на экран. Раскладка уходит вправо по диагонали, и у цепочки из
      трёх шагов правый край уже за пределами холста: без этой кнопки человек ищет

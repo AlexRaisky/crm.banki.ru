@@ -379,28 +379,41 @@
     background:var(--coral);color:#fff;border:none;font-size:13px;font-weight:700;line-height:1;
     cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.45)}
   #jrConnDel:hover{filter:brightness(1.15)}
-  /* Область действия отменяющего события: подсветка вокруг всей цепочки. Живёт на
-     холсте (в precanvas), поэтому ездит и масштабируется вместе с ним. Мышь не ловит —
-     под ней лежат блоки и связи, и перехватывать по ним клики она не должна. */
+  /* Область действия отменяющего события: рамка вокруг всей цепочки. Живёт на холсте
+     (в precanvas), поэтому ездит и масштабируется вместе с ним. Мышь не ловит — под
+     ней лежат блоки и связи, и перехватывать по ним клики она не должна.
+     Без заливки: розовая подложка под всей схемой красила собой и блоки, и связи,
+     а сказать должна ровно одно — докуда достаёт условие. Это говорит рамка. */
   #jrExitScope{position:absolute;z-index:0;pointer-events:none;border-radius:18px;
-    border:1.5px dashed rgba(255,107,138,.5);background:rgba(255,107,138,.045)}
-  /* Строка над холстом: события, обрывающие поток, — каждое отдельной плашкой.
-     Строкой через запятую десять имён читаются как один длинный идентификатор. */
-  .jr-exit-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;
-    padding:8px 16px;border-bottom:1px solid var(--line);background:var(--coral-bg);
-    font-family:var(--sans);line-height:1.2;flex:0 0 auto}
-  .jr-exit-bar b,.jr-exit-tag b{font-size:10.5px;font-weight:700;letter-spacing:.08em;
-    text-transform:uppercase;color:var(--coral);margin-right:2px}
-  /* flex:0 0 auto обязателен: без него плашки не переносятся, а ужимаются, и имена
-     событий обрезаются посреди слова — как раз то, ради чего их сюда и вынесли. */
-  .jr-exit-bar i{flex:0 0 auto;font-style:normal;font-family:var(--mono);font-size:10.5px;
-    color:var(--coral);padding:2px 8px;border-radius:999px;background:var(--bg2);
-    border:1px solid rgba(255,107,138,.45)}
-  /* Подпись самой области на холсте — только название, без списка: держать один
-     список в двух местах значит однажды показать в них разное. */
+    border:1.5px dashed rgba(255,107,138,.32);background:none}
+  /* Подпись области на холсте — только название, без списка: держать один список в
+     двух местах значит однажды показать в них разное. */
   .jr-exit-tag{position:absolute;top:10px;left:16px;display:flex;align-items:center;
     gap:6px;font-family:var(--sans);line-height:1.2}
-  .jr-exit-bar i.jr-exit-raw{font-family:var(--sans);max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .jr-exit-tag b{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+    color:rgba(255,107,138,.75)}
+
+  /* Строка над холстом: кнопка со счётчиком, имена — в выпадающем списке. Десять
+     плашек в строку занимали всю ширину раздела ради того, что смотрят изредка. */
+  .jr-exit-bar{position:relative;display:flex;align-items:center;gap:8px;padding:6px 16px;
+    border-bottom:1px solid var(--line);font-family:var(--sans);line-height:1.2;flex:0 0 auto}
+  .jr-exit-btn{display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+    background:var(--card);color:var(--coral);border:1px solid rgba(255,107,138,.4);
+    border-radius:999px;padding:4px 12px;font-family:var(--sans)}
+  .jr-exit-btn:hover{background:var(--card2)}
+  .jr-exit-btn b{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .jr-exit-count{font-size:11.5px;color:var(--dim)}
+  .jr-exit-caret{font-size:9px;color:var(--faint)}
+  .jr-exit-pop{position:absolute;top:calc(100% - 2px);left:16px;z-index:80;
+    display:flex;flex-wrap:wrap;gap:6px;max-width:min(680px,calc(100% - 32px));
+    max-height:260px;overflow-y:auto;padding:10px;border-radius:12px;
+    background:var(--bg2);border:1px solid var(--line);box-shadow:0 16px 48px rgba(0,0,0,.5)}
+  /* flex:0 0 auto обязателен: без него плашки не переносятся, а ужимаются, и имена
+     событий обрезаются посреди слова — как раз то, ради чего их сюда и вынесли. */
+  .jr-exit-pop i{flex:0 0 auto;font-style:normal;font-family:var(--mono);font-size:10.5px;
+    color:var(--coral);padding:2px 8px;border-radius:999px;background:var(--card);
+    border:1px solid rgba(255,107,138,.45)}
+  .jr-exit-pop i.jr-exit-raw{font-family:var(--sans);max-width:100%;overflow:hidden;text-overflow:ellipsis}
   /* мультивыделение нод и рамка выделения */
   #jrCanvas .drawflow-node.jr-msel{outline:2px dashed var(--amber);outline-offset:3px}
   #jrBand{position:absolute;z-index:65;border:1.5px dashed var(--blue);

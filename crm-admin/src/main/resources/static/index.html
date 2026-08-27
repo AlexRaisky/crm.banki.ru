@@ -22,7 +22,7 @@
      любого отложенного. Восстанавливая последний открытый раздел, она проверяет
      typeof initJourneysSection === "function" — у отложенного скрипта функции ещё нет,
      проверка молча не срабатывает, и раздел остаётся мёртвым до первого нажатия. -->
-<script src="journeys.js?v=21"></script>
+<script src="journeys.js?v=23"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2393,9 +2393,18 @@
         <span id="jrHint" class="jr-hint">Двойной клик по блоку — настройки. Рамкой по пустому месту или Ctrl+кликом — выделить несколько (двигаются вместе, Delete удаляет). Блок на рамке группировки едет вместе с ней. Shift+протянуть — двигать холст. Клик по связи — кнопка удаления, двойной клик — точка излома.</span>
       </div>
       <!-- События, обрывающие весь поток. Над холстом, а не на нём: на холсте они
-           ездят и мельчают вместе со схемой, а читают их постоянно. Наполняет
-           journeys.js из условия в блоке Income event. -->
-      <div id="jrExitBar" class="jr-exit-bar" style="display:none"></div>
+           ездят и мельчают вместе со схемой, а читают их постоянно. Свёрнуты в
+           выпадающий список — десять имён в строку занимали всю ширину раздела
+           ради того, что смотрят изредка. Наполняет journeys.js из условия в
+           блоке Income event. -->
+      <div id="jrExitBar" class="jr-exit-bar" style="display:none">
+        <button type="button" id="jrExitBtn" class="jr-exit-btn" onclick="jrExitToggle()">
+          <b>Отменяют цепочку</b>
+          <span id="jrExitCount" class="jr-exit-count"></span>
+          <span class="jr-exit-caret">▾</span>
+        </button>
+        <div id="jrExitPop" class="jr-exit-pop" style="display:none"></div>
+      </div>
       <!-- Наконечник стрелки для связей Drawflow (marker-end в CSS) -->
       <svg width="0" height="0" style="position:absolute">
         <defs>
