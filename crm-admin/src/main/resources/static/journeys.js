@@ -166,6 +166,18 @@
         { k: "active",    l: "Шаг активен",            kind: "bool", def: "true" }
       ]
     },
+    /* Что уходит из оффлайн-процесса. Блок на событие, а не на шаблон: шаблонов в
+       воронке МФО сто пять, и сто пять блоков — это не схема, а список. Внутри блока
+       расписание «день → шаблон», по которому и видно, когда уходит какой. */
+    commSet: {
+      label: "Коммуникации", cls: "comm", outs: 0,
+      fields: [
+        { k: "event",    l: "Событие (event_check)",      kind: "text" },
+        { k: "channel",  l: "Канал",                      kind: "select", opts: ["sms", "push", "email", "cc"] },
+        { k: "note",     l: "Что случилось с человеком",  kind: "textarea" },
+        { k: "schedule", l: "День → шаблон",              kind: "textarea" }
+      ]
+    },
     /* Карточка-примечание: ни входов, ни выходов. Нужна для того, что к схеме
        относится, но данных не даёт, — расписание, база, оговорки по процессу.
        Вести к такому стрелку значило бы соврать: стрелка на схеме — поток данных. */
@@ -309,6 +321,26 @@
     return "через " + Math.floor(m / 60) + " ч " + (m % 60) + " мин";
   }
 
+  /* Дни расписания сжатым списком: «1–5, 12–14, 26–28». Двадцать шесть чисел подряд
+     на карточку не помещаются, а понять с одного взгляда надо другое: сплошная это
+     серия или редкие точки — то есть шлём каждый день или через раз. */
+  function dayRanges(lines) {
+    var days = lines.map(function (l) {
+      var m = String(l).match(/(\d+)/);
+      return m ? parseInt(m[1], 10) : null;
+    }).filter(function (d) { return d != null; }).sort(function (a, b) { return a - b; });
+    var out = [], i = 0;
+    while (i < days.length) {
+      var j = i;
+      while (j + 1 < days.length && days[j + 1] === days[j] + 1) j++;
+      /* Тире только для серии от трёх: «1–2» короче «1, 2» ровно на ничего, а читается
+         как диапазон там, где его нет. */
+      out.push(j > i + 1 ? days[i] + "–" + days[j] : days.slice(i, j + 1).join(", "));
+      i = j + 1;
+    }
+    return out.join(", ");
+  }
+
   /* Условие выхода на блоке — одной строкой. В таблице оно лежит целым SQL на
      полтора экрана: показать его как есть значило бы вместо схемы получить простыню,
      а спрятать совсем — соврать, что условия нет. Поэтому вытаскиваем имена событий,
@@ -428,6 +460,13 @@
                 (d.dist && d.dist !== "—") ? "ключ: " + d.dist : null,
                 d.active === "false" ? "⏸ выключен" : null].filter(Boolean).join("\n");
       }
+      case "commSet": {
+        var lines = String(d.schedule || "").split("\n").filter(Boolean);
+        return [(d.channel ? d.channel.toUpperCase() + " · " : "") +
+                  lines.length + " " + plural(lines.length, "шаблон", "шаблона", "шаблонов"),
+                d.note,
+                lines.length ? "дни: " + dayRanges(lines) : null].filter(Boolean).join("\n");
+      }
       case "noteCard":
         return d.note || "";
       case "subflow": {
@@ -458,6 +497,7 @@
     if (type === "ifCheck") return d.expr || "";
     if (type === "decision") return d.sql || "";
     if (type === "sqlStep") return d.sql || "";
+    if (type === "commSet") return d.schedule || "";
     if (type === "comm") return d.note || "";
     return "";
   }
@@ -1952,6 +1992,16 @@
     var items = ex.steps.map(function (s) {
       return { id: s.id, from: (s.from || []).slice(), src: s };
     });
+    /* Коммуникации вешаем на шаг выборки: именно он запускает отправку, и делает это
+       по одному шаблону за раз («templateId = 722» в исходном скрипте). Сто пять
+       шаблонов — сто пять таких выборок; на схеме они сведены по событию. */
+    (ex.comms || []).forEach(function (c) {
+      items.push({ id: "c_" + c.event, from: ["s80"], src: {
+        id: "c_" + c.event, type: "commSet", event: c.event, channel: "sms",
+        note: c.note,
+        schedule: c.days.map(function (p) { return "день " + p[0] + " → шаблон " + p[1]; }).join("\n")
+      } });
+    });
     layoutDag(items);
     var nodes = items.map(function (it) {
       var s = it.src;
@@ -1961,7 +2011,8 @@
           order_num: s.order == null ? "" : String(s.order),
           table: s.table || "", note: s.note || "", dist: s.dist || "",
           sql: s.sql || "", returns: s.returns ? "true" : "false",
-          active: s.active === false ? "false" : "true"
+          active: s.active === false ? "false" : "true",
+          event: s.event || "", channel: s.channel || "", schedule: s.schedule || ""
         }
       };
     });
