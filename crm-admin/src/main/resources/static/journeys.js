@@ -95,16 +95,20 @@
         { k: "wait_time", l: "Задержка от события, мин", kind: "number", def: "0" }
       ]
     },
+    /* Flow exit один на всю цепочку и задаётся один раз — в модалке заведения или
+       вот этим блоком. В таблице он лежит у каждой строки, кроме первой, но это
+       одна и та же строка условия: движок обрывает поток целиком, а не шаг.
+       Второй такой блок добавить нельзя — jrAddNode откроет уже стоящий. */
     flowExit: {
       label: "Flow exit", cls: "logic", outs: 1,
       fields: [
-        { k: "event_name", l: "Событие, обрывающее всю цепочку", kind: "text" }
+        { k: "event_name", l: "Отменяющее событие — SQL (одно на всю цепочку)", kind: "textarea" }
       ]
     },
     stepExit: {
       label: "Step exit", cls: "logic", outs: 1,
       fields: [
-        { k: "event_name", l: "Событие, снимающее следующий шаг", kind: "text" }
+        { k: "event_name", l: "Событие, снимающее следующий шаг — SQL", kind: "textarea" }
       ]
     },
     ifCheck: {
@@ -460,6 +464,12 @@
   function nodeType(id) {
     var n = editor.drawflow.drawflow[editor.module].data[id];
     return n ? n.name : null;
+  }
+  /** df-id первого узла такого типа на холсте (или null). */
+  function findNodeByType(type) {
+    var data = editor.drawflow.drawflow[editor.module].data;
+    var hit = Object.keys(data).filter(function (k) { return data[k].name === type; })[0];
+    return hit == null ? null : parseInt(hit, 10);
   }
 
   /* Что лежит на рамке группировки. Принадлежность считается по геометрии — центр
@@ -1242,6 +1252,20 @@
       alert("Раздел открыт только на просмотр: нет права на правку.");
       return;
     }
+    /* Стартовое событие и условие выхода — по одному на цепочку. Второй такой блок
+       не «ещё одно условие», а вторая правда о том же: в таблице под них по одной
+       колонке, и при заведении пришлось бы выбирать между ними молча. Поэтому не
+       добавляем второй, а открываем тот, что уже стоит. */
+    if (type === "flowExit" || type === "startIncome") {
+      var ex = findNodeByType(type);
+      if (ex != null) {
+        alert(type === "flowExit"
+          ? "Условие выхода одно на всю цепочку и уже задано — открываю его."
+          : "Стартовое событие в цепочке одно и уже выбрано — открываю его.");
+        openNodeEditor(ex);
+        return;
+      }
+    }
     var host = document.getElementById("jrCanvas");
     var x = (host.clientWidth / 2 - editor.canvas_x) / editor.zoom - 115 + (Math.random() * 60 - 30);
     var y = (host.clientHeight / 2 - editor.canvas_y) / editor.zoom - 90 + (Math.random() * 60 - 30);
@@ -1357,9 +1381,11 @@
      каждой строки: оно обрывает весь поток, а не отдельный шаг, и рисовать его у
      каждого шага значило бы показывать три разных условия там, где оно одно.
 
-     Каждый шаг обведён рамкой группировки — её и двигают, когда переставляют шаг
-     целиком. */
-  var LAY = { x0: 60, y0: 100, pitch: 300, row: 270, node: 230, indent: 190, maxX: 2400 };
+     Рамок вокруг шагов нет. Шаг и так читается дорожкой, а рамка добавляла второй
+     уровень карточек ровно с той же границей — обводить очевидное значит мешать.
+     Сам блок «Группа» из тулбокса никуда не делся: если человек захочет обвести
+     что-то своё, он это сделает руками. */
+  var LAY = { x0: 60, y0: 100, pitch: 300, row: 230, node: 230, indent: 190, maxX: 2400 };
 
   function chainToJourney(ch, name, opts) {
     opts = opts || {};
@@ -1375,16 +1401,7 @@
       if (prev) edges.push({ from: prev, to: id });
       prev = id;
     }
-    function frame(title, note, x, y, count) {
-      nodes.push({
-        id: "g" + (++seq), type: "group", posX: x - 24, posY: y - 56,
-        title: title, note: note || "",
-        props: { w: String((count - 1) * LAY.pitch + LAY.node + 48), h: "196" }
-      });
-    }
-
     var x = LAY.x0, y = LAY.y0;
-    frame("Старт", ch.system ? "событие · " + ch.system : "входящее событие", x, y, exit ? 2 : 1);
     block("startIncome", x, y, {
       /* id события подставляем только когда цепочку открыли из этого же контура.
          В примере он остаётся пустым: чужой id предложил бы завести цепочку не тому. */
@@ -1407,13 +1424,13 @@
         channel: "sms",   // канала в commapi.events_chain пока нет — колонку обещали позже
         templateCode: s.templateId == null ? "" : String(s.templateId),
         active: s.active !== false,
-        note: ""
+        /* Номер шага — на самой коммуникации: рамок вокруг шагов больше нет, а
+           понимать, какая это по счёту строка в таблице, всё равно надо. */
+        note: "Шаг " + (s.order || (i + 1)) + " · " + waitWords(s.waitTime)
+              + (s.active === false ? " · выключен" : "")
       } });
-      var num = s.order || (i + 1);
       // дорожка не влезла по ширине — начинаем её с левого края
       if (x + blocks.length * LAY.pitch > LAY.maxX) x = LAY.x0;
-      frame("Шаг " + num, waitWords(s.waitTime) + (s.active === false ? " · выключен" : ""),
-            x, y, blocks.length);
       blocks.forEach(function (b) {
         block(b.t, x, y, b.props, b.extra);
         x += LAY.pitch;
@@ -1525,10 +1542,119 @@
     window.jrFit();
   };
 
+  /* ---------------------------------------------- модалка заведения новой цепочки
+     Цепочку нельзя начать с пустого холста: у неё есть то, что задаётся один раз и
+     на весь поток — стартовое событие, название, система и отменяющее событие. Пока
+     они не заданы, добавлять шаги некуда: шаг существует только внутри цепочки.
+     Поэтому спрашиваем их сразу, как Salesforce спрашивает тип потока, а не оставляем
+     человека наедине с холстом, на котором он всё равно первым делом поставит старт.
+
+     Отменяющее событие пишется SQL-скриптом: в commapi.events_chain лежит именно
+     запрос, и подставлять вместо него имя события значило бы обещать разбор, которого
+     нет. Появится справочник — заменим поле, запрос останется тем же. */
+  var newPick = null;   // выбранное в модалке событие из tracker.t_event_comm
+
   window.jrNew = function () {
-    if (!editor) return;
+    if (!ensureEditor()) return;
+    if (!canEdit()) { alert("Раздел открыт только на просмотр."); return; }
+    newPick = null;
+    ["jrNewName", "jrNewSystem", "jrNewExit", "jrNewFilter"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.value = "";
+    });
+    document.getElementById("jrNewChain").style.display = "";
+    renderNewList("");
+    loadTrackerEvents().then(function () { renderNewList(document.getElementById("jrNewFilter").value); });
+    var f = document.getElementById("jrNewFilter");
+    if (f) f.focus();
+  };
+
+  window.jrNewClose = function () {
+    document.getElementById("jrNewChain").style.display = "none";
+  };
+
+  /* Пустой холст — для оффлайн-цепочки: она начинается с Time event, и ни стартового
+     события, ни условия выхода у неё нет. Модалка спрашивает ровно то, чего у оффлайна
+     не бывает, — значит, для него нужен выход мимо неё. */
+  window.jrNewBlank = function () {
+    window.jrNewClose();
     document.getElementById("jrSelect").value = "";
     renderJourney(null);
+  };
+
+  window.jrNewFilterChanged = function () {
+    renderNewList(document.getElementById("jrNewFilter").value);
+  };
+
+  /* Список событий карточками, а не выпадающим списком: у события есть что показать
+     кроме имени — система и заведена ли уже цепочка, — и в одну строку <option> это
+     не помещается. Фильтр обязателен: событий в трекере сотни. */
+  function renderNewList(filter) {
+    var box = document.getElementById("jrNewList");
+    if (!box) return;
+    if (trackerEvents == null) { box.innerHTML = '<div class="jr-hint">Загружаю события…</div>'; return; }
+    var q = String(filter || "").trim().toLowerCase();
+    var list = trackerEvents.filter(function (e) {
+      if (!q) return true;
+      return String(e.eventName || "").toLowerCase().indexOf(q) >= 0 ||
+             String(e.system || "").toLowerCase().indexOf(q) >= 0 ||
+             String(e.id) === q;
+    });
+    if (!list.length) {
+      box.innerHTML = '<div class="jr-hint">' + (trackerEvents.length
+        ? "Ничего не нашлось. Событие берётся из tracker.t_event_comm — если его там нет, сначала заведите событие."
+        : "Событий не видно: база событий (crmdb) не подключена на этом контуре.") + "</div>";
+      return;
+    }
+    box.innerHTML = list.slice(0, 200).map(function (e) {
+      var tail = e.steps
+        ? "цепочка уже заведена · шагов: " + e.steps
+        : "цепочки нет";
+      return '<button type="button" class="jr-card' + (newPick && newPick.id === e.id ? " sel" : "") +
+        '" onclick="jrNewSelect(' + e.id + ')">' +
+        '<div class="jr-card-t">' + esc(e.eventName || ("#" + e.id)) + "</div>" +
+        '<div class="jr-card-d">' + esc([e.system, "id " + e.id, tail].filter(Boolean).join(" · ")) + "</div>" +
+        "</button>";
+    }).join("") + (list.length > 200
+      ? '<div class="jr-hint">Показаны первые 200 из ' + list.length + " — уточните поиск.</div>" : "");
+  }
+
+  window.jrNewSelect = function (id) {
+    newPick = (trackerEvents || []).filter(function (e) { return e.id === id; })[0] || null;
+    if (!newPick) return;
+    /* Название и систему подставляем из события, но не запираем: имя цепочки — наше,
+       для списка в панели, и совпадать с именем события оно не обязано. */
+    var name = document.getElementById("jrNewName");
+    var sys = document.getElementById("jrNewSystem");
+    if (name && !name.value.trim()) name.value = newPick.eventName || "";
+    if (sys) sys.value = newPick.system || "";
+    renderNewList(document.getElementById("jrNewFilter").value);
+  };
+
+  window.jrNewCreate = function () {
+    if (!newPick) { alert("Выберите стартовое событие: цепочка начинается с него."); return; }
+    var name = (document.getElementById("jrNewName").value || "").trim() || (newPick.eventName || "");
+    var system = (document.getElementById("jrNewSystem").value || "").trim();
+    var exit = (document.getElementById("jrNewExit").value || "").trim();
+    if (newPick.steps && !confirm("У события «" + (newPick.eventName || newPick.id) +
+        "» уже заведена цепочка (шагов " + newPick.steps + ").\nЗавести поверх неё не выйдет:" +
+        " правку существующих не делаем, по этим строкам движок ведёт людей прямо сейчас.\n" +
+        "Открыть холст всё равно — как черновик?")) return;
+
+    var nodes = [{
+      id: "s1", type: "startIncome", posX: LAY.x0, posY: LAY.y0,
+      props: { t_event_comm_id: String(newPick.id), event_name: newPick.eventName || "", system: system }
+    }];
+    var edges = [];
+    if (exit) {
+      nodes.push({ id: "s2", type: "flowExit", posX: LAY.x0 + LAY.pitch, posY: LAY.y0,
+                   props: { event_name: exit } });
+      edges.push({ from: "s1", to: "s2" });
+    }
+    renderJourney({ id: null, name: name, kind: "online", nodes: nodes, edges: edges });
+    currentId = null;
+    document.getElementById("jrSelect").value = "";
+    window.jrNewClose();
   };
 
   window.jrSave = function () {

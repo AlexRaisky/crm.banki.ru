@@ -18,7 +18,7 @@
 <!-- Drawflow: интерактивная блок-схема цепочек (вендорен локально — без зависимости от CDN) -->
 <link rel="stylesheet" href="drawflow.min.css">
 <script src="drawflow.min.js"></script>
-<script src="journeys.js?v=8" defer></script>
+<script src="journeys.js?v=10" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2476,6 +2476,46 @@
           <div class="jr-modal-foot">
             <span class="jr-hint">Изменения попадут в блок после «Применить» (и в базу — после «Сохранить»).</span>
             <button type="button" class="jr-btn jr-save" id="jrEditApplyBtn" onclick="jrEditApply()"><span data-i18n="Применить">Применить</span></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Модалка заведения цепочки. Спрашиваем то, что задаётся один раз и на весь
+           поток: стартовое событие, название, систему и отменяющее событие. Пустой
+           холст тут не годится — шаг существует только внутри цепочки. -->
+      <div id="jrNewChain" class="jr-modal" style="display:none">
+        <div class="jr-modal-card">
+          <div class="jr-modal-head">
+            <b data-i18n="Новая цепочка">Новая цепочка</b>
+            <button type="button" class="jr-modal-close" onclick="jrNewClose()">✕</button>
+          </div>
+          <div class="jr-modal-body">
+            <div class="jre-field">
+              <label data-i18n="Стартовое событие">Стартовое событие — из tracker.t_event_comm</label>
+              <input id="jrNewFilter" placeholder="поиск по имени события, системе или id" oninput="jrNewFilterChanged()">
+              <div id="jrNewList" class="jr-cards"></div>
+            </div>
+            <div class="jre-field">
+              <label data-i18n="Название цепочки">Название цепочки</label>
+              <input id="jrNewName" placeholder="как будет называться в панели">
+            </div>
+            <div class="jre-field">
+              <label data-i18n="Система">Система</label>
+              <input id="jrNewSystem" placeholder="подставится из события">
+            </div>
+            <div class="jre-field">
+              <label data-i18n="Отменяющее событие">Отменяющее событие — SQL, одно на всю цепочку</label>
+              <textarea id="jrNewExit" placeholder='{"SELECT 1 FROM tracker.t_event t3 WHERE t3.event_name IN (...) AND t3.user_id = :userId AND t3.timestamp_cr >= current_date"}'></textarea>
+              <span class="jr-hint">Обрывает весь поток, а не отдельный шаг, и задаётся один раз. Оставьте пустым — цепочку не оборвёт ничто.</span>
+            </div>
+          </div>
+          <div class="jr-modal-foot">
+            <!-- Оффлайн-цепочка (ретеншен по расписанию) начинается не с события, а с
+                 Time event, и этих полей у неё нет. Чтобы модалка её не хоронила —
+                 выход на пустой холст, как было раньше. -->
+            <button type="button" class="jr-modal-close" onclick="jrNewBlank()">Пустой холст (оффлайн-цепочка)</button>
+            <span class="jr-hint">Шаги добавляются потом, на холсте: Таймер, Step exit и Communication Alert.</span>
+            <button type="button" class="jr-btn jr-save" onclick="jrNewCreate()"><span data-i18n="Создать">Создать</span></button>
           </div>
         </div>
       </div>
