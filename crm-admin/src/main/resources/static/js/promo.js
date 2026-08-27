@@ -832,6 +832,7 @@ function promoRender(){
     });
   }
   body.innerHTML = html;
+  promoBindCombos(body);
 
   var focusEl = body.querySelector('.cell-edit .cell-in');
   if (focusEl && PROMO_EDIT){
@@ -1284,6 +1285,11 @@ function promoDraftUniq(v){
   if (okBtn) okBtn.disabled = !ok;
 }
 function promoKey(e, multiline){
+  /* Открытый список партнёров забирает Enter и Escape себе: там ими выбирают пункт и
+     закрывают список. Этот обработчик висит атрибутом и срабатывает раньше, чем
+     combobox, — не уступи мы, Enter закрывал бы ячейку вместо выбора из списка. */
+  if ((e.key === 'Enter' || e.key === 'Escape') &&
+      document.querySelector('#sec-promo .combo-pop.open')) return;
   if (e.key === 'Escape'){ e.preventDefault(); promoCancel(); return; }
   if (e.key === 'Enter' && !(multiline && !e.ctrlKey)){ e.preventDefault(); promoCommit(); }
 }
@@ -1423,13 +1429,21 @@ function promoExportCsv(){
  * у всех одинаково. Без права add кнопки нет: справочник общий, и пополнять его
  * должен тот, кому вообще позволено заводить записи.
  */
+/* Ввод партнёра: наш combobox, а не нативный datalist. Список у datalist рисует сам
+   браузер — страница до него не дотягивается ни шрифтом, ни отступами, — и в Chrome он
+   выходил во всю высоту строки текста страницы: четыре пункта на пол-экрана. Свой
+   список выглядит как остальная панель и заодно фильтрует по подстроке.
+   Сам <datalist> остаётся: по нему promoAddPartner сверяет, есть ли уже такой
+   партнёр в справочнике. */
 function promoPartnerEd(value, oninput, placeholder){
-  var inp = '<input class="cell-in" list="promoPartnerList" value="' + value +
+  var inp = '<input class="cell-in combo-input js-partner" value="' + value +
     '" placeholder="' + pmEsc(placeholder) + '" oninput="' + oninput + '" onkeydown="promoKey(event)">';
-  if (!promoCan('add')) return inp;
-  return '<div class="combo-add">' + inp +
+  var pop = '<div class="combo-pop"></div>';
+  if (!promoCan('add')) return '<div class="combo">' + inp + pop + '</div>';
+  return '<div class="combo combo-add">' + inp +
     '<button type="button" class="dict-add" title="' + pmT('Добавить партнёра в справочник') +
-    '" aria-label="' + pmT('Добавить партнёра в справочник') + '" onclick="promoAddPartner(this)">+</button></div>';
+    '" aria-label="' + pmT('Добавить партнёра в справочник') + '" onclick="promoAddPartner(this)">+</button>' +
+    pop + '</div>';
 }
 
 /* Короткое уведомление. Своего тоста в разделе нет, а alert на удачное действие —
@@ -1472,7 +1486,23 @@ function promoAddPartner(btn){
   }).then(function(){ btn.disabled = false; });
 }
 
+/* Текущий справочник партнёров — то, чем наполняются combobox'ы в строках.
+   Отдельной переменной, а не чтением <option> из datalist: список перерисовывается
+   при каждой правке ячейки, и разбирать ради этого разметку незачем. */
+var PROMO_PARTNER_OPTS = PROMO_PARTNERS.slice();
+
+/* Привязать combobox'ы в только что вставленной разметке и раздать им справочник.
+   Компонент сам ничего не находит: он цепляется к инпутам в момент вызова attach,
+   а строки таблицы появляются позже — после каждой перерисовки. */
+function promoBindCombos(root){
+  if (!window.Combobox) return;
+  Combobox.attach(root || document);
+  Combobox.setOptionsFor('#sec-promo input.js-partner', PROMO_PARTNER_OPTS);
+}
+
 function promoRenderPartnerList(list){
+  PROMO_PARTNER_OPTS = (list || []).slice();
+  if (window.Combobox) Combobox.setOptionsFor('#sec-promo input.js-partner', PROMO_PARTNER_OPTS);
   var dl = document.getElementById('promoPartnerList');
   if (!dl) return;
   dl.innerHTML = (list || []).map(function(p){ return '<option value="' + pmAttr(p) + '">'; }).join('');

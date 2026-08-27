@@ -155,6 +155,19 @@
   .ms-base{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;min-width:230px}
   .ms-base .ms-own{grid-column:1 / -1;margin-top:4px}
   /* поле с кнопкой пополнения справочника (партнёр) */
+  /* Список партнёров — свой (combobox.js), а не нативный datalist: тот рисует браузер,
+     и страница до него не дотягивается ни шрифтом, ни отступами — в тёмной панели он
+     выходил пунктами в высоту строки текста страницы.
+     Таблица прокручивается внутри .tbl-wrap с overflow:auto, поэтому список ограничен
+     по высоте: длинному всё равно негде развернуться, он окажется за краем прокрутки. */
+  .combo{position:relative}
+  .combo-pop{position:absolute;top:100%;left:0;min-width:100%;max-height:196px;overflow-y:auto;
+    display:none;z-index:60;margin-top:3px;padding:4px;border-radius:9px;background:var(--bg2);
+    border:1px solid var(--line);box-shadow:0 14px 40px rgba(0,0,0,.45)}
+  .combo-pop.open{display:block}
+  .combo-item{padding:5px 9px;border-radius:6px;font-size:12.5px;line-height:1.35;
+    white-space:nowrap;cursor:pointer;color:var(--ink)}
+  .combo-item:hover,.combo-item.active{background:var(--card2)}
   .combo-add{display:flex;align-items:center;gap:6px;min-width:150px}
   .combo-add .cell-in{flex:1;min-width:0}
   .combo-add .dict-add{flex:0 0 26px;height:26px;border-radius:7px;cursor:pointer;
