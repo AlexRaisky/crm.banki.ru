@@ -590,7 +590,14 @@
           <div class="ev-f"><label for="evfChannel">Выберите notify_channel</label><select id="evfChannel"></select></div>
           <div class="ev-f"><label for="evfDefKey">Выберите definition_key</label><select id="evfDefKey"></select></div>
           <div class="ev-f"><label for="evfPrefix">Выберите business_key_prefix</label><select id="evfPrefix"></select></div>
-          <div class="ev-f"><label for="evfTemplate">Введите template_id</label><input type="number" id="evfTemplate" value="0" min="0" step="1"></div>
+          <!-- Шаблонов у события бывает несколько: на каждый день ретеншена свой. Канал
+               здесь не спрашиваем — он выбран рядом в notify_channel, и второе поле дало бы
+               возможность указать другой. -->
+          <div class="ev-f wide"><label>Шаблоны события</label>
+            <div id="evfTemplates"></div>
+            <div class="ev-edit-row"><button type="button" class="ev-mini" onclick="evfTplAdd()">+ шаблон</button>
+              <span class="ev-edit-msg">код — из прод-справочника; день/шаг можно не заполнять</span></div>
+          </div>
           <div class="ev-f"><label for="evfSystem">Выберите систему</label><select id="evfSystem"></select></div>
         </div>
         <div class="ev-checks">
@@ -2586,7 +2593,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
-<script src="js/events.js?v=3"></script>
+<script src="js/events.js?v=4"></script>
 <script src="js/event-chain.js?v=2"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->

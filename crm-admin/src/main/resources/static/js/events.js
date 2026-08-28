@@ -231,6 +231,7 @@
       el("evfSubmit").title = "Нет права на заведение событий в этом разделе";
     }
     renderSteps();
+    renderFormTemplates([]);
     stampNow("evfDateStart");
 
     dictionaries().then(function (d) {
@@ -327,6 +328,50 @@
     }
   }
 
+  /* Шаблоны события в форме заведения — тем же списком, что и в правке заведённого.
+     Одно поле template_id описывало событие с одним шаблоном, а ретеншен-воронка это
+     всегда несколько: на каждый день свой. Канал не спрашиваем — он выбран выше в
+     notify_channel, и второе поле дало бы возможность указать другой. */
+  function formTplRow(x) {
+    x = x || {};
+    return '<div class="ev-edit-tpl" data-ftpl>' +
+      '<input data-ftpl-code placeholder="код шаблона" value="' + esc(x.code == null ? "" : x.code) + '">' +
+      '<input data-ftpl-step placeholder="день/шаг" value="' + esc(x.stepNo == null ? "" : x.stepNo) + '">' +
+      '<span class="ev-edit-name"></span>' +
+      '<button type="button" class="ev-mini" onclick="this.parentNode.remove()">✕</button>' +
+      "</div>";
+  }
+
+  function renderFormTemplates(list) {
+    var box = el("evfTemplates");
+    if (!box) return;
+    list = (list && list.length) ? list : [{}];
+    box.innerHTML = list.map(formTplRow).join("");
+  }
+
+  window.evfTplAdd = function () {
+    var box = el("evfTemplates");
+    if (!box) return;
+    var holder = document.createElement("div");
+    holder.innerHTML = formTplRow({});
+    box.appendChild(holder.firstChild);
+  };
+
+  /* Пустые строки не отправляем: одна такая всегда висит на экране как приглашение
+     заполнить, и слать её как шаблон с пустым кодом значило бы ловить ошибку на сервере
+     из-за того, что человек ничего не вписал. */
+  function collectFormTemplates() {
+    var box = el("evfTemplates"), out = [];
+    if (!box) return out;
+    box.querySelectorAll("[data-ftpl]").forEach(function (d) {
+      var code = String(d.querySelector("[data-ftpl-code]").value || "").trim();
+      var step = String(d.querySelector("[data-ftpl-step]").value || "").trim();
+      if (!code) return;
+      out.push({ code: parseInt(code, 10), stepNo: step === "" ? null : parseInt(step, 10) });
+    });
+    return out;
+  }
+
   function collectSteps() {
     var box = el("evfSteps");
     var out = [];
@@ -348,7 +393,7 @@
     ["evfName", "evfSource", "evfCrontab"]
       .forEach(function (id) { if (el(id)) el(id).value = ""; });
     stampNow("evfDateStart");
-    if (el("evfTemplate")) el("evfTemplate").value = "0";
+    renderFormTemplates([]);
     ["evfChannel", "evfDefKey", "evfPrefix", "evfSystem"].forEach(function (id) {
       if (el(id)) el(id).value = "";
     });
@@ -378,7 +423,7 @@
       notifyChannel: str("evfChannel"),
       definitionKey: str("evfDefKey"),
       businessKeyPrefix: str("evfPrefix"),
-      templateId: num("evfTemplate"),
+      templates: collectFormTemplates(),
       system: str("evfSystem"),
       isActive: chk("evfActive"),
       isBatch: chk("evfBatch"),

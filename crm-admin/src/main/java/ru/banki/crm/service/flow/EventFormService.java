@@ -10,6 +10,7 @@ import ru.banki.crm.dto.EventFormDtos.EventCreated;
 import ru.banki.crm.dto.EventFormDtos.OfflineEventForm;
 import ru.banki.crm.dto.EventFormDtos.OnlineEventForm;
 import ru.banki.crm.dto.EventFormDtos.StepForm;
+import ru.banki.crm.dto.EventFormDtos.TemplateForm;
 import ru.banki.crm.security.CurrentUser;
 import ru.banki.crm.service.AdminLogService;
 
@@ -159,7 +160,14 @@ public class EventFormService {
                             " VALUES (?, ?, ?, ?, ?, true)",
                     eventId, orderNum(s, i), selection, s.sql(), bool(s.returnsResultSet(), true));
         }
-        Long localTemplateId = linkTemplate(eventId, f.notifyChannel(), f.templateId(), warnings);
+        /* Шаблонов у события бывает несколько: на каждый день ретеншена свой. Пустой
+           список означает старый вызов формы с одним templateId — тогда работаем как
+           раньше, ровно одной строкой связи и одной строкой маппинга. */
+        List<TemplateForm> tpls = templateList(f.templates(), f.templateId());
+        List<Long> localTemplateIds = new ArrayList<>();
+        for (TemplateForm t : tpls) {
+            localTemplateIds.add(linkTemplate(eventId, f.notifyChannel(), t.code(), t.stepNo(), warnings));
+        }
 
         insertDefinition(eventId, f.notifyChannel(), f.definitionKey(), f.businessKeyPrefix());
 
@@ -199,8 +207,10 @@ public class EventFormService {
                 m.put("sql_text", s.sql());
             });
         }
-        insertTemplateMapping(rows, eventId, getEventId, eventName, system,
-                f.notifyChannel(), f.templateId(), bool(f.isChain(), false));
+        for (TemplateForm t : tpls) {
+            insertTemplateMapping(rows, eventId, getEventId, eventName, system,
+                    f.notifyChannel(), t.code(), bool(f.isChain(), false));
+        }
         insertB(rows, eventId, "commapi.d_definition_mapping", m -> {
             m.put("get_event_id", getEventId);
             m.put("event_name", eventName);
@@ -211,9 +221,11 @@ public class EventFormService {
             m.put("is_correlation", false);
         });
 
-        if (localTemplateId == null && f.templateId() != null) {
-            warnings.add("Шаблон " + f.templateId() + " не найден в едином справочнике — " +
-                    "в прод-таблицы код записан, но связи в слое A нет");
+        for (int i = 0; i < tpls.size(); i++) {
+            if (localTemplateIds.get(i) == null && tpls.get(i).code() != null) {
+                warnings.add("Шаблон " + tpls.get(i).code() + " не найден в едином справочнике — " +
+                        "в прод-таблицы код записан, но связи в слое A нет");
+            }
         }
         return new EventCreated(eventId, eventName, rows, warnings);
     }
@@ -322,6 +334,12 @@ public class EventFormService {
      */
     private Long linkTemplate(long eventId, String notifyChannel, Long prodCode,
                               List<String> warnings) {
+        return linkTemplate(eventId, notifyChannel, prodCode, null, warnings);
+    }
+
+    /** То же, но с позицией шаблона (день ретеншена или шаг цепочки). */
+    private Long linkTemplate(long eventId, String notifyChannel, Long prodCode, Integer stepNo,
+                              List<String> warnings) {
         if (prodCode == null) {
             return null;
         }
@@ -336,8 +354,9 @@ public class EventFormService {
             warnings.add("Каналу " + notifyChannel + " не соответствует ни один канал справочника" +
                     " шаблонов — связь события с шаблоном не записана");
         }
-        jdbc.update("INSERT INTO flow.d_event_template (event_id, template_id) VALUES (?, ?)",
-                eventId, localId);
+        jdbc.update("INSERT INTO flow.d_event_template (event_id, template_id, step_no)" +
+                        " VALUES (?, ?, ?)",
+                eventId, localId, stepNo);
         return localId;
     }
 

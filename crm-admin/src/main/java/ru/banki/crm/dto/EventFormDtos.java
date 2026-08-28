@@ -29,6 +29,16 @@ public final class EventFormDtos {
     public record StepForm(String sql, Integer orderNum, Boolean returnsResultSet) {}
 
     /**
+     * Шаблон события: продовый код и позиция.
+     *
+     * @param code   код шаблона в прод-справочнике (канал берётся из notify_channel формы —
+     *               он там уже выбран, и спрашивать его второй раз значило бы дать
+     *               возможность указать другой)
+     * @param stepNo день или позиция в цепочке; пусто — одиночный шаблон
+     */
+    public record TemplateForm(Long code, Integer stepNo) {}
+
+    /**
      * Оффлайн-событие: планировщик по кронтабу выполняет SQL-шаги и порождает коммуникацию.
      *
      * @param selection имя процесса выборки. Связывает три прод-таблицы между собой
@@ -48,6 +58,10 @@ public final class EventFormDtos {
             String definitionKey,
             String businessKeyPrefix,
             Long templateId,
+            /* Список шаблонов: у события их бывает несколько — на каждый день ретеншена
+               свой. Одиночное поле templateId оставлено ради совместимости и работает,
+               пока список пуст: старые вызовы формы ничего не заметили. */
+            List<TemplateForm> templates,
             String system,
             Boolean isActive,
             Boolean isBatch,
