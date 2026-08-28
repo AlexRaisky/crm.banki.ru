@@ -508,6 +508,15 @@
       <!-- ===== Схемы и таблицы — фактическое состояние базы =====
            Содержимое рисует db-explorer.js по ответу GET /api/schema/db. Единственное
            изменяющее действие — удаление своих таблиц и пустых схем. -->
+      <section class="pane" id="pane-refs">
+        <h1 data-i18n-html="h_refs">Справочники <span class="grad">значений</span></h1>
+        <div class="sub" data-i18n="Списки, из которых выбирают в мастере коммуникаций. Значение добавляют не для себя, а для всех: оно сразу появляется в выпадашках. Занятое шаблонами значение выключают, а не удаляют — удаление уберёт его из списка, но в шаблонах оно останется.">Списки, из которых выбирают в мастере коммуникаций. Значение добавляют не для
+          себя, а для всех: оно сразу появляется в выпадашках. Занятое шаблонами значение
+          выключают, а не удаляют — удаление уберёт его из списка, но в шаблонах оно
+          останется.</div>
+        <div id="refsHost" class="refs-host"></div>
+      </section>
+
       <section class="pane" id="pane-dbtree">
         <h1 data-i18n-html="h_dbtree">Схемы и <span class="grad">таблицы</span></h1>
         <div class="sub" data-i18n="Что реально лежит в базе панели: схемы, внутри — их таблицы. Показывается фактическое состояние, а не модель конструктора: часть схем заведена миграциями, часть — конструктором схемы. Удалить можно только то, что создал конструктор — у таких строк есть кнопка.">Что реально лежит в базе панели: схемы, внутри — их таблицы. Показывается
@@ -1394,6 +1403,8 @@ const PANES = [
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>' },
   /* Карта идёт первой в группе: когда что-то не доехало, сначала смотрят «где рвётся»,
      а уже потом лезут в конкретное подключение. */
+  { id:"refs", acl:"set-refs", group:"Данные", label:"Справочники значений", desc:"Имена коммуникаций и точки касания: то, из чего выбирают в мастере. Добавление, выключение и удаление без похода в psql.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7M9 11h7"/></svg>' },
   { id:"integrations", acl:"set-dbconn", group:"Интеграции", label:"Карта интеграций", desc:"Все внешние связи панели на одной схеме: боевая база шаблонов, crmdb, Jira, витрины отчётов — и состояние каждого потока.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="4" cy="5" r="2"/><circle cx="20" cy="5" r="2"/><circle cx="4" cy="19" r="2"/><circle cx="20" cy="19" r="2"/><path d="M6 6.5 10 10M18 6.5 14 10M6 17.5 10 14M18 17.5 14 14"/></svg>' },
   { id:"dbconn", acl:"set-dbconn", group:"Интеграции", label:"Подключения к БД", desc:"Базы, к которым ходит панель. Здесь же отмечается, какая из них приёмник шаблонов, а какая — база событий crmdb.",
@@ -1488,6 +1499,12 @@ function openPane(id){
   if (id === "objects" && window.ObjectManager) window.ObjectManager.open();
   /* Структура базы меняется мимо панели (миграции, применение DDL) — читаем заново */
   if (id === "dbtree" && window.DbExplorer) window.DbExplorer.open();
+  /* Справочники меняются мимо панели (инсертом в psql, переливом настроек) — читаем заново */
+  if (id === "refs" && window.Refs) {
+    var rh = document.getElementById("refsHost");
+    if (rh && !rh.innerHTML) rh.innerHTML = Refs.markup();
+    Refs.open();
+  }
 }
 /* Пунктов стало тринадцать, и плоским списком они читались плохо: «Подключения к БД»
    стояли между «Общими параметрами» и «Диагностикой». Рисуем заголовок группы перед
@@ -3960,6 +3977,33 @@ window.CRM = window.CRM || (function(){
   #bkList .bk-st{width:auto;min-width:120px;flex:0 0 auto}
   #bkList .bk-editor{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
   #bkList .bk-meta{color:var(--faint);font-size:11.5px}
+  /* ---- Справочники значений (refs.js) ----
+     Две карточки в ряд, на узком экране — одна под другой. Значение, счётчик
+     использования и кнопки в строке фиксированной сетки: список читают глазами
+     сверху вниз, и колонки должны стоять ровно. */
+  .refs-host{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+  .refs-card{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--card)}
+  .refs-card h2{font-size:15px;margin:0 0 4px}
+  .refs-hint{font-size:12px;color:var(--faint);line-height:1.45;margin-bottom:10px}
+  .refs-add{display:flex;gap:8px;margin-bottom:6px}
+  .refs-add input{flex:1;min-width:0;background:var(--bg2);color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:7px 10px;font-size:13.5px}
+  .refs-add input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(80,195,255,.16)}
+  .refs-msg{font-size:12px;color:var(--dim);min-height:16px;margin-bottom:6px}
+  .refs-list{max-height:420px;overflow-y:auto;border-top:1px solid var(--line)}
+  .refs-row{display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:8px;
+    padding:6px 2px;border-bottom:1px solid var(--line)}
+  /* Выключенное значение приглушено, но читается: оно существует, просто не предлагается */
+  .refs-row.off .refs-val{color:var(--faint);text-decoration:line-through}
+  .refs-val{font-family:var(--mono);font-size:12.5px;word-break:break-all}
+  .refs-used{font-size:11.5px;color:var(--faint);white-space:nowrap}
+  .refs-lock{font-size:11.5px;color:var(--faint);padding:0 6px;white-space:nowrap}
+  .refs-btn{background:var(--card2);color:var(--dim);border:1px solid var(--line);border-radius:7px;
+    padding:4px 9px;font-size:12px;cursor:pointer;white-space:nowrap;font-family:var(--sans)}
+  .refs-btn:hover{color:var(--ink);border-color:rgba(80,195,255,.4)}
+  .refs-btn.primary{background:var(--blue-bg);color:var(--blue);border-color:rgba(80,195,255,.4)}
+  .refs-btn.del:hover{color:var(--coral);border-color:rgba(255,107,138,.5)}
+  .refs-empty{padding:10px 2px;font-size:12.5px;color:var(--faint)}
   #dbxHost .dbx-schema{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden}
   #dbxHost .dbx-head{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;background:var(--card2)}
   #dbxHost .dbx-head:hover{background:var(--card)}
@@ -3989,6 +4033,7 @@ window.CRM = window.CRM || (function(){
   #dbxHost .dbx-empty.small{padding:8px 4px;font-size:12.5px}
 </style>
 <script src="db-explorer.js?v=3"></script>
+<script src="refs.js?v=1"></script>
 <!-- «Бэклог»: задачи на доработку панели, раздел только для админов -->
 <script src="backlog.js?v=2"></script>
 <!-- «Карта интеграций»: схема внешних связей панели с живым состоянием -->
