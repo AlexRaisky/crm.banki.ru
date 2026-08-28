@@ -510,7 +510,9 @@
       ]) + "</div>";
 
       var steps = d.steps || [];
-      html += '<div class="ev-card"><h4>Шаги выборки (' + steps.length + ")</h4>";
+      html += '<div class="ev-card" id="evEditSteps-' + esc(e.id) + '"><h4>Шаги выборки (' + steps.length + ")" +
+        (canEditEvent() ? ' <button type="button" class="ev-mini" onclick="evEditSteps(' + esc(e.id) + ')">Править</button>' : "") +
+        "</h4>";
       html += steps.length ? steps.map(function (x) {
         return '<div style="margin-bottom:8px"><b>' + esc(x.order_num) + ". " + esc(x.process_name || "") + "</b>" +
           (x.returns_result_set ? " · возвращает результат" : "") +
@@ -521,7 +523,9 @@
     }
 
     var tpl = d.templates || [];
-    html += '<div class="ev-card"><h4>Шаблоны (' + tpl.length + ")</h4>";
+    html += '<div class="ev-card" id="evEditTpl-' + esc(e.id) + '"><h4>Шаблоны (' + tpl.length + ")" +
+      (canEditEvent() ? ' <button type="button" class="ev-mini" onclick="evEditTemplates(' + esc(e.id) + ')">Править</button>' : "") +
+      "</h4>";
     html += tpl.length ? '<div class="ev-rows"><table><tbody>' + tpl.map(function (x) {
       return "<tr><td>" + (x.step_no == null ? "одиночный" : "шаг " + esc(x.step_no)) + "</td>" +
         "<td>" + (x.code ? esc(x.channel) + ":" + esc(x.code) : "не найден у нас") + "</td>" +
@@ -542,6 +546,151 @@
     }
     return html;
   }
+
+  /* ---------------------------------------------------------- правка события
+     Карточка события до сих пор только показывала. Добавить шаблон на двадцать девятый
+     день или поправить опечатку в SQL было нельзя — люди шли в psql, и панель переставала
+     знать, что исполняется на самом деле.
+
+     Правится НАША модель (flow.*), а не боевые таблицы: у перелитого события в crmdb
+     лежит своя копия. Сервер это видит и возвращает предупреждение — показываем его как
+     есть, потому что там названо, что делать дальше (перелить заново).
+
+     Кнопки видны только тем, у кого есть право edit хотя бы на одну из секций завода
+     событий: показывать кнопку, которая упрётся в 403, хуже, чем не показывать её. */
+  function canEditEvent() {
+    return can("edit", "ev-offline") || can("edit", "ev-online");
+  }
+
+  /** Карточка перерисовывается целиком — то же, что делает повторный клик по строке. */
+  function evReloadCard(id) {
+    var row = el("evlBox").querySelector('[data-card="' + id + '"]');
+    if (!row) return;
+    evReq("GET", "/list/" + encodeURIComponent(id)).then(function (d) {
+      row.firstChild.innerHTML = renderCard(d);
+    });
+  }
+
+  function evEditMsg(box, text, bad) {
+    var m = box.querySelector(".ev-edit-msg");
+    if (!m) return;
+    m.textContent = text || "";
+    m.style.color = bad ? "var(--coral)" : "var(--dim)";
+  }
+
+  window.evEditSteps = function (id) {
+    var box = el("evEditSteps-" + id);
+    if (!box) return;
+    evReq("GET", "/list/" + encodeURIComponent(id)).then(function (d) {
+      var steps = d.steps || [];
+      box.innerHTML = "<h4>Шаги выборки — правка</h4>" +
+        '<div class="ev-edit" data-ev="' + id + '">' +
+        steps.map(function (x, i) { return stepEditor(i + 1, x); }).join("") +
+        '<div class="ev-edit-row">' +
+          '<button type="button" class="ev-mini" onclick="evStepAdd(' + id + ')">+ шаг</button>' +
+          '<span class="ev-edit-msg"></span>' +
+        "</div>" +
+        '<div class="ev-edit-row">' +
+          '<button type="button" class="ev-btn" onclick="evStepsSave(' + id + ')">Сохранить шаги</button>' +
+          '<button type="button" class="ev-btn ghost" onclick="evReloadCard(' + id + ')">Отмена</button>' +
+        "</div></div>";
+    });
+  };
+
+  /* Отдельная функция, а не шаблон в строке: тот же блок нужен кнопке «+ шаг». */
+  function stepEditor(num, x) {
+    x = x || {};
+    return '<div class="ev-edit-step" data-step>' +
+      "<label><b>Шаг " + num + "</b> " +
+        '<input type="checkbox" data-step-active' + (x.is_active === false ? "" : " checked") + "> активен" +
+      "</label>" +
+      '<textarea data-step-sql rows="6" spellcheck="false">' + esc(x.sql_text || "") + "</textarea>" +
+      '<button type="button" class="ev-mini" onclick="this.parentNode.remove()">Убрать шаг</button>' +
+      "</div>";
+  }
+
+  window.evStepAdd = function (id) {
+    var box = el("evEditSteps-" + id);
+    var rows = box.querySelectorAll("[data-step]");
+    var holder = document.createElement("div");
+    holder.innerHTML = stepEditor(rows.length + 1, null);
+    rows[rows.length - 1].parentNode.insertBefore(holder.firstChild, box.querySelector(".ev-edit-row"));
+  };
+
+  window.evStepsSave = function (id) {
+    var box = el("evEditSteps-" + id);
+    var steps = [];
+    box.querySelectorAll("[data-step]").forEach(function (d) {
+      steps.push({
+        sql: d.querySelector("[data-step-sql]").value,
+        active: d.querySelector("[data-step-active]").checked
+      });
+    });
+    evEditMsg(box, "Сохраняю…");
+    evReq("PUT", "/" + id + "/steps", { steps: steps }).then(function (res) {
+      /* Предупреждение о расхождении с продом показываем модально: это не «сохранено»,
+         а «сохранено, но в бою пока старое», и проскочить мимо этого нельзя. */
+      if (res && res.warning) alert(res.warning);
+      evReloadCard(id);
+    }).catch(function (e) { evEditMsg(box, (e && e.message) || "Не сохранилось", true); });
+  };
+
+  window.evEditTemplates = function (id) {
+    var box = el("evEditTpl-" + id);
+    if (!box) return;
+    evReq("GET", "/list/" + encodeURIComponent(id)).then(function (d) {
+      var tpl = d.templates || [];
+      box.innerHTML = "<h4>Шаблоны — правка</h4>" +
+        '<div class="ev-edit" data-ev="' + id + '">' +
+        '<div class="ev-edit-hint">Канал и код — как в справочнике шаблонов. День/шаг —' +
+        " номер в цепочке, пусто — одиночный шаблон.</div>" +
+        '<div data-tpl-rows>' + (tpl.length ? tpl.map(tplEditor).join("") : tplEditor({})) + "</div>" +
+        '<div class="ev-edit-row">' +
+          '<button type="button" class="ev-mini" onclick="evTplAdd(' + id + ')">+ шаблон</button>' +
+          '<span class="ev-edit-msg"></span>' +
+        "</div>" +
+        '<div class="ev-edit-row">' +
+          '<button type="button" class="ev-btn" onclick="evTplSave(' + id + ')">Сохранить шаблоны</button>' +
+          '<button type="button" class="ev-btn ghost" onclick="evReloadCard(' + id + ')">Отмена</button>' +
+        "</div></div>";
+    });
+  };
+
+  function tplEditor(x) {
+    x = x || {};
+    return '<div class="ev-edit-tpl" data-tpl>' +
+      '<input data-tpl-ch placeholder="канал" value="' + esc(x.channel || "") + '">' +
+      '<input data-tpl-code placeholder="код" value="' + esc(x.code || "") + '">' +
+      '<input data-tpl-step placeholder="день/шаг" value="' +
+        esc(x.step_no == null ? "" : x.step_no) + '">' +
+      '<span class="ev-edit-name">' + esc(x.communication_name || "") + "</span>" +
+      '<button type="button" class="ev-mini" onclick="this.parentNode.remove()">✕</button>' +
+      "</div>";
+  }
+
+  window.evTplAdd = function (id) {
+    var box = el("evEditTpl-" + id).querySelector("[data-tpl-rows]");
+    var holder = document.createElement("div");
+    holder.innerHTML = tplEditor({});
+    box.appendChild(holder.firstChild);
+  };
+
+  window.evTplSave = function (id) {
+    var box = el("evEditTpl-" + id);
+    var items = [];
+    box.querySelectorAll("[data-tpl]").forEach(function (d) {
+      items.push({
+        channel: d.querySelector("[data-tpl-ch]").value,
+        code: d.querySelector("[data-tpl-code]").value,
+        stepNo: d.querySelector("[data-tpl-step]").value
+      });
+    });
+    evEditMsg(box, "Сохраняю…");
+    evReq("PUT", "/" + id + "/templates", { templates: items }).then(function (res) {
+      if (res && res.warning) alert(res.warning);
+      evReloadCard(id);
+    }).catch(function (e) { evEditMsg(box, (e && e.message) || "Не сохранилось", true); });
+  };
 
   /* Перелив события в боевую базу уехал в настройки (/settings → «Переливы» →
      «Перелив событий в прод»). Раздел «События» остался про заведение и просмотр:

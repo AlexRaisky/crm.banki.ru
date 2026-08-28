@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -15,6 +16,7 @@ import ru.banki.crm.dto.EventFormDtos.OnlineEventForm;
 import ru.banki.crm.security.AccessGuard;
 import ru.banki.crm.service.Sections;
 import ru.banki.crm.service.flow.EventChainService;
+import ru.banki.crm.service.flow.EventEditService;
 import ru.banki.crm.service.flow.EventFormService;
 import ru.banki.crm.service.flow.EventListService;
 import ru.banki.crm.service.prod.EventExportService;
@@ -42,18 +44,20 @@ public class EventController {
     private final EventImportService importer;
     private final EventListService catalog;
     private final EventChainService chains;
+    private final EventEditService edit;
     private final AccessGuard access;
     private final ProcessControlService control;
 
     public EventController(EventFormService service, EventExportService export,
                            EventImportService importer, EventListService catalog,
-                           EventChainService chains, AccessGuard access,
+                           EventChainService chains, EventEditService edit, AccessGuard access,
                            ProcessControlService control) {
         this.service = service;
         this.export = export;
         this.importer = importer;
         this.catalog = catalog;
         this.chains = chains;
+        this.edit = edit;
         this.access = access;
         this.control = control;
     }
@@ -192,6 +196,32 @@ public class EventController {
     }
 
     /** Карточка события: обвязка целиком, включая шаги выборки и связи с crmdb. */
+    /* Правка заведённого события. Секции те же, что и у заведения (онлайн/оффлайн):
+       кто может завести событие, тот может и поправить — разделять эти полномочия
+       незачем, ошибку исправляет тот же человек, который её сделал.
+       Capability.EDIT, а не ADD: право «добавлять» и право «менять уже работающее»
+       в матрице разные, и второе выдают осторожнее. */
+
+    @PutMapping("/{id}/steps")
+    public Map<String, Object> updateSteps(@PathVariable long id,
+                                           @RequestBody Map<String, Object> body) {
+        access.requireCapability(Capability.EDIT, Sections.EV_OFFLINE, Sections.EV_ONLINE);
+        return edit.updateSteps(id, listOf(body, "steps"));
+    }
+
+    @PutMapping("/{id}/templates")
+    public Map<String, Object> updateTemplates(@PathVariable long id,
+                                               @RequestBody Map<String, Object> body) {
+        access.requireCapability(Capability.EDIT, Sections.EV_OFFLINE, Sections.EV_ONLINE);
+        return edit.updateTemplates(id, listOf(body, "templates"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> listOf(Map<String, Object> body, String key) {
+        Object v = body == null ? null : body.get(key);
+        return v instanceof List ? (List<Map<String, Object>>) v : List.of();
+    }
+
     @GetMapping("/list/{id}")
     public Map<String, Object> one(@PathVariable long id) {
         access.requireAnySection(Sections.EV_LIST);
