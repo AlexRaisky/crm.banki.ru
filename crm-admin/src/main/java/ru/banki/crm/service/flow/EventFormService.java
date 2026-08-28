@@ -326,6 +326,28 @@ public class EventFormService {
     }
 
     /**
+     * Шаблоны формы: список, а пустой — падаем на одиночное поле, как было до списка.
+     * <p>
+     * Строки без кода отбрасываем здесь, а не на форме: пустая строка «код · день» всегда
+     * висит на экране приглашением заполнить, и доехать до сервера она может и не из нашей
+     * формы. Отказывать из-за незаполненного приглашения нельзя.
+     */
+    private static List<TemplateForm> templateList(List<TemplateForm> list, Long single) {
+        List<TemplateForm> out = new ArrayList<>();
+        if (list != null) {
+            for (TemplateForm t : list) {
+                if (t != null && t.code() != null) {
+                    out.add(t);
+                }
+            }
+        }
+        if (out.isEmpty() && single != null) {
+            out.add(new TemplateForm(single, null));
+        }
+        return out;
+    }
+
+    /**
      * Связь события с шаблоном в слое A. В форме вводится ПРОДОВЫЙ код шаблона, а
      * d_event_template ссылается на суррогатный id единого справочника — это разные числа,
      * поэтому код сначала ищем по паре (канал, code).
