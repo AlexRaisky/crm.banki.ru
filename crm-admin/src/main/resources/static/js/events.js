@@ -273,6 +273,7 @@
           '<div class="h"><b>Шаг ' + n + "</b>" +
             '<label class="ev-chk"><input type="checkbox" data-step-res="' + i + '"' +
               (res ? " checked" : "") + "> вернуть результат</label>" +
+            (want > 1 ? '<button type="button" class="ev-mini" data-step-del="' + i + '">убрать</button>' : "") +
           "</div>" +
           '<div class="ev-fields">' +
             '<div class="ev-f wide"><label>Шаг ' + n + " — SQL</label>" +
@@ -282,10 +283,48 @@
           "</div>" +
         "</div>";
     }
-    box.innerHTML = html;
+    /* Кнопки «+ шаг» и «убрать» — те же, что в правке заведённого события. Счётчик
+       «количество шагов» остаётся синхронизированным, но трогать его больше не нужно:
+       чтобы добавить четвёртый шаг, человек нажимал в поле числа, а потом искал глазами,
+       где появился блок. */
+    box.innerHTML = html +
+      '<div class="ev-edit-row"><button type="button" class="ev-mini" onclick="evfStepAdd()">+ шаг</button>' +
+      '<span class="ev-edit-msg">шагов: ' + want + "</span></div>";
     box.querySelectorAll("[data-step-res]").forEach(function (c) {
       c.onchange = function () { box.setAttribute("data-res-touched", "1"); };
     });
+    box.querySelectorAll("[data-step-del]").forEach(function (b) {
+      b.onclick = function () { evfStepDrop(parseInt(b.getAttribute("data-step-del"), 10)); };
+    });
+  }
+
+  /* Счётчик остаётся источником правды о числе блоков — кнопки просто крутят его и
+     перерисовывают. Держать второе состояние рядом с ним значило бы однажды получить
+     «в поле 3, на экране 4». */
+  window.evfStepAdd = function () {
+    var c = el("evfStepCount");
+    c.value = Math.min(20, (parseInt(c.value, 10) || 1) + 1);
+    renderSteps();
+  };
+
+  /** Убрать шаг: текст остальных сохраняем, сдвигая их на место удалённого. */
+  window.evfStepDrop = function (idx) {
+    var box = el("evfSteps");
+    var c = el("evfStepCount");
+    var count = parseInt(c.value, 10) || 1;
+    if (count <= 1) { return; }   // последний шаг не убираем: выборка без шагов бессмысленна
+    var sql = [], res = [], ord = [];
+    box.querySelectorAll("[data-step-sql]").forEach(function (t) { sql.push(t.value); });
+    box.querySelectorAll("[data-step-res]").forEach(function (x) { res.push(x.checked); });
+    box.querySelectorAll("[data-step-ord]").forEach(function (x) { ord.push(x.value); });
+    sql.splice(idx, 1); res.splice(idx, 1); ord.splice(idx, 1);
+    c.value = count - 1;
+    renderSteps();
+    box.querySelectorAll("[data-step-sql]").forEach(function (t, i) { t.value = sql[i] || ""; });
+    box.querySelectorAll("[data-step-ord]").forEach(function (x, i) { if (ord[i]) x.value = ord[i]; });
+    if (box.getAttribute("data-res-touched") === "1") {
+      box.querySelectorAll("[data-step-res]").forEach(function (x, i) { x.checked = !!res[i]; });
+    }
   }
 
   function collectSteps() {
@@ -614,7 +653,10 @@
     var rows = box.querySelectorAll("[data-step]");
     var holder = document.createElement("div");
     holder.innerHTML = stepEditor(rows.length + 1, null);
-    rows[rows.length - 1].parentNode.insertBefore(holder.firstChild, box.querySelector(".ev-edit-row"));
+    /* Вставляем перед строкой кнопок, а не после последнего шага: шагов может не быть
+       вовсе — у события, которое завели без выборки, — и «последний» тогда undefined. */
+    var anchor = box.querySelector(".ev-edit-row");
+    anchor.parentNode.insertBefore(holder.firstChild, anchor);
   };
 
   window.evStepsSave = function (id) {
