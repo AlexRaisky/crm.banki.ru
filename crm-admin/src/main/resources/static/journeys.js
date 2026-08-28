@@ -431,7 +431,9 @@
         return [d.title, d.object, d.into ? "→ " + d.into : null]
           .filter(Boolean).join("\n");
       case "noteCard":
-        return d.note || "";
+        /* Пустая карточка — просто рамка, по которой не догадаться, что делать.
+           Подсказка исчезает, как только в заметке появляется текст. */
+        return d.note || "двойной клик — вписать заметку";
       case "subflow": {
         var j = listCache.filter(function (x) { return x.id === d.journey; })[0];
         return j ? "→ " + j.name : "цепочка не выбрана";
@@ -479,9 +481,12 @@
        нарисована, видно на схеме, а не по двойному клику. */
     var tag = (type === "decision" && d && d.step_exit === "true")
       ? '<span class="jrn-tag">step exit</span>' : "";
+    /* У примечания в заголовке — его собственное название: карточка с надписью
+       «Примечание» на схеме, где их несколько, не отличается одна от другой. */
+    var head = (type === "noteCard" && d && d.title) ? esc(d.title) : t.label;
     var html = '<div class="jrn jrn-' + t.cls + chCls + '"' +
       (tip ? ' title="' + esc(tip) + '"' : "") + ">" +
-      '<div class="jrn-head">' + t.label + tag + "</div>" +
+      '<div class="jrn-head">' + head + tag + "</div>" +
       '<div class="jrn-sum">' + esc(nodeSummary(type, d)) + "</div>";
     if (t.outLabels) {
       html += '<div class="jrn-outs">' +
@@ -1414,8 +1419,13 @@
        добавляем второй, а открываем тот, что уже стоит. */
     /* Блок вне цепочки — блок ни о чём: шаг существует только внутри потока, у него
        есть событие-старт, название и условие выхода, и без них он никуда не уедет.
-       Поэтому первым делом заводят цепочку, а не кладут блок на пустой холст. */
-    if (findNodeByType("startIncome") == null && findNodeByType("startTime") == null) {
+       Поэтому первым делом заводят цепочку, а не кладут блок на пустой холст.
+
+       Примечание — исключение: оно не часть потока, а подпись к нему. Требовать
+       цепочку ради заметки значило бы запретить записать мысль до того, как решено,
+       что именно рисуем. */
+    if (type !== "noteCard" &&
+        findNodeByType("startIncome") == null && findNodeByType("startTime") == null) {
       alert("Сначала заведите цепочку: у неё есть стартовое событие, название и"
             + " отменяющее событие — без них блоку негде стоять.");
       window.jrNew();

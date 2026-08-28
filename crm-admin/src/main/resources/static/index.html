@@ -22,7 +22,7 @@
      любого отложенного. Восстанавливая последний открытый раздел, она проверяет
      typeof initJourneysSection === "function" — у отложенного скрипта функции ещё нет,
      проверка молча не срабатывает, и раздел остаётся мёртвым до первого нажатия. -->
-<script src="journeys.js?v=27"></script>
+<script src="journeys.js?v=29"></script>
 <!-- Данные примера оффлайн-процесса: большой кусок SQL, вынесен из journeys.js.
      Читается только по нажатию кнопки, поэтому порядок подключения не важен. -->
 <script src="js/journeys-offline-example.js?v=3"></script>
@@ -2444,6 +2444,10 @@
           <button type="button" class="jr-tb-item tb-data" onclick="jrAddNode('updateRecords')">Update Records</button>
           <button type="button" class="jr-tb-item tb-data" onclick="jrAddNode('getRecords')">Get Records</button>
           <button type="button" class="jr-tb-item tb-data" onclick="jrAddNode('deleteRecords')">Delete Records</button>
+          <!-- Примечание: карточка без входов и выходов. Не участник потока, а подпись
+               к нему, поэтому ставится и на пустой холст — до того, как заведена цепочка. -->
+          <div class="jr-tb-group" data-i18n="Разное">Разное</div>
+          <button type="button" class="jr-tb-item tb-note" onclick="jrAddNode('noteCard')">Примечание</button>
         </div>
         <div id="jrCanvas">
           <!-- меню «стрелка в никуда»: выбрать ноду, она создастся в точке обрыва и подключится -->

@@ -230,6 +230,8 @@
   .jr-tb-item.tb-subflow::before{background:var(--blue)}
   .jr-tb-item.tb-logic::before{background:var(--amber)}
   .jr-tb-item.tb-data::before{background:var(--coral)}
+  /* Примечание не участвует в потоке — и метка у него не цветом группы, а нейтральная */
+  .jr-tb-item.tb-note::before{background:var(--faint)}
   #jrCanvas{flex:1;position:relative;background:
     radial-gradient(circle,rgba(80,195,255,.10) 1px,transparent 1px) 0 0/26px 26px,var(--bg)}
   body[data-readonly] .jr-btn.jr-save,body[data-readonly] .jr-btn.jr-delete,
