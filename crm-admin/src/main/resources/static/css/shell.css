@@ -232,6 +232,18 @@
   .jr-tb-item.tb-data::before{background:var(--coral)}
   /* Примечание не участвует в потоке — и метка у него не цветом группы, а нейтральная */
   .jr-tb-item.tb-note::before{background:var(--faint)}
+  /* Масштаб в тулбаре: минус, процент, плюс — одной группой, чтобы читались как один
+     орган управления, а не три кнопки подряд. */
+  .jr-zoom{display:inline-flex;align-items:stretch;border:1px solid var(--line);
+    border-radius:8px;overflow:hidden;background:var(--card)}
+  .jr-zoom button{background:none;border:none;color:var(--dim);cursor:pointer;
+    font-family:var(--sans);font-size:13px;padding:0 9px;min-width:28px}
+  .jr-zoom button:hover{background:var(--card2);color:var(--ink)}
+  .jr-zoom #jrZoomPct{min-width:52px;font-family:var(--mono);font-size:11.5px;
+    border-left:1px solid var(--line);border-right:1px solid var(--line)}
+  /* transform-origin: 0 0 — иначе начало отсчёта масштаба лежит в центре холста и
+     плавает вместе с размером окна: и родной зум Drawflow, и наш считают от нуля. */
+  #jrCanvas .drawflow{transform-origin:0 0}
   #jrCanvas{flex:1;position:relative;background:
     radial-gradient(circle,rgba(80,195,255,.10) 1px,transparent 1px) 0 0/26px 26px,var(--bg)}
   body[data-readonly] .jr-btn.jr-save,body[data-readonly] .jr-btn.jr-delete,

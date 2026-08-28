@@ -787,6 +787,17 @@
   };
 
   function wireCanvasUx(host) {
+    /* Колесо масштабирует без модификаторов: на схеме прокручивать нечего, холст
+       двигают Shift+протягиванием. На перехвате и с остановкой — у Drawflow свой зум
+       на Ctrl+колесо, и без этого при зажатом Ctrl складывались бы два разных шага. */
+    host.addEventListener("wheel", function (e) {
+      if (!editor) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var r = host.getBoundingClientRect();
+      zoomTo(editor.zoom * (e.deltaY > 0 ? 1 / ZOOM.step : ZOOM.step),
+             e.clientX - r.left, e.clientY - r.top);
+    }, { capture: true, passive: false });
     host.addEventListener("mousemove", function (e) {
       var r = host.getBoundingClientRect();
       lastMouse = { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -1767,6 +1778,47 @@
   /* Уместить всё на экран. Раскладка уходит вправо по диагонали, и у цепочки из
      трёх шагов правый край уже за пределами холста: без этой кнопки человек ищет
      свои же блоки колесом мыши. */
+  /* ------------------------------------------------------------------ масштаб
+     Родной зум Drawflow не годится по трём причинам сразу. Он ограничен снизу
+     половиной — а оффлайн-процесс на 238 блоков занимает восемь тысяч точек по
+     ширине и целиком не помещается ни при каком разрешении. Он прибавляет к
+     масштабу постоянные 0,1 — от 0,15 это увеличение в полтора раза, от 1,5 —
+     на седьмую часть, то есть у мелкого шаг грубый, а у крупного бесполезный.
+     И он тянет схему к началу координат: целишься в блок, а тот уезжает за край.
+
+     Поэтому свой: шаг кратный, пределы шире, а точка, на которую смотришь,
+     остаётся на месте. Для этого же в CSS у холста transform-origin: 0 0 — без
+     него начало отсчёта плавает вместе с размером окна. */
+  var ZOOM = { min: 0.08, max: 2.5, step: 1.12 };
+
+  function zoomTo(z, cx, cy) {
+    if (!editor || !editor.precanvas) return;
+    var host = document.getElementById("jrCanvas");
+    if (cx == null) { cx = host.clientWidth / 2; cy = host.clientHeight / 2; }
+    var z0 = editor.zoom || 1;
+    z = Math.min(ZOOM.max, Math.max(ZOOM.min, z));
+    /* Точка схемы под курсором до и после должна оказаться в одном месте экрана. */
+    editor.canvas_x = cx - (cx - editor.canvas_x) * (z / z0);
+    editor.canvas_y = cy - (cy - editor.canvas_y) * (z / z0);
+    editor.zoom = z;
+    editor.zoom_last_value = z;
+    editor.precanvas.style.transform =
+      "translate(" + editor.canvas_x + "px, " + editor.canvas_y + "px) scale(" + z + ")";
+    showZoom();
+    hidePopups();
+  }
+
+  function showZoom() {
+    var el = document.getElementById("jrZoomPct");
+    if (el && editor) el.textContent = Math.round(editor.zoom * 100) + "%";
+  }
+
+  window.jrZoomIn = function () { zoomTo((editor ? editor.zoom : 1) * ZOOM.step); };
+  window.jrZoomOut = function () { zoomTo((editor ? editor.zoom : 1) / ZOOM.step); };
+  window.jrZoom100 = function () { zoomTo(1); };
+
+  /* Уместить всё на экран. Раскладка уходит вправо, и у длинной схемы правый край
+     давно за пределами холста: без этой кнопки человек ищет свои же блоки колесом. */
   window.jrFit = function () {
     if (!editor || !editor.precanvas) return;
     var els = document.querySelectorAll("#jrCanvas .drawflow-node");
@@ -1780,15 +1832,18 @@
     });
     var host = document.getElementById("jrCanvas");
     var pad = 30;
+    /* Сверху единица: у схемы из трёх блоков растягивать её на весь экран незачем —
+       «уместить» означает «показать всё», а не «увеличить до упора». */
     var z = Math.min((host.clientWidth - pad * 2) / Math.max(1, x2 - x1),
                      (host.clientHeight - pad * 2) / Math.max(1, y2 - y1), 1);
-    z = Math.max(0.25, z);
+    z = Math.max(ZOOM.min, z);
     editor.zoom = z;
     editor.zoom_last_value = z;
     editor.canvas_x = pad - x1 * z;
     editor.canvas_y = pad - y1 * z;
     editor.precanvas.style.transform =
       "translate(" + editor.canvas_x + "px, " + editor.canvas_y + "px) scale(" + z + ")";
+    showZoom();
   };
 
   /* Открыть на холсте цепочку, которая реально лежит в commapi.events_chain.
@@ -2222,7 +2277,12 @@
     try {
       editor = new Drawflow(host);
       editor.reroute = true;
+      /* Пределы масштаба — наши: у Drawflow нижний предел 0,5, и схема шире экрана
+         вдвое целиком не показывалась ни при каком разрешении. */
+      editor.zoom_min = ZOOM.min;
+      editor.zoom_max = ZOOM.max;
       editor.start();
+      showZoom();
     } catch (e) {
       editor = null;
       host.innerHTML = '<div style="padding:30px;color:#FF6B8A">Конструктор не запустился: ' +

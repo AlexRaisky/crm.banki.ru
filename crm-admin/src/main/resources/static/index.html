@@ -22,7 +22,7 @@
      любого отложенного. Восстанавливая последний открытый раздел, она проверяет
      typeof initJourneysSection === "function" — у отложенного скрипта функции ещё нет,
      проверка молча не срабатывает, и раздел остаётся мёртвым до первого нажатия. -->
-<script src="journeys.js?v=29"></script>
+<script src="journeys.js?v=30"></script>
 <!-- Данные примера оффлайн-процесса: большой кусок SQL, вынесен из journeys.js.
      Читается только по нажатию кнопки, поэтому порядок подключения не важен. -->
 <script src="js/journeys-offline-example.js?v=3"></script>
@@ -2396,6 +2396,13 @@
         </select>
         <button type="button" class="jr-btn" onclick="jrChainOpen()"><span data-i18n="Показать">Показать</span></button>
         <button type="button" class="jr-btn" onclick="jrFit()" title="Уместить всю схему на экран"><span data-i18n="Уместить">Уместить</span></button>
+        <!-- Масштаб: колесо мыши наводится на нужное место, кнопки — когда мыши под
+             рукой нет. Процент кликабельный — возвращает 100%. -->
+        <span class="jr-zoom">
+          <button type="button" onclick="jrZoomOut()" title="Отдалить (колесо мыши вниз)">−</button>
+          <button type="button" id="jrZoomPct" onclick="jrZoom100()" title="Показать в натуральную величину">100%</button>
+          <button type="button" onclick="jrZoomIn()" title="Приблизить (колесо мыши вверх)">+</button>
+        </span>
         <span id="jrHint" class="jr-hint">Двойной клик по блоку — настройки. Рамкой по пустому месту или Ctrl+кликом — выделить несколько (двигаются вместе, Delete удаляет). Блок на рамке группировки едет вместе с ней. Shift+протянуть — двигать холст. Клик по связи — кнопка удаления, двойной клик — точка излома.</span>
       </div>
       <!-- События, обрывающие весь поток. Над холстом, а не на нём: на холсте они
