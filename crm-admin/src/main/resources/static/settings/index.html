@@ -3996,31 +3996,62 @@ window.CRM = window.CRM || (function(){
   .refs-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
   .refs-head h2{font-size:17px;margin:0}
 
-  /* Форма добавления повторяет колонки строки, поэтому и сетка у них одна и та же:
-     поле «Порядок» должно стоять ровно над своей колонкой, иначе список читается как
-     набор не связанных между собой полей. */
-  .refs-add{display:grid;gap:8px;margin:10px 0 6px;align-items:center}
+  /* Таблица справочника шире обычной панели: у «Процессов каналов» пять колонок, и в
+     общие 1060px они влезают только в притык. Форма при этом остаётся формой — ширину
+     ограничиваем, а не отдаём монитору целиком. */
+  #pane-refs{max-width:min(1600px,100%)}
+
+  /* Одна сетка на форму добавления и на строку списка: поле «Порядок» должно стоять
+     ровно над своей колонкой, иначе список читается как набор несвязанных полей.
+     Число колонок приходит переменной --cols из refs.js. */
+  .refs-add,.refs-row{display:grid;gap:8px 10px;align-items:center;
+    grid-template-columns:repeat(var(--cols,2),minmax(0,1fr)) auto}
+  .refs-add{margin:10px 0 6px}
+  .refs-row{padding:6px 2px;border-bottom:1px solid var(--line)}
+  .refs-cell{min-width:0}
+  .refs-cell::before{content:attr(data-label);display:none;font-size:10px;color:var(--faint);
+    letter-spacing:.06em;text-transform:uppercase;margin-bottom:3px}
   .refs-inp{width:100%;min-width:0;box-sizing:border-box;background:var(--bg2);color:var(--ink);
     border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px;
     font-family:var(--mono);color-scheme:light dark}
   .refs-inp:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(80,195,255,.16)}
   .refs-msg{font-size:12px;color:var(--dim);min-height:16px;margin-bottom:6px}
-  .refs-list{max-height:520px;overflow-y:auto;border-top:1px solid var(--line)}
-  .refs-row{display:grid;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--line)}
-  .refs-row.header{border-bottom:1px solid var(--line);color:var(--faint);font-size:11px;
-    letter-spacing:.06em;text-transform:uppercase;padding-bottom:6px}
+
+  /* Список прокручивается внутри себя, но по высоте экрана, а не по фиксированным
+     520px: на большом мониторе полтора десятка строк в окошке посреди пустой страницы
+     выглядели как ошибка вёрстки. Шапка и форма добавления при этом остаются на месте. */
+  .refs-list{max-height:calc(100vh - 330px);min-height:240px;overflow-y:auto;
+    border-top:1px solid var(--line)}
+  .refs-row.header{color:var(--faint);font-size:11px;letter-spacing:.06em;
+    text-transform:uppercase;padding-bottom:6px}
   /* Выключенное значение приглушено, но читается: оно существует, просто не предлагается */
   .refs-row.off .refs-val{color:var(--faint);text-decoration:line-through}
   .refs-val{font-family:var(--mono);font-size:12.5px;word-break:break-all}
-  .refs-acts{display:flex;gap:6px;justify-content:flex-end;white-space:nowrap}
-  .refs-used{font-size:11.5px;color:var(--faint);white-space:nowrap}
-  .refs-lock{font-size:11.5px;color:var(--faint);padding:0 6px;white-space:nowrap}
+
+  /* Колонки действий фиксированной ширины: у занятой строки вместо «Удалить» стоит
+     счётчик шаблонов, и на flex-раскладке из-за него разъезжался весь ряд кнопок. */
+  .refs-acts{display:grid;grid-template-columns:70px 86px 78px;gap:6px;align-items:center;
+    justify-content:end}
+  .refs-acts .refs-btn{width:100%;padding:4px 4px;text-align:center}
+  .refs-used,.refs-lock{font-size:11px;color:var(--faint);text-align:center;white-space:nowrap}
   .refs-btn{background:var(--card2);color:var(--dim);border:1px solid var(--line);border-radius:7px;
     padding:4px 9px;font-size:12px;cursor:pointer;white-space:nowrap;font-family:var(--sans)}
   .refs-btn:hover{color:var(--ink);border-color:rgba(80,195,255,.4)}
   .refs-btn.primary{background:var(--blue-bg);color:var(--blue);border-color:rgba(80,195,255,.4)}
   .refs-btn.del:hover{color:var(--coral);border-color:rgba(255,107,138,.5)}
   .refs-empty{padding:10px 2px;font-size:12.5px;color:var(--faint)}
+
+  /* Узкий экран: строка складывается в столбик, шапка убирается, подпись колонки
+     переезжает к самому значению. Горизонтальная прокрутка таблицы здесь хуже —
+     кнопки действий уехали бы за правый край и их пришлось бы искать. */
+  @media (max-width:900px){
+    .refs-add,.refs-row{grid-template-columns:1fr}
+    .refs-row.header{display:none}
+    .refs-cell::before{display:block}
+    .refs-row{padding:10px 2px;gap:6px}
+    .refs-acts{justify-content:start;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}
+    .refs-list{max-height:none}
+  }
   #dbxHost .dbx-schema{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden}
   #dbxHost .dbx-head{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;background:var(--card2)}
   #dbxHost .dbx-head:hover{background:var(--card)}
@@ -4050,7 +4081,7 @@ window.CRM = window.CRM || (function(){
   #dbxHost .dbx-empty.small{padding:8px 4px;font-size:12.5px}
 </style>
 <script src="db-explorer.js?v=3"></script>
-<script src="refs.js?v=2"></script>
+<script src="refs.js?v=3"></script>
 <!-- «Бэклог»: задачи на доработку панели, раздел только для админов -->
 <script src="backlog.js?v=2"></script>
 <!-- «Карта интеграций»: схема внешних связей панели с живым состоянием -->

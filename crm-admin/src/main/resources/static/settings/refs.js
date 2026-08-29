@@ -103,7 +103,16 @@ window.Refs = (function () {
       ' placeholder="' + esc(col.label) + '" value="' + esc(value == null ? "" : value) + '">';
   }
 
-  function grid(n) { return "grid-template-columns:repeat(" + n + ",minmax(0,1fr)) auto;"; }
+  /* Число колонок уезжает переменной, а не готовым grid-template-columns: инлайновый
+     стиль медиазапросом не перебить иначе как !important, а на узком экране строка
+     должна складываться в столбик. */
+  function grid(n) { return "--cols:" + n + ";"; }
+
+  /* Ячейка помнит подпись своей колонки: на узком экране шапки нет, и без подписи
+     «100» под именем партнёра прочитать нельзя. */
+  function cell(col, inner) {
+    return '<div class="refs-cell" data-label="' + esc(col.label) + '">' + inner + "</div>";
+  }
 
   function renderTable() {
     var h = host();
@@ -120,7 +129,7 @@ window.Refs = (function () {
     /* Форма добавления повторяет колонки строки один в один и стоит НАД списком:
        кнопка «+» под длинным списком уезжает за экран, и её ищут прокруткой. */
     var add = '<div class="refs-add" style="' + grid(cols.length) + '">' +
-      cols.map(function (c) { return field(c, "", "refs-new-"); }).join("") +
+      cols.map(function (c) { return cell(c, field(c, "", "refs-new-")); }).join("") +
       '<button type="button" class="refs-btn primary" onclick="Refs.add()">' + T("Добавить") +
       "</button></div>" +
       '<div class="refs-msg" id="refs-msg"></div>';
@@ -140,8 +149,8 @@ window.Refs = (function () {
     var used = Number(r.used || 0);
     var edit = editing === r.id;
     var cells = cols.map(function (c) {
-      return edit ? field(c, r[c.name], "refs-ed-")
-                  : '<span class="refs-val">' + esc(r[c.name]) + "</span>";
+      return cell(c, edit ? field(c, r[c.name], "refs-ed-")
+                          : '<span class="refs-val">' + esc(r[c.name]) + "</span>");
     }).join("");
     var acts = edit
       ? '<button type="button" class="refs-btn primary" onclick="Refs.save(' + r.id + ')">' +
