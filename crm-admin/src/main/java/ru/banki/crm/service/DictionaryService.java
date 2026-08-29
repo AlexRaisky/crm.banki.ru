@@ -23,6 +23,17 @@ public class DictionaryService {
     /** varchar(200) в dictionary.d_partner — режем на входе, чтобы не ловить ошибку БД. */
     private static final int PARTNER_NAME_MAX = 200;
 
+    /**
+     * Каналы доставки — один список на всю панель.
+     * <p>
+     * Своей таблицы у каналов нет и вряд ли будет: канал появляется не записью в
+     * справочнике, а поддержкой в коде обеих систем. Но список нужен в двух местах —
+     * в формах событий и в справочнике процессов каналов, — и две его копии разошлись
+     * бы на первом же новом канале.
+     */
+    public static final List<String> NOTIFY_CHANNELS =
+            List.of("SMS", "EMAIL", "PUSH", "CC", "FA", "VK", "WA", "WEBPUSH", "ROBOT");
+
     private final JdbcTemplate jdbc;
     private final AdminLogService adminLog;
 
@@ -43,7 +54,8 @@ public class DictionaryService {
     @Transactional(readOnly = true)
     public List<String> partnerNames() {
         return jdbc.queryForList(
-                "SELECT name FROM dictionary.d_partner ORDER BY lower(name)", String.class);
+                "SELECT name FROM dictionary.d_partner WHERE is_active ORDER BY lower(name)",
+                String.class);
     }
 
     /**
@@ -156,11 +168,14 @@ public class DictionaryService {
      * @param uniqueCols по каким колонкам значение считается дублем — не обязательно
      *                   совпадает с UNIQUE в БД: там «Promo» и «promo» разные, а для
      *                   списка это одно и то же
-     * @param usageCol   колонка template.d_template, по которой считается использование;
+     * @param usage      условие «шаблон использует это значение» — целиком, а не имя
+     *                   колонки: product_type в template.d_template это массив, и
+     *                   сравнением на равенство его не проверить. Строки наши, из
+     *                   констант ниже, снаружи сюда ничего не приходит.
      *                   null — использование не считается и удаление ничем не ограничено
      */
     private record RefTable(String kind, String title, String hint, String table,
-                            List<RefCol> cols, List<String> uniqueCols, String usageCol) {}
+                            List<RefCol> cols, List<String> uniqueCols, String usage) {}
 
     /**
      * Справочники, которыми можно управлять из настроек.
@@ -175,14 +190,14 @@ public class DictionaryService {
                     "reference.d_communication_name",
                     List.of(RefCol.text("value", "value", "Значение", true),
                             RefCol.num("sort_order", "sortOrder", "Порядок")),
-                    List.of("value"), "communication_name"),
+                    List.of("value"), "t.communication_name = d.value"),
 
             new RefTable("touch-points", "Точки касания",
                     "touch_point — в какой момент пути человека уходит коммуникация.",
                     "reference.d_touch_point",
                     List.of(RefCol.text("value", "value", "Значение", true),
                             RefCol.num("sort_order", "sortOrder", "Порядок")),
-                    List.of("value"), "touch_point"),
+                    List.of("value"), "t.touch_point = d.value"),
 
             new RefTable("channel-process", "Процессы каналов",
                     "Пары definition_key и business_key_prefix для формы события по расписанию."
@@ -192,11 +207,29 @@ public class DictionaryService {
                     + " выбрать при этом методе.",
                     "reference.d_channel_process",
                     List.of(RefCol.pick("method", "method", "Метод", List.of("batch", "single")),
-                            RefCol.text("notify_channel", "notifyChannel", "Канал", true),
+                            RefCol.pick("notify_channel", "notifyChannel", "Канал", NOTIFY_CHANNELS),
                             RefCol.text("definition_key", "definitionKey", "definition_key", true),
                             RefCol.text("business_key_prefix", "businessKeyPrefix", "business_key_prefix", true),
                             RefCol.num("sort_order", "sortOrder", "Порядок")),
-                    List.of("method", "definition_key"), null));
+                    List.of("method", "definition_key"), null),
+
+            new RefTable("partners", "Партнёры",
+                    "Список партнёров для планирования промо и мастера коммуникаций."
+                    + " Ушедшего партнёра выключают, а не удаляют: в заведённых шаблонах его"
+                    + " имя останется в любом случае, а выключенный он хотя бы объясним.",
+                    "dictionary.d_partner",
+                    List.of(RefCol.text("name", "name", "Партнёр", true),
+                            RefCol.num("sort_order", "sortOrder", "Порядок")),
+                    List.of("name"), "t.partner_name = d.name"),
+
+            new RefTable("product-types", "Типы продуктов",
+                    "product_type — продукт коммуникации. Поле было свободным вводом, и в"
+                    + " данных накопились и credit, и credits, и card вместо debitcards."
+                    + " Порядок здесь смысловой (сначала массовые продукты), не алфавитный.",
+                    "dictionary.d_product_type",
+                    List.of(RefCol.text("value", "value", "Значение", true),
+                            RefCol.num("sort_order", "sortOrder", "Порядок")),
+                    List.of("value"), "d.value = ANY(t.product_type)"));
 
     private static RefTable ref(String kind) {
         for (RefTable r : REF_TABLES) {
@@ -268,9 +301,9 @@ public class DictionaryService {
         for (RefCol c : r.cols()) {
             sql.append(", d.").append(c.col()).append(" AS \"").append(c.name()).append('"');
         }
-        if (r.usageCol() != null) {
-            sql.append(", (SELECT count(*) FROM template.d_template t WHERE t.")
-               .append(r.usageCol()).append(" = d.value) AS used");
+        if (r.usage() != null) {
+            sql.append(", (SELECT count(*) FROM template.d_template t WHERE ")
+               .append(r.usage()).append(") AS used");
         } else {
             sql.append(", 0 AS used");
         }
@@ -361,8 +394,10 @@ public class DictionaryService {
         }
         long used = ((Number) rows.get(0).getOrDefault("used", 0)).longValue();
         if (used > 0) {
+            /* Название строки — первая колонка справочника: у партнёров это name, а не
+               value, и «Значение «null» стоит у 12 шаблонов» человеку ничего не говорит. */
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Значение «" + rows.get(0).get("value") + "» стоит у " + used
+                    "Значение «" + rows.get(0).get(r.cols().get(0).name()) + "» стоит у " + used
                     + " шаблон(ов). Удаление уберёт его из списка, но в шаблонах оно останется"
                     + " — выключите значение вместо удаления.");
         }

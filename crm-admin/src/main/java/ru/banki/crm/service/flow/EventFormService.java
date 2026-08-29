@@ -13,6 +13,7 @@ import ru.banki.crm.dto.EventFormDtos.StepForm;
 import ru.banki.crm.dto.EventFormDtos.TemplateForm;
 import ru.banki.crm.security.CurrentUser;
 import ru.banki.crm.service.AdminLogService;
+import ru.banki.crm.service.DictionaryService;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -63,7 +64,8 @@ public class EventFormService {
     @Transactional(readOnly = true)
     public Map<String, Object> dictionaries() {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("notifyChannels", List.of("SMS", "EMAIL", "PUSH", "CC", "FA", "VK", "WA", "WEBPUSH", "ROBOT"));
+        // список каналов один на панель — он же в справочнике процессов каналов
+        out.put("notifyChannels", DictionaryService.NOTIFY_CHANNELS);
         /* definition_key и business_key_prefix: известный список плюс всё, что уже
            встречается в проде — иначе форма не даст завести событие с ключом, который
            кто-то завёл руками мимо панели. */
