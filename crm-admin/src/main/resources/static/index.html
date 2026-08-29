@@ -494,6 +494,12 @@
           <p>Кронтаб, база выборки и SQL-шаги: планировщик выполняет их и порождает коммуникацию.</p>
           <span class="ov-go">Открыть →</span>
         </div>
+        <div class="ov-card" data-nav-ref="ev-cron" onclick="openSection('events','ev-cron')">
+          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+          <h3>Планировщик</h3>
+          <p>Связь с Quartz: без неё строка в расписании есть, а задание не срабатывает.</p>
+          <span class="ov-go">Открыть →</span>
+        </div>
         <div class="ov-card" data-nav-ref="ev-list" onclick="openSection('events','ev-list')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
           <h3>Список событий</h3>
@@ -756,6 +762,15 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <!-- ===== События → Планировщик (Quartz) =====
+         Содержимое рисует js/cron.js. Здесь только заголовок и место под него. -->
+    <section class="view" id="sec-event-cron">
+      <div class="eyebrow">CRM · Events · Scheduler</div>
+      <h1>Планировщик <span class="grad">Quartz</span></h1>
+      <p class="sub">События по расписанию исполняет Quartz, и знает он о них не по строке в <code>scheduler.t_launch_settings</code>, а по контексту, который создаёт сервис crm-cron. Панель строку пишет, контекст не создаёт — значит заведённое ею событие не срабатывает никогда. Здесь настраивается связь; сами задания заводятся кнопками в карточке события («Список событий» → строка события → блок «Планировщик»).</p>
+      <div id="cronHost"></div>
     </section>
 
     <!-- ===== События → Список событий ===== -->
@@ -2710,7 +2725,8 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
-<script src="js/events.js?v=13"></script>
+<script src="js/events.js?v=14"></script>
+<script src="js/cron.js?v=1"></script>
 <script src="js/event-chain.js?v=2"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->

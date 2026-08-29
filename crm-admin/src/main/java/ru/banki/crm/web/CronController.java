@@ -36,13 +36,13 @@ public class CronController {
 
     @GetMapping("/settings")
     public Map<String, Object> settings() {
-        access.requireCapability(Capability.READ, Sections.SET_CRON);
+        access.requireCapability(Capability.READ, Sections.EV_CRON);
         return service.settings();
     }
 
     @PutMapping("/settings")
     public Map<String, Object> save(@RequestBody Map<String, Object> body) {
-        access.requireCapability(Capability.EDIT, Sections.SET_CRON);
+        access.requireCapability(Capability.EDIT, Sections.EV_CRON);
         return service.save(body);
     }
 
@@ -53,7 +53,7 @@ public class CronController {
      */
     @PostMapping("/check")
     public Map<String, Object> check() {
-        access.requireCapability(Capability.EDIT, Sections.SET_CRON);
+        access.requireCapability(Capability.EDIT, Sections.EV_CRON);
         return service.check();
     }
 

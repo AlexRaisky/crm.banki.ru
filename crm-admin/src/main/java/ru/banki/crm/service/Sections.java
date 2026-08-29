@@ -60,6 +60,12 @@ public final class Sections {
     /* Перелив события в прод-БД — отдельная секция от заведения: собрать событие у себя
        и отправить его в боевые таблицы это разные полномочия. */
     public static final String EV_EXPORT = "ev-export";
+    /* Подключение к планировщику Quartz. Секция живёт в «Событиях», а не в настройках:
+       по устройству это интеграция, но нужна она тому, кто заводит события по
+       расписанию, и искать её среди Jira и подключений к БД никто не стал. Право
+       отдельное от ev-offline: заводить события и задавать адрес планировщика, на
+       который уедут боевые задания, — разные полномочия. */
+    public static final String EV_CRON = "ev-cron";
     /* Список событий — витрина. Смотреть каталог и отправлять события в боевую базу это
        разные полномочия, поэтому секция своя и НЕ входит в WRITABLE: правок тут нет. */
     public static final String EV_LIST = "ev-list";
@@ -89,10 +95,6 @@ public final class Sections {
        в выпадашках все. И не admin: пополнить список из формы мастера кнопкой «+» и
        вести сам справочник — разные полномочия. */
     public static final String SET_REFS = "set-refs";
-    /* Подключение к планировщику crm-cron. Отдельная секция, а не set-dbconn: кто задаёт
-       адрес планировщика, тот решает, на какой контур уедут боевые задания Quartz. Это
-       не то же самое, что список баз, куда панель ходит читать. */
-    public static final String SET_CRON = "set-cron";
     public static final String SET_APPS = "set-apps";
     public static final String SET_UPLOADS = "set-uploads";
     public static final String SET_MON = "set-mon";
@@ -124,8 +126,8 @@ public final class Sections {
             MON_CAMPAIGNS,
             UPLOADS, JOURNEYS,
             SET_DBCONN, SET_JIRA, SET_PROCS, SET_SYNC, SET_EVENTS, EV_EXPORT, SET_SCHEME,
-            SET_OBJECTS, SET_DBTREE, SET_REFS, SET_CRON, SET_APPS, SET_UPLOADS, SET_MON,
-            SET_DIAG, SET_GENERAL, ACCESS);
+            SET_OBJECTS, SET_DBTREE, SET_REFS, SET_APPS, SET_UPLOADS, SET_MON,
+            SET_DIAG, SET_GENERAL, ACCESS, EV_CRON);
 
     /**
      * Группа сайдбара, в которой живёт раздел. Нужна матрице прав: строк стало больше двадцати,
@@ -166,7 +168,7 @@ public final class Sections {
             java.util.Map.entry(SET_OBJECTS, "Настройки"),
             java.util.Map.entry(SET_DBTREE, "Настройки"),
             java.util.Map.entry(SET_REFS, "Настройки"),
-            java.util.Map.entry(SET_CRON, "Настройки"),
+            java.util.Map.entry(EV_CRON, "События"),
             java.util.Map.entry(SET_APPS, "Настройки"),
             java.util.Map.entry(SET_UPLOADS, "Настройки"),
             java.util.Map.entry(SET_MON, "Настройки"),
@@ -189,7 +191,7 @@ public final class Sections {
     public static final Set<String> WRITABLE = Set.of(ADMIN, TEMPLATES, PROMO, ABTESTS,
             EV_ONLINE, EV_OFFLINE, EV_EXPORT, JOURNEYS, ACCESS,
             SET_DBCONN, SET_JIRA, SET_PROCS, SET_SYNC, SET_EVENTS, SET_SCHEME, SET_OBJECTS,
-            SET_APPS, SET_UPLOADS, SET_REFS, SET_CRON);
+            SET_APPS, SET_UPLOADS, SET_REFS, EV_CRON);
 
     /**
      * Разделы, которые нельзя выдать матрицей — только флагом администратора.
@@ -207,7 +209,7 @@ public final class Sections {
     /** Секции настроечной админки. По ним SecurityConfig решает, пускать ли на /settings. */
     public static final Set<String> SETTINGS = Set.of(
             SET_DBCONN, SET_JIRA, SET_PROCS, SET_SYNC, SET_EVENTS, EV_EXPORT, SET_SCHEME,
-            SET_OBJECTS, SET_DBTREE, SET_REFS, SET_CRON, SET_APPS, SET_UPLOADS, SET_MON,
+            SET_OBJECTS, SET_DBTREE, SET_REFS, SET_APPS, SET_UPLOADS, SET_MON,
             SET_DIAG, SET_GENERAL, ACCESS);
 
     public static boolean isSettings(String id) {

@@ -1211,6 +1211,7 @@
     var html = '<div class="ev-rows"><table><thead><tr>' +
       "<th>id</th><th>Событие</th><th>Система</th><th>Род</th><th>Канал</th>" +
       "<th>Расписание</th><th>Шаблоны</th><th>Состояние</th><th>Активно</th><th>В проде</th>" +
+      "<th></th>" +
       "</tr></thead><tbody>";
     rows.forEach(function (r) {
       var tplCell = r.templates
@@ -1227,12 +1228,25 @@
         "<td>" + esc(stateLabel(r)) + "</td>" +
         "<td>" + (r.is_active ? "да" : "нет") + "</td>" +
         "<td>" + (Number(r.exported || 0) ? "да" : "нет") + "</td>" +
+        /* Кнопка делает то же, что клик по строке, и стоит здесь не ради нового
+           действия, а ради видимого: настройки события — шаги, шаблоны, планировщик —
+           открывались только по клику куда-то в строку, и про них не знали. */
+        '<td><button type="button" class="ev-mini" data-ev-btn="' + esc(r.id) +
+          '">Настройки</button></td>' +
         "</tr>" +
-        '<tr data-card="' + esc(r.id) + '" style="display:none"><td colspan="10"></td></tr>';
+        '<tr data-card="' + esc(r.id) + '" style="display:none"><td colspan="11"></td></tr>';
     });
     box.innerHTML = html + "</tbody></table></div>";
     box.querySelectorAll("[data-ev]").forEach(function (tr) {
       tr.onclick = function () { toggleCard(tr.getAttribute("data-ev")); };
+    });
+    /* Кнопка внутри строки: гасим всплытие, иначе клик по ней сначала откроет карточку
+       обработчиком строки, а потом закроет своим — и на глаз ничего не произойдёт. */
+    box.querySelectorAll("[data-ev-btn]").forEach(function (b) {
+      b.onclick = function (e) {
+        e.stopPropagation();
+        toggleCard(b.getAttribute("data-ev-btn"));
+      };
     });
   }
 
