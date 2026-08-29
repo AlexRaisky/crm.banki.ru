@@ -1247,6 +1247,9 @@
     row.style.display = "";
     evReq("GET", "/list/" + encodeURIComponent(id)).then(function (d) {
       cell.innerHTML = renderCard(d);
+      /* Состояние задания спрашиваем отдельным запросом, а не вместе с карточкой: он
+         ходит в чужой сервис, и карточка не должна ждать его или падать вместе с ним. */
+      loadCron(id);
     }).catch(function (e) {
       cell.innerHTML = '<div class="ev-card" style="color:var(--red,#e5484d)">' +
         esc((e && e.message) || "Не удалось загрузить карточку") + "</div>";
@@ -1282,6 +1285,12 @@
         ["фаза", st.phase], ["крон", st.cron_state], ["прошлый прогон", st.last_result],
         ["следующий запуск", st.date_next]
       ]) + "</div>";
+
+      /* Планировщик — отдельным блоком: он про то, знает ли Quartz об этом событии, а
+         не про то, что мы записали в расписание. Эти две вещи расходятся, и ровно из-за
+         этого заведённое панелью событие могло не сработать ни разу. */
+      html += '<div class="ev-card" id="evCron-' + esc(e.id) + '"><h4>Планировщик</h4>' +
+        '<div style="color:var(--faint)">читаю…</div></div>';
 
       var steps = d.steps || [];
       html += '<div class="ev-card" id="evEditSteps-' + esc(e.id) + '"><h4>Шаги выборки (' + steps.length + ")" +
@@ -1337,6 +1346,97 @@
   }
 
   /** Карточка перерисовывается целиком — то же, что делает повторный клик по строке. */
+  /* ============================================================ ПЛАНИРОВЩИК (Quartz)
+
+     Событие по расписанию исполняет не наша строка в расписании, а задание Quartz. Их
+     связывает id, который выдаёт планировщик при регистрации; без него события можно
+     только заводить и никогда — останавливать.
+
+     Четыре действия и ни одного автоматического. Регистрация создаёт задание
+     ОСТАНОВЛЕННЫМ, каким бы активным ни было событие у нас: между «зарегистрировано» и
+     «человек проверил» проходит время, а Quartz тикает по расписанию и ждать не станет.
+     Запуск — отдельная кнопка, и это единственный момент, когда рассылка может уйти. */
+
+  var CRON_ACTS = {
+    register: { label: "Зарегистрировать", ask: null },
+    update:   { label: "Обновить расписание",
+                ask: "Планировщик пересоздаёт задание: на время правки оно остановится.\nПродолжить?" },
+    stop:     { label: "Остановить", ask: "Остановить задание? Рассылка перестанет уходить по расписанию." },
+    start:    { label: "Запустить",
+                ask: "Запустить задание? С этого момента рассылка пойдёт по расписанию." }
+  };
+
+  function cronBox(id) { return el("evCron-" + id); }
+
+  function renderCron(id, c) {
+    var box = cronBox(id);
+    if (!box) return;
+    var head = "<h4>Планировщик</h4>";
+    if (!c.enabled) {
+      box.innerHTML = head + '<div style="color:var(--faint)">Интеграция выключена.' +
+        " Включается в «Настройки» → «Планировщик (Quartz)».</div>";
+      return;
+    }
+    var may = canEditEvent();
+    function btn(act) {
+      return '<button type="button" class="ev-mini"' + (may ? "" : " disabled") +
+        ' onclick="evCron(' + id + ",'" + act + "')\">" + CRON_ACTS[act].label + "</button>";
+    }
+    if (!c.registered) {
+      box.innerHTML = head +
+        '<div style="color:var(--faint);margin-bottom:8px">Задание не заведено: Quartz про это' +
+        " событие не знает, по расписанию оно не сработает.</div>" +
+        '<div class="ev-edit-row">' + btn("register") + "</div>" +
+        '<div class="ev-edit-msg" id="evCronMsg-' + id + '"></div>';
+      return;
+    }
+    box.innerHTML = head + dlist([
+      ["id задания", c.cronEventId],
+      ["состояние", c.lastStatus || "неизвестно"],
+      ["последнее действие", c.lastAction],
+      ["кто", c.lastActor],
+      ["когда", c.syncedAt]
+    ]) +
+      (c.lastError ? '<div class="ev-warn">' + esc(c.lastError) + "</div>" : "") +
+      '<div class="ev-edit-row" style="margin-top:8px">' +
+        btn("start") + btn("stop") + btn("update") + "</div>" +
+      '<div class="ev-edit-msg" id="evCronMsg-' + id + '"></div>';
+  }
+
+  function loadCron(id) {
+    if (!cronBox(id)) return;
+    fetch("/api/cron/event/" + id, { credentials: "same-origin", headers: { Accept: "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : { enabled: false }; })
+      .then(function (c) { renderCron(id, c); })
+      /* Раздел событий не должен падать из-за того, что планировщик не настроен:
+         блок просто скажет, что интеграции нет. */
+      .catch(function () { renderCron(id, { enabled: false }); });
+  }
+
+  window.evCron = function (id, act) {
+    var a = CRON_ACTS[act];
+    if (!a || (a.ask && !confirm(a.ask))) return;
+    var msg = el("evCronMsg-" + id);
+    if (msg) { msg.textContent = "Отправляю…"; msg.style.color = "var(--dim)"; }
+    fetch("/api/cron/event/" + id + "/" + act, {
+      method: "POST", credentials: "same-origin", headers: { Accept: "application/json" }
+    }).then(function (r) {
+      return r.text().then(function (t) {
+        var j = null;
+        try { j = t ? JSON.parse(t) : null; } catch (e) { /* не json — покажем как есть */ }
+        if (!r.ok) throw new Error((j && j.message) || t || ("HTTP " + r.status));
+        return j;
+      });
+    }).then(function (res) {
+      renderCron(id, res);
+      var m = el("evCronMsg-" + id);
+      if (m) { m.textContent = res.message || "Готово"; m.style.color = "var(--green)"; }
+    }).catch(function (e) {
+      var m = el("evCronMsg-" + id);
+      if (m) { m.textContent = e.message; m.style.color = "var(--coral)"; }
+    });
+  };
+
   function evReloadCard(id) {
     var row = el("evlBox").querySelector('[data-card="' + id + '"]');
     if (!row) return;

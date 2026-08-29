@@ -63,6 +63,31 @@ public class CronClient {
                         json, java.nio.charset.StandardCharsets.UTF_8)));
     }
 
+    // ---------------------------------------------------------------- четыре ручки
+    /* Ровно те, что нужны панели. Остальное, что есть в /v3/api-docs (список, удаление,
+       пакетные операции, пауза), намеренно не заводим: чего нет в клиенте, то нельзя
+       вызвать по ошибке. */
+
+    /** Создать задание. Ответ — CrmCronEventDto, из него берём id. */
+    public Reply createEvent(String json) {
+        return post("/api/v1/event", json);
+    }
+
+    /** Обновить задание. Сервис деактивирует и пересоздаёт контекст — это остановка на время. */
+    public Reply updateEvent(long id, String json) {
+        return patch("/api/v1/event/" + id, json);
+    }
+
+    /* stop и start — GET с побочным эффектом. Это их API, не наше решение; в панели они
+       вызываются только по нажатию кнопки с подтверждением и никогда на предзагрузке. */
+    public Reply stopEvent(long id) {
+        return get("/api/v1/event/" + id + "/stop");
+    }
+
+    public Reply startEvent(long id) {
+        return get("/api/v1/event/" + id + "/start");
+    }
+
     private URI uri(String path) {
         String p = path == null ? "" : path.trim();
         if (!p.startsWith("/")) {
