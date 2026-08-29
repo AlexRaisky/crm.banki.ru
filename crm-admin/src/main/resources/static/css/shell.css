@@ -370,10 +370,11 @@
   /* Тип цепочки — ровно две карточки в ряд, а не по ширине контейнера: их всегда две,
      и «сколько влезет» здесь превратилось бы в одну на узком экране. */
   #jrNewTypes{grid-template-columns:1fr 1fr;max-height:none;overflow:visible}
-  #jrNewList{max-height:186px}
-  #jrNewList .jr-hint{grid-column:1/-1;padding:2px 2px 4px}
-  /* Выбор стартового события: карточки, а не выпадающий список — у события есть что
-     показать кроме имени, и в строку <option> это не влезает. */
+  /* Строка под выпадающим списком событий: сколько их или почему не прочитались. */
+  #jrNewList{padding:2px 2px 0}
+  /* Карточками остался только выбор типа цепочки (#jrNewTypes). Событие выбирают
+     списком: карточки показывали больше, но искать нужное среди сотен оказалось хуже,
+     чем набрать первые буквы в <select>. */
   .jr-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:8px;
     overflow-y:auto;padding:2px}
   .jr-card{position:relative;text-align:left;background:var(--card);color:var(--ink);

@@ -2144,7 +2144,7 @@
     if (!ensureEditor()) return;
     if (!canEdit()) { alert("Раздел открыт только на просмотр."); return; }
     newPick = null;
-    ["jrNewName", "jrNewSystem", "jrNewExit", "jrNewFilter"].forEach(function (id) {
+    ["jrNewName", "jrNewSystem", "jrNewExit"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.value = "";
     });
@@ -2152,9 +2152,9 @@
     refreshContinuesOptions(null);
     renderNewTypes();
     document.getElementById("jrNewChain").style.display = "";
-    renderNewList("");
-    loadTrackerEvents().then(function () { renderNewList(document.getElementById("jrNewFilter").value); });
-    var f = document.getElementById("jrNewFilter");
+    renderNewList();
+    loadTrackerEvents().then(renderNewList);
+    var f = document.getElementById("jrNewEvent");
     if (f) f.focus();
   };
 
@@ -2162,51 +2162,56 @@
     document.getElementById("jrNewChain").style.display = "none";
   };
 
-  window.jrNewFilterChanged = function () {
-    renderNewList(document.getElementById("jrNewFilter").value);
-  };
-
-  /* Список событий карточками, а не выпадающим списком: у события есть что показать
-     кроме имени — система и заведена ли уже цепочка, — и в одну строку <option> это
-     не помещается. Фильтр обязателен: событий в трекере сотни. */
-  function renderNewList(filter) {
+  /* Событие выбирают выпадающим списком. Карточками оно показывалось затем, что у
+     события есть что сказать кроме имени — система и заведена ли цепочка, — но искать
+     нужное среди сотен карточек оказалось хуже, чем среди строк списка: в списке
+     работает набор с клавиатуры, к которому все привыкли. Всё, что показывали карточки,
+     помещается в подпись строки, а причина, по которой список пуст, — в строку под ним. */
+  function renderNewList() {
+    var sel = document.getElementById("jrNewEvent");
     var box = document.getElementById("jrNewList");
-    if (!box) return;
-    if (trackerEvents == null) { box.innerHTML = '<div class="jr-hint">Загружаю события…</div>'; return; }
-    var q = String(filter || "").trim().toLowerCase();
-    var list = trackerEvents.filter(function (e) {
-      if (!q) return true;
-      return String(e.eventName || "").toLowerCase().indexOf(q) >= 0 ||
-             String(e.system || "").toLowerCase().indexOf(q) >= 0 ||
-             String(e.id) === q;
-    });
-    if (!list.length) {
-      var why = trackerEvents.length
-        ? "Ничего не нашлось. Событие берётся из tracker.t_event_comm — если его там нет, сначала заведите событие."
-        : (trackerEventsErr
-            ? "Список событий не прочитан: " + trackerEventsErr
-            : "В tracker.t_event_comm нет ни одного события.");
-      box.innerHTML = '<div class="jr-hint">' + esc(why) + "</div>";
+    if (!sel) return;
+
+    if (trackerEvents == null) {
+      sel.innerHTML = '<option value="">Загружаю события…</option>';
+      sel.disabled = true;
+      if (box) box.textContent = "";
       return;
     }
-    box.innerHTML = list.slice(0, 200).map(function (e) {
-      /* steps == null — не «ноль», а «не смогли посмотреть»: у подключения нет прав на
-         commapi.events_chain. Писать «цепочки нет» в этом случае значит подтолкнуть
-         человека заводить вторую поверх существующей. */
-      var tail = e.steps == null
-        ? "есть ли цепочка — неизвестно"
-        : (e.steps ? "цепочка уже заведена · шагов: " + e.steps : "цепочки нет");
-      return '<button type="button" class="jr-card' + (newPick && newPick.id === e.id ? " sel" : "") +
-        '" onclick="jrNewSelect(' + e.id + ')">' +
-        '<div class="jr-card-t">' + esc(e.eventName || ("#" + e.id)) + "</div>" +
-        '<div class="jr-card-d">' + esc([e.system, "id " + e.id, tail].filter(Boolean).join(" · ")) + "</div>" +
-        "</button>";
-    }).join("") + (list.length > 200
-      ? '<div class="jr-hint">Показаны первые 200 из ' + list.length + " — уточните поиск.</div>" : "");
+    if (!trackerEvents.length) {
+      sel.innerHTML = '<option value="">— событий нет —</option>';
+      sel.disabled = true;
+      if (box) {
+        box.textContent = trackerEventsErr
+          ? "Список событий не прочитан: " + trackerEventsErr
+          : "В tracker.t_event_comm нет ни одного события.";
+      }
+      return;
+    }
+
+    sel.disabled = false;
+    sel.innerHTML = '<option value="">— выберите событие —</option>' +
+      trackerEvents.map(function (e) {
+        /* steps == null — не «ноль», а «не смогли посмотреть»: у подключения нет прав
+           на commapi.events_chain. Писать «цепочки нет» значит подтолкнуть человека
+           завести вторую поверх существующей. */
+        var tail = e.steps == null
+          ? "цепочка неизвестна"
+          : (e.steps ? "цепочка есть, шагов: " + e.steps : "цепочки нет");
+        return '<option value="' + esc(e.id) + '"' +
+          (newPick && newPick.id === e.id ? " selected" : "") + ">" +
+          esc((e.eventName || ("#" + e.id)) + " · " + [e.system, "id " + e.id, tail]
+              .filter(Boolean).join(" · ")) + "</option>";
+      }).join("");
+    if (box) box.textContent = "Событий: " + trackerEvents.length;
   }
 
   window.jrNewSelect = function (id) {
-    newPick = (trackerEvents || []).filter(function (e) { return e.id === id; })[0] || null;
+    /* Значение из <select> приходит строкой, id события — число; сравниваем как строки,
+       иначе выбор молча не находится и «Создать» жалуется на невыбранное событие. */
+    newPick = (trackerEvents || []).filter(function (e) {
+      return String(e.id) === String(id);
+    })[0] || null;
     if (!newPick) return;
     /* Название и систему подставляем из события, но не запираем: имя цепочки — наше,
        для списка в панели, и совпадать с именем события оно не обязано. */
@@ -2214,7 +2219,6 @@
     var sys = document.getElementById("jrNewSystem");
     if (name && !name.value.trim()) name.value = newPick.eventName || "";
     if (sys) sys.value = newPick.system || "";
-    renderNewList(document.getElementById("jrNewFilter").value);
   };
 
   window.jrNewCreate = function () {

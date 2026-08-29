@@ -22,7 +22,7 @@
      любого отложенного. Восстанавливая последний открытый раздел, она проверяет
      typeof initJourneysSection === "function" — у отложенного скрипта функции ещё нет,
      проверка молча не срабатывает, и раздел остаётся мёртвым до первого нажатия. -->
-<script src="journeys.js?v=32"></script>
+<script src="journeys.js?v=33"></script>
 <!-- Данные примера оффлайн-процесса: большой кусок SQL, вынесен из journeys.js.
      Читается только по нажатию кнопки, поэтому порядок подключения не важен. -->
 <script src="js/journeys-offline-example.js?v=3"></script>
@@ -2653,8 +2653,8 @@
             </div>
             <div class="jre-field jr-only-online">
               <label data-i18n="Стартовое событие">Стартовое событие — из tracker.t_event_comm</label>
-              <input id="jrNewFilter" placeholder="поиск по имени события, системе или id" oninput="jrNewFilterChanged()">
-              <div id="jrNewList" class="jr-cards"></div>
+              <select id="jrNewEvent" onchange="jrNewSelect(this.value)"></select>
+              <div id="jrNewList" class="jr-hint"></div>
             </div>
             <div class="jre-field">
               <label data-i18n="Название цепочки">Название цепочки</label>
