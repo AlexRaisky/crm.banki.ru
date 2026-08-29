@@ -49,6 +49,9 @@ import java.util.Set;
  *       ({@code stop_product_ids}, {@code correlation_keys}) и jsonb-колонки пришлось бы
  *       перекладывать между двумя соединениями руками, а {@code java.sql.Array} к чужому
  *       соединению не привяжешь.</li>
+ *   <li><b>Справочники не дописываются.</b> {@code tracker.d_comm_creation} перелив
+ *       только читает (см. {@link #PROD_READ_ONLY}): событие выбирает готовый набор
+ *       параметров доставки, а не заводит свой.</li>
  *   <li><b>Повторный перелив ничего не дублирует.</b> Каждая уехавшая строка
  *       записывается в {@code flow.t_event_link} с UNIQUE (our_table, our_id); строка,
  *       которая уже там есть, второй раз не отправляется. Ровно на этом мы обожглись с
@@ -74,6 +77,23 @@ public class EventExportService {
             "template.d_template_mapping",
             "template.d_template_mapping_mass",
             "commapi.d_definition_mapping");
+
+    /**
+     * Таблицы, в которые перелив НЕ ПИШЕТ никогда.
+     * <p>
+     * {@code tracker.d_comm_creation} — справочник наборов параметров доставки. Его
+     * девятнадцать строк заведены в проде руками с 2022 года, и новых там быть не должно:
+     * событие ссылается на готовый набор, а не создаёт свой. Раньше таблица стояла в
+     * общем списке наравне с остальными, и перелив цепочки, у которой материализация
+     * завела собственный набор, дописывал в боевой справочник двадцатую строку — тихо,
+     * потому что вставка проходит без ошибки.
+     * <p>
+     * Из {@link #ORDER} таблицу не убираем: строки такого рода в нашем слое B бывают, и
+     * встретив их, перелив должен осознанно пропустить, а не упасть на «таблица не входит
+     * в набор». Ссылка на неё при этом обязана разрешиться по журналу связей — иначе
+     * событие в прод не поедет вовсе.
+     */
+    private static final Set<String> PROD_READ_ONLY = Set.of("tracker.d_comm_creation");
 
     /** Колонка-ссылка → таблица, на которую она смотрит. Значение подменяется продовым id. */
     private static final Map<String, String> FK_OF = Map.of(
@@ -189,6 +209,14 @@ public class EventExportService {
                         skipped.add(Map.of("table", table, "ourId", ourId, "prodId", done));
                         continue;
                     }
+                    if (PROD_READ_ONLY.contains(table)) {
+                        /* Пропускаем молча для базы, но громко для человека: строка
+                           числится в слое B события, а в прод не поедет, и это должно
+                           быть видно в отчёте о переливе, а не выясняться потом. */
+                        skipped.add(Map.of("table", table, "ourId", ourId,
+                                "prodId", "—", "reason", "справочник прода, запись запрещена"));
+                        continue;
+                    }
                     ObjectNode values = readOurRow(table, ourId);
                     remapForeignKeys(table, values, prodIdOf);
                     long prodId = ProdDbService.maxPlusOne(c, table, "id", null);
@@ -300,6 +328,17 @@ public class EventExportService {
         Long mapped = prodIdOf.get(refTable + "#" + ourRef);
         if (mapped == null) {
             mapped = linkedProdId(refTable, ourRef);
+        }
+        if (mapped == null && PROD_READ_ONLY.contains(refTable)) {
+            /* Завести недостающую строку в проде тут нельзя — это справочник. Значит
+               выбранного набора параметров доставки в боевой базе просто нет, и событие
+               ссылается в пустоту. Единственный правильный выход — выбрать существующий. */
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ссылка " + col + " = " + ourRef + " указывает на строку " + refTable
+                    + ", которой нет в проде. Эта таблица — справочник, дописывать её"
+                    + " перелив не имеет права. Выберите в форме набор параметров доставки"
+                    + " из тех, что уже заведены в crmdb, или затяните справочник импортом."
+                    + " Перелив остановлен — в прод ничего не записано.");
         }
         if (mapped == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
