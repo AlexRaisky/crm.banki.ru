@@ -88,21 +88,46 @@
     m.className = "ev-msg" + (cls ? " " + cls : "");
   }
 
-  /* Что именно создалось. Показываем таблицами слоя B с их id: по ним человек найдёт
-     строку в базе, если понадобится проверить руками. */
+  /* Что именно создалось.
+     <p>
+     Колонок с id две, и это не украшение. Строка живёт в двух местах: в НАШЕЙ копии
+     слоя B и в боевой crmdb, и id у неё там разные — в проде их выдаёт перелив (max+1),
+     наши identity к нему отношения не имеют. Одна колонка «id» читалась как «идите в
+     crmdb и смотрите строку 3003», а такой строки там нет.
+     <p>
+     Продовый id берём из ответа перелива (export.sent), сопоставляя по паре
+     «таблица + наш id»: в одной таблице строк бывает несколько (шаги выборки), и по
+     имени таблицы их не различить. */
   function renderResult(boxId, res) {
     var box = el(boxId);
     if (!box) return;
     if (!res) { box.innerHTML = ""; return; }
+
+    var ex = res.export || {};
+    var prod = {};
+    (ex.sent || []).forEach(function (r) { prod[r.table + "#" + r.ourId] = r.prodId; });
+    (ex.skipped || []).forEach(function (r) { prod[r.table + "#" + r.ourId] = r.prodId; });
+    var exported = ex.status === "ok";
+
     var rows = (res.rows || []).map(function (r) {
-      return "<tr><td class=\"tbl\">" + esc(r.table) + "</td><td>" + esc(r.id) + "</td></tr>";
+      var p = prod[r.table + "#" + r.id];
+      return "<tr><td class=\"tbl\">" + esc(r.table) + "</td><td>" + esc(r.id) + "</td>" +
+        "<td>" + (p == null ? '<span style="color:var(--faint)">—</span>' : esc(p)) + "</td></tr>";
     }).join("");
     var warn = (res.warnings || []).map(function (w) {
       return '<div class="ev-warn">' + esc(w) + "</div>";
     }).join("");
     box.innerHTML =
-      '<div class="ev-rows"><table><thead><tr><th>Таблица</th><th>id</th></tr></thead>' +
-      "<tbody>" + rows + "</tbody></table></div>" + warn;
+      '<div class="ev-rows"><table><thead><tr><th>Таблица</th>' +
+      "<th>id у нас</th><th>id в crmdb</th></tr></thead>" +
+      "<tbody>" + rows + "</tbody></table></div>" +
+      '<div class="ev-edit-msg" style="margin-top:8px">' +
+        (exported
+          ? "Слева — id в нашей копии слоя B, справа — id той же строки в боевой crmdb."
+            + " Они разные: в проде id выдаёт перелив, наши identity к нему отношения не имеют."
+          : "Правая колонка пуста: событие в crmdb не уехало, и продовых id у строк пока нет."
+            + " Перелить можно в «Настройки» → «Перелив событий».") +
+      "</div>" + warn;
   }
 
   function fail(msgId, e) {
