@@ -691,18 +691,35 @@
       </div>
 
       <!-- ---------- 3. Дни и шаблоны ---------- -->
+      <!-- Экран показывает одно из двух — решает флаг is_chain с первого экрана.
+           Цепочка это набор пар «день — шаблон», одиночная отправка — один шаблон, и
+           спрашивать у неё дни значило бы предлагать заполнить то, что никуда не уедет:
+           маппинг у них разный (d_template_mapping против d_template_mapping_mass). -->
       <div class="wz-pane" id="evfPane3" hidden>
         <div class="ev-step">
-          <div class="t">Дни и шаблоны</div>
-          <p class="wz-note">На каждый день воронки — свой шаблон. Из этих пар собирается <code>CASE</code> в итоговом скрипте, они же уезжают в маппинг шаблонов события. Канал не спрашиваем: он выбран на первом экране в <code>notify_channel</code>.</p>
-          <div class="ev-fields">
-            <div class="ev-f"><label for="evfDayCol">Колонка с днём в итоговой таблице</label>
-              <input type="text" id="evfDayCol" value="day_num" autocomplete="off" spellcheck="false">
-              <span class="hint">По ней раскладывается <code>CASE</code>. Если шаблон один и день не важен — оставьте день пустым.</span></div>
+          <div class="t" id="evfTplTitle">Шаблон</div>
+          <p class="wz-note" id="evfTplNote"></p>
+
+          <!-- одиночная отправка: один шаблон, дней нет -->
+          <div id="evfSingleBox">
+            <div class="ev-fields">
+              <div class="ev-f"><label for="evfTplCode">Код шаблона</label>
+                <input type="text" id="evfTplCode" autocomplete="off" spellcheck="false" placeholder="например 100501">
+                <span class="hint">Из прод-справочника шаблонов. Канал не спрашиваем: он выбран на первом экране в <code>notify_channel</code>.</span></div>
+            </div>
           </div>
-          <div id="evfTemplates"></div>
-          <div class="ev-edit-row"><button type="button" class="ev-mini" onclick="evfTplAdd()">+ строка</button>
-            <span class="ev-edit-msg">день — значение в колонке; код — из прод-справочника шаблонов</span></div>
+
+          <!-- цепочка: пары «день — шаблон» -->
+          <div id="evfChainBox" hidden>
+            <div class="ev-fields">
+              <div class="ev-f"><label for="evfDayCol">Колонка с днём в итоговой таблице</label>
+                <input type="text" id="evfDayCol" value="day_num" autocomplete="off" spellcheck="false">
+                <span class="hint">По ней раскладывается <code>CASE</code> в итоговом скрипте.</span></div>
+            </div>
+            <div id="evfTemplates"></div>
+            <div class="ev-edit-row"><button type="button" class="ev-mini" onclick="evfTplAdd()">+ строка</button>
+              <span class="ev-edit-msg">день — значение в колонке; код — из прод-справочника шаблонов</span></div>
+          </div>
         </div>
       </div>
 
@@ -2710,7 +2727,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
-<script src="js/events.js?v=16"></script>
+<script src="js/events.js?v=17"></script>
 <script src="js/event-chain.js?v=2"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->

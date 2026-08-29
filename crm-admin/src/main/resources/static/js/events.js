@@ -299,6 +299,10 @@
       renderCronWords();
     };
     el("evfCrontab").oninput = renderCronWords;
+    /* Третий экран показывает одно из двух, и решает это флаг с первого. Перерисовываем
+       сразу по переключению, а не при переходе на экран: человек ставит галку и тут же
+       хочет видеть, что изменилось. */
+    if (el("evfChain")) el("evfChain").onchange = applyChainMode;
 
     /* Окно с планом закрывается всеми привычными способами: крестиком, кнопкой, кликом
        по фону и Escape. Слушатель на документ висит один и проверяет класс — вешать его
@@ -322,6 +326,7 @@
     }
     renderSteps();
     renderFormTemplates([]);
+    applyChainMode();
     stampNow("evfDateStart");
     renderCron();
     wzGo(1);
@@ -476,15 +481,19 @@
     }
     if (n === 3) {
       var tpl = collectFormTemplates();
-      if (!tpl.length) return wzFail("Не задано ни одного шаблона");
+      if (!tpl.length) {
+        return wzFail(isChain() ? "Не задано ни одного шаблона" : "Не указан код шаблона");
+      }
+      if (!isChain()) {
+        if (!isFinite(tpl[0].code)) return wzFail("Код шаблона — не число");
+        return true;
+      }
       var days = {};
       for (var i = 0; i < tpl.length; i++) {
         var d = tpl[i].stepNo;
-        if (tpl.length > 1 && d == null) {
-          return wzFail("Шаблонов несколько — у каждого должен быть свой день");
-        }
-        if (d != null && days[d]) return wzFail("День " + d + " указан дважды");
-        if (d != null) days[d] = true;
+        if (d == null) return wzFail("У цепочки каждому шаблону нужен свой день");
+        if (days[d]) return wzFail("День " + d + " указан дважды");
+        days[d] = true;
       }
       return true;
     }
@@ -734,6 +743,36 @@
       "</div>";
   }
 
+  /** Цепочка это набор пар «день — шаблон», одиночная отправка — один шаблон. */
+  function isChain() {
+    return chk("evfChain");
+  }
+
+  /**
+   * Показать нужную половину третьего экрана.
+   * <p>
+   * Скрытую половину не очищаем: человек может переключить флаг туда-обратно, и терять
+   * набранное из-за этого незачем. В запрос уходит только то, что относится к текущему
+   * режиму — за это отвечает collectFormTemplates.
+   */
+  function applyChainMode() {
+    var chain = isChain();
+    if (el("evfChainBox")) el("evfChainBox").hidden = !chain;
+    if (el("evfSingleBox")) el("evfSingleBox").hidden = chain;
+    if (el("evfTplTitle")) el("evfTplTitle").textContent = chain ? "Дни и шаблоны" : "Шаблон";
+    if (el("evfTplNote")) {
+      el("evfTplNote").innerHTML = chain
+        ? "Цепочка: на каждый день воронки свой шаблон. Из этих пар собирается <code>CASE</code>"
+          + " в итоговом скрипте, они же уезжают в <code>template.d_template_mapping_mass</code>."
+        : "Одиночная отправка: один шаблон на событие, дни не нужны. Маппинг уедет в"
+          + " <code>template.d_template_mapping</code>. Нужны разные шаблоны по дням —"
+          + " поставьте <b>is chain</b> на первом экране.";
+    }
+    /* Вкладку тоже переименовываем: по ней ориентируются, не открывая экран. */
+    var tab = document.querySelector('#evfTabs [data-wz="3"]');
+    if (tab) tab.innerHTML = "<b>3</b> " + (chain ? "Дни и шаблоны" : "Шаблон");
+  }
+
   function renderFormTemplates(list) {
     var box = el("evfTemplates");
     if (!box) return;
@@ -753,6 +792,12 @@
      заполнить, и слать её как шаблон с пустым кодом значило бы ловить ошибку на сервере
      из-за того, что человек ничего не вписал. */
   function collectFormTemplates() {
+    /* Одиночная отправка: один код, дня нет. stepNo = null — именно это отличает строку
+       d_template_mapping от строки цепочки. */
+    if (!isChain()) {
+      var code = el("evfTplCode") ? String(el("evfTplCode").value || "").trim() : "";
+      return code ? [{ code: parseInt(code, 10), stepNo: null }] : [];
+    }
     var box = el("evfTemplates"), out = [];
     if (!box) return out;
     box.querySelectorAll("[data-ftpl]").forEach(function (d) {
@@ -1082,6 +1127,8 @@
     });
     if (el("evfActive")) el("evfActive").checked = false;
     if (el("evfChain")) el("evfChain").checked = false;
+    if (el("evfTplCode")) el("evfTplCode").value = "";
+    applyChainMode();
     applyMethod();          // метод человек выбрал сам — сбрасываем не его, а поля под ним
     if (el("evfCronManual")) el("evfCronManual").checked = false;
     if (el("evfCrontab")) el("evfCrontab").readOnly = true;
