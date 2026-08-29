@@ -295,8 +295,11 @@
       /* Узкие списки — это форма единичного метода: четыре пары ключ/префикс, как в
          старой админке. Откат на общие оставлен на случай пустого ответа старого
          сервера: форма без выпадашек хуже формы с длинными. */
-      fillSelect(el("evfDefKey"), d.definitionKeysSingle || d.definitionKeys);
-      fillSelect(el("evfPrefix"), d.businessKeyPrefixesSingle || d.businessKeyPrefixes);
+      var keys = d.definitionKeysSingle || d.definitionKeys;
+      var prefs = d.businessKeyPrefixesSingle || d.businessKeyPrefixes;
+      fillSelect(el("evfDefKey"), keys);
+      fillSelect(el("evfPrefix"), prefs);
+      bindKeyPrefixPair(keys, prefs);
       fillSelect(el("evfSystem"), d.systems);
       /* Базы — из справочника flow.d_database: на колонке database висит внешний ключ,
          и значение вне справочника упало бы уже на вставке. */
@@ -305,6 +308,24 @@
         el("evfDatabase").value = "crmdb";
       }
     }).catch(function (e) { fail("evfMsg", e); });
+  }
+
+  /* Ключ и префикс — пара: smsChannelProcessV2 живёт только вместе с SmsChannel.
+     Раньше их выбирали двумя независимыми списками, и промах во втором давал событие,
+     которое заводится без ошибки, а коммуникации не порождает — искать такое приходится
+     по факту молчания рассылки.
+
+     Связь позиционная: сервер отдаёт оба списка одной длины и в одном порядке. Если
+     они почему-то разошлись, парность просто не включаем — молча подставлять чужой
+     префикс хуже, чем не подставлять ничего. Поле остаётся доступным: пара для канала,
+     которого ещё нет в списках, задаётся руками. */
+  function bindKeyPrefixPair(keys, prefs) {
+    var k = el("evfDefKey"), p = el("evfPrefix");
+    if (!k || !p || !keys || !prefs || keys.length !== prefs.length) return;
+    k.onchange = function () {
+      var i = keys.indexOf(k.value);
+      p.value = i >= 0 ? prefs[i] : "";
+    };
   }
 
   // ------------------------------------------------------------ переключение экранов
@@ -714,7 +735,9 @@
       templates: collectFormTemplates(),
       system: str("evfSystem"),
       isActive: chk("evfActive"),
-      isBatch: chk("evfBatch"),
+      /* Единичный метод — это и есть is_batch = false. Галку с формы убрали: она
+         противоречила названию вкладки, а включённой она стояла по умолчанию. */
+      isBatch: false,
       isChain: chk("evfChain"),
       database: str("evfDatabase"),
       crontab: str("evfCrontab"),
@@ -762,7 +785,6 @@
       if (el(id)) el(id).value = "";
     });
     if (el("evfActive")) el("evfActive").checked = false;
-    if (el("evfBatch")) el("evfBatch").checked = true;
     if (el("evfChain")) el("evfChain").checked = false;
     if (el("evfCronManual")) el("evfCronManual").checked = false;
     if (el("evfCrontab")) el("evfCrontab").readOnly = true;

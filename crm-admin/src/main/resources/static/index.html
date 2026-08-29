@@ -598,7 +598,8 @@
             <div class="ev-f"><label for="evfSource">Введите source</label><input type="text" id="evfSource" autocomplete="off"></div>
             <div class="ev-f"><label for="evfChannel">Выберите notify_channel</label><select id="evfChannel"></select></div>
             <div class="ev-f"><label for="evfDefKey">Выберите definition_key</label><select id="evfDefKey"></select></div>
-            <div class="ev-f"><label for="evfPrefix">Выберите business_key_prefix</label><select id="evfPrefix"></select></div>
+            <div class="ev-f"><label for="evfPrefix">Выберите business_key_prefix</label><select id="evfPrefix"></select>
+              <span class="hint">Подставляется парой к definition_key. Поменять можно, но пара должна совпадать: связь между ними именно позиционная.</span></div>
             <div class="ev-f"><label for="evfSystem">Выберите систему</label><select id="evfSystem"></select></div>
             <div class="ev-f"><label for="evfDatabase">Выберите database</label><select id="evfDatabase"></select></div>
             <div class="ev-f"><label for="evfDateStart">date_start</label><input type="datetime-local" id="evfDateStart" step="1" disabled>
@@ -606,8 +607,6 @@
           </div>
           <div class="ev-checks">
             <label class="ev-chk"><input type="checkbox" id="evfActive"> Is active</label>
-            <label class="ev-chk"><input type="checkbox" id="evfBatch" checked> Is batch
-              <span class="hint">массовый метод отправки против единичного</span></label>
             <label class="ev-chk"><input type="checkbox" id="evfChain"> Is chain
               <span class="hint">маппинг шаблона уйдёт в d_template_mapping_mass</span></label>
           </div>
@@ -2681,7 +2680,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
-<script src="js/events.js?v=7"></script>
+<script src="js/events.js?v=8"></script>
 <script src="js/event-chain.js?v=2"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->
