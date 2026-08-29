@@ -155,16 +155,23 @@ public class EventExportService {
                 ORDER.indexOf(String.valueOf(a.get("tbl"))),
                 ORDER.indexOf(String.valueOf(b.get("tbl")))));
 
-        // что уже уехало: и как пропуск, и как источник продовых id для ссылок
-        Map<String, Long> prodIdOf = new LinkedHashMap<>();   // таблица -> id в проде
-        Map<String, Long> already = new HashMap<>();          // таблица#наш_id -> id в проде
+        /* Соответствие «наша строка → строка в проде», по ПАРЕ таблица+id, а не по одной
+           таблице. Раньше ключом была таблица, и в карте оставалась последняя строка из
+           неё — для t_get_event и t_launch_settings это безразлично (их по одной на
+           событие), а для всего остального было бы неверно.
+
+           Карта наполняется по ходу: сначала тем, что уехало раньше, потом каждой
+           вставкой этой пачки. Строки, на которые ссылаются, идут первыми — порядок задан
+           ORDER, — поэтому к моменту переставления ссылки нужный id уже здесь. */
+        Map<String, Long> prodIdOf = new LinkedHashMap<>();   // таблица#наш_id -> id в проде
+        Map<String, Long> already = new HashMap<>();          // то же, но только для пропуска
         jdbc.queryForList("SELECT our_table, our_id, prod_id FROM flow.t_event_link" +
                         " WHERE event_id = ?", eventId)
                 .forEach(r -> {
-                    String tbl = String.valueOf(r.get("our_table"));
+                    String key = r.get("our_table") + "#" + r.get("our_id");
                     long pid = ((Number) r.get("prod_id")).longValue();
-                    already.put(tbl + "#" + r.get("our_id"), pid);
-                    prodIdOf.put(tbl, pid);
+                    already.put(key, pid);
+                    prodIdOf.put(key, pid);
                 });
 
         List<Map<String, Object>> sent = new ArrayList<>();
@@ -186,7 +193,7 @@ public class EventExportService {
                     remapForeignKeys(table, values, prodIdOf);
                     long prodId = ProdDbService.maxPlusOne(c, table, "id", null);
                     insertIntoProd(c, table, prodId, values);
-                    prodIdOf.put(table, prodId);
+                    prodIdOf.put(table + "#" + ourId, prodId);
                     journal.add(new Object[]{eventId, table, ourId, prodId, CurrentUser.email()});
                     sent.add(Map.of("table", table, "ourId", ourId, "prodId", prodId));
                 }
@@ -195,6 +202,13 @@ public class EventExportService {
                 try { c.rollback(); } catch (Exception ignored) { }
                 throw e;
             }
+        } catch (ResponseStatusException e) {
+            /* Наш собственный отказ (например, несопоставимая ссылка) — он уже объясняет
+               причину человеческим языком. Заворачивать его в «перелив не выполнен: 409
+               CONFLICT ...» значит спрятать объяснение внутрь чужого текста. Транзакция к
+               этому моменту откачена там же, где и при любой другой ошибке. */
+            log.warn("перелив события {} остановлен: {}", eventId, e.getReason());
+            throw e;
         } catch (Exception e) {
             String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             log.warn("перелив события {} не удался: {}", eventId, msg);
@@ -250,27 +264,59 @@ public class EventExportService {
     }
 
     /**
-     * Ссылки внутри пачки переставляем на продовые id. Если продового id нет — значит
-     * строка, на которую ссылаются, в прод не переливалась (типичный случай:
-     * d_comm_creation, выбранный в форме из уже существующих). Значение оставляем как
-     * есть: молча обнулить ссылку хуже, чем оставить заметное расхождение.
+     * Ссылки переставляем с наших id на продовые.
+     * <p>
+     * Ищем по значению самой ссылки: в колонке лежит НАШ id строки, и продовый ему
+     * соответствующий надо найти именно для неё. Раньше поиск шёл по одному имени
+     * таблицы, а в карте лежала последняя строка из этой таблицы, — для ссылок внутри
+     * пачки это случайно совпадало, а для {@code id_comm_creation} не совпадало никогда.
+     * <p>
+     * Порядок поиска: сначала пачка (эти строки только что вставлены, записи в журнале
+     * связей ещё нет — она пишется после коммита), потом журнал целиком. По журналу ищем
+     * БЕЗ фильтра по событию: соответствие «наша строка ↔ продовая» глобальное, и набор
+     * параметров доставки, затянутый импортом в составе чужого события, для нас такой же
+     * годный ориентир. Уникальность (our_table, our_id) гарантирует, что строка одна.
+     * <p>
+     * Не нашли — <b>отказываемся переливать</b>. Оставить наш id, как делалось раньше,
+     * значит записать в прод ссылку на чужой набор параметров доставки: строка вставится
+     * без ошибки, событие будет выглядеть заведённым, а уходить будет не туда. Такое
+     * потом находят по жалобе, а не по логу.
      */
-    private static void remapForeignKeys(String table, ObjectNode values, Map<String, Long> prodIdOf) {
-        FK_OF.forEach((col, refTable) -> {
-            Long mapped = prodIdOf.get(refTable);
-            if (values.hasNonNull(col) && mapped != null) {
-                values.put(col, mapped);
-            }
-        });
+    private void remapForeignKeys(String table, ObjectNode values, Map<String, Long> prodIdOf) {
+        FK_OF.forEach((col, refTable) -> remapOne(values, col, refTable, prodIdOf));
         /* d_template_mapping_mass называет ссылку на t_get_event просто event_id.
            В общий словарь это имя не положить: слишком легко переставить им что-то
            чужое в таблице, где event_id значит другое. */
-        if (MASS_TABLE.equals(table) && values.hasNonNull("event_id")) {
-            Long mapped = prodIdOf.get("scheduler.t_get_event");
-            if (mapped != null) {
-                values.put("event_id", mapped);
-            }
+        if (MASS_TABLE.equals(table)) {
+            remapOne(values, "event_id", "scheduler.t_get_event", prodIdOf);
         }
+    }
+
+    private void remapOne(ObjectNode values, String col, String refTable, Map<String, Long> prodIdOf) {
+        if (!values.hasNonNull(col)) {
+            return;
+        }
+        long ourRef = values.get(col).asLong();
+        Long mapped = prodIdOf.get(refTable + "#" + ourRef);
+        if (mapped == null) {
+            mapped = linkedProdId(refTable, ourRef);
+        }
+        if (mapped == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Не с чем сопоставить ссылку " + col + " = " + ourRef + " (" + refTable + "):"
+                    + " этой строки нет в проде и нет в журнале связей. Затяните её импортом"
+                    + " («Настройки» → «Перелив событий») или выберите в форме другую."
+                    + " Перелив остановлен — в прод ничего не записано.");
+        }
+        values.put(col, mapped);
+    }
+
+    /** Продовый id нашей строки по журналу связей; null — соответствия нет. */
+    private Long linkedProdId(String ourTable, long ourId) {
+        List<Long> ids = jdbc.queryForList(
+                "SELECT prod_id FROM flow.t_event_link WHERE our_table = ? AND our_id = ?",
+                Long.class, ourTable, ourId);
+        return ids.isEmpty() ? null : ids.get(0);
     }
 
     /**
