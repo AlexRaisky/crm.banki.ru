@@ -40,7 +40,7 @@
 <link rel="stylesheet" href="css/section-abtests.css">
 <link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-entities.css">
-<link rel="stylesheet" href="css/section-events.css?v=5">
+<link rel="stylesheet" href="css/section-events.css?v=6">
 <link rel="stylesheet" href="css/section-admin.css">
 </head>
 <body>
@@ -720,8 +720,7 @@
       <div class="wz-pane" id="evfPane5" hidden>
         <div class="ev-step">
           <div class="t">Что уйдёт на сервер</div>
-          <p class="wz-note">Отладочный экран. По кнопке «Запустить коммуникацию» тело запроса собирается и показывается целиком — <b>на сервер ничего не уходит</b>. План записи посчитан здесь же, по форме: это ожидание, а не ответ базы.</p>
-          <div id="evfPlan"></div>
+          <p class="wz-note">Отладочный экран. По кнопке «Запустить коммуникацию» открывается окно с планом записи — какие колонки каких таблиц получат какие значения, — а тело запроса показывается здесь целиком. <b>На сервер ничего не уходит.</b> План посчитан по форме: это ожидание, а не ответ базы.</p>
           <div class="ev-fields">
             <div class="ev-f wide"><label>POST /api/events/offline</label>
               <pre class="wz-json" id="evfPayload">Нажмите «Запустить коммуникацию» — здесь появится тело запроса.</pre></div>
@@ -737,6 +736,23 @@
         <span class="ev-msg" id="evfMsg"></span>
       </div>
       <div id="evfResult"></div>
+
+      <!-- План записи. Живёт внутри секции: стили событий изолированы @scope по
+           #sec-event-offline, снаружи оформление до окна не дотянется. -->
+      <div class="ev-modal" id="evfPlanModal">
+        <div class="ev-modal-card" role="dialog" aria-modal="true" aria-labelledby="evfPlanTitle">
+          <div class="ev-modal-head">
+            <h3 id="evfPlanTitle">Куда что запишется</h3>
+            <span class="ev-modal-sub" id="evfPlanSum"></span>
+            <button type="button" class="ev-modal-x" id="evfPlanClose" title="Закрыть">✕</button>
+          </div>
+          <div class="ev-modal-body" id="evfPlanBody"></div>
+          <div class="ev-modal-foot">
+            <span class="ev-modal-note">Ожидание по форме — на сервер ничего не отправлено.</span>
+            <button class="ev-btn ghost" id="evfPlanOk" type="button">Закрыть</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- ===== События → Список событий ===== -->
@@ -2691,7 +2707,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
-<script src="js/events.js?v=10"></script>
+<script src="js/events.js?v=11"></script>
 <script src="js/event-chain.js?v=2"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->

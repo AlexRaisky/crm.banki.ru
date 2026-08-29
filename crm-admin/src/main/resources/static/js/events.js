@@ -300,9 +300,25 @@
     };
     el("evfCrontab").oninput = renderCronWords;
 
+    /* Окно с планом закрывается всеми привычными способами: крестиком, кнопкой, кликом
+       по фону и Escape. Слушатель на документ висит один и проверяет класс — вешать его
+       на карточку нельзя, фокус после открытия уходит на крестик. */
+    el("evfPlanClose").onclick = closePlan;
+    el("evfPlanOk").onclick = closePlan;
+    el("evfPlanModal").onclick = function (e) {
+      if (e.target === el("evfPlanModal")) closePlan();
+    };
+    document.addEventListener("keydown", function (e) {
+      var m = el("evfPlanModal");
+      if (e.key === "Escape" && m && m.classList.contains("open")) closePlan();
+    });
+
+    /* Кнопка сейчас только собирает план и показывает его — на сервер не уходит ничего,
+       и права на заведение для предпросмотра не нужны. Проверку не снимаем, а переносим
+       в submitOffline, к закомментированной боевой отправке: включат её — вернётся и
+       запрет. Подпись остаётся, чтобы человек не ждал от кнопки заведения события. */
     if (!can("add", "ev-offline")) {
-      el("evfSubmit").disabled = true;
-      el("evfSubmit").title = "Нет права на заведение событий в этом разделе";
+      el("evfSubmit").title = "Показывает план записи. На заведение событий права нет";
     }
     renderSteps();
     renderFormTemplates([]);
@@ -818,33 +834,230 @@
     };
   }
 
-  /* План записи считаем по форме, а не спрашиваем у сервера: запроса-то ещё не было.
-     Поэтому и подписан он как ожидание — совпадение с реальными вставками проверяется
-     ответом, когда отправку включат. */
-  function renderPlan(body) {
-    var box = el("evfPlan");
-    if (!box) return;
-    var nSteps = body.steps.length;
-    var nTpl = (body.templates || []).length;
+  // ------------------------------------------------------------- план записи
+
+  /* План считаем по форме, а не спрашиваем у сервера: запроса-то ещё не было. Поэтому он
+     и подписан как ожидание — совпадение с реальными вставками проверяется ответом, когда
+     отправку включат.
+
+     Раскладка повторяет EventFormService.createOffline построчно и в том же порядке.
+     Три вещи, ради которых план стоит читать целиком, а не считать строки:
+     — слой B пишется через insertB, а он не перечисляет колонки со значением null: такие
+       помечены как «колонки не будет». Пустая строка при этом остаётся значением —
+       definition_key и business_key_prefix объявлены NOT NULL без DEFAULT;
+     — колонка template_id в слое A и в прод-таблицах хранит РАЗНЫЕ числа: у нас
+       суррогатный id единого справочника, в проде — тот код, что введён в форме;
+     — selection форма не шлёт вовсе, сервер подставляет имя события; показываем уже
+       подставленным, иначе в плане стояло бы «—» там, где в базу уедет имя. */
+
+  var PLAN_AUTO = "auto";   // значение присвоит база или сервер, в форме его нет
+  var PLAN_SKIP = "skip";   // insertB не перечислит колонку — уйдёт NULL или DEFAULT
+
+  function pv(v) {
+    if (v === true) return "true";
+    if (v === false) return "false";
+    if (v === null || v === undefined || String(v) === "") return "«пусто»";
+    return String(v);
+  }
+  function col(c, v, note) { return { c: c, v: pv(v), n: note || "" }; }
+  function colAuto(c, v, note) { return { c: c, v: v, k: PLAN_AUTO, n: note || "" }; }
+  /* nn() на сервере превращает пустую строку в null, и колонка выпадает из запроса;
+     соседний nz() пустую строку оставляет. Разница видна только здесь, в плане. */
+  function colNn(c, v, note) {
+    var s = String(v == null ? "" : v).trim();
+    return s === "" ? { c: c, v: "колонки не будет", k: PLAN_SKIP, n: note || "" }
+                    : { c: c, v: s, n: note || "" };
+  }
+  function nRow(n) {
+    var t = n % 100, o = n % 10;
+    if (t >= 11 && t <= 14) return n + " строк";
+    if (o === 1) return n + " строка";
+    if (o >= 2 && o <= 4) return n + " строки";
+    return n + " строк";
+  }
+
+  function planGroups(body) {
+    var steps = body.steps || [];
+    var tpls = body.templates || [];
+    var nSteps = steps.length;
+    var nTpl = tpls.length;
+    var sel = body.eventName;
     var mapping = body.isChain ? "template.d_template_mapping_mass" : "template.d_template_mapping";
-    var rows = [
-      ["flow.d_event", 1, "само событие, kind = offline"],
-      ["flow.d_event_schedule", 1, "расписание: " + (body.crontab || "—") + ", база " + (body.database || "—")],
-      ["flow.d_event_step", nSteps, (nSteps - 1) + " шаг(ов) отбора + итоговый скрипт"],
-      ["flow.d_event_template", nTpl, "пары «день — шаблон»"],
-      ["scheduler.t_get_event", 1, "прод-копия события"],
-      ["scheduler.t_launch_settings", 1, "прод-расписание, time_start = момент вставки"],
-      ["scheduler.t_execution_steps", nSteps, "прод-копия шагов"],
-      [mapping, nTpl, "маппинг шаблонов события"],
-      ["flow.t_event_link", "—", "связи нашей модели с прод-строками"]
+    /* Номера шагов считаем ровно как orderNum() на сервере: свой, если задан, иначе
+       (индекс + 1) * 10 — ORDER_STEP. */
+    var ords = steps.map(function (s, i) {
+      return (s.orderNum && s.orderNum > 0) ? s.orderNum : (i + 1) * 10;
+    }).join(", ");
+    var days = tpls.map(function (t) { return t.stepNo == null ? "—" : t.stepNo; }).join(", ");
+    var codes = tpls.map(function (t) { return t.code; }).join(", ");
+    var rrs = nSteps > 1 ? "false у шагов отбора, true у итогового" : "true";
+    // строки слоя B: событие + расписание + шаги + маппинги шаблонов + маппинг определения
+    var bRows = 2 + nSteps + nTpl + 1;
+
+    return [
+      {
+        title: "Слой A — наша модель",
+        note: "Колонки перечисляются явно, пустая строка так и пишется пустой строкой.",
+        tables: [
+          { name: "flow.d_event", rows: 1, note: "само событие", cols: [
+            colAuto("id", "RETURNING — станет event_id во всех строках ниже"),
+            col("kind", "time", "у события по расписанию всегда time"),
+            col("event_name", body.eventName),
+            col("system", body.system),
+            col("source", body.source),
+            col("description", sel, "сюда уезжает selection")
+          ].concat([col("is_active", body.isActive)]) },
+          { name: "flow.d_event_delivery", rows: 1, note: "канал доставки", cols: [
+            colAuto("event_id", "id события"),
+            col("notify_channel", body.notifyChannel)
+          ] },
+          { name: "flow.d_event_schedule", rows: 1, note: "расписание", cols: [
+            colAuto("event_id", "id события"),
+            col("crontab", body.crontab),
+            col("database", body.database, "внешний ключ на flow.d_database"),
+            col("is_batch", body.isBatch)
+          ] },
+          { name: "flow.d_event_step", rows: nSteps, note: "шаги отбора + итоговый скрипт", cols: [
+            colAuto("event_id", "id события"),
+            col("order_num", ords, "по шагам, в порядке экрана «Шаги отбора»"),
+            col("process_name", sel),
+            colAuto("sql_text", "SQL каждого шага"),
+            col("returns_result_set", rrs),
+            col("is_active", true)
+          ] },
+          { name: "flow.d_event_template", rows: nTpl, note: "пары «день — шаблон»", cols: [
+            colAuto("event_id", "id события"),
+            colAuto("template_id", "id из template.d_template по паре (канал, код)",
+              "не найдётся — запишется NULL и придёт предупреждение"),
+            col("step_no", nTpl ? days : "", "день ретеншена")
+          ] },
+          { name: "flow.d_event_definition", rows: 1, note: "ключи определения", cols: [
+            colAuto("event_id", "id события"),
+            col("notify_channel", body.notifyChannel),
+            col("definition_key", body.definitionKey),
+            col("business_key_prefix", body.businessKeyPrefix)
+          ] }
+        ]
+      },
+      {
+        title: "Слой B — боевые прод-таблицы",
+        note: "Пишутся через insertB: колонку со значением null он в запрос не включает — " +
+              "она получит NULL или свой DEFAULT.",
+        tables: [
+          { name: "scheduler.t_get_event", rows: 1, note: "прод-копия события", cols: [
+            colAuto("id", "RETURNING — станет get_event_id ниже"),
+            col("selection", sel),
+            col("event_name", body.eventName),
+            colNn("system", body.system),
+            colNn("source", body.source),
+            col("notify_channel", body.notifyChannel),
+            col("is_active", body.isActive),
+            col("is_deferred", false),
+            col("allow_ml", false)
+          ] },
+          { name: "scheduler.t_launch_settings", rows: 1, note: "прод-расписание", cols: [
+            colAuto("id", "RETURNING — станет t_launch_settings_id ниже"),
+            col("selection", sel),
+            colAuto("time_start", "момент вставки на сервере",
+              "поле date_start на первом экране показано, но в запросе не уезжает"),
+            col("database", body.database),
+            col("description", body.eventName, "сюда уезжает имя события"),
+            col("is_active", body.isActive),
+            col("status", "NEW"),
+            col("is_batch", body.isBatch),
+            col("max_retry_attempts", 1),
+            colNn("crontab", body.crontab),
+            col("job_group", "CRM")
+          ] },
+          { name: "scheduler.t_execution_steps", rows: nSteps, note: "прод-копия шагов", cols: [
+            colAuto("t_launch_settings_id", "id строки расписания выше"),
+            col("process_name", sel),
+            col("order_num", ords),
+            col("is_active", true),
+            col("returns_result_set", rrs),
+            colAuto("sql_text", "SQL каждого шага")
+          ] },
+          { name: mapping, rows: nTpl,
+            note: body.isChain ? "цепочка — отдельная прод-таблица" : "маппинг шаблонов события",
+            cols: body.isChain ? [
+              colAuto("event_id", "id из scheduler.t_get_event"),
+              col("event_name", body.eventName),
+              col("template_id", nTpl ? codes : "", "код из формы, НЕ id справочника"),
+              col("channel", body.notifyChannel)
+            ] : [
+              colAuto("get_event_id", "id из scheduler.t_get_event"),
+              col("event_name", body.eventName),
+              colNn("system", body.system),
+              col("notify_channel", body.notifyChannel),
+              col("template_id", nTpl ? codes : "", "код из формы, НЕ id справочника")
+            ] },
+          { name: "commapi.d_definition_mapping", rows: 1, note: "ключи определения в проде", cols: [
+            colAuto("get_event_id", "id из scheduler.t_get_event"),
+            col("event_name", body.eventName),
+            colNn("system", body.system),
+            col("notify_channel", body.notifyChannel),
+            col("definition_key", body.definitionKey),
+            col("business_key_prefix", body.businessKeyPrefix),
+            col("is_correlation", false)
+          ] }
+        ]
+      },
+      {
+        title: "Служебное — пишется само",
+        note: "Отдельно указывать не нужно, но откатывать событие руками придётся и здесь.",
+        tables: [
+          { name: "flow.t_materialization", rows: bRows,
+            note: "по строке на каждую строку слоя B", cols: [
+            col("our_entity", "flow.d_event"),
+            colAuto("our_id", "id события"),
+            colAuto("prod_table", "таблица вставленной строки"),
+            colAuto("prod_id", "id вставленной строки"),
+            colAuto("materialized_by", "ваш e-mail")
+          ] },
+          { name: "arch.t_admin_log", rows: 1 + bRows,
+            note: "запись на flow.d_event и на каждую строку слоя B", cols: [
+            colAuto("что записывается", '{"id": N}, у flow.d_event ещё event_name',
+              "снимок строки не сохраняется, восстановить событие по журналу нельзя")
+          ] }
+        ]
+      }
     ];
-    box.innerHTML =
-      '<div class="ev-rows"><table><thead><tr><th>Таблица</th><th>строк</th><th>что это</th></tr></thead><tbody>' +
-      rows.map(function (r) {
-        return "<tr><td class=\"tbl\">" + esc(r[0]) + "</td><td>" + esc(r[1]) +
-               "</td><td>" + esc(r[2]) + "</td></tr>";
+  }
+
+  function planTableHtml(t) {
+    return '<div class="ev-plan-t"><div class="ev-plan-th">' +
+      '<span class="tbl">' + esc(t.name) + '</span>' +
+      '<span class="ev-plan-cnt">' + esc(nRow(t.rows)) + '</span>' +
+      (t.note ? '<span class="ev-plan-tn">' + esc(t.note) + '</span>' : '') +
+      '</div><table><tbody>' +
+      t.cols.map(function (c) {
+        return '<tr' + (c.k ? ' class="k-' + c.k + '"' : '') + '>' +
+          '<td class="c">' + esc(c.c) + '</td>' +
+          '<td class="v">' + esc(c.v) + '</td>' +
+          '<td class="n">' + esc(c.n || "") + '</td></tr>';
       }).join("") +
-      "</tbody></table></div>";
+      '</tbody></table></div>';
+  }
+
+  function openPlan(body) {
+    var groups = planGroups(body);
+    var tables = 0, rows = 0;
+    groups.forEach(function (g) {
+      g.tables.forEach(function (t) { tables++; rows += t.rows; });
+    });
+    el("evfPlanSum").textContent = tables + " таблиц · " + nRow(rows);
+    el("evfPlanBody").innerHTML = groups.map(function (g) {
+      return '<div class="ev-plan-g"><div class="ev-plan-gt">' + esc(g.title) + '</div>' +
+        (g.note ? '<p class="ev-plan-gn">' + esc(g.note) + '</p>' : '') +
+        g.tables.map(planTableHtml).join("") + '</div>';
+    }).join("");
+    el("evfPlanModal").classList.add("open");
+    el("evfPlanClose").focus();
+  }
+
+  function closePlan() {
+    var m = el("evfPlanModal");
+    if (m) m.classList.remove("open");
   }
 
   function resetOffline() {
@@ -871,29 +1084,33 @@
     if (el("evfPayload")) {
       el("evfPayload").textContent = "Нажмите «Запустить коммуникацию» — здесь появится тело запроса.";
     }
-    if (el("evfPlan")) el("evfPlan").innerHTML = "";
+    closePlan();
     say("evfMsg", "");
     renderResult("evfResult", null);
     wzGo(1);
   }
 
-  /* ОТЛАДОЧНЫЙ РЕЖИМ: собираем запрос и показываем его, ничего не отправляя.
-     Чтобы включить отправку обратно — вернуть вызов evReq (закомментирован ниже) и
-     убрать вывод в evfPayload. Пока идёт сверка того, что уходит на сервер, реальная
-     вставка запрещена: она пишет и в нашу модель, и в боевые таблицы, а откатывать
-     ошибочно заведённое событие приходится руками в psql. */
+  /* ОТЛАДОЧНЫЙ РЕЖИМ: собираем запрос, показываем план записи окном и тело запроса на
+     экране — на сервер не уходит ничего. Пока идёт сверка, реальная вставка запрещена:
+     она пишет и в нашу модель, и в боевые таблицы, а откатывать ошибочно заведённое
+     событие приходится руками в psql.
+
+     Чтобы включить отправку обратно — раскомментировать блок ниже ВМЕСТЕ с проверкой
+     права: предпросмотр безобиден и открыт всем, кто видит форму, а заведение события
+     требует add в ev-offline. */
   function submitOffline() {
     var i;
     for (i = 1; i < WZ_LAST; i++) {
       if (!wzValidate(i)) { wzGo(i); return; }
     }
     var body = offlineBody();
-    renderPlan(body);
     el("evfPayload").textContent = JSON.stringify(body, null, 2);
-    say("evfMsg", "Запрос собран. На сервер ничего не отправлено — режим отладки.", "warn");
+    say("evfMsg", "Запрос собран и показан в окне. На сервер ничего не отправлено — режим отладки.", "warn");
     renderResult("evfResult", null);
+    openPlan(body);
 
-    /* Боевая отправка (включать одной строкой, когда сверка закончится):
+    /* Боевая отправка (включать вместе со строкой про право):
+    if (!can("add", "ev-offline")) { say("evfMsg", "Нет права на заведение событий", "err"); return; }
     evReq("POST", "/offline", body).then(function (res) {
       say("evfMsg", startedText(res), startedKind(res));
       renderResult("evfResult", res);

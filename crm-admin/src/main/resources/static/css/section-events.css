@@ -194,4 +194,59 @@
   /* Строка «день — шаблон» в форме заведения: колонок меньше, чем в правке карточки
      (канал там спрашивают, здесь он взят с первого экрана). */
   .ev-edit-tpl.form{grid-template-columns:90px 130px 1fr auto}
+
+  /* План записи — окном, а не блоком в потоке экрана: таблиц тринадцать, и в потоке они
+     оттесняли вниз тело запроса, ради которого экран и открывают. */
+  .ev-modal{position:fixed;inset:0;z-index:300;background:rgba(6,16,27,.62);backdrop-filter:blur(2px);
+    display:none;align-items:center;justify-content:center;padding:24px}
+  .ev-modal.open{display:flex}
+  .ev-modal-card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+    width:min(900px,100%);max-height:88vh;display:flex;flex-direction:column;
+    box-shadow:0 24px 64px rgba(0,0,0,.45)}
+  .ev-modal-head{align-items:baseline;border-bottom:1px solid var(--line);display:flex;gap:12px;
+    flex-wrap:wrap;padding:16px 20px}
+  .ev-modal-head h3{font-size:16.5px;font-weight:700;margin:0}
+  .ev-modal-sub{color:var(--faint);font-family:var(--mono);font-size:11px;letter-spacing:.08em;
+    text-transform:uppercase}
+  .ev-modal-x{align-self:center;background:none;border:1px solid var(--line);border-radius:8px;
+    color:var(--dim);cursor:pointer;flex:0 0 auto;font-size:13px;height:30px;margin-left:auto;width:30px}
+  .ev-modal-x:hover{border-color:rgba(255,107,138,.45);color:var(--coral,#ff6b8a)}
+  .ev-modal-body{display:flex;flex:1 1 auto;flex-direction:column;gap:20px;min-height:0;
+    overflow:auto;padding:16px 20px}
+  .ev-modal-foot{align-items:center;border-top:1px solid var(--line);display:flex;gap:12px;padding:14px 20px}
+  .ev-modal-note{color:var(--dim);font-size:12.5px}
+  .ev-modal-foot .ev-btn{margin-left:auto}
+
+  .ev-plan-gt{font-size:13px;font-weight:700;margin-bottom:4px}
+  .ev-plan-gn{color:var(--dim);font-size:12px;line-height:1.5;margin:0 0 10px;max-width:780px}
+  .ev-plan-t{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden}
+  .ev-plan-th{align-items:baseline;background:var(--card2,rgba(127,127,127,.08));
+    border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:10px;padding:9px 12px}
+  .ev-plan-th .tbl{font-family:var(--mono);font-size:12.5px}
+  .ev-plan-cnt{color:var(--faint);font-family:var(--mono);font-size:11px}
+  .ev-plan-tn{color:var(--dim);font-size:12px}
+  .ev-plan-t table{border-collapse:collapse;font-size:12.5px;table-layout:fixed;width:100%}
+  .ev-plan-t td{border-bottom:1px solid var(--line);overflow-wrap:anywhere;padding:6px 12px;
+    vertical-align:top}
+  .ev-plan-t tr:last-child td{border-bottom:0}
+  .ev-plan-t td.c{font-family:var(--mono);width:32%}
+  .ev-plan-t td.v{width:36%}
+  .ev-plan-t td.n{color:var(--dim);font-size:11.5px}
+  /* Значения, которых в форме нет: одно присвоит база или сервер, другого не будет вовсе.
+     Оба приглушены, но по-разному — иначе «колонки не будет» читается как значение. */
+  .ev-plan-t tr.k-auto td.v{color:var(--faint);font-family:var(--mono);font-size:11.5px}
+  .ev-plan-t tr.k-skip td.v{color:var(--faint);font-style:italic}
+
+  @media (max-width:640px){
+    .ev-modal{padding:0}
+    .ev-modal-card{border-radius:0;max-height:100dvh;width:100%}
+    .ev-plan-t td.c,.ev-plan-t td.v{width:auto}
+  }
 }
+
+/* Светлая тема — вне @scope: правило начинается с html, а его предок обязан лежать
+   внутри корня области видимости, иначе селектор не совпадёт (так же сделано
+   в section-entities.css). Тёмная подложка под окном на светлом фоне читается
+   как ошибка отрисовки. */
+html.theme-light #sec-event-offline .ev-modal{background:rgba(226,234,243,.8)}
+html.theme-light #sec-event-offline .ev-modal-card{box-shadow:0 16px 48px rgba(30,60,100,.25)}
