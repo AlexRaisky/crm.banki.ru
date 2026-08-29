@@ -1009,14 +1009,32 @@
   /* Онлайн-события из tracker.t_event_comm. Их id и есть t_event_comm_id, по которому
      лежит цепочка в commapi.events_chain. Тянем один раз: список меняется редко,
      а запрос идёт в чужую базу (crmdb). */
-  var trackerEvents = null, trackerEventsP = null;
+  var trackerEvents = null, trackerEventsP = null, trackerEventsErr = null;
+  /* Причину неудачи храним рядом со списком: раньше любой отказ превращался в пустой
+     массив, и модалка объявляла «база не подключена» — единственную причину, которую
+     умела назвать. На проде база подключена, а список всё равно был пуст, и человек
+     шёл проверять настройки подключения вместо настоящей ошибки. */
   function loadTrackerEvents() {
     if (trackerEventsP) return trackerEventsP;
     trackerEventsP = fetch("api/events/chains", {
         credentials: "same-origin", headers: { Accept: "application/json" } })
-      .then(function (r) { return r.ok ? r.json() : []; })
-      .then(function (list) { trackerEvents = list || []; return trackerEvents; })
-      .catch(function () { trackerEvents = []; return trackerEvents; });
+      .then(function (r) {
+        return r.text().then(function (t) {
+          var j = null;
+          try { j = t ? JSON.parse(t) : null; } catch (e) { /* не json — покажем как есть */ }
+          if (!r.ok) throw new Error((j && j.message) || t || ("HTTP " + r.status));
+          return j || [];
+        });
+      })
+      .then(function (list) { trackerEvents = list; trackerEventsErr = null; return trackerEvents; })
+      .catch(function (e) {
+        trackerEvents = [];
+        trackerEventsErr = (e && e.message) || String(e);
+        /* Кэш сбрасываем: неудача не должна держаться до перезагрузки страницы —
+           модалку открывают повторно именно затем, чтобы попробовать ещё раз. */
+        trackerEventsP = null;
+        return trackerEvents;
+      });
     return trackerEventsP;
   }
 
@@ -2162,9 +2180,12 @@
              String(e.id) === q;
     });
     if (!list.length) {
-      box.innerHTML = '<div class="jr-hint">' + (trackerEvents.length
+      var why = trackerEvents.length
         ? "Ничего не нашлось. Событие берётся из tracker.t_event_comm — если его там нет, сначала заведите событие."
-        : "Событий не видно: база событий (crmdb) не подключена на этом контуре.") + "</div>";
+        : (trackerEventsErr
+            ? "Список событий не прочитан: " + trackerEventsErr
+            : "В tracker.t_event_comm нет ни одного события.");
+      box.innerHTML = '<div class="jr-hint">' + esc(why) + "</div>";
       return;
     }
     box.innerHTML = list.slice(0, 200).map(function (e) {

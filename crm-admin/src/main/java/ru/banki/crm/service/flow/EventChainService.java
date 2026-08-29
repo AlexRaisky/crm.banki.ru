@@ -1,6 +1,10 @@
 package ru.banki.crm.service.flow;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 import ru.banki.crm.service.prod.EventDbService;
 
 import java.sql.Connection;
@@ -28,6 +32,8 @@ import java.util.Map;
  */
 @Service
 public class EventChainService {
+
+    private static final Logger log = LoggerFactory.getLogger(EventChainService.class);
 
     private static final String TABLE = "commapi.events_chain";
 
@@ -57,8 +63,14 @@ public class EventChainService {
      * это копия: разойдётся — верной будет та, по которой работает движок.
      */
     public List<Map<String, Object>> list() {
+        /* Пустой список и «не смогли прочитать» — разные вещи, и раньше они были
+           неразличимы: оба возвращали List.of(). Панель по пустому списку делала вывод
+           «база не подключена» и показывала его на проде, где база подключена, а
+           запрос падал по другой причине. Теперь каждая причина называет себя сама. */
         if (!events.configured()) {
-            return List.of();
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "База событий (crmdb) не выбрана: «Настройки» → «Подключения к БД»,"
+                    + " галка «база событий».");
         }
         boolean withChains = exists();
         String steps = withChains
@@ -86,7 +98,10 @@ public class EventChainService {
                 out.add(m);
             }
         } catch (Exception e) {
-            return List.of();
+            String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            log.warn("не удалось прочитать события из crmdb: {}", msg);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "База событий (crmdb) подключена, но список событий прочитать не вышло: " + msg);
         }
         return out;
     }
