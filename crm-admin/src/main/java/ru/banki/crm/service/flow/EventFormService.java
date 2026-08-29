@@ -96,21 +96,22 @@ public class EventFormService {
            Урезать общие списки было нельзя: их же читает форма онлайн-события, где
            каналы кц, fa, wa и робот живут и сейчас. Ключ и префикс идут парой и по
            одному не значат ничего, поэтому оба списка заданы явно и в одном порядке. */
-        out.put("definitionKeysSingle",
-                List.of("smsChannelProcessV2", "pushChannelProcessV2", "emailChannelProcessV2",
-                        "vkChannelProcessV2", "callCenterChannelProcess"));
-        out.put("businessKeyPrefixesSingle",
-                List.of("SmsChannel", "PushChannel", "EmailChannel",
-                        "VkChannel", "CallCenterChannel"));
-        /* Массовый метод — свои пары: у батчевых процессов и имя другое, и год в
-           суффиксе. Смешивать их с единичными в одном списке нельзя: batch-ключ с
-           единичным префиксом даёт событие, которое заводится молча и не отправляет
-           ничего. Каналов здесь три — кц и vk массовой отправки не имеют. */
-        out.put("definitionKeysBatch",
-                List.of("batchEmailChannelProcess2024", "batchPushChannelProcess2024",
-                        "batchSmsChannelProcess2024"));
-        out.put("businessKeyPrefixesBatch",
-                List.of("BatchEmailChannel", "BatchPushChannel", "BatchSmsChannel"));
+        /* Пары «ключ — префикс» по методу отправки — из справочника (V54), а не из
+           констант в коде. Значения задаёт прод-процесс и меняет их без нас; каждый новый
+           канал стоил правки Java, сборки и выката трёх контуров ради двух строк.
+           Ведутся в настройках («Справочники значений» → «Процессы каналов»).
+
+           Отдаём строками целиком, а не шестью плоскими списками: ключ, префикс и канал
+           значат что-то только вместе. Разложенные по отдельным спискам, они на клиенте
+           связываются позицией — и разъезжаются от первой же строки, добавленной в
+           середину. Общие definitionKeys/businessKeyPrefixes выше остаются как были:
+           их читает форма онлайн-события, где методов отправки нет. */
+        out.put("channelProcesses", jdbc.queryForList(
+                "SELECT method, notify_channel AS \"notifyChannel\","
+                + " definition_key AS \"definitionKey\","
+                + " business_key_prefix AS \"businessKeyPrefix\""
+                + " FROM reference.d_channel_process WHERE is_active"
+                + " ORDER BY method, sort_order, id"));
         /* Системы: известный список старой формы плюс всё, что уже заведено. Одного
            DISTINCT по данным мало — на чистом контуре список был бы пуст, и первую
            систему пришлось бы вспоминать по памяти. Регистр значений сохранён как в

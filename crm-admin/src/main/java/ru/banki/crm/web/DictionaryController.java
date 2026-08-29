@@ -70,6 +70,13 @@ public class DictionaryController {
        используются. Пополнить список из формы мастера (кнопка «+») и вести сам справочник
        — разные полномочия: первое делают каждый день, второе меняет то, что видят все. */
 
+    /** Список справочников: экран настроек начинается с выбора таблицы. */
+    @GetMapping("/refs")
+    public List<Map<String, Object>> refCatalog() {
+        access.requireCapability(Capability.READ, Sections.SET_REFS);
+        return service.refCatalog();
+    }
+
     @GetMapping("/refs/{kind}")
     public List<Map<String, Object>> refRows(@PathVariable String kind) {
         access.requireCapability(Capability.READ, Sections.SET_REFS);
@@ -79,17 +86,17 @@ public class DictionaryController {
     @PostMapping("/refs/{kind}")
     public Map<String, Object> refAdd(@PathVariable String kind, @RequestBody Map<String, Object> body) {
         access.requireCapability(Capability.ADD, Sections.SET_REFS);
-        Object order = body == null ? null : body.get("sortOrder");
-        return service.refAdd(kind,
-                body == null ? null : String.valueOf(body.get("value")),
-                order == null ? null : Integer.valueOf(String.valueOf(order)));
+        return service.refAdd(kind, body);
     }
 
+    /* Одна ручка и на переключение активности, и на правку полей: в теле приходит то,
+       что человек изменил. Разводить их по разным адресам смысла нет — право на обе
+       операции одно и то же (EDIT), а «выключить» это тоже правка строки. */
     @PatchMapping("/refs/{kind}/{id}")
-    public Map<String, Object> refSetActive(@PathVariable String kind, @PathVariable long id,
-                                            @RequestBody Map<String, Object> body) {
+    public Map<String, Object> refUpdate(@PathVariable String kind, @PathVariable long id,
+                                         @RequestBody Map<String, Object> body) {
         access.requireCapability(Capability.EDIT, Sections.SET_REFS);
-        return service.refSetActive(kind, id, !Boolean.FALSE.equals(body == null ? null : body.get("isActive")));
+        return service.refUpdate(kind, id, body);
     }
 
     @DeleteMapping("/refs/{kind}/{id}")

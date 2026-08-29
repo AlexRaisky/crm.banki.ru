@@ -1,17 +1,22 @@
 /* ============================================================
-   СПРАВОЧНИКИ ЗНАЧЕНИЙ — имена коммуникаций и точки касания.
+   СПРАВОЧНИКИ ЗНАЧЕНИЙ — экран из двух уровней: список таблиц и редактор одной из них.
 
-   Это те самые списки, из которых выбирают в мастере коммуникаций. До сих пор их
-   пополняли инсертом в psql на сервере: значение добавляют не для себя, а для всех,
-   и такому место в панели, где видно, кто и что менял.
+   Раньше все справочники висели карточками на одной странице. Пока их было два и оба
+   состояли из одного слова, это читалось; с появлением «Процессов каналов», где в строке
+   четыре поля, одностраничный вид превратился в кашу — списки разного устройства рядом
+   выглядят как один список. Поэтому сначала выбираем таблицу, потом правим её.
 
-   Два решения, которые здесь важнее кода.
+   Ни разметка строки, ни форма добавления здесь не зашиты: сервер отдаёт описание колонок
+   (имя, подпись, тип, обязательность, варианты выбора), а экран строится по нему. Добавить
+   третий справочник — запись в REF_TABLES на сервере, правок здесь не требуется.
+
+   Два решения, которые важнее кода.
 
    Первое: удалять можно только неиспользуемое. Внешнего ключа между справочником и
    template.d_template нет — там обычная строка. Удаление значения из справочника не
    уберёт его из шаблонов, а только лишит объяснения: в шаблоне останется touch_point,
-   которого «не существует». Поэтому занятое значение выключают, и кнопка удаления у
-   него не показывается вовсе, а не отказывает по нажатию.
+   которого «не существует». Поэтому занятое значение выключают, и кнопка удаления у него
+   не показывается вовсе, а не отказывает по нажатию.
 
    Второе: выключенные значения видны. В выпадашках их нет, но здесь человек должен
    видеть, что значение существует, — иначе заведёт заново и упрётся в UNIQUE.
@@ -19,20 +24,18 @@
 window.Refs = (function () {
   "use strict";
 
-  var KINDS = [
-    { kind: "comm-names",   title: "Имена коммуникаций",
-      hint: "communication_name — база имени коммуникации. Подставляется в мастере и входит в имя source." },
-    { kind: "touch-points", title: "Точки касания",
-      hint: "touch_point — в какой момент пути человека уходит коммуникация." }
-  ];
-
-  var rows = {}, busy = false;
+  var catalog = [];     // список справочников с описанием колонок
+  var current = null;   // открытый справочник, null — показываем список
+  var rows = [];
+  var editing = null;   // id строки в режиме правки
+  var busy = false;
 
   function T(s) { return (typeof window.t2 === "function") ? window.t2(s) : s; }
   function esc(v) {
     return String(v == null ? "" : v)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
+  function host() { return document.getElementById("refsHost"); }
 
   function api(method, url, body) {
     return fetch(url, {
@@ -53,111 +56,199 @@ window.Refs = (function () {
     });
   }
 
-  function note(el, text, bad) {
+  function note(text, bad) {
+    var el = document.getElementById("refs-msg");
     if (!el) return;
     el.textContent = text || "";
     el.style.color = bad ? "var(--coral)" : "var(--dim)";
   }
 
-  function render(kind) {
-    var box = document.getElementById("refs-" + kind);
-    if (!box) return;
-    var list = rows[kind] || [];
-    if (!list.length) {
-      box.innerHTML = '<div class="refs-empty">' + T("Справочник пуст") + "</div>";
+  // ------------------------------------------------------------------ экран 1: таблицы
+
+  function renderCatalog() {
+    var h = host();
+    if (!h) return;
+    h.className = "refs-host";
+    if (!catalog.length) {
+      h.innerHTML = '<div class="refs-empty">' + T("Справочников нет") + "</div>";
       return;
     }
-    box.innerHTML = list.map(function (r) {
-      var used = Number(r.used || 0);
-      return '<div class="refs-row' + (r.isActive ? "" : " off") + '">' +
-        '<span class="refs-val">' + esc(r.value) + "</span>" +
-        '<span class="refs-used" title="' + T("Столько шаблонов используют это значение") + '">' +
-          (used ? used + " " + T("шабл.") : "—") + "</span>" +
-        '<button type="button" class="refs-btn" onclick="Refs.toggle(\'' + kind + '\',' + r.id + ',' +
-          (r.isActive ? "false" : "true") + ')">' +
-          T(r.isActive ? "Выключить" : "Включить") + "</button>" +
+    h.innerHTML = catalog.map(function (c) {
+      var cols = c.columns.map(function (x) { return x.label; }).join(" · ");
+      return '<div class="refs-card link" onclick="Refs.openKind(\'' + c.kind + '\')">' +
+        "<h2>" + esc(c.title) + "</h2>" +
+        '<div class="refs-tbl">' + esc(c.table) + "</div>" +
+        '<div class="refs-hint">' + esc(c.hint) + "</div>" +
+        '<div class="refs-meta">' + c.total + " " + T("значений") +
+          (c.inactive ? " · " + c.inactive + " " + T("выключено") : "") +
+          '<span class="refs-cols">' + esc(cols) + "</span></div>" +
+      "</div>";
+    }).join("");
+  }
+
+  // ------------------------------------------------------------------ экран 2: одна таблица
+
+  /** Поле формы по описанию колонки: тип решает сервер, не разметка. */
+  function field(col, value, idPrefix) {
+    var id = idPrefix + col.name;
+    if (col.type === "select") {
+      return '<select id="' + id + '" class="refs-inp">' +
+        col.options.map(function (o) {
+          return '<option value="' + esc(o) + '"' + (String(value) === o ? " selected" : "") + ">" +
+                 esc(o) + "</option>";
+        }).join("") + "</select>";
+    }
+    return '<input id="' + id + '" class="refs-inp"' +
+      (col.type === "int" ? ' type="number"' : "") +
+      ' placeholder="' + esc(col.label) + '" value="' + esc(value == null ? "" : value) + '">';
+  }
+
+  function grid(n) { return "grid-template-columns:repeat(" + n + ",minmax(0,1fr)) auto;"; }
+
+  function renderTable() {
+    var h = host();
+    if (!h || !current) return;
+    h.className = "refs-one";
+    var cols = current.columns;
+
+    var head = '<div class="refs-head">' +
+      '<button type="button" class="refs-btn" onclick="Refs.back()">← ' + T("к списку") + "</button>" +
+      "<h2>" + esc(current.title) + "</h2>" +
+      '<span class="refs-tbl">' + esc(current.table) + "</span></div>" +
+      '<div class="refs-hint">' + esc(current.hint) + "</div>";
+
+    /* Форма добавления повторяет колонки строки один в один и стоит НАД списком:
+       кнопка «+» под длинным списком уезжает за экран, и её ищут прокруткой. */
+    var add = '<div class="refs-add" style="' + grid(cols.length) + '">' +
+      cols.map(function (c) { return field(c, "", "refs-new-"); }).join("") +
+      '<button type="button" class="refs-btn primary" onclick="Refs.add()">' + T("Добавить") +
+      "</button></div>" +
+      '<div class="refs-msg" id="refs-msg"></div>';
+
+    var header = '<div class="refs-row header" style="' + grid(cols.length) + '">' +
+      cols.map(function (c) { return "<span>" + esc(c.label) + "</span>"; }).join("") +
+      "<span></span></div>";
+
+    var list = rows.length
+      ? rows.map(function (r) { return row(r, cols); }).join("")
+      : '<div class="refs-empty">' + T("Справочник пуст") + "</div>";
+
+    h.innerHTML = head + add + header + '<div class="refs-list">' + list + "</div>";
+  }
+
+  function row(r, cols) {
+    var used = Number(r.used || 0);
+    var edit = editing === r.id;
+    var cells = cols.map(function (c) {
+      return edit ? field(c, r[c.name], "refs-ed-")
+                  : '<span class="refs-val">' + esc(r[c.name]) + "</span>";
+    }).join("");
+    var acts = edit
+      ? '<button type="button" class="refs-btn primary" onclick="Refs.save(' + r.id + ')">' +
+          T("Сохранить") + '</button><button type="button" class="refs-btn" onclick="Refs.edit(null)">' +
+          T("Отмена") + "</button>"
+      : '<button type="button" class="refs-btn" onclick="Refs.edit(' + r.id + ')">' + T("Править") +
+        '</button><button type="button" class="refs-btn" onclick="Refs.toggle(' + r.id + "," +
+          (r.isActive ? "false" : "true") + ')">' + T(r.isActive ? "Выключить" : "Включить") +
+        "</button>" +
         (used
           /* У занятого значения кнопки удаления нет: отказ по нажатию человек читает
              как поломку, а отсутствие кнопки — как правило. */
           ? '<span class="refs-lock" title="' + T("Пока значение стоит в шаблонах, удалить его нельзя") +
-            '">' + T("занято") + "</span>"
-          : '<button type="button" class="refs-btn del" onclick="Refs.remove(\'' + kind + '\',' + r.id +
-            ",'" + esc(r.value).replace(/'/g, "&#39;") + "')\">" + T("Удалить") + "</button>") +
-        "</div>";
-    }).join("");
+            '">' + used + " " + T("шабл.") + "</span>"
+          : '<button type="button" class="refs-btn del" onclick="Refs.remove(' + r.id + ')">' +
+            T("Удалить") + "</button>");
+    return '<div class="refs-row' + (r.isActive ? "" : " off") + '" style="' + grid(cols.length) + '">' +
+      cells + '<span class="refs-acts">' + acts + "</span></div>";
   }
 
-  function load(kind) {
-    var box = document.getElementById("refs-" + kind);
-    if (box) box.innerHTML = '<div class="refs-empty">' + T("Загружаю…") + "</div>";
-    return api("GET", "../api/dictionaries/refs/" + kind).then(function (data) {
-      rows[kind] = data || [];
-      render(kind);
-      note(document.getElementById("refs-msg-" + kind),
-           (rows[kind].length) + " " + T("значений, из них выключено") + " " +
-           rows[kind].filter(function (r) { return !r.isActive; }).length);
+  // ------------------------------------------------------------------ данные
+
+  function loadRows() {
+    return api("GET", "../api/dictionaries/refs/" + current.kind).then(function (data) {
+      rows = data || [];
+      renderTable();
     }).catch(function (e) {
-      if (box) box.innerHTML = "";
-      note(document.getElementById("refs-msg-" + kind), T("Не удалось прочитать: ") + e.message, true);
+      renderTable();
+      note(T("Не удалось прочитать: ") + e.message, true);
     });
+  }
+
+  /** Значения из формы: пустые не отправляем — сервер сам скажет, чего не хватает. */
+  function collect(prefix) {
+    var body = {};
+    current.columns.forEach(function (c) {
+      var el = document.getElementById(prefix + c.name);
+      if (!el) return;
+      var v = String(el.value || "").trim();
+      if (v !== "") body[c.name] = v;
+    });
+    return body;
+  }
+
+  function run(promise) {
+    if (busy) return;
+    busy = true;
+    promise
+      .then(function () { editing = null; return loadRows(); })
+      .catch(function (e) { note(e.message, true); })
+      .then(function () { busy = false; });
   }
 
   return {
     open: function () {
-      KINDS.forEach(function (k) { load(k.kind); });
+      var h = host();
+      if (h) h.innerHTML = '<div class="refs-empty">' + T("Загружаю…") + "</div>";
+      current = null;
+      editing = null;
+      return api("GET", "../api/dictionaries/refs").then(function (data) {
+        catalog = data || [];
+        renderCatalog();
+      }).catch(function (e) {
+        if (h) h.innerHTML = '<div class="refs-empty">' + T("Не удалось прочитать: ") +
+                             esc(e.message) + "</div>";
+      });
     },
 
-    add: function (kind) {
-      if (busy) return;
-      var inp = document.getElementById("refs-new-" + kind);
-      var value = (inp.value || "").trim();
-      if (!value) { note(document.getElementById("refs-msg-" + kind), T("Впишите значение"), true); return; }
-      busy = true;
-      api("POST", "../api/dictionaries/refs/" + kind, { value: value })
-        .then(function () {
-          inp.value = "";
-          return load(kind);
-        })
-        .catch(function (e) { note(document.getElementById("refs-msg-" + kind), e.message, true); })
-        .then(function () { busy = false; });
+    openKind: function (kind) {
+      for (var i = 0; i < catalog.length; i++) {
+        if (catalog[i].kind === kind) { current = catalog[i]; break; }
+      }
+      if (!current) return;
+      editing = null;
+      rows = [];
+      renderTable();
+      loadRows();
     },
 
-    toggle: function (kind, id, active) {
-      if (busy) return;
-      busy = true;
-      api("PATCH", "../api/dictionaries/refs/" + kind + "/" + id, { isActive: active })
-        .then(function () { return load(kind); })
-        .catch(function (e) { note(document.getElementById("refs-msg-" + kind), e.message, true); })
-        .then(function () { busy = false; });
+    /* Возврат перечитывает список: счётчики значений на карточках должны совпадать
+       с тем, что человек только что наменял, иначе им перестают верить. */
+    back: function () { this.open(); },
+
+    add: function () { run(api("POST", "../api/dictionaries/refs/" + current.kind, collect("refs-new-"))); },
+
+    edit: function (id) { editing = id; renderTable(); },
+
+    save: function (id) {
+      run(api("PATCH", "../api/dictionaries/refs/" + current.kind + "/" + id, collect("refs-ed-")));
     },
 
-    remove: function (kind, id, value) {
-      if (busy) return;
-      if (!confirm(T("Удалить значение") + " «" + value + "»?\n" +
-                   T("Оно исчезнет из выпадающих списков навсегда."))) return;
-      busy = true;
-      api("DELETE", "../api/dictionaries/refs/" + kind + "/" + id)
-        .then(function () { return load(kind); })
-        .catch(function (e) { note(document.getElementById("refs-msg-" + kind), e.message, true); })
-        .then(function () { busy = false; });
+    toggle: function (id, active) {
+      run(api("PATCH", "../api/dictionaries/refs/" + current.kind + "/" + id, { isActive: active }));
     },
 
-    /** Разметка панели строится здесь же — двум справочникам нужен одинаковый блок. */
-    markup: function () {
-      return KINDS.map(function (k) {
-        return '<div class="refs-card">' +
-          "<h2>" + T(k.title) + "</h2>" +
-          '<div class="refs-hint">' + T(k.hint) + "</div>" +
-          '<div class="refs-add">' +
-            '<input id="refs-new-' + k.kind + '" placeholder="' + T("новое значение") +
-              '" onkeydown="if(event.key===\'Enter\')Refs.add(\'' + k.kind + '\')">' +
-            '<button type="button" class="refs-btn primary" onclick="Refs.add(\'' + k.kind + '\')">' +
-              T("Добавить") + "</button>" +
-          "</div>" +
-          '<div class="refs-msg" id="refs-msg-' + k.kind + '"></div>' +
-          '<div class="refs-list" id="refs-' + k.kind + '"></div>' +
-        "</div>";
-      }).join("");
-    }
+    remove: function (id) {
+      var what = "";
+      rows.forEach(function (r) {
+        if (r.id === id) what = current.columns.map(function (c) { return r[c.name]; }).join(" · ");
+      });
+      if (!confirm(T("Удалить строку") + "\n" + what + "\n" +
+                   T("Она исчезнет из выпадающих списков навсегда."))) return;
+      run(api("DELETE", "../api/dictionaries/refs/" + current.kind + "/" + id));
+    },
+
+    /* Разметку экран строит сам — прежний markup() оставлен пустым ради вызова из
+       settings/index.html, где он подставлялся один раз при первом открытии. */
+    markup: function () { return '<div class="refs-empty"></div>'; }
   };
 })();

@@ -244,8 +244,7 @@
   var evfLists = null;
 
   var METHOD_NOTE = {
-    batch: "Массовая отправка: одним запуском уходит вся выборка. definition_key и" +
-           " business_key_prefix — батчевые, они не совпадают с единичными.",
+    batch: "Массовая отправка: одним запуском уходит вся выборка.",
     single: "Единичная отправка: на каждого человека свой вызов. Флаг is_batch не" +
             " спрашивается — у этого метода он всегда выключен."
   };
@@ -312,18 +311,10 @@
     wzGo(1);
 
     dictionaries().then(function (d) {
-      fillSelect(el("evfChannel"), d.notifyChannels);
       /* Узкие списки — это форма единичного метода: четыре пары ключ/префикс, как в
          старой админке. Откат на общие оставлен на случай пустого ответа старого
          сервера: форма без выпадашек хуже формы с длинными. */
-      /* Откат на общие списки оставлен на случай старого сервера: форма с длинными
-         выпадашками работает, форма без выпадашек — нет. */
-      evfLists = {
-        batch: { keys: d.definitionKeysBatch || d.definitionKeys,
-                 prefs: d.businessKeyPrefixesBatch || d.businessKeyPrefixes },
-        single: { keys: d.definitionKeysSingle || d.definitionKeys,
-                  prefs: d.businessKeyPrefixesSingle || d.businessKeyPrefixes }
-      };
+      evfLists = methodLists(d);
       applyMethod();
       fillSelect(el("evfSystem"), d.systems);
       /* Базы — из справочника flow.d_database: на колонке database висит внешний ключ,
@@ -333,6 +324,38 @@
         el("evfDatabase").value = "crmdb";
       }
     }).catch(function (e) { fail("evfMsg", e); });
+  }
+
+  /* Раскладка строк справочника reference.d_channel_process по методам.
+
+     Канал берём из тех же строк только для массового метода: массовая отправка есть
+     у email, push и sms, а vk, кц и робот массовыми не бывают — предлагать их значило бы
+     показывать заведомо нерабочее. У единичного метода канал остаётся полным списком:
+     пара ключ/префикс заведена не для всех каналов, но событие в них заводят.
+
+     Пустой справочник — не повод остаться без формы: откатываемся на общие списки
+     сервера, только без парности (связать их между собой нечем). */
+  function methodLists(d) {
+    var rows = d.channelProcesses || [];
+    var out = {};
+    ["batch", "single"].forEach(function (m) {
+      var mine = rows.filter(function (r) { return r.method === m; });
+      out[m] = mine.length
+        ? { keys: mine.map(function (r) { return r.definitionKey; }),
+            prefs: mine.map(function (r) { return r.businessKeyPrefix; }),
+            channels: m === "batch" ? uniq(mine.map(function (r) { return r.notifyChannel; }))
+                                    : d.notifyChannels }
+        : { keys: d.definitionKeys, prefs: d.businessKeyPrefixes, channels: d.notifyChannels };
+    });
+    return out;
+  }
+
+  function uniq(list) {
+    var seen = {}, out = [];
+    (list || []).forEach(function (v) {
+      if (v != null && !seen[v]) { seen[v] = 1; out.push(v); }
+    });
+    return out;
   }
 
   /* Переключение метода. Сбрасываются ровно два поля — ключ и префикс: их значения у
@@ -350,6 +373,11 @@
     if (el("evfBatch")) el("evfBatch").checked = evfMethod === "batch";
     if (!evfLists) return;
     var L = evfLists[evfMethod];
+    /* Канал перезаполняем вместе с парами: у массового метода их всего три, и
+       оставленный от единичного VK висел бы выбранным в списке, где его больше нет. */
+    var channel = str("evfChannel");
+    fillSelect(el("evfChannel"), L.channels);
+    if (channel && (L.channels || []).indexOf(channel) >= 0) el("evfChannel").value = channel;
     fillSelect(el("evfDefKey"), L.keys);
     fillSelect(el("evfPrefix"), L.prefs);
     bindKeyPrefixPair(L.keys, L.prefs);
