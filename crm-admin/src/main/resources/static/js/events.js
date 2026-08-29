@@ -310,12 +310,6 @@
     el("evfPlanClose").onclick = closePlan;
     el("evfPlanOk").onclick = closePlan;
     el("evfPlanGo").onclick = function () { sendOffline(); };
-    if (!can("add", "ev-offline")) {
-      /* Смотреть план можно всем, кто видит форму: он ничего не меняет. Заводить —
-         только с правом; гасим кнопку в окне, а не ту, что окно открывает. */
-      el("evfPlanGo").disabled = true;
-      el("evfPlanGo").title = "Нет права на заведение событий в этом разделе";
-    }
     el("evfPlanModal").onclick = function (e) {
       if (e.target === el("evfPlanModal")) closePlan();
     };
@@ -1105,6 +1099,14 @@
 
   function openPlan(body) {
     planBody = body;
+    /* Право спрашиваем ЗДЕСЬ, а не при инициализации раздела: CRM.me приезжает
+       асинхронно (/api/me), и раздел, открытый раньше ответа, видел пустой профиль.
+       can() честно отвечал «нет», кнопка гасла навсегда — повторно init не выполняется.
+       К моменту открытия окна профиль давно на месте. */
+    var go = el("evfPlanGo");
+    var may = can("add", "ev-offline");
+    go.disabled = !may;
+    go.title = may ? "" : "Нет права на заведение событий в этом разделе";
     var groups = planGroups(body);
     var tables = 0, rows = 0;
     groups.forEach(function (g) {
