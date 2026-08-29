@@ -630,8 +630,10 @@
                 <option value="everyNHours">каждые N часов</option>
                 <option value="everyNMinutes">каждые N минут</option>
               </select></div>
-            <div class="ev-f" id="evfEveryBox"><label for="evfEvery">N — через сколько повторять</label>
-              <input type="number" id="evfEvery" value="2" min="1" max="59" step="1"></div>
+            <!-- Подпись и верхняя граница зависят от выбранной частоты: 31 день бывает,
+                 31 час — нет. Обе проставляет renderCron. -->
+            <div class="ev-f" id="evfEveryBox"><label for="evfEvery" id="evfEveryLab">Повторять каждые</label>
+              <input type="number" id="evfEvery" value="2" min="1" max="31" step="1"></div>
             <div class="ev-f" id="evfDomBox"><label for="evfDom">Число месяца</label>
               <input type="number" id="evfDom" value="1" min="1" max="31" step="1"></div>
           </div>
@@ -2679,7 +2681,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
-<script src="js/events.js?v=5"></script>
+<script src="js/events.js?v=6"></script>
 <script src="js/event-chain.js?v=2"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->

@@ -468,12 +468,30 @@
     return many;
   }
 
+  /* Единица измерения и потолок для поля «повторять каждые». Одна подпись на три
+     случая («через сколько повторять») не говорила, в чём считать, а общая граница в
+     59 пропускала «каждые 31 час» — такого расписания не бывает. */
+  var EVERY_UNITS = {
+    everyNDays:    { word: "дней",  max: 31 },
+    everyNHours:   { word: "часов", max: 23 },
+    everyNMinutes: { word: "минут", max: 59 }
+  };
+
   /* Лишние поля прячем, а не выключаем: «N» при «каждый день» ничего не значит, и
      видимое неактивное поле человек всё равно пробует заполнить. */
   function renderCron() {
     var freq = str("evfFreq");
-    var needN = freq === "everyNDays" || freq === "everyNHours" || freq === "everyNMinutes";
+    var unit = EVERY_UNITS[freq];
+    var needN = !!unit;
     if (el("evfEveryBox")) el("evfEveryBox").hidden = !needN;
+    if (needN && el("evfEvery")) {
+      el("evfEveryLab").textContent = "Повторять каждые … " + unit.word;
+      el("evfEvery").max = unit.max;
+      /* Значение, набранное для другой единицы, подрезаем: иначе после «каждые 31 день»
+         переключение на часы оставило бы 31 в поле с потолком 23, и выражение ушло бы
+         заведомо неисполнимое. */
+      if ((parseInt(el("evfEvery").value, 10) || 1) > unit.max) el("evfEvery").value = unit.max;
+    }
     if (el("evfDomBox")) el("evfDomBox").hidden = freq !== "monthly";
     if (el("evfDowBox")) el("evfDowBox").hidden = freq !== "dow";
     if (el("evfCronManual") && el("evfCronManual").checked) { renderCronWords(); return; }
