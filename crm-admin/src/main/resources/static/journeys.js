@@ -1159,7 +1159,8 @@
           var op = document.createElement("option");
           op.value = String(ev.id);
           op.textContent = (ev.eventName || ("#" + ev.id)) + (ev.system ? " · " + ev.system : "") +
-            (ev.steps ? " · шагов: " + ev.steps : " · цепочки нет");
+            (ev.steps == null ? " · цепочка неизвестна"
+                              : ev.steps ? " · шагов: " + ev.steps : " · цепочки нет");
           esel.appendChild(op);
         });
         esel.value = v;
@@ -2189,9 +2190,12 @@
       return;
     }
     box.innerHTML = list.slice(0, 200).map(function (e) {
-      var tail = e.steps
-        ? "цепочка уже заведена · шагов: " + e.steps
-        : "цепочки нет";
+      /* steps == null — не «ноль», а «не смогли посмотреть»: у подключения нет прав на
+         commapi.events_chain. Писать «цепочки нет» в этом случае значит подтолкнуть
+         человека заводить вторую поверх существующей. */
+      var tail = e.steps == null
+        ? "есть ли цепочка — неизвестно"
+        : (e.steps ? "цепочка уже заведена · шагов: " + e.steps : "цепочки нет");
       return '<button type="button" class="jr-card' + (newPick && newPick.id === e.id ? " sel" : "") +
         '" onclick="jrNewSelect(' + e.id + ')">' +
         '<div class="jr-card-t">' + esc(e.eventName || ("#" + e.id)) + "</div>" +
@@ -2329,7 +2333,16 @@
     loadTrackerEvents().then(function (list) {
       var pick = document.getElementById("jrChainPick");
       if (!pick) return;
+      /* Счётчик шагов не прочитан (нет прав на commapi.events_chain) — значит про
+         цепочки мы не знаем ничего, и «заведённых цепочек нет» было бы неправдой. */
+      var unknown = (list || []).some(function (e) { return e.steps == null; });
       var withChain = (list || []).filter(function (e) { return e.steps > 0; });
+      if (unknown) {
+        pick.innerHTML = '<option value="">— список цепочек недоступен: нет прав на чтение'
+          + ' commapi.events_chain —</option>';
+        pick.disabled = true;
+        return;
+      }
       if (!withChain.length) {
         pick.innerHTML = '<option value="">— заведённых цепочек нет —</option>';
         pick.disabled = true;

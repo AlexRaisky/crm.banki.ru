@@ -72,20 +72,51 @@ public class EventChainService {
                     "База событий (crmdb) не выбрана: «Настройки» → «Подключения к БД»,"
                     + " галка «база событий».");
         }
-        boolean withChains = exists();
+        /* Счётчик шагов — приятная мелочь, а список событий — суть экрана, и вторая не
+           должна падать из-за первой. Ровно это и случилось на проде: to_regclass видит
+           commapi.events_chain (он проверяет имя, а не права), подзапросы в неё
+           подставлялись, и весь запрос возвращал «permission denied for table
+           events_chain». Событий при этом читать никто не мешал.
+
+           Поэтому пробуем со счётчиком, а не вышло — берём события без него. Разницу не
+           заминаем: steps остаётся null, и панель пишет «неизвестно» вместо «цепочки
+           нет». Соврать про отсутствие цепочки здесь дороже, чем признаться в незнании —
+           по этой подписи человек решает, заводить её или нет. */
+        try (Connection c = events.connection()) {
+            if (exists()) {
+                try {
+                    return read(c, listSql(true), true);
+                } catch (Exception e) {
+                    log.warn("commapi.events_chain читать не вышло ({}) — отдаём события"
+                            + " без счётчика шагов", rootMsg(e));
+                }
+            }
+            return read(c, listSql(false), false);
+        } catch (Exception e) {
+            String msg = rootMsg(e);
+            log.warn("не удалось прочитать события из crmdb: {}", msg);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "База событий (crmdb) подключена, но список событий прочитать не вышло: " + msg);
+        }
+    }
+
+    private static String listSql(boolean withChains) {
         String steps = withChains
                 ? "(SELECT count(*) FROM " + TABLE + " ch WHERE ch.t_event_comm_id = e.id)"
                 : "0";
         String active = withChains
                 ? "(SELECT count(*) FROM " + TABLE + " ch WHERE ch.t_event_comm_id = e.id AND ch.is_active)"
                 : "0";
-        String sql = "SELECT e.id, e.event_name, e.\"system\", e.is_active,"
+        return "SELECT e.id, e.event_name, e.\"system\", e.is_active,"
                 + " " + steps + " AS steps, " + active + " AS steps_active"
                 + " FROM " + EVENTS + " e"
                 + " ORDER BY e.event_name, e.id";
+    }
+
+    private static List<Map<String, Object>> read(Connection c, String sql, boolean withChains)
+            throws java.sql.SQLException {
         List<Map<String, Object>> out = new ArrayList<>();
-        try (Connection c = events.connection();
-             PreparedStatement ps = c.prepareStatement(sql);
+        try (PreparedStatement ps = c.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 Map<String, Object> m = new LinkedHashMap<>();
@@ -93,17 +124,19 @@ public class EventChainService {
                 m.put("eventName", rs.getString("event_name"));
                 m.put("system", rs.getString("system"));
                 m.put("active", rs.getBoolean("is_active"));
-                m.put("steps", rs.getInt("steps"));
-                m.put("stepsActive", rs.getInt("steps_active"));
+                /* Явное Integer.valueOf, а не тернарник с int: правило вывода типа в
+                   «cond ? int : null» помнят не все, а читать это будут именно как
+                   «здесь может лежать null». */
+                m.put("steps", withChains ? Integer.valueOf(rs.getInt("steps")) : null);
+                m.put("stepsActive", withChains ? Integer.valueOf(rs.getInt("steps_active")) : null);
                 out.add(m);
             }
-        } catch (Exception e) {
-            String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-            log.warn("не удалось прочитать события из crmdb: {}", msg);
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "База событий (crmdb) подключена, но список событий прочитать не вышло: " + msg);
         }
         return out;
+    }
+
+    private static String rootMsg(Exception e) {
+        return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage().trim();
     }
 
     /**
