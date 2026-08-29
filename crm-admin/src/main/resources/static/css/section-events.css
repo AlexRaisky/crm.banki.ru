@@ -153,4 +153,32 @@
   .evc-band.none .evc-v{color:var(--dim);font-weight:500}
 
   .evc-empty{color:var(--faint);font-size:13px;padding:14px 0}
+
+  /* ---------- мастер заведения события по расписанию ----------
+     Вкладки кликабельны все, а не только пройденные. Мастер, который не пускает
+     назад к уже заполненному экрану, заставляет держать в голове, что там было
+     введено, — а форму заводят с бумажки и по ней же сверяют. */
+  .wz-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px}
+  .wz-tab{align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;
+    color:var(--dim);cursor:pointer;display:flex;font:inherit;font-size:12.5px;gap:8px;padding:8px 13px}
+  .wz-tab b{background:var(--card2,rgba(127,127,127,.12));border-radius:6px;color:var(--faint);
+    font-family:var(--mono);font-size:11px;padding:1px 6px}
+  .wz-tab:hover{color:var(--ink);border-color:rgba(80,195,255,.4)}
+  .wz-tab.on{color:var(--ink);border-color:transparent;
+    background:linear-gradient(var(--card),var(--card)) padding-box,var(--grad) border-box;
+    border:1px solid transparent}
+  .wz-tab.on b{background:var(--grad);color:#fff}
+
+  .wz-pane[hidden]{display:none}
+  .wz-note{color:var(--dim);font-size:12.5px;line-height:1.55;margin:0 0 14px;max-width:820px}
+
+  /* Тело запроса — моноширинным блоком с прокруткой: JSON события с десятком шаблонов
+     не помещается по высоте, а страницу вбок из-за длинного SQL уводить нельзя. */
+  .wz-json{background:var(--bg2,rgba(127,127,127,.06));border:1px solid var(--line);border-radius:10px;
+    color:var(--ink);font-family:var(--mono);font-size:12px;line-height:1.55;margin:0;max-height:460px;
+    overflow:auto;padding:12px 14px;white-space:pre}
+
+  /* Строка «день — шаблон» в форме заведения: колонок меньше, чем в правке карточки
+     (канал там спрашивают, здесь он взят с первого экрана). */
+  .ev-edit-tpl.form{grid-template-columns:90px 130px 1fr auto}
 }

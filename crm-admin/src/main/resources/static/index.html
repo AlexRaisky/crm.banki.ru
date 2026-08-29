@@ -40,7 +40,7 @@
 <link rel="stylesheet" href="css/section-abtests.css">
 <link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-entities.css">
-<link rel="stylesheet" href="css/section-events.css?v=2">
+<link rel="stylesheet" href="css/section-events.css?v=3">
 <link rel="stylesheet" href="css/section-admin.css">
 </head>
 <body>
@@ -569,72 +569,158 @@
       </div>
     </section>
 
-    <!-- ===== События → Событие по расписанию ===== -->
+    <!-- ===== События → Событие по расписанию =====
+         Мастер из пяти экранов. Одностраничная версия повторяла Appsmith: девять полей,
+         кронтаб строкой и блоки SQL — всё сразу, и человек, заводящий событие впервые,
+         не понимал, что из этого во что превращается. Экраны идут в том порядке, в
+         каком строится сама выборка. Последний — отладочный: показывает тело запроса,
+         никуда его не отправляя. -->
     <section class="view" id="sec-event-offline">
       <div class="eyebrow">CRM · Events · Schedule</div>
       <h1>Событие <span class="grad">по расписанию</span></h1>
-      <p class="sub">Планировщик выполняет SQL-шаги по кронтабу и порождает коммуникацию. Заводится в нашей модели (<code>flow.d_event</code>, расписание и шаги) и в прод-таблицах (<code>scheduler.t_get_event</code>, <code>t_launch_settings</code>, <code>t_execution_steps</code>, маппинги).</p>
+      <p class="sub">Планировщик выполняет SQL-шаги по расписанию и порождает коммуникацию. Заводится в нашей модели (<code>flow.d_event</code>, расписание и шаги) и в прод-таблицах (<code>scheduler.t_get_event</code>, <code>t_launch_settings</code>, <code>t_execution_steps</code>, маппинги).</p>
 
-      <div class="ev-step">
-        <div class="t">Шаг 1</div>
-        <div class="ev-fields">
-          <div class="ev-f"><label for="evfName">Введите event_name</label><input type="text" id="evfName" autocomplete="off">
-            <span class="hint">Уходит и в event_name, и в selection — это одно и то же значение. selection связывает три прод-таблицы между собой: внешних ключей там нет, только совпадение строки.</span></div>
-          <div class="ev-f"><label for="evfSource">Введите source</label><input type="text" id="evfSource" autocomplete="off"></div>
-        </div>
+      <div class="wz-tabs" id="evfTabs">
+        <button type="button" class="wz-tab on" data-wz="1"><b>1</b> Настройки</button>
+        <button type="button" class="wz-tab" data-wz="2"><b>2</b> Шаги отбора</button>
+        <button type="button" class="wz-tab" data-wz="3"><b>3</b> Дни и шаблоны</button>
+        <button type="button" class="wz-tab" data-wz="4"><b>4</b> Итоговый скрипт</button>
+        <button type="button" class="wz-tab" data-wz="5"><b>5</b> Отправка</button>
       </div>
 
-      <div class="ev-step">
-        <div class="t">Шаг 2</div>
-        <div class="ev-fields">
-          <div class="ev-f"><label for="evfChannel">Выберите notify_channel</label><select id="evfChannel"></select></div>
-          <div class="ev-f"><label for="evfDefKey">Выберите definition_key</label><select id="evfDefKey"></select></div>
-          <div class="ev-f"><label for="evfPrefix">Выберите business_key_prefix</label><select id="evfPrefix"></select></div>
-          <!-- Шаблонов у события бывает несколько: на каждый день ретеншена свой. Канал
-               здесь не спрашиваем — он выбран рядом в notify_channel, и второе поле дало бы
-               возможность указать другой. -->
-          <div class="ev-f wide"><label>Шаблоны события</label>
-            <div id="evfTemplates"></div>
-            <div class="ev-edit-row"><button type="button" class="ev-mini" onclick="evfTplAdd()">+ шаблон</button>
-              <span class="ev-edit-msg">код — из прод-справочника; день/шаг можно не заполнять</span></div>
+      <!-- ---------- 1. Настройки ---------- -->
+      <div class="wz-pane" id="evfPane1">
+        <div class="ev-step">
+          <div class="t">Событие</div>
+          <div class="ev-fields">
+            <div class="ev-f"><label for="evfName">Введите event_name</label><input type="text" id="evfName" autocomplete="off">
+              <span class="hint">Уходит и в event_name, и в selection — это одно и то же значение. selection связывает три прод-таблицы между собой: внешних ключей там нет, только совпадение строки.</span></div>
+            <div class="ev-f"><label for="evfSource">Введите source</label><input type="text" id="evfSource" autocomplete="off"></div>
+            <div class="ev-f"><label for="evfChannel">Выберите notify_channel</label><select id="evfChannel"></select></div>
+            <div class="ev-f"><label for="evfDefKey">Выберите definition_key</label><select id="evfDefKey"></select></div>
+            <div class="ev-f"><label for="evfPrefix">Выберите business_key_prefix</label><select id="evfPrefix"></select></div>
+            <div class="ev-f"><label for="evfSystem">Выберите систему</label><select id="evfSystem"></select></div>
+            <div class="ev-f"><label for="evfDatabase">Выберите database</label><select id="evfDatabase"></select></div>
+            <div class="ev-f"><label for="evfDateStart">date_start</label><input type="datetime-local" id="evfDateStart" step="1" disabled>
+              <span class="hint">Не редактируется: в <code>t_launch_settings.time_start</code> проставляется момент сохранения.</span></div>
           </div>
-          <div class="ev-f"><label for="evfSystem">Выберите систему</label><select id="evfSystem"></select></div>
+          <div class="ev-checks">
+            <label class="ev-chk"><input type="checkbox" id="evfActive"> Is active</label>
+            <label class="ev-chk"><input type="checkbox" id="evfBatch" checked> Is batch
+              <span class="hint">массовый метод отправки против единичного</span></label>
+            <label class="ev-chk"><input type="checkbox" id="evfChain"> Is chain
+              <span class="hint">маппинг шаблона уйдёт в d_template_mapping_mass</span></label>
+          </div>
         </div>
-        <div class="ev-checks">
-          <label class="ev-chk"><input type="checkbox" id="evfActive"> Is active</label>
-          <label class="ev-chk"><input type="checkbox" id="evfBatch" checked> Is batch
-            <span class="hint">массовый метод отправки против единичного</span></label>
-          <label class="ev-chk"><input type="checkbox" id="evfChain"> Is chain
-            <span class="hint">маппинг шаблона уйдёт в d_template_mapping_mass</span></label>
+
+        <!-- Расписание словами. Выражение шестипольное (Quartz: секунды минуты часы
+             день-месяца месяц день-недели) — «45 32 10 * * ?» руками пишут с ошибкой
+             чаще, чем без. Собираем его тут же и показываем рядом. -->
+        <div class="ev-step">
+          <div class="t">Расписание</div>
+          <div class="ev-fields">
+            <div class="ev-f"><label for="evfTime">Время запуска</label><input type="time" id="evfTime" step="1" value="09:00:00">
+              <span class="hint">часы:минуты:секунды</span></div>
+            <div class="ev-f"><label for="evfFreq">Как часто</label><select id="evfFreq">
+                <option value="daily">каждый день</option>
+                <option value="everyNDays">каждые N дней</option>
+                <option value="weekdays">по будням (пн–пт)</option>
+                <option value="dow">по выбранным дням недели</option>
+                <option value="monthly">раз в месяц, определённого числа</option>
+                <option value="everyNHours">каждые N часов</option>
+                <option value="everyNMinutes">каждые N минут</option>
+              </select></div>
+            <div class="ev-f" id="evfEveryBox"><label for="evfEvery">N — через сколько повторять</label>
+              <input type="number" id="evfEvery" value="2" min="1" max="59" step="1"></div>
+            <div class="ev-f" id="evfDomBox"><label for="evfDom">Число месяца</label>
+              <input type="number" id="evfDom" value="1" min="1" max="31" step="1"></div>
+          </div>
+          <div class="ev-checks" id="evfDowBox">
+            <label class="ev-chk"><input type="checkbox" data-dow="MON"> пн</label>
+            <label class="ev-chk"><input type="checkbox" data-dow="TUE"> вт</label>
+            <label class="ev-chk"><input type="checkbox" data-dow="WED"> ср</label>
+            <label class="ev-chk"><input type="checkbox" data-dow="THU"> чт</label>
+            <label class="ev-chk"><input type="checkbox" data-dow="FRI"> пт</label>
+            <label class="ev-chk"><input type="checkbox" data-dow="SAT"> сб</label>
+            <label class="ev-chk"><input type="checkbox" data-dow="SUN"> вс</label>
+          </div>
+          <div class="ev-fields" style="margin-top:14px">
+            <div class="ev-f wide"><label for="evfCrontab">Выражение расписания</label>
+              <input type="text" id="evfCrontab" autocomplete="off" spellcheck="false" readonly>
+              <span class="hint" id="evfCronWords"></span>
+              <label class="ev-chk" style="margin-top:4px"><input type="checkbox" id="evfCronManual"> вписать выражение вручную
+                <span class="hint">если нужного расписания нет в списке</span></label>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="ev-step">
-        <div class="t">Шаг 3</div>
-        <div class="ev-fields">
-          <div class="ev-f"><label for="evfDateStart">Выберите date_start</label><input type="datetime-local" id="evfDateStart" step="1" disabled>
-            <span class="hint">Не редактируется: в t_launch_settings.time_start проставляется момент сохранения.</span></div>
+      <!-- ---------- 2. Шаги отбора ---------- -->
+      <div class="wz-pane" id="evfPane2" hidden>
+        <div class="ev-step">
+          <div class="t">Шаги отбора общей базы</div>
+          <p class="wz-note">Выполняются планировщиком по порядку и готовят общую базу — тех, кто вообще попадает в рассылку. Результат движку отдают не они, а итоговый скрипт с четвёртого экрана: он уйдёт последним шагом и вернёт готовую выборку.</p>
+          <div class="ev-fields">
+            <div class="ev-f"><label for="evfStepCount">Количество шагов</label><input type="number" id="evfStepCount" value="1" min="1" max="20" step="1"></div>
+          </div>
+          <div id="evfSteps"></div>
+        </div>
+        <div class="ev-step">
+          <div class="t">Итоговая таблица</div>
+          <div class="ev-fields">
+            <div class="ev-f wide"><label for="evfFinalTable">Куда шаги складывают отобранную базу</label>
+              <input type="text" id="evfFinalTable" placeholder="mrk_sandbox.my_funnel_base" autocomplete="off" spellcheck="false">
+              <span class="hint">Схема и имя целиком. Из неё читает итоговый скрипт — без неё его не собрать.</span></div>
+          </div>
         </div>
       </div>
 
-      <div class="ev-step">
-        <div class="t">Шаг 4</div>
-        <div class="ev-fields">
-          <div class="ev-f"><label for="evfDatabase">Выберите database</label><select id="evfDatabase"></select></div>
-          <div class="ev-f"><label for="evfCrontab">Введите крон выражение</label><input type="text" id="evfCrontab" placeholder="0 9 * * *" autocomplete="off"></div>
+      <!-- ---------- 3. Дни и шаблоны ---------- -->
+      <div class="wz-pane" id="evfPane3" hidden>
+        <div class="ev-step">
+          <div class="t">Дни и шаблоны</div>
+          <p class="wz-note">На каждый день воронки — свой шаблон. Из этих пар собирается <code>CASE</code> в итоговом скрипте, они же уезжают в маппинг шаблонов события. Канал не спрашиваем: он выбран на первом экране в <code>notify_channel</code>.</p>
+          <div class="ev-fields">
+            <div class="ev-f"><label for="evfDayCol">Колонка с днём в итоговой таблице</label>
+              <input type="text" id="evfDayCol" value="day_num" autocomplete="off" spellcheck="false">
+              <span class="hint">По ней раскладывается <code>CASE</code>. Если шаблон один и день не важен — оставьте день пустым.</span></div>
+          </div>
+          <div id="evfTemplates"></div>
+          <div class="ev-edit-row"><button type="button" class="ev-mini" onclick="evfTplAdd()">+ строка</button>
+            <span class="ev-edit-msg">день — значение в колонке; код — из прод-справочника шаблонов</span></div>
         </div>
       </div>
 
-      <div class="ev-step">
-        <div class="t">Шаг 5</div>
-        <div class="ev-fields">
-          <div class="ev-f"><label for="evfStepCount">Введите количество шагов</label><input type="number" id="evfStepCount" value="1" min="1" max="20" step="1"></div>
+      <!-- ---------- 4. Итоговый скрипт ---------- -->
+      <div class="wz-pane" id="evfPane4" hidden>
+        <div class="ev-step">
+          <div class="t">Итоговый скрипт</div>
+          <p class="wz-note">Собран из итоговой таблицы и пар «день — шаблон». Уйдёт последним шагом события, и именно его результат читает движок. Править можно: пересобрать заново — кнопкой под полем.</p>
+          <div class="ev-fields">
+            <div class="ev-f wide"><label for="evfScript">SQL</label><textarea id="evfScript" spellcheck="false" style="min-height:230px"></textarea></div>
+          </div>
+          <div class="ev-edit-row"><button type="button" class="ev-mini" id="evfScriptGen">собрать заново</button>
+            <span class="ev-edit-msg" id="evfScriptMsg"></span></div>
         </div>
-        <div id="evfSteps"></div>
+      </div>
+
+      <!-- ---------- 5. Отправка (отладка) ---------- -->
+      <div class="wz-pane" id="evfPane5" hidden>
+        <div class="ev-step">
+          <div class="t">Что уйдёт на сервер</div>
+          <p class="wz-note">Отладочный экран. По кнопке «Запустить коммуникацию» тело запроса собирается и показывается целиком — <b>на сервер ничего не уходит</b>. План записи посчитан здесь же, по форме: это ожидание, а не ответ базы.</p>
+          <div id="evfPlan"></div>
+          <div class="ev-fields">
+            <div class="ev-f wide"><label>POST /api/events/offline</label>
+              <pre class="wz-json" id="evfPayload">Нажмите «Запустить коммуникацию» — здесь появится тело запроса.</pre></div>
+          </div>
+        </div>
       </div>
 
       <div class="ev-foot">
-        <button class="ev-btn" id="evfSubmit" type="button">Запустить коммуникацию</button>
+        <button class="ev-btn ghost" id="evfBack" type="button">Назад</button>
+        <button class="ev-btn" id="evfNext" type="button">Далее</button>
+        <button class="ev-btn" id="evfSubmit" type="button" hidden>Запустить коммуникацию</button>
         <button class="ev-btn ghost" id="evfReset" type="button">Отмена</button>
         <span class="ev-msg" id="evfMsg"></span>
       </div>
@@ -2593,7 +2679,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
-<script src="js/events.js?v=4"></script>
+<script src="js/events.js?v=5"></script>
 <script src="js/event-chain.js?v=2"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->

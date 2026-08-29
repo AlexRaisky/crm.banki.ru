@@ -219,13 +219,67 @@
 
   // =================================================== СОБЫТИЕ ПО РАСПИСАНИЮ
 
+  /* Мастер из пяти экранов вместо одной длинной формы.
+     Одностраничная версия повторяла Appsmith: девять полей, кронтаб строкой и блоки SQL
+     сразу все — и человек, заводящий событие впервые, не понимал, что из этого во что
+     превращается. Экраны идут в том порядке, в каком строится сама выборка: настройки →
+     отбор общей базы → дни и шаблоны → итоговый скрипт → отправка.
+
+     Между экранами нельзя пройти вперёд с незаполненным обязательным полем, но НАЗАД и
+     по вкладкам — можно всегда: запирать человека на экране, пока он не угадает, чего от
+     него хотят, хуже, чем показать ошибку.
+
+     Пятый экран отладочный: собирает тело запроса и показывает его целиком, НЕ ОТПРАВЛЯЯ
+     (см. submitOffline — там одна строка с пометкой, как включить отправку обратно). */
+
+  var WZ_LAST = 5;
+  var wzStep = 1;
+
+  /* Дни недели: код для Quartz и слово для подписи. Порядок — с понедельника, как в
+     календаре, а не с воскресенья, как в самом Quartz. */
+  var DOWS = [
+    ["MON", "пн", "понедельникам"], ["TUE", "вт", "вторникам"], ["WED", "ср", "средам"],
+    ["THU", "чт", "четвергам"], ["FRI", "пт", "пятницам"], ["SAT", "сб", "субботам"],
+    ["SUN", "вс", "воскресеньям"]
+  ];
+
   function initOffline() {
     if (inited.offline) return;
     inited.offline = true;
 
     el("evfSubmit").onclick = submitOffline;
     el("evfReset").onclick = function () { resetOffline(); };
+    el("evfNext").onclick = function () { if (wzValidate(wzStep)) wzGo(wzStep + 1); };
+    el("evfBack").onclick = function () { wzGo(wzStep - 1); };
     el("evfStepCount").oninput = renderSteps;
+    el("evfScriptGen").onclick = function () {
+      el("evfScript").value = buildScript();
+      /* Пересобрали по просьбе человека — значит правки он отдал сам, и метку
+         «правлено руками» снимаем: иначе скрипт больше никогда не обновился бы. */
+      el("evfScript").removeAttribute("data-touched");
+      say("evfMsg", "Скрипт собран заново");
+    };
+    el("evfScript").oninput = function () { this.setAttribute("data-touched", "1"); };
+    document.querySelectorAll("#evfTabs .wz-tab").forEach(function (b) {
+      b.onclick = function () { wzGo(parseInt(b.getAttribute("data-wz"), 10)); };
+    });
+
+    /* Расписание пересобирается на любое изменение своих полей: выражение под ними —
+       не «результат нажатия кнопки», а отражение того, что сейчас выбрано. */
+    ["evfTime", "evfFreq", "evfEvery", "evfDom"].forEach(function (id) {
+      if (el(id)) el(id).oninput = el(id).onchange = renderCron;
+    });
+    document.querySelectorAll("#evfDowBox [data-dow]").forEach(function (c) {
+      c.onchange = renderCron;
+    });
+    el("evfCronManual").onchange = function () {
+      var manual = el("evfCronManual").checked;
+      el("evfCrontab").readOnly = !manual;
+      if (manual) { el("evfCrontab").focus(); } else { renderCron(); }
+      renderCronWords();
+    };
+    el("evfCrontab").oninput = renderCronWords;
+
     if (!can("add", "ev-offline")) {
       el("evfSubmit").disabled = true;
       el("evfSubmit").title = "Нет права на заведение событий в этом разделе";
@@ -233,6 +287,8 @@
     renderSteps();
     renderFormTemplates([]);
     stampNow("evfDateStart");
+    renderCron();
+    wzGo(1);
 
     dictionaries().then(function (d) {
       fillSelect(el("evfChannel"), d.notifyChannels);
@@ -248,52 +304,231 @@
     }).catch(function (e) { fail("evfMsg", e); });
   }
 
-  /* Блоки SQL-шагов по числу из «количество шагов». Уже введённый текст сохраняем:
-     человек мог набрать три запроса и опечататься в счётчике. */
+  // ------------------------------------------------------------ переключение экранов
+
+  function wzGo(n) {
+    n = Math.max(1, Math.min(WZ_LAST, n));
+    wzStep = n;
+    for (var i = 1; i <= WZ_LAST; i++) {
+      var pane = el("evfPane" + i);
+      if (pane) pane.hidden = i !== n;
+    }
+    document.querySelectorAll("#evfTabs .wz-tab").forEach(function (b) {
+      b.classList.toggle("on", parseInt(b.getAttribute("data-wz"), 10) === n);
+    });
+    el("evfBack").hidden = n === 1;
+    el("evfNext").hidden = n === WZ_LAST;
+    el("evfSubmit").hidden = n !== WZ_LAST;
+    /* Итоговый скрипт пересобираем при входе на четвёртый экран, но только пока его не
+       трогали руками: иначе поправленный запрос затирался бы каждым «Назад — Далее». */
+    if (n === 4 && !el("evfScript").getAttribute("data-touched")) {
+      el("evfScript").value = buildScript();
+    }
+    say("evfMsg", "");
+  }
+
+  /* Что обязано быть заполнено, чтобы идти дальше. Проверяем ровно то, без чего
+     следующий экран бессмыслен, а не всё подряд: имя события нужно серверу, но на
+     втором экране оно ни на что не влияет. */
+  function wzValidate(n) {
+    if (n === 1) {
+      if (!str("evfName")) return wzFail("Не заполнено имя события (event_name)");
+      if (!str("evfChannel")) return wzFail("Не выбран канал (notify_channel)");
+      if (!str("evfDatabase")) return wzFail("Не выбрана база выборки (database)");
+      if (!str("evfCrontab")) return wzFail("Пустое выражение расписания");
+      if (str("evfFreq") === "dow" && !selectedDows().length) {
+        return wzFail("Выбраны дни недели, но ни один день не отмечен");
+      }
+      return true;
+    }
+    if (n === 2) {
+      var steps = collectSteps();
+      if (!steps.length || steps.some(function (s) { return !s.sql; })) {
+        return wzFail("У каждого шага отбора должен быть SQL");
+      }
+      if (!str("evfFinalTable")) {
+        return wzFail("Не указана итоговая таблица — из неё читает итоговый скрипт");
+      }
+      return true;
+    }
+    if (n === 3) {
+      var tpl = collectFormTemplates();
+      if (!tpl.length) return wzFail("Не задано ни одного шаблона");
+      var days = {};
+      for (var i = 0; i < tpl.length; i++) {
+        var d = tpl[i].stepNo;
+        if (tpl.length > 1 && d == null) {
+          return wzFail("Шаблонов несколько — у каждого должен быть свой день");
+        }
+        if (d != null && days[d]) return wzFail("День " + d + " указан дважды");
+        if (d != null) days[d] = true;
+      }
+      return true;
+    }
+    if (n === 4) {
+      if (!String(el("evfScript").value || "").trim()) return wzFail("Итоговый скрипт пуст");
+      return true;
+    }
+    return true;
+  }
+
+  function wzFail(text) {
+    say("evfMsg", text, "err");
+    return false;
+  }
+
+  // ------------------------------------------------------------------- расписание
+
+  function pad2(v) {
+    var n = parseInt(v, 10);
+    if (!isFinite(n) || n < 0) n = 0;
+    return (n < 10 ? "0" : "") + n;
+  }
+
+  /* Время из <input type=time>. Секунды браузер отдаёт не всегда — при пустом поле
+     считаем нулём, иначе в выражение уехало бы NaN. */
+  function cronTime() {
+    var parts = String((el("evfTime") && el("evfTime").value) || "09:00:00").split(":");
+    /* Два написания одного и того же: в выражение уходит число без ведущего нуля
+       («0 0 9 * * ?» — как в прод-скриптах), в подпись — с нулём, как на часах. */
+    return {
+      h: n0(parts[0]), m: n0(parts[1]), s: n0(parts[2] || "0"),
+      hh: pad2(parts[0]), mm: pad2(parts[1]), ss: pad2(parts[2] || "0")
+    };
+  }
+
+  function n0(v) {
+    var n = parseInt(v, 10);
+    return String(isFinite(n) && n > 0 ? n : 0);
+  }
+
+  function selectedDows() {
+    var out = [];
+    document.querySelectorAll("#evfDowBox [data-dow]").forEach(function (c) {
+      if (c.checked) out.push(c.getAttribute("data-dow"));
+    });
+    return out;
+  }
+
+  function everyN() {
+    var n = parseInt(el("evfEvery") && el("evfEvery").value, 10);
+    return isFinite(n) && n > 0 ? n : 1;
+  }
+
+  /* Выражение шестипольное: секунды минуты часы день-месяца месяц день-недели.
+     В последних двух полях ровно одно должно быть «?» — Quartz не даёт задать оба
+     сразу, и именно на этом чаще всего спотыкаются, когда пишут выражение руками. */
+  function buildCron() {
+    var t = cronTime();
+    var freq = str("evfFreq");
+    var n = everyN();
+    var dows = selectedDows();
+    var dom = parseInt(el("evfDom") && el("evfDom").value, 10) || 1;
+    var hm = t.hh + ":" + t.mm + (t.ss === "00" ? "" : ":" + t.ss);
+
+    if (freq === "everyNDays") {
+      return { expr: [t.s, t.m, t.h, "1/" + n, "*", "?"].join(" "),
+               words: "каждые " + n + " " + plural(n, "день", "дня", "дней") + " в " + hm };
+    }
+    if (freq === "weekdays") {
+      return { expr: [t.s, t.m, t.h, "?", "*", "MON-FRI"].join(" "),
+               words: "по будням в " + hm };
+    }
+    if (freq === "dow") {
+      if (!dows.length) return { expr: "", words: "не отмечен ни один день недели" };
+      var names = dows.map(function (d) {
+        for (var i = 0; i < DOWS.length; i++) { if (DOWS[i][0] === d) return DOWS[i][2]; }
+        return d;
+      });
+      return { expr: [t.s, t.m, t.h, "?", "*", dows.join(",")].join(" "),
+               words: "по " + names.join(", ") + " в " + hm };
+    }
+    if (freq === "monthly") {
+      return { expr: [t.s, t.m, t.h, String(dom), "*", "?"].join(" "),
+               words: dom + "-го числа каждого месяца в " + hm };
+    }
+    if (freq === "everyNHours") {
+      return { expr: [t.s, t.m, t.h + "/" + n, "*", "*", "?"].join(" "),
+               words: "каждые " + n + " " + plural(n, "час", "часа", "часов") +
+                      ", начиная с " + t.hh + ":" + t.mm };
+    }
+    if (freq === "everyNMinutes") {
+      return { expr: [t.s, t.m + "/" + n, "*", "*", "*", "?"].join(" "),
+               words: "каждые " + n + " " + plural(n, "минуту", "минуты", "минут") +
+                      ", начиная с :" + t.mm };
+    }
+    return { expr: [t.s, t.m, t.h, "*", "*", "?"].join(" "), words: "каждый день в " + hm };
+  }
+
+  function plural(n, one, few, many) {
+    var a = Math.abs(n) % 100, b = a % 10;
+    if (a > 10 && a < 20) return many;
+    if (b > 1 && b < 5) return few;
+    if (b === 1) return one;
+    return many;
+  }
+
+  /* Лишние поля прячем, а не выключаем: «N» при «каждый день» ничего не значит, и
+     видимое неактивное поле человек всё равно пробует заполнить. */
+  function renderCron() {
+    var freq = str("evfFreq");
+    var needN = freq === "everyNDays" || freq === "everyNHours" || freq === "everyNMinutes";
+    if (el("evfEveryBox")) el("evfEveryBox").hidden = !needN;
+    if (el("evfDomBox")) el("evfDomBox").hidden = freq !== "monthly";
+    if (el("evfDowBox")) el("evfDowBox").hidden = freq !== "dow";
+    if (el("evfCronManual") && el("evfCronManual").checked) { renderCronWords(); return; }
+    el("evfCrontab").value = buildCron().expr;
+    renderCronWords();
+  }
+
+  function renderCronWords() {
+    var box = el("evfCronWords");
+    if (!box) return;
+    if (el("evfCronManual") && el("evfCronManual").checked) {
+      box.textContent = "Вручную: секунды минуты часы день-месяца месяц день-недели." +
+        " В двух последних полях ровно одно должно быть «?».";
+      return;
+    }
+    box.textContent = buildCron().words + " · поля: секунды минуты часы день-месяца месяц день-недели";
+  }
+
+  // ------------------------------------------------------------- шаги отбора базы
+
+  /* Блоки SQL-шагов по числу из счётчика. Уже введённый текст сохраняем: человек мог
+     набрать три запроса и опечататься в счётчике.
+
+     Галки «вернуть результат» здесь больше нет. Раньше её ставили руками, и результат
+     мог возвращать любой шаг или сразу все. Теперь роль разделена жёстко: шаги отбора
+     готовят общую базу и не возвращают ничего, а выборку отдаёт итоговый скрипт с
+     четвёртого экрана — он и уходит последним шагом с returnsResultSet. */
   function renderSteps() {
     var box = el("evfSteps");
     if (!box) return;
     var want = Math.max(1, Math.min(20, parseInt(el("evfStepCount").value, 10) || 1));
-    /* Сохраняем и текст, и галку «вернуть результат»: блоки перерисовываются на каждый
-       ввод в счётчике шагов, и без этого набранное пропадало бы от одной опечатки. */
-    var kept = [], keptRes = [];
+    var kept = [], keptOrd = [];
     box.querySelectorAll("[data-step-sql]").forEach(function (t) { kept.push(t.value); });
-    box.querySelectorAll("[data-step-res]").forEach(function (c) { keptRes.push(c.checked); });
-    /* Галка «вернуть результат» стоит ТОЛЬКО у последнего шага: промежуточные шаги
-       готовят выборку, а отдаёт её движку последний. Ставили её всем — и тогда
-       результат возвращал каждый шаг. Правку руками уважаем: если человек снял или
-       поставил галку сам, при перерисовке блоков она сохраняется. */
-    var touched = box.getAttribute("data-res-touched") === "1";
+    box.querySelectorAll("[data-step-ord]").forEach(function (t) { keptOrd.push(t.value); });
 
     var html = "";
     for (var i = 0; i < want; i++) {
       var n = i + 1;
-      var res = touched && i < keptRes.length ? keptRes[i] : (i === want - 1);
       html +=
         '<div class="ev-sql">' +
-          '<div class="h"><b>Шаг ' + n + "</b>" +
-            '<label class="ev-chk"><input type="checkbox" data-step-res="' + i + '"' +
-              (res ? " checked" : "") + "> вернуть результат</label>" +
+          '<div class="h"><b>Шаг ' + n + " — отбор</b>" +
             (want > 1 ? '<button type="button" class="ev-mini" data-step-del="' + i + '">убрать</button>' : "") +
           "</div>" +
           '<div class="ev-fields">' +
-            '<div class="ev-f wide"><label>Шаг ' + n + " — SQL</label>" +
+            '<div class="ev-f wide"><label>SQL</label>' +
               '<textarea data-step-sql="' + i + '" spellcheck="false">' + esc(kept[i] || "") + "</textarea></div>" +
-            '<div class="ev-f"><label>Шаг ' + n + ' — порядковый номер</label>' +
-              '<input type="number" data-step-ord="' + i + '" value="' + (n * 10) + '" min="1" step="1"></div>' +
+            '<div class="ev-f"><label>Порядковый номер</label>' +
+              '<input type="number" data-step-ord="' + i + '" value="' +
+                esc(keptOrd[i] || (n * 10)) + '" min="1" step="1"></div>' +
           "</div>" +
         "</div>";
     }
-    /* Кнопки «+ шаг» и «убрать» — те же, что в правке заведённого события. Счётчик
-       «количество шагов» остаётся синхронизированным, но трогать его больше не нужно:
-       чтобы добавить четвёртый шаг, человек нажимал в поле числа, а потом искал глазами,
-       где появился блок. */
     box.innerHTML = html +
       '<div class="ev-edit-row"><button type="button" class="ev-mini" onclick="evfStepAdd()">+ шаг</button>' +
-      '<span class="ev-edit-msg">шагов: ' + want + "</span></div>";
-    box.querySelectorAll("[data-step-res]").forEach(function (c) {
-      c.onchange = function () { box.setAttribute("data-res-touched", "1"); };
-    });
+      '<span class="ev-edit-msg">шагов отбора: ' + want + "</span></div>";
     box.querySelectorAll("[data-step-del]").forEach(function (b) {
       b.onclick = function () { evfStepDrop(parseInt(b.getAttribute("data-step-del"), 10)); };
     });
@@ -314,29 +549,41 @@
     var c = el("evfStepCount");
     var count = parseInt(c.value, 10) || 1;
     if (count <= 1) { return; }   // последний шаг не убираем: выборка без шагов бессмысленна
-    var sql = [], res = [], ord = [];
+    var sql = [], ord = [];
     box.querySelectorAll("[data-step-sql]").forEach(function (t) { sql.push(t.value); });
-    box.querySelectorAll("[data-step-res]").forEach(function (x) { res.push(x.checked); });
     box.querySelectorAll("[data-step-ord]").forEach(function (x) { ord.push(x.value); });
-    sql.splice(idx, 1); res.splice(idx, 1); ord.splice(idx, 1);
+    sql.splice(idx, 1); ord.splice(idx, 1);
     c.value = count - 1;
     renderSteps();
     box.querySelectorAll("[data-step-sql]").forEach(function (t, i) { t.value = sql[i] || ""; });
     box.querySelectorAll("[data-step-ord]").forEach(function (x, i) { if (ord[i]) x.value = ord[i]; });
-    if (box.getAttribute("data-res-touched") === "1") {
-      box.querySelectorAll("[data-step-res]").forEach(function (x, i) { x.checked = !!res[i]; });
-    }
   }
 
-  /* Шаблоны события в форме заведения — тем же списком, что и в правке заведённого.
-     Одно поле template_id описывало событие с одним шаблоном, а ретеншен-воронка это
-     всегда несколько: на каждый день свой. Канал не спрашиваем — он выбран выше в
-     notify_channel, и второе поле дало бы возможность указать другой. */
+  function collectSteps() {
+    var box = el("evfSteps");
+    var out = [];
+    if (!box) return out;
+    box.querySelectorAll("[data-step-sql]").forEach(function (t) {
+      var i = t.getAttribute("data-step-sql");
+      var ord = box.querySelector('[data-step-ord="' + i + '"]');
+      out.push({
+        sql: String(t.value || "").trim(),
+        orderNum: ord ? (parseInt(ord.value, 10) || null) : null,
+        returnsResultSet: false
+      });
+    });
+    return out;
+  }
+
+  // ------------------------------------------------------------- дни и шаблоны
+
+  /* Пара «день — шаблон». День идёт первым: список читают как расписание воронки
+     («первый день — такой шаблон, третий — такой»), а не как перечень кодов. */
   function formTplRow(x) {
     x = x || {};
-    return '<div class="ev-edit-tpl" data-ftpl>' +
+    return '<div class="ev-edit-tpl form" data-ftpl>' +
+      '<input data-ftpl-step placeholder="день" value="' + esc(x.stepNo == null ? "" : x.stepNo) + '">' +
       '<input data-ftpl-code placeholder="код шаблона" value="' + esc(x.code == null ? "" : x.code) + '">' +
-      '<input data-ftpl-step placeholder="день/шаг" value="' + esc(x.stepNo == null ? "" : x.stepNo) + '">' +
       '<span class="ev-edit-name"></span>' +
       '<button type="button" class="ev-mini" onclick="this.parentNode.remove()">✕</button>' +
       "</div>";
@@ -372,50 +619,66 @@
     return out;
   }
 
-  function collectSteps() {
-    var box = el("evfSteps");
-    var out = [];
-    if (!box) return out;
-    box.querySelectorAll("[data-step-sql]").forEach(function (t) {
-      var i = t.getAttribute("data-step-sql");
-      var ord = box.querySelector('[data-step-ord="' + i + '"]');
-      var res = box.querySelector('[data-step-res="' + i + '"]');
-      out.push({
-        sql: String(t.value || "").trim(),
-        orderNum: ord ? (parseInt(ord.value, 10) || null) : null,
-        returnsResultSet: res ? !!res.checked : true
-      });
-    });
-    return out;
-  }
+  // ------------------------------------------------------------- итоговый скрипт
 
-  function resetOffline() {
-    ["evfName", "evfSource", "evfCrontab"]
-      .forEach(function (id) { if (el(id)) el(id).value = ""; });
-    stampNow("evfDateStart");
-    renderFormTemplates([]);
-    ["evfChannel", "evfDefKey", "evfPrefix", "evfSystem"].forEach(function (id) {
-      if (el(id)) el(id).value = "";
-    });
-    if (el("evfActive")) el("evfActive").checked = false;
-    if (el("evfBatch")) el("evfBatch").checked = true;
-    if (el("evfChain")) el("evfChain").checked = false;
-    if (el("evfStepCount")) el("evfStepCount").value = "1";
-    if (el("evfSteps")) el("evfSteps").removeAttribute("data-res-touched");
-    renderSteps();
-    say("evfMsg", "");
-    renderResult("evfResult", null);
-  }
+  /* Тот самый запрос, результат которого читает движок: user_id, myb_id и template_id.
+     Первые две колонки — обязательные, по ним движок находит человека; третья говорит,
+     каким шаблоном ему писать. Раскладываем её из пар «день — шаблон»: в общей базе
+     день уже проставлен, и CASE переводит его в код.
 
-  function submitOffline() {
-    var steps = collectSteps();
-    if (steps.some(function (s) { return !s.sql; })) {
-      say("evfMsg", "У каждого шага должен быть SQL", "err");
-      return;
+     Имя колонки template_id берём в кавычки намеренно — так оно записано в прод-скриптах,
+     и выборка, скопированная отсюда в psql, ведёт себя ровно так же. */
+  function buildScript() {
+    var table = str("evfFinalTable") || "<итоговая таблица>";
+    var dayCol = str("evfDayCol") || "day_num";
+    var list = collectFormTemplates();
+    var withDay = list.filter(function (t) { return t.stepNo != null; });
+
+    if (!list.length) {
+      return "SELECT user_id,\n" +
+             "       myb_id,\n" +
+             "       NULL::int AS \"template_id\"   -- шаблоны не заданы на третьем экране\n" +
+             "  FROM " + table;
     }
-    say("evfMsg", "Сохраняем…");
-    renderResult("evfResult", null);
-    var body = {
+    if (!withDay.length) {
+      return "SELECT user_id,\n" +
+             "       myb_id,\n" +
+             "       " + list[0].code + " AS \"template_id\"\n" +
+             "  FROM " + table;
+    }
+    var pad = 0;
+    withDay.forEach(function (t) { pad = Math.max(pad, String(t.stepNo).length); });
+    var whens = withDay.map(function (t) {
+      var d = String(t.stepNo);
+      while (d.length < pad) d = " " + d;
+      return "            WHEN " + d + " THEN " + t.code;
+    }).join("\n");
+    var days = withDay.map(function (t) { return t.stepNo; }).join(", ");
+    return "SELECT user_id,\n" +
+           "       myb_id,\n" +
+           "       CASE " + dayCol + "\n" +
+           whens + "\n" +
+           "       END AS \"template_id\"\n" +
+           "  FROM " + table + "\n" +
+           " WHERE " + dayCol + " IN (" + days + ")";
+  }
+
+  // ------------------------------------------------------------- сборка и отправка
+
+  /* Тело запроса ровно в том виде, в каком его ждёт OfflineEventForm. Шаги отбора идут
+     первыми и ничего не возвращают, последним добавляется итоговый скрипт с
+     returnsResultSet — порядковый номер ему даём на десятку больше последнего, чтобы
+     он оставался последним и после правки номеров руками. */
+  function offlineBody() {
+    var steps = collectSteps();
+    var maxOrd = 0;
+    steps.forEach(function (s) { maxOrd = Math.max(maxOrd, s.orderNum || 0); });
+    steps.push({
+      sql: String(el("evfScript").value || "").trim(),
+      orderNum: maxOrd + 10,
+      returnsResultSet: true
+    });
+    return {
       /* selection не передаём: он равен имени события, и сервер подставит его сам —
          иначе форма несла бы два поля с одним и тем же значением. */
       eventName: str("evfName"),
@@ -432,12 +695,91 @@
       crontab: str("evfCrontab"),
       steps: steps
     };
+  }
+
+  /* План записи считаем по форме, а не спрашиваем у сервера: запроса-то ещё не было.
+     Поэтому и подписан он как ожидание — совпадение с реальными вставками проверяется
+     ответом, когда отправку включат. */
+  function renderPlan(body) {
+    var box = el("evfPlan");
+    if (!box) return;
+    var nSteps = body.steps.length;
+    var nTpl = (body.templates || []).length;
+    var mapping = body.isChain ? "template.d_template_mapping_mass" : "template.d_template_mapping";
+    var rows = [
+      ["flow.d_event", 1, "само событие, kind = offline"],
+      ["flow.d_event_schedule", 1, "расписание: " + (body.crontab || "—") + ", база " + (body.database || "—")],
+      ["flow.d_event_step", nSteps, (nSteps - 1) + " шаг(ов) отбора + итоговый скрипт"],
+      ["flow.d_event_template", nTpl, "пары «день — шаблон»"],
+      ["scheduler.t_get_event", 1, "прод-копия события"],
+      ["scheduler.t_launch_settings", 1, "прод-расписание, time_start = момент вставки"],
+      ["scheduler.t_execution_steps", nSteps, "прод-копия шагов"],
+      [mapping, nTpl, "маппинг шаблонов события"],
+      ["flow.t_event_link", "—", "связи нашей модели с прод-строками"]
+    ];
+    box.innerHTML =
+      '<div class="ev-rows"><table><thead><tr><th>Таблица</th><th>строк</th><th>что это</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return "<tr><td class=\"tbl\">" + esc(r[0]) + "</td><td>" + esc(r[1]) +
+               "</td><td>" + esc(r[2]) + "</td></tr>";
+      }).join("") +
+      "</tbody></table></div>";
+  }
+
+  function resetOffline() {
+    ["evfName", "evfSource", "evfFinalTable", "evfScript"]
+      .forEach(function (id) { if (el(id)) el(id).value = ""; });
+    if (el("evfScript")) el("evfScript").removeAttribute("data-touched");
+    if (el("evfDayCol")) el("evfDayCol").value = "day_num";
+    stampNow("evfDateStart");
+    renderFormTemplates([]);
+    ["evfChannel", "evfDefKey", "evfPrefix", "evfSystem"].forEach(function (id) {
+      if (el(id)) el(id).value = "";
+    });
+    if (el("evfActive")) el("evfActive").checked = false;
+    if (el("evfBatch")) el("evfBatch").checked = true;
+    if (el("evfChain")) el("evfChain").checked = false;
+    if (el("evfCronManual")) el("evfCronManual").checked = false;
+    if (el("evfCrontab")) el("evfCrontab").readOnly = true;
+    if (el("evfFreq")) el("evfFreq").value = "daily";
+    if (el("evfTime")) el("evfTime").value = "09:00:00";
+    if (el("evfStepCount")) el("evfStepCount").value = "1";
+    document.querySelectorAll("#evfDowBox [data-dow]").forEach(function (c) { c.checked = false; });
+    renderCron();
+    renderSteps();
+    if (el("evfPayload")) {
+      el("evfPayload").textContent = "Нажмите «Запустить коммуникацию» — здесь появится тело запроса.";
+    }
+    if (el("evfPlan")) el("evfPlan").innerHTML = "";
+    say("evfMsg", "");
+    renderResult("evfResult", null);
+    wzGo(1);
+  }
+
+  /* ОТЛАДОЧНЫЙ РЕЖИМ: собираем запрос и показываем его, ничего не отправляя.
+     Чтобы включить отправку обратно — вернуть вызов evReq (закомментирован ниже) и
+     убрать вывод в evfPayload. Пока идёт сверка того, что уходит на сервер, реальная
+     вставка запрещена: она пишет и в нашу модель, и в боевые таблицы, а откатывать
+     ошибочно заведённое событие приходится руками в psql. */
+  function submitOffline() {
+    var i;
+    for (i = 1; i < WZ_LAST; i++) {
+      if (!wzValidate(i)) { wzGo(i); return; }
+    }
+    var body = offlineBody();
+    renderPlan(body);
+    el("evfPayload").textContent = JSON.stringify(body, null, 2);
+    say("evfMsg", "Запрос собран. На сервер ничего не отправлено — режим отладки.", "warn");
+    renderResult("evfResult", null);
+
+    /* Боевая отправка (включать одной строкой, когда сверка закончится):
     evReq("POST", "/offline", body).then(function (res) {
       say("evfMsg", startedText(res), startedKind(res));
       renderResult("evfResult", res);
       if (el("evfName")) el("evfName").value = "";
       stampNow("evfDateStart");
     }).catch(function (e) { fail("evfMsg", e); });
+    */
   }
 
   // ============================================================ СПИСОК СОБЫТИЙ
