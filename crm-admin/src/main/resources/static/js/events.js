@@ -1382,7 +1382,11 @@
 
   function cronBox(id) { return el("evCron-" + id); }
 
-  function renderCron(id, c) {
+  /* Имя с суффиксом Block намеренно: рядом, в мастере расписания, живёт renderCron()
+     без аргументов — сборщик кронтаба. Объявления функций поднимаются, побеждает
+     последнее, и одноимённый отрисовщик молча подменил сборщик: поле «Выражение
+     расписания» перестало заполняться, а ошибки не было ни одной. */
+  function renderCronBlock(id, c) {
     var box = cronBox(id);
     if (!box) return;
     var head = "<h4>Планировщик</h4>";
@@ -1421,10 +1425,10 @@
     if (!cronBox(id)) return;
     fetch("/api/cron/event/" + id, { credentials: "same-origin", headers: { Accept: "application/json" } })
       .then(function (r) { return r.ok ? r.json() : { enabled: false }; })
-      .then(function (c) { renderCron(id, c); })
+      .then(function (c) { renderCronBlock(id, c); })
       /* Раздел событий не должен падать из-за того, что планировщик не настроен:
          блок просто скажет, что интеграции нет. */
-      .catch(function () { renderCron(id, { enabled: false }); });
+      .catch(function () { renderCronBlock(id, { enabled: false }); });
   }
 
   window.evCron = function (id, act) {
@@ -1442,7 +1446,7 @@
         return j;
       });
     }).then(function (res) {
-      renderCron(id, res);
+      renderCronBlock(id, res);
       var m = el("evCronMsg-" + id);
       if (m) { m.textContent = res.message || "Готово"; m.style.color = "var(--green)"; }
     }).catch(function (e) {
