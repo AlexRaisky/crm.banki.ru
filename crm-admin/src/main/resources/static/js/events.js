@@ -235,6 +235,21 @@
   var WZ_LAST = 5;
   var wzStep = 1;
 
+  /* Метод отправки. По умолчанию массовый — так стояла старая форма (галка is_batch
+     приходила включённой), и событие по расписанию массовым чаще и бывает.
+     Списки приезжают вместе со справочниками; до этого момента переключатель работает,
+     но выпадашки пусты — заполнить их нечем, и подставлять «известные» значения из
+     кода значило бы разойтись с сервером. */
+  var evfMethod = "batch";
+  var evfLists = null;
+
+  var METHOD_NOTE = {
+    batch: "Массовая отправка: одним запуском уходит вся выборка. definition_key и" +
+           " business_key_prefix — батчевые, они не совпадают с единичными.",
+    single: "Единичная отправка: на каждого человека свой вызов. Флаг is_batch не" +
+            " спрашивается — у этого метода он всегда выключен."
+  };
+
   /* Дни недели: код для Quartz и слово для подписи. Порядок — с понедельника, как в
      календаре, а не с воскресенья, как в самом Quartz. */
   var DOWS = [
@@ -262,6 +277,12 @@
     el("evfScript").oninput = function () { this.setAttribute("data-touched", "1"); };
     document.querySelectorAll("#evfTabs .wz-tab").forEach(function (b) {
       b.onclick = function () { wzGo(parseInt(b.getAttribute("data-wz"), 10)); };
+    });
+    document.querySelectorAll("#evfMode .wz-mode-btn").forEach(function (b) {
+      b.onclick = function () {
+        evfMethod = b.getAttribute("data-method");
+        applyMethod();
+      };
     });
 
     /* Расписание пересобирается на любое изменение своих полей: выражение под ними —
@@ -295,11 +316,15 @@
       /* Узкие списки — это форма единичного метода: четыре пары ключ/префикс, как в
          старой админке. Откат на общие оставлен на случай пустого ответа старого
          сервера: форма без выпадашек хуже формы с длинными. */
-      var keys = d.definitionKeysSingle || d.definitionKeys;
-      var prefs = d.businessKeyPrefixesSingle || d.businessKeyPrefixes;
-      fillSelect(el("evfDefKey"), keys);
-      fillSelect(el("evfPrefix"), prefs);
-      bindKeyPrefixPair(keys, prefs);
+      /* Откат на общие списки оставлен на случай старого сервера: форма с длинными
+         выпадашками работает, форма без выпадашек — нет. */
+      evfLists = {
+        batch: { keys: d.definitionKeysBatch || d.definitionKeys,
+                 prefs: d.businessKeyPrefixesBatch || d.businessKeyPrefixes },
+        single: { keys: d.definitionKeysSingle || d.definitionKeys,
+                  prefs: d.businessKeyPrefixesSingle || d.businessKeyPrefixes }
+      };
+      applyMethod();
       fillSelect(el("evfSystem"), d.systems);
       /* Базы — из справочника flow.d_database: на колонке database висит внешний ключ,
          и значение вне справочника упало бы уже на вставке. */
@@ -308,6 +333,26 @@
         el("evfDatabase").value = "crmdb";
       }
     }).catch(function (e) { fail("evfMsg", e); });
+  }
+
+  /* Переключение метода. Сбрасываются ровно два поля — ключ и префикс: их значения у
+     методов разные, и оставленный от массового batchSmsChannelProcess2024 в единичной
+     форме прошёл бы все проверки и не отправил ничего. Остальное заполненное трогать
+     незачем, метод часто уточняют уже по ходу. */
+  function applyMethod() {
+    document.querySelectorAll("#evfMode .wz-mode-btn").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-method") === evfMethod);
+    });
+    if (el("evfModeNote")) el("evfModeNote").textContent = METHOD_NOTE[evfMethod] || "";
+    /* Единичный метод — это и есть is_batch = false, спрашивать нечего. У массового
+       галка остаётся: батчевое событие бывает и с выключенным флагом. */
+    if (el("evfBatchBox")) el("evfBatchBox").hidden = evfMethod !== "batch";
+    if (el("evfBatch")) el("evfBatch").checked = evfMethod === "batch";
+    if (!evfLists) return;
+    var L = evfLists[evfMethod];
+    fillSelect(el("evfDefKey"), L.keys);
+    fillSelect(el("evfPrefix"), L.prefs);
+    bindKeyPrefixPair(L.keys, L.prefs);
   }
 
   /* Ключ и префикс — пара: smsChannelProcessV2 живёт только вместе с SmsChannel.
@@ -735,9 +780,9 @@
       templates: collectFormTemplates(),
       system: str("evfSystem"),
       isActive: chk("evfActive"),
-      /* Единичный метод — это и есть is_batch = false. Галку с формы убрали: она
-         противоречила названию вкладки, а включённой она стояла по умолчанию. */
-      isBatch: false,
+      /* У единичного метода флага нет вовсе, и подставлять сюда значение спрятанной
+         галки нельзя: она осталась бы включённой с прошлого переключения. */
+      isBatch: evfMethod === "batch" && chk("evfBatch"),
       isChain: chk("evfChain"),
       database: str("evfDatabase"),
       crontab: str("evfCrontab"),
@@ -786,6 +831,7 @@
     });
     if (el("evfActive")) el("evfActive").checked = false;
     if (el("evfChain")) el("evfChain").checked = false;
+    applyMethod();          // метод человек выбрал сам — сбрасываем не его, а поля под ним
     if (el("evfCronManual")) el("evfCronManual").checked = false;
     if (el("evfCrontab")) el("evfCrontab").readOnly = true;
     if (el("evfFreq")) el("evfFreq").value = "daily";

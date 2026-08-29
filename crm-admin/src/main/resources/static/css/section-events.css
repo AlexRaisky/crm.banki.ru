@@ -157,6 +157,16 @@
 
   .evc-empty{color:var(--faint);font-size:13px;padding:14px 0}
 
+  /* ---------- переключатель метода отправки ----------
+     Сегментированной кнопкой, а не выпадающим списком: вариантов два, и оба должны быть
+     видны сразу — от метода зависит, какие значения вообще существуют в полях ниже. */
+  .wz-mode{display:inline-flex;background:var(--card);border:1px solid var(--line);
+    border-radius:11px;padding:3px;gap:3px;margin-bottom:10px}
+  .wz-mode-btn{background:none;border:0;border-radius:8px;color:var(--dim);cursor:pointer;
+    font:inherit;font-size:13px;padding:8px 16px}
+  .wz-mode-btn:hover{color:var(--ink)}
+  .wz-mode-btn.on{background:var(--grad);color:#fff;font-weight:600}
+
   /* ---------- мастер заведения события по расписанию ----------
      Вкладки кликабельны все, а не только пройденные. Мастер, который не пускает
      назад к уже заполненному экрану, заставляет держать в голове, что там было
