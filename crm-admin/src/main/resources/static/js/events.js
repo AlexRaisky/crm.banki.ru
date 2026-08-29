@@ -886,10 +886,14 @@
     var steps = collectSteps();
     var maxOrd = 0;
     steps.forEach(function (s) { maxOrd = Math.max(maxOrd, s.orderNum || 0); });
+    /* Сервисное событие ничего не возвращает: движок не ждёт от него выборки, и
+       returns_result_set у последнего шага должен стоять false. У обычной рассылки
+       наоборот — именно последний шаг и отдаёт выборку. Шаги отбора не трогаем, они
+       не возвращают ничего ни в том, ни в другом случае. */
     steps.push({
       sql: String(el("evfScript").value || "").trim(),
       orderNum: maxOrd + 10,
-      returnsResultSet: true
+      returnsResultSet: !chk("evfService")
     });
     return {
       /* selection не передаём: он равен имени события, и сервер подставит его сам —
@@ -968,7 +972,11 @@
     }).join(", ");
     var days = tpls.map(function (t) { return t.stepNo == null ? "—" : t.stepNo; }).join(", ");
     var codes = tpls.map(function (t) { return t.code; }).join(", ");
-    var rrs = nSteps > 1 ? "false у шагов отбора, true у итогового" : "true";
+    /* Не общее правило, а то, что реально уходит: у сервисного события последний шаг
+       тоже false, и «true у итогового» было бы неправдой в плане, который для того и
+       читают, чтобы свериться. */
+    var lastRrs = nSteps ? String(!!steps[nSteps - 1].returnsResultSet) : "true";
+    var rrs = nSteps > 1 ? "false у шагов отбора, " + lastRrs + " у итогового" : lastRrs;
     // строки слоя B: событие + расписание + шаги + маппинги шаблонов + маппинг определения
     var bRows = 2 + nSteps + nTpl + 1;
 
@@ -1201,6 +1209,7 @@
     });
     if (el("evfActive")) el("evfActive").checked = false;
     if (el("evfChain")) el("evfChain").checked = false;
+    if (el("evfService")) el("evfService").checked = false;
     if (el("evfTplCode")) el("evfTplCode").value = "";
     applyChainMode();
     applyMethod();          // метод человек выбрал сам — сбрасываем не его, а поля под ним

@@ -709,6 +709,15 @@
             </div>
           </div>
 
+          <!-- Флаг про событие целиком, а не про режим: стоит снаружи обеих половин,
+               потому что сервисное событие бывает и одиночным, и цепочкой. -->
+          <div class="ev-checks">
+            <label class="ev-chk"><input type="checkbox" id="evfService"> Сервисное событие
+              <span class="hint">Итоговый скрипт уйдёт с <code>returns_result_set = false</code>:
+                движок не ждёт от него выборки. Снят — последний шаг возвращает результат,
+                как у обычной рассылки.</span></label>
+          </div>
+
           <!-- цепочка: пары «день — шаблон» -->
           <div id="evfChainBox" hidden>
             <div class="ev-fields">
@@ -2731,7 +2740,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
-<script src="js/events.js?v=21"></script>
+<script src="js/events.js?v=22"></script>
 <script src="js/event-chain.js?v=2"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->
