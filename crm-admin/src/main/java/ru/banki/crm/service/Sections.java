@@ -89,6 +89,10 @@ public final class Sections {
        в выпадашках все. И не admin: пополнить список из формы мастера кнопкой «+» и
        вести сам справочник — разные полномочия. */
     public static final String SET_REFS = "set-refs";
+    /* Подключение к планировщику crm-cron. Отдельная секция, а не set-dbconn: кто задаёт
+       адрес планировщика, тот решает, на какой контур уедут боевые задания Quartz. Это
+       не то же самое, что список баз, куда панель ходит читать. */
+    public static final String SET_CRON = "set-cron";
     public static final String SET_APPS = "set-apps";
     public static final String SET_UPLOADS = "set-uploads";
     public static final String SET_MON = "set-mon";
@@ -120,7 +124,8 @@ public final class Sections {
             MON_CAMPAIGNS,
             UPLOADS, JOURNEYS,
             SET_DBCONN, SET_JIRA, SET_PROCS, SET_SYNC, SET_EVENTS, EV_EXPORT, SET_SCHEME,
-            SET_OBJECTS, SET_DBTREE, SET_REFS, SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, SET_GENERAL, ACCESS);
+            SET_OBJECTS, SET_DBTREE, SET_REFS, SET_CRON, SET_APPS, SET_UPLOADS, SET_MON,
+            SET_DIAG, SET_GENERAL, ACCESS);
 
     /**
      * Группа сайдбара, в которой живёт раздел. Нужна матрице прав: строк стало больше двадцати,
@@ -161,6 +166,7 @@ public final class Sections {
             java.util.Map.entry(SET_OBJECTS, "Настройки"),
             java.util.Map.entry(SET_DBTREE, "Настройки"),
             java.util.Map.entry(SET_REFS, "Настройки"),
+            java.util.Map.entry(SET_CRON, "Настройки"),
             java.util.Map.entry(SET_APPS, "Настройки"),
             java.util.Map.entry(SET_UPLOADS, "Настройки"),
             java.util.Map.entry(SET_MON, "Настройки"),
@@ -183,7 +189,7 @@ public final class Sections {
     public static final Set<String> WRITABLE = Set.of(ADMIN, TEMPLATES, PROMO, ABTESTS,
             EV_ONLINE, EV_OFFLINE, EV_EXPORT, JOURNEYS, ACCESS,
             SET_DBCONN, SET_JIRA, SET_PROCS, SET_SYNC, SET_EVENTS, SET_SCHEME, SET_OBJECTS,
-            SET_APPS, SET_UPLOADS, SET_REFS);
+            SET_APPS, SET_UPLOADS, SET_REFS, SET_CRON);
 
     /**
      * Разделы, которые нельзя выдать матрицей — только флагом администратора.
@@ -201,7 +207,8 @@ public final class Sections {
     /** Секции настроечной админки. По ним SecurityConfig решает, пускать ли на /settings. */
     public static final Set<String> SETTINGS = Set.of(
             SET_DBCONN, SET_JIRA, SET_PROCS, SET_SYNC, SET_EVENTS, EV_EXPORT, SET_SCHEME,
-            SET_OBJECTS, SET_DBTREE, SET_REFS, SET_APPS, SET_UPLOADS, SET_MON, SET_DIAG, SET_GENERAL, ACCESS);
+            SET_OBJECTS, SET_DBTREE, SET_REFS, SET_CRON, SET_APPS, SET_UPLOADS, SET_MON,
+            SET_DIAG, SET_GENERAL, ACCESS);
 
     public static boolean isSettings(String id) {
         return SETTINGS.contains(id);
