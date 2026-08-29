@@ -309,6 +309,13 @@
        на карточку нельзя, фокус после открытия уходит на крестик. */
     el("evfPlanClose").onclick = closePlan;
     el("evfPlanOk").onclick = closePlan;
+    el("evfPlanGo").onclick = function () { sendOffline(); };
+    if (!can("add", "ev-offline")) {
+      /* Смотреть план можно всем, кто видит форму: он ничего не меняет. Заводить —
+         только с правом; гасим кнопку в окне, а не ту, что окно открывает. */
+      el("evfPlanGo").disabled = true;
+      el("evfPlanGo").title = "Нет права на заведение событий в этом разделе";
+    }
     el("evfPlanModal").onclick = function (e) {
       if (e.target === el("evfPlanModal")) closePlan();
     };
@@ -321,9 +328,6 @@
        и права на заведение для предпросмотра не нужны. Проверку не снимаем, а переносим
        в submitOffline, к закомментированной боевой отправке: включат её — вернётся и
        запрет. Подпись остаётся, чтобы человек не ждал от кнопки заведения события. */
-    if (!can("add", "ev-offline")) {
-      el("evfSubmit").title = "Показывает план записи. На заведение событий права нет";
-    }
     renderSteps();
     renderFormTemplates([]);
     applyChainMode();
@@ -1094,7 +1098,13 @@
       '</tbody></table></div>';
   }
 
+  /* Тело запроса, показанное в окне. Его же отправляет кнопка «Завести событие»: пере-
+     собирать форму на отправке нельзя — между показом плана и нажатием человек мог
+     что-то поменять, и уехало бы не то, на что он смотрел. */
+  var planBody = null;
+
   function openPlan(body) {
+    planBody = body;
     var groups = planGroups(body);
     var tables = 0, rows = 0;
     groups.forEach(function (g) {
@@ -1113,6 +1123,43 @@
   function closePlan() {
     var m = el("evfPlanModal");
     if (m) m.classList.remove("open");
+  }
+
+  /**
+   * Завести событие: POST /api/events/offline тем телом, что показано в окне.
+   * <p>
+   * Кнопка гасится на время запроса. Повторное нажатие завело бы второе событие с тем же
+   * именем — сервер это поймает (имя уникально вместе с системой), но ловить такое
+   * ответом об ошибке хуже, чем не дать нажать.
+   */
+  function sendOffline() {
+    if (!planBody) return;
+    var go = el("evfPlanGo");
+    go.disabled = true;
+    if (el("evfPlanNote")) el("evfPlanNote").textContent = "Заводим…";
+    evReq("POST", "/offline", planBody).then(function (res) {
+      closePlan();
+      /* wzGo первым: он гасит строку состояния при переходе между экранами, и
+         поставленное до него сообщение об успехе исчезло бы, не успев показаться. */
+      wzGo(WZ_LAST);
+      say("evfMsg", startedText(res), startedKind(res));
+      renderResult("evfResult", res);
+      /* Имя события уникально вместе с системой — очищаем поле, чтобы повторное
+         нажатие не упёрлось в «уже заведено». Остальное оставляем: соседнее событие
+         обычно отличается одним-двумя полями. */
+      if (el("evfName")) el("evfName").value = "";
+      stampNow("evfDateStart");
+      planBody = null;
+    }).catch(function (e) {
+      /* Окно не закрываем: ошибку читают рядом с планом, по которому её и объясняют. */
+      if (el("evfPlanNote")) {
+        el("evfPlanNote").textContent = (e && e.message) || "Не удалось завести событие";
+        el("evfPlanNote").style.color = "var(--coral)";
+      }
+      fail("evfMsg", e);
+    }).then(function () {
+      if (can("add", "ev-offline")) go.disabled = false;
+    });
   }
 
   function resetOffline() {
@@ -1147,14 +1194,10 @@
     wzGo(1);
   }
 
-  /* ОТЛАДОЧНЫЙ РЕЖИМ: собираем запрос, показываем план записи окном и тело запроса на
-     экране — на сервер не уходит ничего. Пока идёт сверка, реальная вставка запрещена:
-     она пишет и в нашу модель, и в боевые таблицы, а откатывать ошибочно заведённое
-     событие приходится руками в psql.
-
-     Чтобы включить отправку обратно — раскомментировать блок ниже ВМЕСТЕ с проверкой
-     права: предпросмотр безобиден и открыт всем, кто видит форму, а заведение события
-     требует add в ev-offline. */
+  /* Собираем запрос, показываем план окном и тело запроса на экране. Сама отправка — за
+     кнопкой в окне (sendOffline): событие пишется и в нашу модель, и в боевые таблицы, а
+     откатывается руками в psql, поэтому между «нажал» и «записалось» стоит экран, где
+     видно, во что именно это превратится. */
   function submitOffline() {
     var i;
     for (i = 1; i < WZ_LAST; i++) {
@@ -1162,19 +1205,13 @@
     }
     var body = offlineBody();
     el("evfPayload").textContent = JSON.stringify(body, null, 2);
-    say("evfMsg", "Запрос собран и показан в окне. На сервер ничего не отправлено — режим отладки.", "warn");
+    say("evfMsg", "Проверьте план и подтвердите заведение в окне.");
     renderResult("evfResult", null);
+    if (el("evfPlanNote")) {
+      el("evfPlanNote").textContent = "Проверьте план: это ожидание по форме, а не ответ базы.";
+      el("evfPlanNote").style.color = "";
+    }
     openPlan(body);
-
-    /* Боевая отправка (включать вместе со строкой про право):
-    if (!can("add", "ev-offline")) { say("evfMsg", "Нет права на заведение событий", "err"); return; }
-    evReq("POST", "/offline", body).then(function (res) {
-      say("evfMsg", startedText(res), startedKind(res));
-      renderResult("evfResult", res);
-      if (el("evfName")) el("evfName").value = "";
-      stampNow("evfDateStart");
-    }).catch(function (e) { fail("evfMsg", e); });
-    */
   }
 
   // ============================================================ СПИСОК СОБЫТИЙ

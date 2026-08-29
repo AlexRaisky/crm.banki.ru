@@ -740,7 +740,7 @@
       <div class="wz-pane" id="evfPane5" hidden>
         <div class="ev-step">
           <div class="t">Что уйдёт на сервер</div>
-          <p class="wz-note">Отладочный экран. По кнопке «Запустить коммуникацию» открывается окно с планом записи — какие колонки каких таблиц получат какие значения, — а тело запроса показывается здесь целиком. <b>На сервер ничего не уходит.</b> План посчитан по форме: это ожидание, а не ответ базы.</p>
+          <p class="wz-note">По кнопке «Запустить коммуникацию» открывается окно с планом записи — какие колонки каких таблиц получат какие значения. Событие заводит кнопка <b>в этом окне</b>; пока оно не нажато, на сервер не уходит ничего. Тело запроса показывается здесь целиком. План посчитан по форме: это ожидание, а не ответ базы — что получилось на самом деле, покажет ответ сервера под кнопками.</p>
           <div class="ev-fields">
             <div class="ev-f wide"><label>POST /api/events/offline</label>
               <pre class="wz-json" id="evfPayload">Нажмите «Запустить коммуникацию» — здесь появится тело запроса.</pre></div>
@@ -767,9 +767,13 @@
             <button type="button" class="ev-modal-x" id="evfPlanClose" title="Закрыть">✕</button>
           </div>
           <div class="ev-modal-body" id="evfPlanBody"></div>
+          <!-- Событие заводит кнопка ЗДЕСЬ, а не та, что открыла окно. Восемь с лишним
+               строк в боевых таблицах, откат — руками в psql; окно с планом и есть то
+               место, где человек видит, на что соглашается. -->
           <div class="ev-modal-foot">
-            <span class="ev-modal-note">Ожидание по форме — на сервер ничего не отправлено.</span>
-            <button class="ev-btn ghost" id="evfPlanOk" type="button">Закрыть</button>
+            <span class="ev-modal-note" id="evfPlanNote">Проверьте план: это ожидание по форме, а не ответ базы.</span>
+            <button class="ev-btn ghost" id="evfPlanOk" type="button">Отмена</button>
+            <button class="ev-btn" id="evfPlanGo" type="button">Завести событие</button>
           </div>
         </div>
       </div>
@@ -2727,7 +2731,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
-<script src="js/events.js?v=17"></script>
+<script src="js/events.js?v=19"></script>
 <script src="js/event-chain.js?v=2"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->
