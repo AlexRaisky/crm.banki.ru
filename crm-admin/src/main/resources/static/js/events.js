@@ -383,10 +383,20 @@
       b.classList.toggle("on", b.getAttribute("data-method") === evfMethod);
     });
     if (el("evfModeNote")) el("evfModeNote").textContent = METHOD_NOTE[evfMethod] || "";
-    /* Единичный метод — это и есть is_batch = false, спрашивать нечего. У массового
-       галка остаётся: батчевое событие бывает и с выключенным флагом. */
-    if (el("evfBatchBox")) el("evfBatchBox").hidden = evfMethod !== "batch";
-    if (el("evfBatch")) el("evfBatch").checked = evfMethod === "batch";
+    /* is_batch не спрашиваем, а показываем: он и есть выбранный метод — включён у
+       массового, выключен у единичного. Редактируемым он был лишним поводом собрать
+       событие, которое противоречит само себе: массовый метод со снятой галкой уезжал
+       в прод как единичный, а форма при этом продолжала предлагать батчевые ключи. */
+    var batch = evfMethod === "batch";
+    if (el("evfBatch")) {
+      el("evfBatch").checked = batch;
+      el("evfBatch").disabled = true;
+    }
+    if (el("evfBatchHint")) {
+      el("evfBatchHint").textContent = batch
+        ? "включён: массовый метод отправки"
+        : "выключен: единичный метод отправки";
+    }
     if (!evfLists) return;
     var L = evfLists[evfMethod];
     /* Канал перезаполняем вместе с парами: у массового метода их всего три, и
@@ -824,9 +834,9 @@
       templates: collectFormTemplates(),
       system: str("evfSystem"),
       isActive: chk("evfActive"),
-      /* У единичного метода флага нет вовсе, и подставлять сюда значение спрятанной
-         галки нельзя: она осталась бы включённой с прошлого переключения. */
-      isBatch: evfMethod === "batch" && chk("evfBatch"),
+      /* Берём метод, а не галку: она теперь только его отражение, и читать состояние
+         поля вместо источника значило бы однажды разойтись с ним. */
+      isBatch: evfMethod === "batch",
       isChain: chk("evfChain"),
       database: str("evfDatabase"),
       crontab: str("evfCrontab"),

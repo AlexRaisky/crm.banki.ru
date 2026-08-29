@@ -40,7 +40,7 @@
 <link rel="stylesheet" href="css/section-abtests.css">
 <link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-entities.css">
-<link rel="stylesheet" href="css/section-events.css?v=6">
+<link rel="stylesheet" href="css/section-events.css?v=7">
 <link rel="stylesheet" href="css/section-admin.css">
 </head>
 <body>
@@ -616,8 +616,11 @@
           </div>
           <div class="ev-checks">
             <label class="ev-chk"><input type="checkbox" id="evfActive"> Is active</label>
-            <label class="ev-chk" id="evfBatchBox"><input type="checkbox" id="evfBatch" checked> Is batch
-              <span class="hint">массовый метод отправки против единичного</span></label>
+            <!-- Только показывает состояние: значение задаёт переключатель метода. Поле
+                 оставлено видимым и в единичном методе — is_batch уходит в прод-таблицы, и
+                 человек должен видеть, с каким значением, а не догадываться по названию. -->
+            <label class="ev-chk fixed" id="evfBatchBox"><input type="checkbox" id="evfBatch" checked disabled> Is batch
+              <span class="hint" id="evfBatchHint"></span></label>
             <label class="ev-chk"><input type="checkbox" id="evfChain"> Is chain
               <span class="hint">маппинг шаблона уйдёт в d_template_mapping_mass</span></label>
           </div>
@@ -2707,7 +2710,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
-<script src="js/events.js?v=11"></script>
+<script src="js/events.js?v=12"></script>
 <script src="js/event-chain.js?v=2"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->

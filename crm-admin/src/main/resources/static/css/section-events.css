@@ -45,6 +45,10 @@
   .ev-checks{display:flex;flex-wrap:wrap;gap:18px 26px;margin-top:14px}
   .ev-chk{display:flex;align-items:center;gap:8px;font-size:13px}
   .ev-chk input{width:16px;height:16px;accent-color:var(--blue)}
+  /* Флаг, который только отражает выбранный метод. Не приглушаем текст: строку читают
+     как сведения о событии, а не как недоступное поле, — гасим лишь сам квадратик. */
+  .ev-chk.fixed{cursor:default}
+  .ev-chk.fixed input{cursor:not-allowed;opacity:.75}
 
   /* ---------- SQL-шаги ---------- */
   .ev-sql{border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px;background:var(--card)}
