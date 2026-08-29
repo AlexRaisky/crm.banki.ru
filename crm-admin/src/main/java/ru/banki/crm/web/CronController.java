@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import ru.banki.crm.domain.Capability;
 import ru.banki.crm.security.AccessGuard;
 import ru.banki.crm.service.Sections;
@@ -34,15 +36,20 @@ public class CronController {
         this.access = access;
     }
 
+    /* Настройки подключения — только администратор, выдаваемого права под них нет.
+       Адрес планировщика один на панель и решает, на какой контур уедут боевые задания
+       Quartz; такое не выдают галкой в матрице. Действует настройка при этом на всех:
+       задания по кнопкам в карточке события заводит любой, у кого есть право на события
+       по расписанию. */
     @GetMapping("/settings")
+    @PreAuthorize("hasRole('ADMIN')")
     public Map<String, Object> settings() {
-        access.requireCapability(Capability.READ, Sections.EV_CRON);
         return service.settings();
     }
 
     @PutMapping("/settings")
+    @PreAuthorize("hasRole('ADMIN')")
     public Map<String, Object> save(@RequestBody Map<String, Object> body) {
-        access.requireCapability(Capability.EDIT, Sections.EV_CRON);
         return service.save(body);
     }
 
@@ -52,8 +59,8 @@ public class CronController {
      * страницы или предзагрузкой ссылки было бы неправильно.
      */
     @PostMapping("/check")
+    @PreAuthorize("hasRole('ADMIN')")
     public Map<String, Object> check() {
-        access.requireCapability(Capability.EDIT, Sections.EV_CRON);
         return service.check();
     }
 

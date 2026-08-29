@@ -559,6 +559,19 @@
 
       <!-- ===== Диагностика ===== -->
       <!-- ===== Подключения к БД ===== -->
+      <!-- ===== Планировщик (crm-cron) =====
+           Содержимое рисует cron.js. Здесь только заголовок и место под него. -->
+      <section class="pane" id="pane-cron">
+        <h1 data-i18n-html="h_cron">Планировщик <span class="grad">Quartz</span></h1>
+        <div class="sub" data-i18n="События по расписанию исполняет Quartz, и знает он о них не по строке в scheduler.t_launch_settings, а по контексту, который создаёт сервис crm-cron. Панель строку пишет, контекст не создаёт — значит заведённое ею событие не срабатывает никогда. Здесь настраивается связь; сами задания заводятся кнопками в карточке события: «События» → «Список событий» → «Настройки» у строки → блок «Планировщик».">События по расписанию исполняет Quartz, и знает он о них не по строке
+          в <code>scheduler.t_launch_settings</code>, а по контексту, который создаёт сервис
+          crm-cron. Панель строку пишет, контекст не создаёт — значит заведённое ею событие
+          не срабатывает никогда. Здесь настраивается связь; сами задания заводятся кнопками
+          в карточке события: «События» → «Список событий» → «Настройки» у строки → блок
+          «Планировщик».</div>
+        <div id="cronHost" class="cron-host"></div>
+      </section>
+
       <section class="pane" id="pane-dbconn">
         <h1 data-i18n-html="h_dbconn">Подключения <span class="grad">к БД</span></h1>
         <!-- ===== Подключения к БД ===== -->
@@ -1409,6 +1422,13 @@ const PANES = [
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="4" cy="5" r="2"/><circle cx="20" cy="5" r="2"/><circle cx="4" cy="19" r="2"/><circle cx="20" cy="19" r="2"/><path d="M6 6.5 10 10M18 6.5 14 10M6 17.5 10 14M18 17.5 14 14"/></svg>' },
   { id:"dbconn", acl:"set-dbconn", group:"Интеграции", label:"Подключения к БД", desc:"Базы, к которым ходит панель. Здесь же отмечается, какая из них приёмник шаблонов, а какая — база событий crmdb.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>' },
+  /* Планировщик — adminOnly, как «Выкатки» и «Обработчик выкатов»: адрес сервиса один
+     на панель, и решает, на какой контур уедут боевые задания Quartz. Выдаваемого права
+     под него нет вовсе — на сервере ручки закрыты ролью. Настройка при этом действует
+     на всех: задания по кнопкам в карточке события заводит любой, у кого есть право
+     на события по расписанию. */
+  { id:"cron", adminOnly:true, group:"Интеграции", label:"Планировщик (Quartz)", desc:"Адрес crm-cron и выключатель. Через него события по расписанию попадают в Quartz — без него строка в расписании есть, а задание не срабатывает.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' },
   { id:"jira", acl:"set-jira", group:"Интеграции", label:"Jira", desc:"Адрес, токен сервисной учётки и карта полей: из чего собирается задача CRM-Промо.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 10l8 8 8-8z"/><path d="M12 10v8"/></svg>' },
   /* Первым в группе — выключатель: когда в проде что-то горит, ищут именно его,
@@ -1500,6 +1520,9 @@ function openPane(id){
   /* Структура базы меняется мимо панели (миграции, применение DDL) — читаем заново */
   if (id === "dbtree" && window.DbExplorer) window.DbExplorer.open();
   /* Справочники меняются мимо панели (инсертом в psql, переливом настроек) — читаем заново */
+  /* Настройки планировщика читаем при каждом открытии: их правят и на другом контуре,
+     и прямо в базе, а показывать вчерашний адрес хуже, чем лишний раз спросить. */
+  if (id === "cron" && window.Cron) window.Cron.open();
   if (id === "refs" && window.Refs) {
     var rh = document.getElementById("refsHost");
     if (rh && !rh.innerHTML) rh.innerHTML = Refs.markup();
@@ -4126,6 +4149,7 @@ window.CRM = window.CRM || (function(){
 <script src="settings-pack.js?v=1"></script>
 <script src="changes.js?v=1"></script>
 <script src="runner.js?v=1"></script>
+<script src="cron.js?v=2"></script>
 <script>window.openPane = openPane;</script>
 </body>
 </html>

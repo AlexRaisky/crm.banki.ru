@@ -45,10 +45,6 @@ const NAV = [
       { id:"ev-online",  label:"Онлайн-событие",       icon:"pulse", view:"sec-event-online" },
       { id:"ev-offline", label:"Событие по расписанию", icon:"calendar", view:"sec-event-offline" },
       { id:"ev-list",    label:"Список событий",        icon:"list", view:"sec-event-list" },
-      /* Планировщик стоит в «Событиях», хотя по устройству это интеграция: нужен он
-         тому, кто заводит события по расписанию, а среди Jira и подключений к БД его
-         просто не нашли. */
-      { id:"ev-cron",    label:"Планировщик",          icon:"clock", view:"sec-event-cron" },
       /* «Перелив в прод» отсюда уехал в настройки (/settings → «Переливы»): секция
          ev-export осталась той же, поменялось только место. */
   ]},
@@ -958,9 +954,6 @@ function openSection(sid, cid){
   if (target.view === "sec-event-online" && window.EventChain) window.EventChain.open();
   if (target.view === "sec-event-offline" && typeof initEventOfflineSection === "function") initEventOfflineSection();
   if (target.view === "sec-event-list" && typeof initEventListSection === "function") initEventListSection();
-  /* Настройки планировщика читаем при каждом открытии: их правят и на другом контуре,
-     и прямо в базе, а показывать вчерашний адрес хуже, чем лишний раз спросить. */
-  if (target.view === "sec-event-cron" && typeof initEventCronSection === "function") initEventCronSection();
   if (target.view === "sec-deviations") setTimeout(() => {
     /* графики Chart.js, созданные в скрытой секции, имеют нулевой размер —
        при первом показе пересоздаём их через renderAll(). setTimeout, а не rAF:
