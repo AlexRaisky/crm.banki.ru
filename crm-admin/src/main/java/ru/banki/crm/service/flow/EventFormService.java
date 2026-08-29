@@ -87,6 +87,20 @@ public class EventFormService {
                         "WebPushChannel", "robotChannelProcess"),
                 strings("SELECT DISTINCT business_key_prefix FROM commapi.d_definition_mapping" +
                         " WHERE business_key_prefix IS NOT NULL AND business_key_prefix <> ''")));
+        /* Те же два справочника, но для формы единичного метода: ровно четыре пары, как
+           в старой Appsmith-форме. Списки выше туда не годятся — в них подмешан DISTINCT
+           по проду, и выпадашка набирается историческими ключами (в том числе
+           smsChannelProccessV2 с опечаткой): выбрать из такого списка правильный нельзя,
+           можно только знать заранее.
+
+           Урезать общие списки было нельзя: их же читает форма онлайн-события, где
+           каналы кц, fa, wa и робот живут и сейчас. Ключ и префикс идут парой и по
+           одному не значат ничего, поэтому оба списка заданы явно и в одном порядке. */
+        out.put("definitionKeysSingle",
+                List.of("smsChannelProcessV2", "pushChannelProcessV2",
+                        "emailChannelProcessV2", "vkChannelProcessV2"));
+        out.put("businessKeyPrefixesSingle",
+                List.of("SmsChannel", "PushChannel", "EmailChannel", "VkChannel"));
         /* Системы: известный список старой формы плюс всё, что уже заведено. Одного
            DISTINCT по данным мало — на чистом контуре список был бы пуст, и первую
            систему пришлось бы вспоминать по памяти. Регистр значений сохранён как в

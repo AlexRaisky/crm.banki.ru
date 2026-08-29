@@ -292,8 +292,11 @@
 
     dictionaries().then(function (d) {
       fillSelect(el("evfChannel"), d.notifyChannels);
-      fillSelect(el("evfDefKey"), d.definitionKeys);
-      fillSelect(el("evfPrefix"), d.businessKeyPrefixes);
+      /* Узкие списки — это форма единичного метода: четыре пары ключ/префикс, как в
+         старой админке. Откат на общие оставлен на случай пустого ответа старого
+         сервера: форма без выпадашек хуже формы с длинными. */
+      fillSelect(el("evfDefKey"), d.definitionKeysSingle || d.definitionKeys);
+      fillSelect(el("evfPrefix"), d.businessKeyPrefixesSingle || d.businessKeyPrefixes);
       fillSelect(el("evfSystem"), d.systems);
       /* Базы — из справочника flow.d_database: на колонке database висит внешний ключ,
          и значение вне справочника упало бы уже на вставке. */

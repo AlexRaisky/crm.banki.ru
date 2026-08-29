@@ -43,7 +43,7 @@ const NAV = [
      страницу свои: id пункта И ЕСТЬ секция RBAC. */
   { id:"events", label:"События", icon:"bolt", overviewView:"view-events-overview", children:[
       { id:"ev-online",  label:"Онлайн-событие",       icon:"pulse", view:"sec-event-online" },
-      { id:"ev-offline", label:"Событие по расписанию", icon:"calendar", view:"sec-event-offline" },
+      { id:"ev-offline", label:"По расписанию, единичный", icon:"calendar", view:"sec-event-offline" },
       { id:"ev-list",    label:"Список событий",        icon:"list", view:"sec-event-list" },
       /* «Перелив в прод» отсюда уехал в настройки (/settings → «Переливы»): секция
          ev-export осталась той же, поменялось только место. */
