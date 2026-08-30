@@ -858,6 +858,19 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
           <div id="evxList" class="empty" style="margin-top:12px">Загружаем…</div>
         </div>
 
+        <!-- Очередь стоит НАД списком событий: она про то, что уже должно было уехать
+             и не уехало, и смотреть на неё надо первым делом, а не после того, как
+             пролистал каталог. -->
+        <div class="card" style="margin-top:14px">
+          <h2 style="font-size:15px;margin:0 0 6px">Очередь перелива</h2>
+          <div class="sub" style="margin:0 0 10px">Заведённое событие встаёт сюда и уезжает само — фон разбирает очередь раз в двадцать секунд, как у шаблонов. Строка со статусом ERROR исчерпала попытки и ждёт человека: «Повтор» пробует ещё раз прямо сейчас, «Убрать» вычёркивает событие из очереди и оставляет его незалитым.</div>
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn" id="evqReload">Обновить очередь</button>
+            <span class="save-note" id="evqMsg"></span>
+          </div>
+          <div id="evqList" class="empty" style="margin-top:12px">Загружаем…</div>
+        </div>
+
         <div id="evxResult"></div>
       </section>
 
@@ -3007,9 +3020,109 @@ window.EventExport = (function(){
   }
   bind();
 
+  /* ---------------------------------------------------------------- очередь перелива
+
+     Событие, не уехавшее с первой попытки, раньше зависело от того, вспомнит ли человек
+     нажать кнопку. Теперь оно стоит в очереди, и её разбирает фон — так же, как очередь
+     шаблонов. Здесь очередь только показывается: доставляет её сервер. */
+
+  var QSTATE = {
+    PENDING: { label: "ждёт", color: "var(--amber)" },
+    ERROR:   { label: "не уехало", color: "var(--coral)" },
+    OK:      { label: "уехало", color: "var(--green)" }
+  };
+
+  function qnote(text, bad){
+    var n = $("#evqMsg");
+    if (!n) return;
+    n.textContent = text || "";
+    n.classList.toggle("show", !!text);
+    n.style.color = bad ? "var(--coral)" : "";
+  }
+
+  function qrender(d){
+    var b = $("#evqList");
+    if (!b) return;
+    var rows = d.rows || [];
+    if (!rows.length) {
+      b.className = "empty";
+      b.innerHTML = d.configured
+        ? "Очередь пуста — всё заведённое уехало в crmdb."
+        : "Очередь пуста, но приёмник не настроен: галка «База событий» в «Подключениях к БД».";
+      return;
+    }
+    b.className = "";
+    b.innerHTML =
+      '<div class="sub" style="margin:0 0 8px">ждут: ' + (d.pending || 0) +
+        " · не уехали: " + (d.error || 0) + " · доставлены: " + (d.ok || 0) +
+        (d.running ? "" : " · <b style=\"color:var(--coral)\">перелив остановлен в «Процессах переливов»</b>") +
+      "</div>" +
+      '<table class="tbl"><thead><tr><th>Событие</th><th>Статус</th><th>Попыток</th>' +
+      "<th>Обновлено</th><th></th></tr></thead><tbody>" +
+      rows.map(function(r){
+        var st = QSTATE[r.status] || { label: r.status, color: "" };
+        return "<tr><td>" + esc(r.eventName || ("#" + r.eventId)) +
+            (r.system ? ' <span style="color:var(--faint)">· ' + esc(r.system) + "</span>" : "") +
+            (r.lastError ? '<div style="color:var(--coral);font-size:11.5px;margin-top:3px">' +
+              esc(r.lastError) + "</div>" : "") + "</td>" +
+          '<td style="color:' + st.color + '">' + esc(st.label) + "</td>" +
+          "<td>" + esc(r.attempts) + "</td>" +
+          "<td>" + esc(String(r.updatedAt || "").slice(0, 19).replace("T", " ")) + "</td>" +
+          '<td style="white-space:nowrap">' +
+            (r.status === "OK" ? "" :
+              '<button type="button" class="btn" data-qretry="' + r.id + '">Повтор</button> ') +
+            '<button type="button" class="btn" data-qdrop="' + r.id + '">Убрать</button>' +
+          "</td></tr>";
+      }).join("") + "</tbody></table>";
+
+    b.querySelectorAll("[data-qretry]").forEach(function(x){
+      x.onclick = function(){ qact("POST", "/export/queue/" + x.getAttribute("data-qretry") + "/retry"); };
+    });
+    b.querySelectorAll("[data-qdrop]").forEach(function(x){
+      x.onclick = function(){
+        if (!confirm("Убрать событие из очереди? Оно останется незалитым в crmdb.")) return;
+        qact("DELETE", "/export/queue/" + x.getAttribute("data-qdrop"));
+      };
+    });
+  }
+
+  function qload(){
+    return fetch("../api/events/export/queue", { credentials: "same-origin",
+        headers: { Accept: "application/json" } })
+      .then(function(r){
+        return r.text().then(function(t){
+          var j = null; try { j = t ? JSON.parse(t) : null; } catch(e){}
+          if (!r.ok) throw new Error((j && j.message) || t || ("HTTP " + r.status));
+          return j;
+        });
+      })
+      .then(function(d){ qrender(d); qnote(""); })
+      .catch(function(e){ qnote(e.message, true); });
+  }
+
+  function qact(method, path){
+    qnote("Отправляю…");
+    fetch("../api/events" + path, { method: method, credentials: "same-origin",
+        headers: { Accept: "application/json" } })
+      .then(function(r){
+        return r.text().then(function(t){
+          var j = null; try { j = t ? JSON.parse(t) : null; } catch(e){}
+          if (!r.ok) throw new Error((j && j.message) || t || ("HTTP " + r.status));
+          return j;
+        });
+      })
+      .then(function(d){ qrender(d); qnote("Готово"); })
+      .catch(function(e){ qnote(e.message, true); });
+  }
+
   return {
     open: function(){
       bind();
+      var qb = $("#evqReload");
+      if (qb) qb.onclick = qload;
+      /* Очередь читаем при каждом открытии панели, а список событий — один раз:
+         очередь меняется сама, фоном, и вчерашний её вид ничего не значит. */
+      qload();
       if (!loaded) load();   // список — это и есть содержимое панели, ждать нажатия незачем
     }
   };

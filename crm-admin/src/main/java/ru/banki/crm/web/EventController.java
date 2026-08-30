@@ -1,6 +1,7 @@
 package ru.banki.crm.web;
 
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +20,7 @@ import ru.banki.crm.service.flow.EventChainService;
 import ru.banki.crm.service.flow.EventEditService;
 import ru.banki.crm.service.flow.EventFormService;
 import ru.banki.crm.service.flow.EventListService;
+import ru.banki.crm.service.prod.EventExportQueueService;
 import ru.banki.crm.service.prod.EventExportService;
 import ru.banki.crm.service.prod.EventImportService;
 import ru.banki.crm.service.prod.ProcessControlService;
@@ -41,6 +43,7 @@ public class EventController {
 
     private final EventFormService service;
     private final EventExportService export;
+    private final EventExportQueueService queue;
     private final EventImportService importer;
     private final EventListService catalog;
     private final EventChainService chains;
@@ -49,11 +52,13 @@ public class EventController {
     private final ProcessControlService control;
 
     public EventController(EventFormService service, EventExportService export,
+                           EventExportQueueService queue,
                            EventImportService importer, EventListService catalog,
                            EventChainService chains, EventEditService edit, AccessGuard access,
                            ProcessControlService control) {
         this.service = service;
         this.export = export;
+        this.queue = queue;
         this.importer = importer;
         this.catalog = catalog;
         this.chains = chains;
@@ -142,27 +147,56 @@ public class EventController {
      */
     private EventCreated withExport(EventCreated created) {
         Map<String, Object> res = new LinkedHashMap<>();
+        /* В очередь ставим ВСЕГДА и первым делом — до любой проверки. Причина отказа
+           бывает временной (crmdb недоступна, перелив остановлен на время инцидента), а
+           бывает и не про событие вовсе (у этого человека нет права на перелив). Ни одна
+           из них не повод забыть, что событие в прод не уехало: строка в очереди — то
+           единственное, что об этом помнит. Доставит её тик. */
+        queue.enqueue(created.eventId());
         try {
             if (!access.can(Capability.ADD, Sections.EV_EXPORT)) {
-                return created.withExport(skipped(res, "Нет прав на перелив событий в прод-БД"));
+                return created.withExport(waiting(res, created.eventId(),
+                        "Нет прав на перелив событий в прод-БД"));
             }
             if (!control.canStart(ProcessControlService.EVENT_EXPORT)) {
-                return created.withExport(skipped(res, "Перелив событий остановлен в «Процессах переливов»"));
+                return created.withExport(waiting(res, created.eventId(),
+                        "Перелив событий остановлен в «Процессах переливов»"));
             }
             if (!Boolean.TRUE.equals(export.health().get("configured"))) {
-                return created.withExport(skipped(res, "Прод-БД событий (crmdb) не настроена"));
+                return created.withExport(waiting(res, created.eventId(),
+                        "Прод-БД событий (crmdb) не настроена"));
             }
+            /* Пробуем доставить сразу, не дожидаясь тика: форма показывает продовые id
+               в отчёте о заведении, и ждать ради них двадцать секунд незачем. */
             Map<String, Object> done = export.export(created.eventId());
+            queue.markDone(created.eventId());
             res.put("status", "ok");
             res.putAll(done);
             return created.withExport(res);
         } catch (RuntimeException e) {
+            String reason = e instanceof ResponseStatusException rse && rse.getReason() != null
+                    ? rse.getReason() : String.valueOf(e.getMessage());
             res.clear();
             res.put("status", "error");
-            res.put("reason", e instanceof ResponseStatusException rse && rse.getReason() != null
-                    ? rse.getReason() : String.valueOf(e.getMessage()));
+            res.put("reason", reason);
+            res.put("queued", true);
+            queue.markFailed(created.eventId(), reason);
             return created.withExport(res);
         }
+    }
+
+    /**
+     * Сейчас не уехало, но уедет: строка стоит в очереди, её подберёт тик.
+     * <p>
+     * Отдельно от прежнего skipped: то говорило «перелива не будет», и человек шёл жать
+     * кнопку руками. Теперь будет, и сказать надо именно это — иначе кнопку нажмут
+     * заодно с тиком.
+     */
+    private static Map<String, Object> waiting(Map<String, Object> res, long eventId, String reason) {
+        res.put("status", "skipped");
+        res.put("reason", reason + ". Событие поставлено в очередь перелива — доставим само");
+        res.put("queued", true);
+        return res;
     }
 
     private static Map<String, Object> skipped(Map<String, Object> res, String reason) {
@@ -253,6 +287,33 @@ public class EventController {
     public Map<String, Object> exportEvent(@PathVariable long eventId) {
         access.requireCapability(Capability.ADD, Sections.EV_EXPORT);
         return export.export(eventId);
+    }
+
+    // ---------------------------------------------------------------- очередь перелива
+    /* Очередь нужна затем же, зачем она у шаблонов: событие, не уехавшее с первой
+       попытки, не должно зависеть от того, вспомнит ли человек нажать кнопку. */
+
+    @GetMapping("/export/queue")
+    public Map<String, Object> exportQueue() {
+        access.requireAnySection(Sections.EV_EXPORT);
+        return queue.board();
+    }
+
+    @PostMapping("/export/queue/{id}/retry")
+    public Map<String, Object> exportRetry(@PathVariable long id) {
+        access.requireCapability(Capability.ADD, Sections.EV_EXPORT);
+        queue.retry(id);
+        /* Не ждём тика: человек нажал «Повтор» и хочет увидеть результат, а не узнать,
+           что попробуем через двадцать секунд. */
+        queue.process(1);
+        return queue.board();
+    }
+
+    @DeleteMapping("/export/queue/{id}")
+    public Map<String, Object> exportDrop(@PathVariable long id) {
+        access.requireCapability(Capability.DELETE, Sections.EV_EXPORT);
+        queue.drop(id);
+        return queue.board();
     }
 
     /** Разведка: сколько событий в crmdb и сколько из них уже у нас. Только чтение. */
