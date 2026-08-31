@@ -308,7 +308,7 @@ public class EventExportService {
             String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             log.warn("перелив события {} не удался: {}", eventId, msg);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Перелив не выполнен, в проде ничего не создано: " + msg);
+                    "Перелив не выполнен, в проде ничего не создано: " + msg + hintFor(msg));
         }
 
         /* Прод уже закоммичен. Отметку пишем немедленно: без неё повторное нажатие
@@ -415,6 +415,26 @@ public class EventExportService {
                     + " Перелив остановлен — в прод ничего не записано.");
         }
         values.put(col, mapped);
+    }
+
+    /**
+     * Подсказка к чужой ошибке — там, где причина не в том, о чём она говорит.
+     * <p>
+     * «duplicate key … already exists» после того, как мы перестали назначать id сами,
+     * почти всегда означает одно: у колонки есть последовательность, но она отстала от
+     * данных. Отстала потому, что прежние переливы вставляли id явно (max+1), а явная
+     * вставка последовательность не двигает. Человеку, который видит это впервые,
+     * сообщение Postgres не говорит ничего — а лечится всё одним setval.
+     */
+    private static String hintFor(String msg) {
+        String m = msg == null ? "" : msg.toLowerCase();
+        if (m.contains("duplicate key") && m.contains("_pkey")) {
+            return ". Похоже, последовательность id в прод-таблице отстала от данных:"
+                 + " прежние переливы вставляли id явно и её не двигали. Лечится один раз —"
+                 + " setval(pg_get_serial_sequence('<схема.таблица>','id'),"
+                 + " (SELECT max(id) FROM <схема.таблица>)) для таблиц перелива.";
+        }
+        return "";
     }
 
     /** Наш id строки указанной таблицы в слое B события; null — такой строки нет. */
