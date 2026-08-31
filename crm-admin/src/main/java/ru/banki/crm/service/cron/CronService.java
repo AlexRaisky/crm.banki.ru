@@ -312,8 +312,16 @@ public class CronService {
            в первый же запуск. */
         body.put("timeStart", Instant.now().toString());
         body.put("database", database);
-        /* Всегда false: задание создаётся остановленным, запускают его отдельно. */
-        body.put("isActive", false);
+        /* Активность берём у самого события: отметили галку в форме — задание создаётся
+           запущенным.
+
+           Раньше здесь стояло жёсткое false, и человек, поставивший «Is active»,
+           получал в проде остановленное задание. Плата за прямоту такая: между
+           созданием задания и вставкой шагов выборки проходит секунда-другая, и
+           теоретически Quartz может тикнуть в этот промежуток по заданию без шагов.
+           Промах одного тика дешевле, чем расписание, которое молча не совпадает с тем,
+           что человек отметил. */
+        body.put("isActive", Boolean.TRUE.equals(ev.get("is_active")));
         body.put("isBatch", Boolean.TRUE.equals(ev.get("is_batch")));
         body.put("maxRetryAttempts", 1);
         body.put("crontab", crontab);

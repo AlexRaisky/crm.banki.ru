@@ -340,6 +340,9 @@ public class EventExportService {
                     "{\"event_id\":" + eventId + ",\"rows\":" + sent.size() + "}");
         }
 
+        /* Отдельного запуска задания здесь нет: активность задаётся при его создании,
+           значением из самого события. Дублировать это вызовом start значило бы иметь
+           два места, решающих одно и то же. */
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("eventId", eventId);
         out.put("eventName", eventName);
