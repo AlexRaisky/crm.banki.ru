@@ -76,6 +76,16 @@ const NAV = [
   ]},
   { id:"dash", label:"Дашборд", icon:"gauge", overviewView:"view-dash-overview", children:[
       { id:"dashboard",  label:"Общая статистика",  icon:"chart", view:"sec-admin", adminMode:"dashboard" },
+      /* Аналитика коммуникаций — тот же дашборд, но на настоящих данных: витрины
+         sandbox.t_comm_* в Greenplum. «Общая статистика» рядом до сих пор рисуется по
+         демо-набору (FALLBACK_DASHBOARD), поэтому пункты разные, а не один.
+
+         id свой, а секция RBAC общая (aclSection: dashboard) — как у «Просмотра
+         настроек». Дать обоим пунктам один id нельзя: по нему оболочка и подсвечивает
+         активный пункт, и раскрывает flyout, и фильтрует по правам — два одинаковых
+         превратились бы в один. */
+      { id:"comm-analytics", label:"Аналитика коммуникаций", icon:"chart", view:"sec-comm-analytics",
+        aclSection:"dashboard" },
       { id:"deviations", label:"Панель отклонений", icon:"pulse", view:"sec-deviations" },
   ]},
   { id:"monitoring", label:"Мониторинг", icon:"monitor", overviewView:"view-mon-overview", children:[
@@ -954,6 +964,9 @@ function openSection(sid, cid){
   if (target.view === "sec-event-online" && window.EventChain) window.EventChain.open();
   if (target.view === "sec-event-offline" && typeof initEventOfflineSection === "function") initEventOfflineSection();
   if (target.view === "sec-event-list" && typeof initEventListSection === "function") initEventListSection();
+  /* Витрины пересобирают скриптом, и вчерашние числа ничем не лучше пустого экрана —
+     читаем при каждом открытии раздела. */
+  if (target.view === "sec-comm-analytics" && typeof initCommAnalyticsSection === "function") initCommAnalyticsSection();
   if (target.view === "sec-deviations") setTimeout(() => {
     /* графики Chart.js, созданные в скрытой секции, имеют нулевой размер —
        при первом показе пересоздаём их через renderAll(). setTimeout, а не rAF:

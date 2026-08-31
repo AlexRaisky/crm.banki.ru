@@ -41,6 +41,7 @@
 <link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-entities.css">
 <link rel="stylesheet" href="css/section-events.css?v=7">
+<link rel="stylesheet" href="css/section-comm-analytics.css?v=1">
 <link rel="stylesheet" href="css/section-admin.css">
 </head>
 <body>
@@ -504,6 +505,20 @@
       <!-- «Перелив в прод» уехал в настройки (раздел «Переливы»): отправка события
            в боевую базу — процесс доставки, а не работа с событием, и стоять он должен
            рядом с синхронизацией шаблонов и импортом из crmdb. -->
+    </section>
+
+    <!-- ===== Дашборд → Аналитика коммуникаций =====
+         Витрины sandbox.t_comm_* в Greenplum: их считает отдельный SQL-скрипт, экран
+         только показывает. Рисует js/comm-analytics.js. -->
+    <section class="view" id="sec-comm-analytics">
+      <div class="eyebrow">CRM · Analytics · Communications</div>
+      <h1>Аналитика <span class="grad">коммуникаций</span></h1>
+      <p class="sub">Нагрузка на человека, переспам, качество разметки и дубли — по витринам <code>sandbox.t_comm_*</code> в Greenplum. Витрины считает отдельный SQL-скрипт; панель их только читает и ничего не пересчитывает. Источник — то же подключение, что у отчёта «ЧЕК СМС траффик».</p>
+      <div class="ca-head">
+        <button type="button" class="ca-btn" id="caReload">Перечитать витрины</button>
+        <span class="ca-foot" id="caFoot"></span>
+      </div>
+      <div id="caHost"></div>
     </section>
 
     <!-- ===== События → Онлайн-событие ===== -->
@@ -2741,6 +2756,7 @@
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
 <script src="js/events.js?v=22"></script>
+<script src="js/comm-analytics.js?v=1"></script>
 <script src="js/event-chain.js?v=2"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->
