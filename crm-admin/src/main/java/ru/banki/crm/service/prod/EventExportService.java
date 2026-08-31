@@ -232,6 +232,10 @@ public class EventExportService {
            Повторный перелив второго задания не заводит: id берётся из flow.t_event_cron. */
         Long launchOurId = ourRowId(ours, LAUNCH_TABLE);
         Long launchProdId = null;
+        /* Создали задание именно в этом вызове? От этого зависит, что делать при сбое:
+           своё — гасим, чужое (созданное раньше и, возможно, давно работающее) — не
+           трогаем. */
+        boolean launchCreatedNow = false;
         if (launchOurId != null) {
             launchProdId = already.get(LAUNCH_TABLE + "#" + launchOurId);
             if (launchProdId == null) {
@@ -246,6 +250,7 @@ public class EventExportService {
                             + " Перелив остановлен, в crmdb ничего не записано.");
                 }
                 launchProdId = ((Number) id).longValue();
+                launchCreatedNow = true;
             }
             prodIdOf.put(LAUNCH_TABLE + "#" + launchOurId, launchProdId);
             if (!already.containsKey(LAUNCH_TABLE + "#" + launchOurId)) {
@@ -310,15 +315,34 @@ public class EventExportService {
             /* «В проде ничего не создано» — правда только про то, что пишем МЫ: наша
                транзакция откатилась целиком. Задание в планировщике создаётся до неё и
                откату не подлежит, поэтому молчать о нём нельзя — человек пойдёт искать
-               в crmdb пустоту и найдёт строку расписания. */
+               в crmdb пустоту и найдёт строку расписания.
+
+               Хуже: задание создаётся с активностью самого события, и у активного шаги
+               выборки в прод не доехали. Такое задание тикает по расписанию и работает
+               вхолостую. Гасим его — но только если создали в этом вызове: чужое,
+               созданное раньше и, возможно, давно работающее, трогать нельзя. */
+            String jobNote = "";
+            if (launchProdId != null) {
+                jobNote = " Строки, которые пишем мы, откачены — их в crmdb нет."
+                        + " Но задание в планировщике (id " + launchProdId + ") существует;"
+                        + " при повторе будет использовано оно же — второго не появится.";
+                if (launchCreatedNow) {
+                    try {
+                        cron.stop(eventId);
+                        jobNote += " Задание остановлено, чтобы не тикать без шагов выборки;"
+                                + " удачный перелив вернёт ему активность события.";
+                    } catch (RuntimeException stopErr) {
+                        jobNote += " ОСТАНОВИТЬ ЕГО НЕ ВЫШЛО (" + stopErr.getMessage()
+                                + ") — если событие активно, остановите вручную кнопкой"
+                                + " «Остановить» в карточке события: сейчас оно исполняется"
+                                + " без шагов выборки.";
+                    }
+                }
+            } else {
+                jobNote = " В crmdb ничего не создано.";
+            }
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Перелив не выполнен: " + msg + hintFor(msg)
-                    + (launchProdId == null
-                        ? " В crmdb ничего не создано."
-                        : " Строки, которые пишем мы, откачены — их в crmdb нет. Но задание"
-                          + " в планировщике (id " + launchProdId + ") существует: оно"
-                          + " остановлено и ничего не исполняет, а при повторе будет"
-                          + " использовано оно же — второго не появится."));
+                    "Перелив не выполнен: " + msg + hintFor(msg) + jobNote);
         }
 
         /* Прод уже закоммичен. Отметку пишем немедленно: без неё повторное нажатие
@@ -340,10 +364,29 @@ public class EventExportService {
                     "{\"event_id\":" + eventId + ",\"rows\":" + sent.size() + "}");
         }
 
-        /* Отдельного запуска задания здесь нет: активность задаётся при его создании,
-           значением из самого события. Дублировать это вызовом start значило бы иметь
-           два места, решающих одно и то же. */
+        /* Перелив прошёл — приводим активность задания к активности события.
+           <p>
+           Это не дубль того, что делает создание задания. Создание ставит активность
+           сразу, и в удачном случае здесь ничего не меняется. Но есть два пути, после
+           которых состояние расходится: неудачный перелив гасит задание, чтобы оно не
+           тикало без шагов, а повторный перелив создание не вызывает — он берёт готовый
+           id. Без этой строки успешный повтор оставлял бы событие остановленным, хотя в
+           форме оно отмечено активным.
+           <p>
+           Владелец правила один — эта точка: «после удачного перелива в проде то же, что
+           у нас». Ошибка запуска перелив не отменяет: строки на месте, не хватает
+           нажатия, о чём и сообщаем. */
         Map<String, Object> out = new LinkedHashMap<>();
+        if (launchProdId != null && eventActive(eventId)) {
+            try {
+                cron.start(eventId);
+                out.put("cronStarted", true);
+            } catch (RuntimeException e) {
+                out.put("cronStarted", false);
+                out.put("cronStartError", e instanceof ResponseStatusException rse
+                        && rse.getReason() != null ? rse.getReason() : String.valueOf(e.getMessage()));
+            }
+        }
         out.put("eventId", eventId);
         out.put("eventName", eventName);
         out.put("sent", sent);
@@ -484,6 +527,13 @@ public class EventExportService {
                 });
         }
         return out;
+    }
+
+    /** Событие отмечено активным? Спрашиваем нашу модель — форма пишет галку туда. */
+    private boolean eventActive(long eventId) {
+        Boolean a = jdbc.queryForObject(
+                "SELECT is_active FROM flow.d_event WHERE id = ?", Boolean.class, eventId);
+        return Boolean.TRUE.equals(a);
     }
 
     /** Наш id строки указанной таблицы в слое B события; null — такой строки нет. */
