@@ -447,6 +447,42 @@ public class EventExportService {
         return "";
     }
 
+    /**
+     * Что у этого события УЖЕ есть в crmdb — независимо от того, чем кончился перелив.
+     * <p>
+     * Нужно ровно для отчёта. Правая колонка «id в crmdb» раньше заполнялась только из
+     * ответа удачного перелива, и при любой ошибке оставалась пустой целиком — даже там,
+     * где строки давно есть. Хуже того, с тех пор как расписание заводит планировщик,
+     * его строка остаётся в проде и после отката нашей транзакции: отчёт показывал
+     * прочерк напротив существующей строки.
+     * <p>
+     * Источники два: журнал связей (всё, что уехало нашими вставками) и flow.t_event_cron
+     * (задание планировщика — его в журнале ещё нет, если транзакция откатилась).
+     */
+    public List<Map<String, Object>> inProd(long eventId) {
+        List<Map<String, Object>> out = new ArrayList<>(jdbc.queryForList(
+                "SELECT our_table AS table, our_id AS \"ourId\", prod_id AS \"prodId\""
+                + " FROM flow.t_event_link WHERE event_id = ? AND direction <> 'IMPORT'",
+                eventId));
+        boolean hasLaunch = out.stream()
+                .anyMatch(r -> LAUNCH_TABLE.equals(String.valueOf(r.get("table"))));
+        if (!hasLaunch) {
+            jdbc.queryForList(
+                    "SELECT c.cron_event_id AS \"prodId\", m.prod_id AS \"ourId\""
+                    + " FROM flow.t_event_cron c"
+                    + " LEFT JOIN flow.t_materialization m ON m.our_entity = 'flow.d_event'"
+                    + "   AND m.our_id = c.event_id::text AND m.prod_table = ?"
+                    + " WHERE c.event_id = ?", LAUNCH_TABLE, eventId)
+                .forEach(r -> {
+                    Map<String, Object> m = new LinkedHashMap<>(r);
+                    m.put("table", LAUNCH_TABLE);
+                    m.put("by", "планировщик");
+                    out.add(m);
+                });
+        }
+        return out;
+    }
+
     /** Наш id строки указанной таблицы в слое B события; null — такой строки нет. */
     private static Long ourRowId(List<Map<String, Object>> ours, String table) {
         for (Map<String, Object> r : ours) {

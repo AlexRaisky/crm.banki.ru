@@ -180,6 +180,14 @@ public class EventController {
             res.put("status", "error");
             res.put("reason", reason);
             res.put("queued", true);
+            /* Что успело оказаться в crmdb — в отчёт. Перелив мог упасть на середине, а
+               задание планировщика создаётся до нашей транзакции и откату не подлежит:
+               прочерк напротив существующей строки хуже, чем сама ошибка. */
+            try {
+                res.put("sent", export.inProd(created.eventId()));
+            } catch (RuntimeException ignore) {
+                /* Отчёт — не повод уронить ответ о заведённом событии. */
+            }
             queue.markFailed(created.eventId(), reason);
             return created.withExport(res);
         }
@@ -192,10 +200,15 @@ public class EventController {
      * кнопку руками. Теперь будет, и сказать надо именно это — иначе кнопку нажмут
      * заодно с тиком.
      */
-    private static Map<String, Object> waiting(Map<String, Object> res, long eventId, String reason) {
+    private Map<String, Object> waiting(Map<String, Object> res, long eventId, String reason) {
         res.put("status", "skipped");
         res.put("reason", reason + ". Событие поставлено в очередь перелива — доставим само");
         res.put("queued", true);
+        try {
+            res.put("sent", export.inProd(eventId));
+        } catch (RuntimeException ignore) {
+            /* см. выше */
+        }
         return res;
     }
 
