@@ -38,9 +38,11 @@ import java.util.Set;
  * <p>
  * Четыре вещи, без которых перелив ломается:
  * <ol>
- *   <li><b>id считаем сами.</b> В проде у этих таблиц нет ни identity, ни DEFAULT —
- *       исторически id выдавался как {@code max(id)+1}, и так же его выдаёт синк
- *       шаблонов ({@link ProdDbService}). Наш локальный id в прод не переносится.</li>
+ *   <li><b>id назначает прод.</b> Мы его не считаем и не передаём: строка уходит без
+ *       колонки id, а присвоенный номер забирается через {@code RETURNING}. Прежний
+ *       {@code max(id)+1} был гонкой с любым другим писателем и обходом
+ *       последовательности, если она у колонки есть. Наш локальный id в прод не
+ *       переносится в любом случае.</li>
  *   <li><b>Внешние ключи переставляются.</b> Раз id другой, ссылки внутри пачки
  *       (id_comm_creation, t_launch_settings_id, get_event_id) надо заменить на
  *       продовые. Отсюда фиксированный порядок вставки: сначала то, на что ссылаются.</li>
@@ -219,8 +221,12 @@ public class EventExportService {
                     }
                     ObjectNode values = readOurRow(table, ourId);
                     remapForeignKeys(table, values, prodIdOf);
-                    long prodId = ProdDbService.maxPlusOne(c, table, "id", null);
-                    insertIntoProd(c, table, prodId, values);
+                    /* id не назначаем — его выдаёт прод. Раньше он считался как max+1 и
+                       вставлялся явно: это гонка с любым другим писателем в ту же
+                       таблицу и, если у колонки есть последовательность, ещё и способ
+                       её обойти — она не сдвинется, и следующая чужая вставка упрётся в
+                       занятый номер. */
+                    long prodId = insertIntoProd(c, table, values);
                     prodIdOf.put(table + "#" + ourId, prodId);
                     journal.add(new Object[]{eventId, table, ourId, prodId, CurrentUser.email()});
                     sent.add(Map.of("table", table, "ourId", ourId, "prodId", prodId));
@@ -359,12 +365,20 @@ public class EventExportService {
     }
 
     /**
-     * INSERT в прод с явным id (identity у этих таблиц там нет) и с типами из самой
-     * прод-таблицы: jsonb_populate_record приводит поля к её DDL, поэтому массивы и
-     * jsonb не приходится собирать руками.
+     * INSERT в прод. Идентификатор назначает сама база, мы его только забираем.
+     * <p>
+     * Раньше id считался как {@code max(id)+1} и вставлялся явно. Это плохо двумя
+     * способами сразу: гонка с любым другим писателем в ту же таблицу и, если у колонки
+     * всё-таки есть последовательность, обход этой последовательности — она не
+     * сдвигается, и следующая чужая вставка упирается в занятый номер.
+     * <p>
+     * Типы приводит {@code jsonb_populate_record} по DDL прод-таблицы, поэтому массивы
+     * и jsonb не приходится перекладывать между соединениями руками.
+     *
+     * @return id, который присвоил прод
      */
-    private static void insertIntoProd(Connection c, String table, long prodId,
-                                       ObjectNode values) throws Exception {
+    private static long insertIntoProd(Connection c, String table, ObjectNode values)
+            throws Exception {
         Set<String> prodCols = prodColumns(c, table);
         List<String> cols = new ArrayList<>();
         values.fieldNames().forEachRemaining(k -> {
@@ -373,18 +387,35 @@ public class EventExportService {
             if (values.get(k) == null || values.get(k).isNull()) return;
             cols.add(k);
         });
-        StringBuilder colList = new StringBuilder("id");
-        StringBuilder valList = new StringBuilder("?::bigint");
+        if (cols.isEmpty()) {
+            /* Раньше в запросе всегда был хотя бы id, и пустой список колонок не
+               встречался. Теперь встречается — и «INSERT INTO t () SELECT» это
+               синтаксическая ошибка, о которой лучше сказать по-человечески. */
+            throw new IllegalStateException(
+                    "В строке " + table + " не осталось ни одной колонки для вставки:"
+                    + " все либо пустые, либо отсутствуют в прод-таблице");
+        }
+        StringBuilder colList = new StringBuilder();
+        StringBuilder valList = new StringBuilder();
         for (String k : cols) {
-            colList.append(", ").append(k);
-            valList.append(", p.").append(k);
+            if (colList.length() > 0) {
+                colList.append(", ");
+                valList.append(", ");
+            }
+            colList.append(k);
+            valList.append("p.").append(k);
         }
         String sql = "INSERT INTO " + table + " (" + colList + ") SELECT " + valList +
-                " FROM jsonb_populate_record(NULL::" + table + ", ?::jsonb) p";
+                " FROM jsonb_populate_record(NULL::" + table + ", ?::jsonb) p RETURNING id";
         try (PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, prodId);
-            ps.setString(2, values.toString());
-            ps.executeUpdate();
+            ps.setString(1, values.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new IllegalStateException(
+                            "Прод не вернул id вставленной строки " + table);
+                }
+                return rs.getLong(1);
+            }
         }
     }
 
