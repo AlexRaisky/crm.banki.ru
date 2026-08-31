@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import ru.banki.crm.security.CurrentUser;
 import ru.banki.crm.service.AdminLogService;
+import ru.banki.crm.service.cron.CronService;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -51,6 +52,11 @@ import java.util.Set;
  *       ({@code stop_product_ids}, {@code correlation_keys}) и jsonb-колонки пришлось бы
  *       перекладывать между двумя соединениями руками, а {@code java.sql.Array} к чужому
  *       соединению не привяжешь.</li>
+ *   <li><b>Расписание создаёт планировщик.</b> {@code scheduler.t_launch_settings} мы не
+ *       вставляем: её заводит {@code POST /api/v1/event}, и он же создаёт контекст
+ *       Quartz. Возвращённый id идёт в {@code t_execution_steps.t_launch_settings_id}.
+ *       Пока вставляли и мы, на событие приходилось две строки расписания — наша с
+ *       шагами и сервисная с заданием, но без шагов.</li>
  *   <li><b>Справочники не дописываются.</b> {@code tracker.d_comm_creation} перелив
  *       только читает (см. {@link #PROD_READ_ONLY}): событие выбирает готовый набор
  *       параметров доставки, а не заводит свой.</li>
@@ -97,6 +103,20 @@ public class EventExportService {
      */
     private static final Set<String> PROD_READ_ONLY = Set.of("tracker.d_comm_creation");
 
+    /**
+     * Строку расписания в проде создаём НЕ мы, а планировщик.
+     * <p>
+     * {@code POST /api/v1/event} принимает ровно набор колонок этой таблицы, вставляет её
+     * сам и заодно заводит контекст Quartz. Пока мы вставляли её тоже, на одно событие
+     * приходилось две строки: наша — с шагами выборки, и созданная сервисом — с заданием,
+     * но без шагов. Исполнялась вторая, то есть не исполнялось ничего.
+     * <p>
+     * Из {@link #ORDER} таблицу не убираем: строка такого рода в нашем слое B есть, и
+     * встретив её, перелив должен осознанно передать дело планировщику, а не упасть на
+     * «таблица не входит в набор».
+     */
+    private static final String LAUNCH_TABLE = "scheduler.t_launch_settings";
+
     /** Колонка-ссылка → таблица, на которую она смотрит. Значение подменяется продовым id. */
     private static final Map<String, String> FK_OF = Map.of(
             "id_comm_creation", "tracker.d_comm_creation",
@@ -110,16 +130,19 @@ public class EventExportService {
     private final EventDbService eventDb;
     private final AdminLogService adminLog;
     private final ObjectMapper om;
+    private final CronService cron;
 
     private final ProcessControlService control;
 
     public EventExportService(JdbcTemplate jdbc, EventDbService eventDb,
                               AdminLogService adminLog, ObjectMapper om,
+                              CronService cron,
                               ProcessControlService control) {
         this.jdbc = jdbc;
         this.eventDb = eventDb;
         this.adminLog = adminLog;
         this.om = om;
+        this.cron = cron;
         this.control = control;
     }
 
@@ -200,6 +223,39 @@ public class EventExportService {
         List<Map<String, Object>> skipped = new ArrayList<>();
         List<Object[]> journal = new ArrayList<>();
 
+        /* ---- ПЕРВЫМ ДЕЛОМ: расписание заводит планировщик.
+           Вызов чужого API стоит ДО транзакции в crmdb намеренно: откатить его нельзя, и
+           внутри транзакции он превратил бы откат в ложь. При сбое дальше остаётся
+           зарегистрированное, но ОСТАНОВЛЕННОЕ задание без шагов — оно ничего не сделает,
+           и это лучший из возможных остатков.
+
+           Повторный перелив второго задания не заводит: id берётся из flow.t_event_cron. */
+        Long launchOurId = ourRowId(ours, LAUNCH_TABLE);
+        Long launchProdId = null;
+        if (launchOurId != null) {
+            launchProdId = already.get(LAUNCH_TABLE + "#" + launchOurId);
+            if (launchProdId == null) {
+                launchProdId = cron.registeredId(eventId);
+            }
+            if (launchProdId == null) {
+                Map<String, Object> reg = cron.register(eventId);
+                Object id = reg.get("cronEventId");
+                if (id == null) {
+                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                            "Планировщик не вернул id задания — переливать шаги некуда."
+                            + " Перелив остановлен, в crmdb ничего не записано.");
+                }
+                launchProdId = ((Number) id).longValue();
+            }
+            prodIdOf.put(LAUNCH_TABLE + "#" + launchOurId, launchProdId);
+            if (!already.containsKey(LAUNCH_TABLE + "#" + launchOurId)) {
+                journal.add(new Object[]{eventId, LAUNCH_TABLE, launchOurId, launchProdId,
+                        CurrentUser.email()});
+                sent.add(Map.of("table", LAUNCH_TABLE, "ourId", launchOurId,
+                        "prodId", launchProdId, "by", "планировщик"));
+            }
+        }
+
         try (Connection c = eventDb.connection()) {
             c.setAutoCommit(false);
             try {
@@ -209,6 +265,11 @@ public class EventExportService {
                     Long done = already.get(table + "#" + ourId);
                     if (done != null) {
                         skipped.add(Map.of("table", table, "ourId", ourId, "prodId", done));
+                        continue;
+                    }
+                    if (LAUNCH_TABLE.equals(table)) {
+                        /* Уже создано планировщиком выше — сюда доходим только затем,
+                           чтобы не вставить её вторично. */
                         continue;
                     }
                     if (PROD_READ_ONLY.contains(table)) {
@@ -354,6 +415,16 @@ public class EventExportService {
                     + " Перелив остановлен — в прод ничего не записано.");
         }
         values.put(col, mapped);
+    }
+
+    /** Наш id строки указанной таблицы в слое B события; null — такой строки нет. */
+    private static Long ourRowId(List<Map<String, Object>> ours, String table) {
+        for (Map<String, Object> r : ours) {
+            if (table.equals(String.valueOf(r.get("tbl")))) {
+                return Long.parseLong(String.valueOf(r.get("id")));
+            }
+        }
+        return null;
     }
 
     /** Продовый id нашей строки по журналу связей; null — соответствия нет. */

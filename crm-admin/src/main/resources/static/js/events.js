@@ -1227,7 +1227,8 @@
             col("is_deferred", false),
             col("allow_ml", false)
           ] },
-          { name: "scheduler.t_launch_settings", rows: 1, note: "прод-расписание", cols: [
+          { name: "scheduler.t_launch_settings", rows: 1,
+            note: "создаёт ПЛАНИРОВЩИК (POST /api/v1/event), не мы — его id уходит в шаги", cols: [
             colAuto("id", "RETURNING — станет t_launch_settings_id ниже"),
             col("selection", sel),
             colAuto("time_start", "момент вставки на сервере",

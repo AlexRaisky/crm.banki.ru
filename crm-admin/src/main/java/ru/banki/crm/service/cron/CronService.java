@@ -381,6 +381,17 @@ public class CronService {
         return id;
     }
 
+    /**
+     * id задания, если событие уже зарегистрировано; иначе null.
+     * <p>
+     * Нужен переливу: он вызывает регистрацию сам, но повторный перелив того же события
+     * не должен заводить второе задание — id берётся из journal-таблицы.
+     */
+    @Transactional(readOnly = true)
+    public Long registeredId(long eventId) {
+        return cronIdOrNull(eventId);
+    }
+
     private Long cronIdOrNull(long eventId) {
         List<Long> ids = jdbc.queryForList(
                 "SELECT cron_event_id FROM flow.t_event_cron WHERE event_id = ?", Long.class, eventId);
