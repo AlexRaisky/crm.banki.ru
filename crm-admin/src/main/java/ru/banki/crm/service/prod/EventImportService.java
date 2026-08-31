@@ -80,10 +80,6 @@ public class EventImportService {
 
     private final ProcessControlService control;
 
-    /** Автоматическая сверка с продом: выключена по умолчанию — включают на контуре. */
-    @Value("${app.event-import.enabled:false}")
-    private boolean importEnabled;
-
     /** Потолок строк на таблицу: у хвоста маленький, у вечерней сверки большой. */
     @Value("${app.event-import.increment-limit:500}")
     private int incrementLimit;
@@ -113,8 +109,12 @@ public class EventImportService {
     @Scheduled(fixedDelayString = "${app.event-import.interval-ms:300000}",
                initialDelayString = "${app.event-import.initial-delay-ms:90000}")
     public void tickIncremental() {
-        if (!importEnabled || !eventDb.configured()
-                || !control.canStart(ProcessControlService.EVENT_IMPORT)) {
+        /* Выключатель один — строка event-import в «Процессах переливов». Раньше поверх
+           неё стояло свойство app.event-import.enabled с умолчанием false: экран
+           показывал «включён», а импорт не запускался ни разу, и заметить это можно было
+           только по пустому логу. Два выключателя, из которых виден не тот, что решает, —
+           худший вид настройки. */
+        if (!eventDb.configured() || !control.canStart(ProcessControlService.EVENT_IMPORT)) {
             return;
         }
         try {
@@ -140,8 +140,7 @@ public class EventImportService {
      */
     @Scheduled(cron = "${app.event-import.full-cron:0 30 22 * * *}")
     public void tickFull() {
-        if (!importEnabled || !eventDb.configured()
-                || !control.canStart(ProcessControlService.EVENT_IMPORT)) {
+        if (!eventDb.configured() || !control.canStart(ProcessControlService.EVENT_IMPORT)) {
             return;
         }
         try {

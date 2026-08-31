@@ -93,7 +93,9 @@ app:
   # Сверка событий с crmdb: частый опрос «что новее нашего последнего id»
   # плюс вечерний полный проход — он подбирает то, что хвост пропустил из-за неприехавших связей.
   event-import:
-    enabled: ${EVENT_IMPORT_ENABLED:false}
+    # enabled здесь больше нет: выключатель один — строка event-import в
+    # «Настройки» → «Переливы» → «Процессы переливов». Свойство перекрывало её и делало
+    # экран неправдой.
     interval-ms: ${EVENT_IMPORT_INTERVAL_MS:300000}     # хвост раз в 5 минут
     initial-delay-ms: ${EVENT_IMPORT_INITIAL_DELAY_MS:90000}
     full-cron: ${EVENT_IMPORT_FULL_CRON:0 30 22 * * *}  # полная сверка в 22:30, после ETL шаблонов
