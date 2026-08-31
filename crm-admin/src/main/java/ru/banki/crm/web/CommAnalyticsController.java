@@ -1,6 +1,8 @@
 package ru.banki.crm.web;
 
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,6 +33,16 @@ public class CommAnalyticsController {
     @GetMapping("/config")
     public Map<String, Object> config() {
         access.requireAnySection(Sections.DASHBOARD);
+        return service.config();
+    }
+
+    /** Выбрать подключение с витринами. Проверку «только админ» делает сервис. */
+    @PutMapping("/config")
+    public Map<String, Object> configSet(@RequestBody Map<String, Object> body) {
+        access.requireAnySection(Sections.DASHBOARD);
+        Object v = body == null ? null : body.get("connectionId");
+        Long id = v == null || String.valueOf(v).isBlank() ? null : Long.valueOf(String.valueOf(v));
+        service.configSet(id);
         return service.config();
     }
 

@@ -439,11 +439,80 @@
     }).then(function () { loading = false; });
   }
 
+  // ------------------------------------------------------------------ подключение
+
+  /**
+   * Строка выбора источника.
+   * <p>
+   * Стоит на самом экране, а не в настройках: витрины могут лежать не там, где витрина
+   * отчёта, и «источник задаётся в Отчётах» было допущением, а не фактом. Менять может
+   * администратор — в строке подключения адрес и учётка боевой базы; остальные видят,
+   * откуда числа, и это ровно то, что им нужно знать.
+   */
+  function renderConn(c) {
+    var sel = el("caConn");
+    var note = el("caConnNote");
+    if (!sel) return;
+    var list = c.connections || [];
+    sel.disabled = !c.canEdit;
+    sel.title = c.canEdit ? "" : "Менять источник может только администратор";
+    sel.innerHTML = '<option value="">— не выбран —</option>' +
+      list.map(function (x) {
+        return '<option value="' + esc(x.id) + '"' +
+          (String(x.id) === String(c.connectionId) ? " selected" : "") + ">" +
+          esc(x.name) + "</option>";
+      }).join("");
+    if (note) {
+      note.textContent = !c.connectionId
+        ? "Источник не выбран: витрины читать неоткуда."
+        : (c.inherited
+            ? "Подключение унаследовано от отчёта «ЧЕК СМС траффик». Выберите своё, если"
+              + " витрины лежат в другой базе."
+            : "");
+    }
+  }
+
+  function loadConfig() {
+    return fetch("/api/comm-analytics/config", {
+      credentials: "same-origin", headers: { Accept: "application/json" }
+    }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (c) { if (c) renderConn(c); return c; })
+      .catch(function () { return null; });
+  }
+
+  function saveConn(id) {
+    var note = el("caConnNote");
+    if (note) note.textContent = "Сохраняю…";
+    fetch("/api/comm-analytics/config", {
+      method: "PUT", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ connectionId: id || null })
+    }).then(function (r) {
+      return r.text().then(function (t) {
+        var j = null;
+        try { j = t ? JSON.parse(t) : null; } catch (e) { /* не json — покажем как есть */ }
+        if (!r.ok) throw new Error((j && j.message) || t || ("HTTP " + r.status));
+        return j;
+      });
+    }).then(function (c) {
+      renderConn(c);
+      /* Источник сменили — старые числа с экрана убираем сразу, а не оставляем висеть
+         под новым именем базы. */
+      data = null;
+      load();
+    }).catch(function (e) {
+      if (note) note.textContent = e.message;
+    });
+  }
+
   window.initCommAnalyticsSection = function () {
     var b = el("caReload");
     if (b) b.onclick = function () { data = null; load(); };
+    var sel = el("caConn");
+    if (sel) sel.onchange = function () { saveConn(sel.value); };
     /* Витрины пересобирают скриптом, и вчерашние числа ничем не лучше пустого экрана —
        читаем при каждом открытии раздела. */
+    loadConfig();
     load();
   };
 })();

@@ -38,16 +38,30 @@ import java.util.Properties;
  * показывает рядом. Три комбинации из семи противоречивы, и одно число вместо двух
  * означало бы принять спорное решение молча.
  * <p>
- * Источник — то же подключение, что у отчёта «ЧЕК СМС траффик»: витрины лежат в той же
- * Greenplum, и заводить второй адрес той же базы значит однажды получить два разных.
+ * Подключение выбирается на самом экране и хранится своим ключом. Пока своё не выбрано,
+ * наследуется подключение отчёта «ЧЕК СМС траффик» — чтобы экран работал сразу после
+ * выката, — и о том, что оно унаследовано, экран говорит прямо.
  */
 @Service
 public class CommAnalyticsService {
 
     private static final Logger log = LoggerFactory.getLogger(CommAnalyticsService.class);
 
-    /** Ключ настройки с id подключения — общий с отчётом ЧЕК СМС. */
-    private static final String SETTINGS_KEY = "smsCheckReport";
+    /**
+     * Ключ настройки с id подключения — свой.
+     * <p>
+     * Сначала он был общим с отчётом «ЧЕК СМС траффик»: витрины лежат в Greenplum, и
+     * подключение к Greenplum в панели было ровно одно. Но это допущение, а не факт —
+     * витрины могут стоять и в другой базе, а отчёт с аналитикой не обязаны переезжать
+     * вместе. Поэтому ключ отдельный, а выбор виден на самом экране.
+     * <p>
+     * Пока свой не задан, берём подключение отчёта: так экран работает сразу после
+     * выката, а не встречает пустотой. Что подключение унаследовано, экран говорит прямо.
+     */
+    private static final String SETTINGS_KEY = "commAnalytics";
+
+    /** Откуда наследуем подключение, пока своё не выбрано. */
+    private static final String FALLBACK_KEY = "smsCheckReport";
 
     /** Секунд на запрос. Витрины маленькие; дольше — значит что-то не так с базой. */
     private static final int QUERY_TIMEOUT_S = 30;
@@ -146,13 +160,51 @@ public class CommAnalyticsService {
 
     // ------------------------------------------------------------------- конфиг
 
+    /**
+     * Настройки экрана: выбранное подключение и список доступных.
+     * <p>
+     * Список отдаём целиком, без фильтра по «похоже на Greenplum»: угадывать базу по
+     * строке подключения — способ однажды спрятать нужную. Ошибочный выбор виден сразу
+     * же, первым запросом: витрин там не окажется.
+     */
     public Map<String, Object> config() {
-        Long id = connectionId();
+        Long own = settingId(SETTINGS_KEY);
+        Long id = own != null ? own : settingId(FALLBACK_KEY);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("connectionId", id);
         out.put("connectionName", id == null ? null : connectionName(id));
+        out.put("inherited", own == null && id != null);
+        out.put("canEdit", isAdmin());
+        out.put("connections", jdbc.queryForList(
+                "SELECT id, name, jdbc_url AS \"jdbcUrl\" FROM app.db_connection"
+                + " WHERE is_active ORDER BY lower(name)"));
         out.put("blocks", new ArrayList<>(BLOCKS.keySet()));
         return out;
+    }
+
+    /**
+     * Выбрать подключение. Только администратор — как и у отчёта: строка подключения
+     * содержит адрес и учётку боевой базы, и менять её кому попало нельзя.
+     *
+     * @param connectionId {@code null} — вернуться к унаследованному от отчёта
+     */
+    public void configSet(Long connectionId) {
+        if (!isAdmin()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Менять источник может только администратор.");
+        }
+        if (connectionId != null) {
+            Integer ok = jdbc.queryForObject(
+                    "SELECT count(*) FROM app.db_connection WHERE id = ?", Integer.class, connectionId);
+            if (ok == null || ok == 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Нет такого подключения.");
+            }
+        }
+        String value = connectionId == null ? "{}" : "{\"connectionId\": " + connectionId + "}";
+        jdbc.update("INSERT INTO app.panel_settings (key, value, timestamp_upd)"
+                + " VALUES (?, CAST(? AS jsonb), now())"
+                + " ON CONFLICT (key) DO UPDATE SET value = CAST(? AS jsonb), timestamp_upd = now()",
+                SETTINGS_KEY, value, value);
     }
 
     // ------------------------------------------------------------------- данные
@@ -169,8 +221,8 @@ public class CommAnalyticsService {
         Long connId = connectionId();
         if (connId == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Источник данных (Greenplum) не выбран. Администратор задаёт его"
-                    + " в разделе «Отчёты» — витрины аналитики лежат в той же базе.");
+                    "Источник данных не выбран. Подключение с витринами sandbox.t_comm_*"
+                    + " выбирается тут же, строкой над блоками.");
         }
         Map<String, Object> out = new LinkedHashMap<>();
         Map<String, Object> blocks = new LinkedHashMap<>();
@@ -229,13 +281,25 @@ public class CommAnalyticsService {
     // ------------------------------------------------------------------- мелочи
 
     private Long connectionId() {
+        Long own = settingId(SETTINGS_KEY);
+        return own != null ? own : settingId(FALLBACK_KEY);
+    }
+
+    private Long settingId(String key) {
         List<Long> ids = jdbc.query(
                 "SELECT (value->>'connectionId')::bigint AS id FROM app.panel_settings WHERE key = ?",
                 (rs, i) -> {
                     long v = rs.getLong("id");
                     return rs.wasNull() ? null : v;
-                }, SETTINGS_KEY);
+                }, key);
         return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private boolean isAdmin() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        return auth != null && auth.getAuthorities().stream()
+                .anyMatch(g -> "ROLE_ADMIN".equals(g.getAuthority()));
     }
 
     private String connectionName(long id) {

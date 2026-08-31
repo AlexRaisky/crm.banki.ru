@@ -16,6 +16,13 @@
     cursor:pointer;font:inherit;font-size:13px;padding:8px 15px}
   .ca-btn:hover{color:var(--ink);border-color:rgba(80,195,255,.4)}
   .ca-foot{color:var(--faint);font-size:12px}
+  /* Строка выбора источника: подпись, список, кнопка — в один ряд, потому что это одно
+     действие «откуда читаем», а не три отдельных настройки. */
+  .ca-conn{color:var(--faint);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase}
+  #caConn{background:var(--card);border:1px solid var(--line);border-radius:9px;color:var(--ink);
+    font:inherit;font-size:13px;max-width:340px;padding:7px 10px;color-scheme:light dark}
+  #caConn:disabled{opacity:.6;cursor:not-allowed}
+  #caConnNote{margin:-8px 0 16px}
 
   /* ---------- карточка блока ---------- */
   .ca-card{border-top:1px solid var(--line);margin-top:26px;padding-top:20px}
