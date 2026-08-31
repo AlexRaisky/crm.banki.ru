@@ -40,6 +40,10 @@
   .ev-f textarea{min-height:96px;font-family:var(--mono);font-size:12.5px;resize:vertical}
   .ev-f input:disabled,.ev-f select:disabled{opacity:.55;cursor:not-allowed}
   .ev-f .hint{font-size:11px;color:var(--faint)}
+  /* Подпись под выражением расписания говорит о нём же: разобрано и как понято, или
+     что не так. Цветом, потому что читают её именно в момент правки строки. */
+  .ev-f .hint.bad{color:var(--coral)}
+  .ev-f .hint.ok{color:var(--green)}
 
   /* чекбоксы в один ряд с полями */
   .ev-checks{display:flex;flex-wrap:wrap;gap:18px 26px;margin-top:14px}

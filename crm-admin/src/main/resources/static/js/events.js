@@ -486,7 +486,8 @@
       if (!str("evfName")) return wzFail("Не заполнено имя события (event_name)");
       if (!str("evfChannel")) return wzFail("Не выбран канал (notify_channel)");
       if (!str("evfDatabase")) return wzFail("Не выбрана база выборки (database)");
-      if (!str("evfCrontab")) return wzFail("Пустое выражение расписания");
+      var cron = validateCron(str("evfCrontab"));
+      if (!cron.ok) return wzFail("Расписание: " + cron.error);
       if (str("evfFreq") === "dow" && !selectedDows().length) {
         return wzFail("Выбраны дни недели, но ни один день не отмечен");
       }
@@ -632,13 +633,178 @@
     everyNMinutes: { word: "минут", max: 59 }
   };
 
+  // ------------------------------------------------------- проверка и разбор выражения
+
+  /* Месяцы и дни недели планировщик принимает и числами, и словами. Держим оба списка:
+     собственный построитель пишет словами, а руками вписывают как придётся. */
+  var MONTH_NAMES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                     "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  var DOW_NAMES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+  /** Позиции полей — чтобы в сообщениях называть поле человеческим словом. */
+  var CRON_FIELDS = [
+    { name: "секунды", min: 0, max: 59 },
+    { name: "минуты", min: 0, max: 59 },
+    { name: "часы", min: 0, max: 23 },
+    { name: "день месяца", min: 1, max: 31 },
+    { name: "месяц", min: 1, max: 12, names: MONTH_NAMES },
+    { name: "день недели", min: 1, max: 7, names: DOW_NAMES }
+  ];
+
+  function tokenOk(t, f) {
+    if (t === "") return false;
+    if (/^\d+$/.test(t)) {
+      var n = parseInt(t, 10);
+      return n >= f.min && n <= f.max;
+    }
+    return !!(f.names && f.names.indexOf(t.toUpperCase()) >= 0);
+  }
+
+  /** Одно поле: `*`, `?`, число, список `a,b`, диапазон `a-b`, шаг `a/b` — и их сочетания. */
+  function fieldOk(v, f) {
+    if (v === "*" || v === "?") return true;
+    return v.split(",").every(function (part) {
+      var step = part.split("/");
+      if (step.length > 2) return false;
+      if (step.length === 2 && !/^\d+$/.test(step[1])) return false;
+      var base = step[0];
+      if (base === "*") return true;
+      var range = base.split("-");
+      if (range.length > 2) return false;
+      return range.every(function (x) { return tokenOk(x, f); });
+    });
+  }
+
+  /**
+   * Проверка выражения.
+   * <p>
+   * Проверяем ровно то, на чём спотыкаются: число полей, диапазоны и правило «в дне
+   * месяца и дне недели ровно одно из двух — знак вопроса». Последнее в Quartz
+   * обязательно, и именно его чаще всего нарушают, переписывая пятипольный кронтаб.
+   * <p>
+   * Расширенный синтаксис (L, W, #, LW) не разбираем, но и не запрещаем: он законный, а
+   * панель его просто не умеет показать полями. Говорим об этом словами и пропускаем —
+   * запрещать то, что планировщик примет, мы не вправе.
+   */
+  function validateCron(expr) {
+    var v = String(expr == null ? "" : expr).trim().replace(/\s+/g, " ");
+    if (!v) return { ok: false, error: "Выражение пустое" };
+    var p = v.split(" ");
+    if (p.length !== 6 && p.length !== 7) {
+      return { ok: false, error: "Полей должно быть шесть (секунды минуты часы день-месяца"
+             + " месяц день-недели), а их " + p.length };
+    }
+    /* Имена месяцев и дней вырезаем перед проверкой: в WED есть W, в JUL — L, и без
+       этого «по средам» объявлялось расширенным синтаксисом. Ищем именно спецсимволы
+       Quartz, а не буквы, которые на них похожи. */
+    var stripped = v.replace(
+        /(SUN|MON|TUE|WED|THU|FRI|SAT|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)/gi, "");
+    if (/[LW#]/i.test(stripped)) {
+      return { ok: true, loose: true, parts: p,
+               note: "расширенный синтаксис (L, W, #) — проверить полями не могу" };
+    }
+    for (var i = 0; i < 6; i++) {
+      if (!fieldOk(p[i], CRON_FIELDS[i])) {
+        return { ok: false, error: "Поле «" + CRON_FIELDS[i].name + "»: «" + p[i]
+                 + "» не подходит (допустимо " + CRON_FIELDS[i].min + "–" + CRON_FIELDS[i].max
+                 + (CRON_FIELDS[i].names ? ", либо " + CRON_FIELDS[i].names.join("/") : "")
+                 + ", а также *, ?, списки, диапазоны и шаг)" };
+      }
+    }
+    var dom = p[3], dow = p[5];
+    var q = (dom === "?" ? 1 : 0) + (dow === "?" ? 1 : 0);
+    if (q === 0) {
+      return { ok: false, error: "В полях «день месяца» и «день недели» ровно одно должно"
+             + " быть «?» — планировщик не даёт задать оба сразу" };
+    }
+    if (q === 2) {
+      return { ok: false, error: "«?» стоит и в дне месяца, и в дне недели — какой-то из"
+             + " них должен быть задан" };
+    }
+    return { ok: true, parts: p };
+  }
+
+  /**
+   * Обратный разбор: выражение → поля построителя.
+   * <p>
+   * Узнаём только те формы, которые построитель сам и умеет собрать. Всё остальное —
+   * законное выражение, которое полями не изобразить; тогда поля не трогаем и говорим об
+   * этом. Подогнать их «примерно» значило бы показать расписание, которого нет.
+   *
+   * @return true, если форму узнали и поля обновлены
+   */
+  function syncFieldsFromCron(p) {
+    var sec = p[0], min = p[1], hour = p[2], dom = p[3], mon = p[4], dow = p[5];
+    if (mon !== "*") return false;                 // помесячных ограничений построитель не умеет
+    var plain = function (x) { return /^\d+$/.test(x); };
+    var setTime = function (h, m, sc) {
+      if (el("evfTime")) el("evfTime").value = pad2(h) + ":" + pad2(m) + ":" + pad2(sc);
+    };
+
+    /* каждые N минут: M/N * * * ? */
+    var mStep = min.match(/^(\d+)\/(\d+)$/);
+    if (mStep && hour === "*" && dom === "*" && dow === "?" && plain(sec)) {
+      setTime(0, mStep[1], sec);
+      el("evfFreq").value = "everyNMinutes";
+      el("evfEvery").value = mStep[2];
+      return true;
+    }
+    /* каждые N часов: H/N * * ? */
+    var hStep = hour.match(/^(\d+)\/(\d+)$/);
+    if (hStep && plain(min) && dom === "*" && dow === "?" && plain(sec)) {
+      setTime(hStep[1], min, sec);
+      el("evfFreq").value = "everyNHours";
+      el("evfEvery").value = hStep[2];
+      return true;
+    }
+    if (!plain(sec) || !plain(min) || !plain(hour)) return false;
+    setTime(hour, min, sec);
+
+    /* каждые N дней: 1/N * ? */
+    var dStep = dom.match(/^(\d+)\/(\d+)$/);
+    if (dStep && dow === "?") {
+      el("evfFreq").value = "everyNDays";
+      el("evfEvery").value = dStep[2];
+      return true;
+    }
+    /* каждый день */
+    if (dom === "*" && dow === "?") {
+      el("evfFreq").value = "daily";
+      return true;
+    }
+    /* N-го числа */
+    if (plain(dom) && dow === "?") {
+      el("evfFreq").value = "monthly";
+      el("evfDom").value = dom;
+      return true;
+    }
+    /* по будням и по дням недели */
+    if (dom === "?") {
+      var want = dow.toUpperCase() === "MON-FRI"
+        ? ["MON", "TUE", "WED", "THU", "FRI"]
+        : (/^[A-Z,]+$/i.test(dow) ? dow.toUpperCase().split(",") : null);
+      if (!want || want.some(function (d) { return DOW_NAMES.indexOf(d) < 0; })) return false;
+      el("evfFreq").value = dow.toUpperCase() === "MON-FRI" ? "weekdays" : "dow";
+      document.querySelectorAll("#evfDowBox [data-dow]").forEach(function (c) {
+        c.checked = want.indexOf(c.getAttribute("data-dow")) >= 0;
+      });
+      return true;
+    }
+    return false;
+  }
+
   /* Лишние поля прячем, а не выключаем: «N» при «каждый день» ничего не значит, и
      видимое неактивное поле человек всё равно пробует заполнить. */
-  function renderCron() {
+  /* Подписи и границы полей частоты. Вынесено из renderCron отдельно: после ручной
+     правки выражения поля переставляются, а само выражение перезаписывать нельзя —
+     человек его только что набрал. */
+  function applyEveryUnits() {
     var freq = str("evfFreq");
     var unit = EVERY_UNITS[freq];
     var needN = !!unit;
     if (el("evfEveryBox")) el("evfEveryBox").hidden = !needN;
+    if (el("evfDomBox")) el("evfDomBox").hidden = freq !== "monthly";
+    if (el("evfDowBox")) el("evfDowBox").hidden = freq !== "dow";
     if (needN && el("evfEvery")) {
       /* Подпись через проверку: при закешированном браузером index.html элемента с этим
          id ещё нет, и обращение к нему напрямую роняло бы весь renderCron — вместе с
@@ -651,8 +817,10 @@
          заведомо неисполнимое. */
       if ((parseInt(el("evfEvery").value, 10) || 1) > unit.max) el("evfEvery").value = unit.max;
     }
-    if (el("evfDomBox")) el("evfDomBox").hidden = freq !== "monthly";
-    if (el("evfDowBox")) el("evfDowBox").hidden = freq !== "dow";
+  }
+
+  function renderCron() {
+    applyEveryUnits();
     if (el("evfCronManual") && el("evfCronManual").checked) { renderCronWords(); return; }
     el("evfCrontab").value = buildCron().expr;
     renderCronWords();
@@ -662,8 +830,26 @@
     var box = el("evfCronWords");
     if (!box) return;
     if (el("evfCronManual") && el("evfCronManual").checked) {
-      box.textContent = "Вручную: секунды минуты часы день-месяца месяц день-недели." +
-        " В двух последних полях ровно одно должно быть «?».";
+      var v = validateCron(el("evfCrontab").value);
+      box.classList.remove("bad", "ok");
+      if (!v.ok) {
+        box.textContent = v.error;
+        box.classList.add("bad");
+        return;
+      }
+      /* Разобрали форму — поля наверху перестраиваются под неё: человек правит строку и
+         тут же видит, что он на самом деле задал. Не разобрали — поля не трогаем и
+         говорим об этом: подогнать их «примерно» значило бы показать расписание,
+         которого нет. */
+      var known = !v.loose && syncFieldsFromCron(v.parts);
+      if (known) {
+        applyEveryUnits();
+        box.textContent = "Понято как: " + buildCron().words;
+        box.classList.add("ok");
+      } else {
+        box.textContent = "Выражение принимается" + (v.note ? ": " + v.note : "")
+          + ". Полями наверху такое расписание не изобразить — они остались как были.";
+      }
       return;
     }
     box.textContent = buildCron().words + " · поля: секунды минуты часы день-месяца месяц день-недели";
