@@ -433,6 +433,11 @@
       data = d;
       render();
     }).catch(function (e) {
+      /* Подвал стираем: он рассказывает, откуда пришли числа, а чисел нет. Оставленный
+         от прошлого удачного чтения, он рекламирует источник, который к показанной
+         ошибке отношения не имеет. */
+      var f = el("caFoot");
+      if (f) f.textContent = "";
       if (host) {
         host.innerHTML = '<div class="ca-err">' + esc(e.message) + "</div>";
       }
@@ -459,16 +464,24 @@
     sel.innerHTML = '<option value="">— не выбран —</option>' +
       list.map(function (x) {
         return '<option value="' + esc(x.id) + '"' +
+          (x.jdbcUrl ? ' title="' + esc(x.jdbcUrl) + '"' : "") +
           (String(x.id) === String(c.connectionId) ? " selected" : "") + ">" +
           esc(x.name) + "</option>";
       }).join("");
     if (note) {
+      var cur = (c.connections || []).filter(function (x) {
+        return String(x.id) === String(c.connectionId);
+      })[0];
+      var where = cur && cur.jdbcUrl ? " · " + cur.jdbcUrl : "";
       note.textContent = !c.connectionId
         ? "Источник не выбран: витрины читать неоткуда."
         : (c.inherited
             ? "Подключение унаследовано от отчёта «ЧЕК СМС траффик». Выберите своё, если"
-              + " витрины лежат в другой базе."
-            : "");
+              + " витрины лежат в другой базе." + where
+            /* Адрес показываем всегда: когда база не отвечает, первый вопрос — «а куда
+               мы вообще стучались», и ответ на него не должен требовать похода в
+               другой раздел. */
+            : "Читаем" + where);
     }
   }
 

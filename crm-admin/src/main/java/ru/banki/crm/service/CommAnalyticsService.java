@@ -235,9 +235,17 @@ public class CommAnalyticsService {
             throw e;
         } catch (Exception e) {
             String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-            log.warn("comm-analytics: не подключились к источнику: {}", msg);
+            log.warn("comm-analytics: не подключились к источнику {}: {}", connId, msg);
+            /* Название подключения в тексте — не украшение: источник выбирается тут же
+               строкой выше, и «не удалось прочитать» без имени заставляет гадать, к
+               какому именно из них это относится. */
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Не удалось прочитать витрины: " + msg);
+                    "Не удалось прочитать витрины через подключение «" + connectionName(connId)
+                    + "»: " + msg
+                    + (msg.contains("connection attempt failed")
+                        ? ". Хост недоступен с сервера панели: проверьте адрес и порт в"
+                          + " «Подключениях к БД» и то, что до этой машины вообще есть сеть."
+                        : ""));
         }
         out.put("blocks", blocks);
         out.put("tookMs", System.currentTimeMillis() - started);
