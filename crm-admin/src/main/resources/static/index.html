@@ -479,33 +479,9 @@
 
     <!-- ===== Обзор раздела «Мониторинг» ===== -->
     <!-- ===== События → обзор группы ===== -->
-    <section class="view ov-view" id="view-events-overview">
-      <div class="ov-head"><h1>Завод <span class="grad">событий</span></h1></div>
-      <div class="ov-sub">Событие — это то, что запускает коммуникацию. Онлайновое приходит из внешней системы, событие по расписанию порождает планировщик по кронтабу. Выберите подраздел.</div>
-      <div class="ov-grid">
-        <div class="ov-card" data-nav-ref="ev-online" onclick="openSection('events','ev-online')">
-          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-          <h3>Онлайн-событие</h3>
-          <p>Событие приходит извне: имя, система, канал, шаблон и готовый набор параметров доставки.</p>
-          <span class="ov-go">Открыть →</span>
-        </div>
-        <div class="ov-card" data-nav-ref="ev-offline" onclick="openSection('events','ev-offline')">
-          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
-          <h3>Событие по расписанию</h3>
-          <p>Кронтаб, база выборки и SQL-шаги: планировщик выполняет их и порождает коммуникацию.</p>
-          <span class="ov-go">Открыть →</span>
-        </div>
-        <div class="ov-card" data-nav-ref="ev-list" onclick="openSection('events','ev-list')">
-          <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
-          <h3>Список событий</h3>
-          <p>Каталог заведённых событий: род, канал, расписание, шаблоны и состояние планировщика.</p>
-          <span class="ov-go">Открыть →</span>
-        </div>
-      </div>
-      <!-- «Перелив в прод» уехал в настройки (раздел «Переливы»): отправка события
-           в боевую базу — процесс доставки, а не работа с событием, и стоять он должен
-           рядом с синхронизацией шаблонов и импортом из crmdb. -->
-    </section>
+    <!-- Обзорная страница «События» удалена вместе с группой в сайдбаре: события стали
+         сущностью и открываются подразделом «Сущности» → «События». Три карточки вели на
+         три разных экрана заведения — теперь род события спрашивает окно, а список один. -->
 
     <!-- ===== Дашборд → Аналитика коммуникаций =====
          Витрины sandbox.t_comm_* в Greenplum: их считает отдельный SQL-скрипт, экран
@@ -2798,7 +2774,7 @@
      скрипты, они делят общую глобальную область видимости, как раньше делили
      её инлайн-блоки на этих же местах. Менять порядок нельзя: boot.js в конце
      стартует приложение, когда всё уже объявлено. -->
-<script src="js/shell.js"></script>
+<script src="js/shell.js?v=2"></script>
 
 <script src="js/srcbuilder.js"></script>
 <script src="js/promo.js?v=5"></script>
@@ -2813,7 +2789,7 @@
 <!-- метка версии: у скриптов панели её не было, и правки залипали в кеше браузера
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
-<script src="js/entities.js?v=3"></script>
+<script src="js/entities.js?v=4"></script>
 <script src="js/events.js?v=34"></script>
 <script src="js/comm-analytics.js?v=4"></script>
 <script src="js/event-chain.js?v=2"></script>

@@ -1525,10 +1525,12 @@ function entRenderOverview(){
   }
   grid.innerHTML = items.map(function(e){
     var rows = (ENT_DATA[e.id] || []).length;
-    var api = e.source === "templates";
+    var sv = entSourceView(e);
+    var api = !!sv;
     var tech = entSchemaTechnical(entSchemaOf(e));
     return '<div class="ov-card' + (tech ? " ent-techtbl" : "") + '" data-nav-ref="ent-' + entEsc(e.id) + '"' +
-      (api ? ' data-acl-section="templates"' : ' data-no-acl="1"') + ' data-ent="' + entEsc(e.id) + '">' +
+      (api ? ' data-acl-section="' + entEsc(sv.aclSection) + '"' : ' data-no-acl="1"') +
+      ' data-ent="' + entEsc(e.id) + '">' +
       '<div class="ov-ico">' + (api ? (ICONS.list || ICONS.doc) : (ICONS.table || ICONS.doc)) + "</div>" +
       "<h3>" + entEsc(e.plural_label || e.label) +
         (tech ? ' <span class="ent-tech-tag">' + entT("служебная") + "</span>" : "") + "</h3>" +
@@ -1542,19 +1544,35 @@ function entRenderOverview(){
   });
 }
 
+/* Сущности, которые рисует не движок, а готовый экран раздела.
+
+   Признак — поле source в схеме. Данные у таких живут в базе приложения и в боевых
+   таблицах, а показывать их списком «как у всех» значило бы завести второй, неполный
+   способ смотреть на то же самое. Поэтому подраздел ведёт на существующий экран, а
+   доступ следует серверной секции: клиентский реестр прав тут ни при чём.
+
+   Карта, а не if-цепочка: следующий такой раздел добавляется строкой. */
+var ENT_SOURCE_VIEWS = {
+  templates: { view:"sec-admin", adminMode:"list", aclSection:"templates", icon:"list" },
+  events:    { view:"sec-event-list", aclSection:"ev-list", icon:"pulse" }
+};
+function entSourceView(e){ return (e && e.source) ? ENT_SOURCE_VIEWS[e.source] || null : null; }
+
 /* ---------- навигация: подраздел на каждую сущность ---------- */
 function entSyncNav(){
   var grp = (typeof NAV !== "undefined") && NAV.filter(function(n){ return n.id === "entities"; })[0];
   if (!grp) return;
   grp.children = ENT_MODEL.entities.filter(entAllowed).map(function(e){
     /* Сущность с source живёт не в браузере, а в БД приложения, и у неё есть свой
-       готовый экран. «Шаблоны и сегменты» (source:"templates") — это список шаблонов
-       из раздела «Управление коммуникациями»: подраздел ведёт на него, а доступ
-       следует серверной секции templates, а не клиентскому реестру. */
-    if (e.source === "templates") return {
-      id: "ent-" + e.id, label: e.plural_label || e.label, icon: "list",
-      view: "sec-admin", adminMode: "list", aclSection: "templates"
-    };
+       готовый экран: «Шаблоны и сегменты» — реестр шаблонов, «События» — список
+       событий. Подраздел ведёт туда, доступ следует серверной секции. */
+    var sv = entSourceView(e);
+    if (sv) {
+      var item = { id: "ent-" + e.id, label: e.plural_label || e.label,
+                   icon: sv.icon, view: sv.view, aclSection: sv.aclSection };
+      if (sv.adminMode) item.adminMode = sv.adminMode;
+      return item;
+    }
     return {
       id: "ent-" + e.id, label: e.plural_label || e.label, icon: "table",
       view: "view-entity", entity: e.id,
