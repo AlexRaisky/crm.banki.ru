@@ -2151,6 +2151,8 @@
     <div class="sf-actions">
       <input id="listSearch" class="sf-search" placeholder="Поиск в списке…" data-i18n-ph="Поиск в списке…" oninput="applyFilters()">
       <button type="button" class="sf-btn" onclick="resetFilters()" data-i18n="Сбросить фильтры">Сбросить фильтры</button>
+      <button type="button" class="sf-btn" id="listExport" onclick="exportTemplateList()" title="Выгрузить то, что видно в таблице: те же колонки, тот же фильтр и порядок">↓ <span data-i18n="Экспорт">Экспорт</span></button>
+      <button type="button" class="sf-btn primary" id="listNew" onclick="newTemplate()">＋ <span data-i18n="Новый шаблон">Новый шаблон</span></button>
       <div class="sf-settings">
         <button type="button" class="sf-gear" id="listGear" title="Настройка полей и фильтров" onclick="toggleListPanel(event)">
           <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
@@ -2805,7 +2807,7 @@
 <script src="js/onelink.js"></script>
 <script src="js/wizard-forms.js"></script>
 <script src="js/template-details.js"></script>
-<script src="js/template-list.js"></script>
+<script src="js/template-list.js?v=2"></script>
 <script src="js/dashboard.js"></script>
 <script src="js/boot.js"></script>
 </body>

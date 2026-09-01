@@ -361,6 +361,56 @@ function fetchListPage(reset) {
     return p;
 }
 
+/* ---------- заведение и выгрузка ----------
+
+   Кнопки стоят в шапке реестра, рядом с фильтрами: заводить и выгружать хотят оттуда,
+   где смотрят список, а не из соседнего раздела. */
+
+/* Новый шаблон — тот же мастер коммуникаций, что и в своём пункте меню. Отдельной формы
+   заведения не делаем: две формы под одно действие разошлись бы на первой же правке. */
+function newTemplate() {
+    if (typeof openSection === "function") openSection("comms", "admin");
+    else if (typeof setAdminMode === "function") setAdminMode("wizard");
+}
+
+/* Выгрузка того, что видно: те же колонки, тот же фильтр и порядок.
+
+   Берём загруженное в ALL_TEMPLATES, а не всю базу: список подгружается порциями по мере
+   прокрутки, и «выгрузить всё» означало бы десяток запросов подряд ради файла, который
+   почти всегда нужен по текущему срезу. Сколько строк ушло — говорим прямо, чтобы никто
+   не считал файл полным реестром. */
+function exportTemplateList() {
+    var cols = listVisibleCols();
+    var rows = ALL_TEMPLATES || [];
+    var cell = function (v) {
+        var s = v == null ? "" : String(v);
+        /* Кавычки, точки с запятой и переносы ломают строку CSV: берём в кавычки,
+           внутренние кавычки удваиваем (RFC 4180). */
+        return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    var head = cols.map(function (c) { return cell(sfdT(c.label)); }).join(";");
+    var body = rows.map(function (r) {
+        return cols.map(function (c) {
+            var v = r[c.k];
+            /* Галки в файле должны читаться как на экране, а не как true/false. */
+            return cell(typeof v === "boolean" ? (v ? "да" : "нет") : v);
+        }).join(";");
+    });
+    /* Разделитель — точка с запятой, в начале BOM: Excel с русской локалью иначе читает
+       запятую как десятичный знак, а без BOM показывает кириллицу кракозябрами. */
+    var blob = new Blob(["\ufeff" + [head].concat(body).join("\r\n")],
+        { type: "text/csv;charset=utf-8" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "templates-" + new Date().toISOString().slice(0, 10) + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    var stats = document.getElementById("listStats");
+    if (stats) stats.textContent = sfdT("Выгружено строк: ") + rows.length;
+}
+
 /* Наполнение мультифильтров: канал — фиксированный справочник каналов,
    продукт/точка/триггер — реальные значения из базы (facets). */
 function populateFilterFacets() {
