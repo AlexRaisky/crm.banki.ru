@@ -362,12 +362,20 @@
          сервера: форма без выпадашек хуже формы с длинными. */
       evfLists = methodLists(d);
       applyMethod();
+      /* Умолчания — то, что стоит почти в каждом событии: система MPK, выборка из
+         greenplum. Списки остаются полными, менять никто не мешает; смысл только в том,
+         чтобы не выбирать одно и то же руками по десятому разу. Если значения в
+         справочнике вдруг нет, поле просто остаётся пустым — дописывать его в список
+         неоткуда, на database в базе висит внешний ключ. */
       fillSelect(el("evfSystem"), d.systems);
+      if (el("evfSystem") && (d.systems || []).indexOf("MPK") >= 0) {
+        el("evfSystem").value = "MPK";
+      }
       /* Базы — из справочника flow.d_database: на колонке database висит внешний ключ,
          и значение вне справочника упало бы уже на вставке. */
       fillSelect(el("evfDatabase"), d.databases, "Select option");
-      if (el("evfDatabase") && (d.databases || []).indexOf("crmdb") >= 0) {
-        el("evfDatabase").value = "crmdb";
+      if (el("evfDatabase") && (d.databases || []).indexOf("greenplum") >= 0) {
+        el("evfDatabase").value = "greenplum";
       }
     }).catch(function (e) { fail("evfMsg", e); });
   }
@@ -387,11 +395,15 @@
     ["batch", "single"].forEach(function (m) {
       var mine = rows.filter(function (r) { return r.method === m; });
       out[m] = mine.length
-        ? { keys: mine.map(function (r) { return r.definitionKey; }),
+        ? { rows: mine,
+            keys: mine.map(function (r) { return r.definitionKey; }),
             prefs: mine.map(function (r) { return r.businessKeyPrefix; }),
             channels: m === "batch" ? uniq(mine.map(function (r) { return r.notifyChannel; }))
                                     : d.notifyChannels }
-        : { keys: d.definitionKeys, prefs: d.businessKeyPrefixes, channels: d.notifyChannels };
+        /* Откат на общие списки: строк нет, значит и связи «канал → пара» нет —
+           поля остаются на ручной выбор. */
+        : { rows: [], keys: d.definitionKeys, prefs: d.businessKeyPrefixes,
+            channels: d.notifyChannels };
     });
     return out;
   }
@@ -437,6 +449,52 @@
     fillSelect(el("evfDefKey"), L.keys);
     fillSelect(el("evfPrefix"), L.prefs);
     bindKeyPrefixPair(L.keys, L.prefs);
+    /* Смена метода меняет и набор пар: выбранный канал переносится, а ключ с префиксом
+       подставляются заново — от прежнего метода они не годятся. */
+    if (el("evfChannel")) el("evfChannel").onchange = applyChannelPair;
+    applyChannelPair();
+  }
+
+  /* Канал ведёт за собой пару ключ/префикс.
+
+     В reference.d_channel_process канал, ключ и префикс лежат одной строкой, и после
+     выбора канала выбирать из чего-то ещё уже нечего: у метода на канал приходится
+     ровно одна пара. Раньше их выбирали руками двумя списками подряд, хотя первый же
+     выбор их и определял.
+
+     Строки для канала может не быть: у единичного метода список каналов полный
+     (событие заводят и в те, для которых пара ещё не заведена). Тогда не трогаем
+     ничего — подставленная от другого канала пара заведётся без ошибки и молча не
+     отправит ни одной коммуникации. Оба поля остаются доступными для правки руками. */
+  function applyChannelPair() {
+    var rows = (evfLists && evfLists[evfMethod] && evfLists[evfMethod].rows) || [];
+    var ch = str("evfChannel");
+    if (!ch) return;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].notifyChannel === ch) {
+        pickOption(el("evfDefKey"), rows[i].definitionKey);
+        pickOption(el("evfPrefix"), rows[i].businessKeyPrefix);
+        return;
+      }
+    }
+  }
+
+  /* Выбрать значение в списке, дописав его, если такого пункта нет. Списки собираются
+     из тех же строк справочника, так что обычно пункт на месте; страховка — на случай
+     общих списков в откате, где префикса из справочника может не оказаться. */
+  function pickOption(node, value) {
+    if (!node || value == null || value === "") return;
+    var has = false;
+    for (var i = 0; i < node.options.length; i++) {
+      if (node.options[i].value === value) { has = true; break; }
+    }
+    if (!has) {
+      var o = document.createElement("option");
+      o.value = value;
+      o.textContent = value;
+      node.appendChild(o);
+    }
+    node.value = value;
   }
 
   /* Ключ и префикс — пара: smsChannelProcessV2 живёт только вместе с SmsChannel.
