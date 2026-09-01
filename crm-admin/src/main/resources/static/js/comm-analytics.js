@@ -47,9 +47,6 @@
   function rows(block) {
     return (data && data.blocks && data.blocks[block] && data.blocks[block].rows) || [];
   }
-  function blockError(block) {
-    return data && data.blocks && data.blocks[block] && data.blocks[block].error;
-  }
 
   // ------------------------------------------------------------------ кирпичи
 
@@ -101,10 +98,18 @@
       (note ? '<p class="ca-note">' + note + "</p>" : "") + body + "</section>";
   }
 
-  /** Блок не прочитался — говорим, какой именно и почему, а не прячем карточку. */
+  /** Блок не прочитался или прочитан не целиком — говорим об этом, а не прячем карточку. */
   function errBox(block) {
-    var e = blockError(block);
-    return e ? '<div class="ca-err">Витрина не прочитана: ' + esc(e) + "</div>" : "";
+    var b = (data && data.blocks && data.blocks[block]) || {};
+    var out = b.error ? '<div class="ca-err">Витрина не прочитана: ' + esc(b.error) + "</div>" : "";
+    if (b.truncated) {
+      /* Обрезанная выборка внешне не отличается от полной, а выводы по ней делают те же.
+         Говорим прямо: цифры карточки посчитаны по прочитанной части. */
+      out += '<div class="ca-err">Витрина больше, чем экран берёт за раз: прочитаны первые '
+        + fmt(b.limit) + " строк, остальные не читались — числа в карточке про эту часть."
+        + " Если нужна вся, сузьте витрину в скрипте.</div>";
+    }
+    return out;
   }
 
   function pick(list, dim) {

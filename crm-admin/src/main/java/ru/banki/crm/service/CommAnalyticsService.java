@@ -26,7 +26,17 @@ import java.util.Properties;
  * Витрины считает отдельный SQL-скрипт, панель их только показывает. Ничего не
  * пересчитывает и не пишет: соединение открывается read-only, все запросы —
  * {@code SELECT} по готовым таблицам. Тяжёлое (перцентили, оконные функции) уже посчитано
- * там, здесь остаются десятки строк на витрину.
+ * там.
+ * <p>
+ * <b>«Витрины маленькие» — это было допущение, и оно не подтвердилось.</b> Разрезы вроде
+ * {@code source_crm} набирают десятки тысяч значений, и запрос без {@code LIMIT} клал
+ * панель целиком: {@code OutOfMemoryError: Java heap space} на всё приложение, а не
+ * ошибку одного экрана. Поэтому теперь три рубежа сразу: {@code LIMIT} в каждом запросе,
+ * крыша {@link #MAX_ROWS} в коде поверх него и курсор вместо чтения результата целиком
+ * ({@code autoCommit=false} + {@code fetchSize}) — без последнего драйвер тянет весь
+ * ответ в память ещё до первой строки, и никакой разбор построчно от этого не спасает.
+ * Экран показывает, что строк было больше, — обрезанная выборка молча выглядит как
+ * полная.
  * <p>
  * <b>Порядок блоков не случаен.</b> Первым идёт качество разметки — так велит комментарий
  * в самом скрипте: «если доля конфликтов и NULL заметная, все цифры по рекламной нагрузке
@@ -63,8 +73,27 @@ public class CommAnalyticsService {
     /** Откуда наследуем подключение, пока своё не выбрано. */
     private static final String FALLBACK_KEY = "smsCheckReport";
 
-    /** Секунд на запрос. Витрины маленькие; дольше — значит что-то не так с базой. */
+    /** Секунд на запрос. Витрины готовые; дольше — значит что-то не так с базой. */
     private static final int QUERY_TIMEOUT_S = 30;
+
+    /**
+     * Потолок строк на блок — поверх {@code LIMIT} в самих запросах.
+     * <p>
+     * Второй рубеж намеренно: запросы правят руками, забыть в новом блоке {@code LIMIT}
+     * легко, а цена забывчивости — не пустой экран, а упавшее приложение. Больше тысячи
+     * строк экран всё равно не показывает: он рисует плитки, полосы и топы.
+     */
+    private static final int MAX_ROWS = 1000;
+
+    /**
+     * Сколько строк драйвер забирает за раз.
+     * <p>
+     * Существенно: без {@code fetchSize} (и {@code autoCommit=false}, без которого
+     * fetchSize не действует) pgjdbc материализует весь результат в память до первого
+     * {@code next()}. Именно так витрина на миллионы строк и превращалась в
+     * {@code Java heap space}.
+     */
+    private static final int FETCH_SIZE = 200;
 
     /**
      * Витрины, которые показывает экран. Ключ — имя блока в ответе, значение — запрос.
@@ -81,7 +110,7 @@ public class CommAnalyticsService {
                 "SELECT comm_class, communication_type, business_communication_type,"
                 + " is_conflict, is_not_set, comm_cnt, comm_share_pct, users_cnt,"
                 + " first_dt, last_dt"
-                + " FROM sandbox.t_comm_class_quality ORDER BY comm_cnt DESC");
+                + " FROM sandbox.t_comm_class_quality ORDER BY comm_cnt DESC LIMIT 100");
 
         /* Кто порождает спорные комбинации — рабочий список для разбора. */
         BLOCKS.put("conflicts",
@@ -90,10 +119,17 @@ public class CommAnalyticsService {
                 + " FROM sandbox.t_comm_class_conflicts ORDER BY comm_cnt DESC LIMIT 30");
 
         /* 2. Сводка в разрезах — длинный формат dim_name / dim_value. */
+        /* Топ-25 значений внутри каждого разреза, а не витрина целиком: в source_crm
+           значений десятки тысяч, а экран показывает первые пятнадцать. Отбор оконной
+           функцией на стороне Greenplum — тащить всё сюда, чтобы отрезать здесь, значит
+           тащить всё сюда. */
         BLOCKS.put("summary",
                 "SELECT dim_name, dim_value, comm_cnt, users_cnt, avg_per_user,"
-                + " ad_any_share_pct, ad_strict_share_pct, conflict_share_pct"
-                + " FROM sandbox.t_comm_summary ORDER BY dim_name, comm_cnt DESC");
+                + " ad_any_share_pct, ad_strict_share_pct, conflict_share_pct FROM ("
+                + " SELECT s.*, row_number() OVER (PARTITION BY dim_name"
+                + "   ORDER BY comm_cnt DESC) AS rn"
+                + " FROM sandbox.t_comm_summary s) t"
+                + " WHERE rn <= 25 ORDER BY dim_name, comm_cnt DESC");
 
         /* 3. Нагрузка на человека: перцентили важнее среднего. */
         BLOCKS.put("load",
@@ -107,31 +143,31 @@ public class CommAnalyticsService {
                 + " max_ad_per_user, p50_ad_per_user, p95_ad_per_user, users_overspam,"
                 + " users_overspam_strict, overspam_share_pct, comm_in_overspam,"
                 + " comm_in_overspam_pct"
-                + " FROM sandbox.t_comm_overspam ORDER BY dt_month DESC, channel");
+                + " FROM sandbox.t_comm_overspam ORDER BY dt_month DESC, channel LIMIT 200");
 
         BLOCKS.put("overspamAll",
                 "SELECT dt_month, users_cnt, ad_comm_cnt, avg_ad_per_user, max_ad_per_user,"
                 + " p95_ad_per_user, users_over_3, users_over_5, users_over_10,"
                 + " users_multichannel"
-                + " FROM sandbox.t_comm_overspam_allchannel ORDER BY dt_month");
+                + " FROM sandbox.t_comm_overspam_allchannel ORDER BY dt_month LIMIT 60");
 
         /* 5. Динамика: за счёт чего растёт объём. */
         BLOCKS.put("dynamics",
                 "SELECT dt_month, channel, comm_class, comm_cnt, users_cnt, users_new,"
                 + " users_returning, avg_per_user"
-                + " FROM sandbox.t_comm_dynamics ORDER BY dt_month, channel");
+                + " FROM sandbox.t_comm_dynamics ORDER BY dt_month, channel LIMIT 500");
 
         /* 6. Концентрация: сколько рекламы уходит на верхний процент базы. */
         BLOCKS.put("concentration",
                 "SELECT user_group, users_cnt, ad_comm_cnt, ad_share_pct, min_ad, max_ad"
-                + " FROM sandbox.t_comm_concentration");
+                + " FROM sandbox.t_comm_concentration LIMIT 50");
 
         /* 7. Частота касаний: разрывы между сообщениями. */
         BLOCKS.put("frequency",
                 "SELECT channel, is_ad_any, users_with_2plus, avg_gap_days, p50_gap_days,"
                 + " p10_gap_days, min_gap_days, max_gap_days, avg_comm_per_30d,"
                 + " users_same_day_hits"
-                + " FROM sandbox.t_comm_frequency ORDER BY channel, is_ad_any DESC");
+                + " FROM sandbox.t_comm_frequency ORDER BY channel, is_ad_any DESC LIMIT 100");
 
         /* 8. Дубли — почти всегда баг сценария. */
         BLOCKS.put("duplicates",
@@ -142,14 +178,14 @@ public class CommAnalyticsService {
         /* 9. День недели. */
         BLOCKS.put("weekday",
                 "SELECT weekday_num, weekday_name, channel, comm_class, comm_cnt, users_cnt"
-                + " FROM sandbox.t_comm_weekday ORDER BY weekday_num, channel");
+                + " FROM sandbox.t_comm_weekday ORDER BY weekday_num, channel LIMIT 300");
 
         /* 10. Давление за день: сколько всего и сколько рекламы в один день. */
         BLOCKS.put("dailyPressure",
                 "SELECT comm_in_day, ad_in_day, user_days, users_cnt, multichannel_days,"
                 + " ad_and_service_same_day, multiproduct_days"
                 + " FROM sandbox.t_comm_daily_pressure"
-                + " WHERE comm_in_day <= 20 ORDER BY comm_in_day, ad_in_day");
+                + " WHERE comm_in_day <= 20 ORDER BY comm_in_day, ad_in_day LIMIT 500");
     }
 
     private final JdbcTemplate jdbc;
@@ -257,11 +293,17 @@ public class CommAnalyticsService {
         Map<String, Object> block = new LinkedHashMap<>();
         try (PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setQueryTimeout(QUERY_TIMEOUT_S);
+            /* Курсор вместо «весь результат в память»: см. FETCH_SIZE. Одну строку сверх
+               потолка запрашиваем нарочно — по ней и видно, что витрина больше. */
+            ps.setFetchSize(FETCH_SIZE);
+            ps.setMaxRows(MAX_ROWS + 1);
             try (ResultSet rs = ps.executeQuery()) {
                 ResultSetMetaData md = rs.getMetaData();
                 int n = md.getColumnCount();
                 List<Map<String, Object>> rows = new ArrayList<>();
+                boolean more = false;
                 while (rs.next()) {
+                    if (rows.size() >= MAX_ROWS) { more = true; break; }
                     Map<String, Object> row = new LinkedHashMap<>();
                     for (int i = 1; i <= n; i++) {
                         Object v = rs.getObject(i);
@@ -274,6 +316,13 @@ public class CommAnalyticsService {
                     rows.add(row);
                 }
                 block.put("rows", rows);
+                if (more) {
+                    /* Молча обрезанная выборка выглядит как полная, и по ней делают
+                       выводы. Пусть экран скажет, что видно не всё. */
+                    log.info("comm-analytics: блок {} обрезан по {} строкам", name, MAX_ROWS);
+                    block.put("truncated", true);
+                    block.put("limit", MAX_ROWS);
+                }
             }
         } catch (Exception e) {
             String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage().trim();
@@ -344,6 +393,14 @@ public class CommAnalyticsService {
         } catch (Exception ignore) {
             /* Драйвер может не поддерживать — тогда защита остаётся на уровне того, что
                мы шлём только SELECT из белого списка выше. */
+        }
+        /* Без этого fetchSize не действует и результат приезжает целиком: драйвер
+           открывает курсор только внутри транзакции. Пишем мы всё равно ничего —
+           соединение закроется, транзакция откатится сама. */
+        try {
+            conn.setAutoCommit(false);
+        } catch (Exception ignore) {
+            /* Тогда остаются LIMIT в запросах и setMaxRows — они и так первые в очереди. */
         }
         log.debug("comm-analytics: {} читает витрины через подключение {}", CurrentUser.email(), connId);
         return conn;
