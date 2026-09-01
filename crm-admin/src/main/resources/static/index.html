@@ -40,7 +40,7 @@
 <link rel="stylesheet" href="css/section-abtests.css">
 <link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-entities.css">
-<link rel="stylesheet" href="css/section-events.css?v=8">
+<link rel="stylesheet" href="css/section-events.css?v=10">
 <link rel="stylesheet" href="css/section-comm-analytics.css?v=2">
 <link rel="stylesheet" href="css/section-admin.css">
 </head>
@@ -532,6 +532,11 @@
       <h1>Онлайн-<span class="grad">событие</span></h1>
       <p class="sub">Событие приходит из внешней системы. Заводится сразу в двух слоях: в нашей модели (<code>flow.d_event</code> и обвязка) и в таблицах, которые читают боевые движки (<code>tracker.t_event_comm</code>, маппинги шаблона и метода отправки).</p>
 
+      <!-- Обёртка нужна, чтобы форму можно было целиком перенести в окно заведения:
+           окно не копирует разметку, а забирает эти узлы к себе и возвращает обратно
+           при закрытии. Копия означала бы два одинаковых id на странице и два набора
+           обработчиков — правится одно, отправляется другое. -->
+      <div id="evoForm">
       <div class="ev-step">
         <div class="t">Шаг 1</div>
         <div class="ev-fields">
@@ -571,6 +576,7 @@
         <span class="ev-msg" id="evoMsg"></span>
       </div>
       <div id="evoResult"></div>
+      </div><!-- /#evoForm -->
 
       <!-- ===== Цепочка онлайн-события =====
            Рисуется по commapi.events_chain в crmdb — то есть по тому, что реально
@@ -603,6 +609,8 @@
       <!-- Метод отправки выбирается ДО всего остального: от него зависят пары
            definition_key/business_key_prefix и то, спрашиваем ли is_batch. Менять его
            посреди заполнения можно — сбрасываются только эти два поля. -->
+      <!-- То же, что у онлайн-формы: узлы переезжают в окно заведения целиком. -->
+      <div id="evfWizard">
       <div class="wz-mode" id="evfMode">
         <button type="button" class="wz-mode-btn on" data-method="batch">Массовый метод</button>
         <button type="button" class="wz-mode-btn" data-method="single">Единичный метод</button>
@@ -790,6 +798,7 @@
         <span class="ev-msg" id="evfMsg"></span>
       </div>
       <div id="evfResult"></div>
+      </div><!-- /#evfWizard -->
 
       <!-- План записи. Живёт внутри секции: стили событий изолированы @scope по
            #sec-event-offline, снаружи оформление до окна не дотянется. -->
@@ -814,7 +823,46 @@
     </section>
 
     <!-- ===== События → Список событий ===== -->
+    <!-- ===== Окно заведения события =====
+         Живёт в секции списка намеренно: стили событий изолированы @scope по трём
+         секциям сразу (#sec-event-online, #sec-event-offline, #sec-event-list), и окно
+         снаружи осталось бы без оформления.
+
+         Форму окно не дублирует, а забирает: при открытии переносит к себе #evoForm или
+         #evfWizard, при закрытии возвращает на место. Поэтому обработчики, значения
+         полей и весь код форм остаются теми же — окно меняет только место показа. -->
     <section class="view" id="sec-event-list">
+      <div class="ev-modal ev-modal-wide" id="evWizModal">
+        <div class="ev-modal-card" role="dialog" aria-modal="true" aria-labelledby="evWizTitle">
+          <div class="ev-modal-head">
+            <h3 id="evWizTitle">Новое событие</h3>
+            <span class="ev-modal-sub" id="evWizSub">Выберите, какое событие заводим</span>
+            <button type="button" class="ev-modal-x" id="evWizClose" title="Закрыть">✕</button>
+          </div>
+          <div class="ev-modal-body" id="evWizBody">
+            <!-- Шаг 0. Дальше ветвится сама выбранная форма: у события по расписанию
+                 внутри свой переключатель массового и единичного метода. -->
+            <div class="ev-pick-kind" id="evWizPick">
+              <button type="button" class="ev-kind" data-kind="online">
+                <span class="ev-kind-t">Онлайн-событие</span>
+                <span class="ev-kind-d">Приходит из внешней системы. Расписания нет: событие
+                  случилось — коммуникация ушла.</span>
+                <span class="ev-kind-tbl">tracker.t_event_comm · маппинг шаблона · метод отправки</span>
+              </button>
+              <button type="button" class="ev-kind" data-kind="offline">
+                <span class="ev-kind-t">Событие по расписанию</span>
+                <span class="ev-kind-d">Планировщик выполняет SQL-шаги по кронтабу и порождает
+                  рассылку. Дальше выбирается массовый или единичный метод.</span>
+                <span class="ev-kind-tbl">scheduler.t_get_event · шаги выборки · маппинги</span>
+              </button>
+            </div>
+          </div>
+          <div class="ev-modal-foot">
+            <span class="ev-modal-note" id="evWizNote"></span>
+            <button class="ev-btn ghost" id="evWizBack" type="button" hidden>К выбору типа</button>
+          </div>
+        </div>
+      </div>
       <div class="eyebrow">CRM · Events · Catalog</div>
       <h1>Список <span class="grad">событий</span></h1>
       <p class="sub">Всё, что заведено в нашей модели: и созданное формой, и затянутое из crmdb. Поиск, фильтры и подсчёт идут на сервере — событий тысячи, и целиком в браузер они не грузятся. Клик по строке раскрывает карточку с расписанием, шагами выборки и связями с боевой базой.</p>
@@ -830,6 +878,7 @@
         <div class="ev-foot" style="border-top:0;margin-top:14px;padding-top:0">
           <button class="ev-btn" id="evlApply" type="button">Показать</button>
           <button class="ev-btn ghost" id="evlReset" type="button">Сбросить</button>
+          <button class="ev-btn accent" id="evlNew" type="button">＋ Завести событие</button>
           <span class="ev-msg" id="evlMsg"></span>
         </div>
       </div>
@@ -2765,7 +2814,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=3"></script>
-<script src="js/events.js?v=33"></script>
+<script src="js/events.js?v=34"></script>
 <script src="js/comm-analytics.js?v=4"></script>
 <script src="js/event-chain.js?v=2"></script>
 

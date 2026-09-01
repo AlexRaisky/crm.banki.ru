@@ -1680,6 +1680,9 @@
     if (el("evfPlanNote")) el("evfPlanNote").textContent = "Заводим…";
     evReq("POST", "/offline", requestBody(planBody)).then(function (res) {
       closePlan();
+      /* Событие заведено — окно заведения больше не нужно, а отчёт лежит в форме,
+         которая вернётся в свою секцию. */
+      if (evWiz.kind) evWizClose();
       /* wzGo первым: он гасит строку состояния при переходе между экранами, и
          поставленное до него сообщение об успехе исчезло бы, не успев показаться. */
       wzGo(WZ_LAST);
@@ -1769,6 +1772,94 @@
     openPlan(body);
   }
 
+  /* ============================================================ ОКНО ЗАВЕДЕНИЯ
+
+     Одно окно на оба рода событий. Первый шаг — выбор рода: онлайн-событие или
+     событие по расписанию; дальше показывается уже сама форма, и её собственные шаги
+     идут внутри окна (у события по расписанию там ещё и выбор метода отправки).
+
+     Форму окно НЕ дублирует, а забирает: узел #evoForm или #evfWizard переносится в
+     тело окна и возвращается на место при закрытии. Копия разметки означала бы два
+     одинаковых id на странице — правится одно поле, отправляется другое, и найти это
+     можно только по расхождению того, что видно, с тем, что уехало. */
+
+  var evWiz = { kind: null, host: null, node: null };
+
+  function evWizInit() {
+    if (evWiz.inited) return;
+    evWiz.inited = true;
+    var m = el("evWizModal");
+    if (!m) return;
+    el("evWizClose").onclick = evWizClose;
+    el("evWizBack").onclick = function () { evWizPick(); };
+    m.onclick = function (e) { if (e.target === m) evWizClose(); };
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && m.classList.contains("open")) evWizClose();
+    });
+    document.querySelectorAll("#evWizPick .ev-kind").forEach(function (b) {
+      b.onclick = function () { evWizUse(b.getAttribute("data-kind")); };
+    });
+  }
+
+  /** Открыть окно на первом шаге. */
+  function evWizOpen() {
+    evWizInit();
+    evWizPick();
+    var m = el("evWizModal");
+    if (m) m.classList.add("open");
+  }
+
+  /** Вернуться к выбору рода: форму отдаём назад в её секцию. */
+  function evWizPick() {
+    evWizRelease();
+    evWiz.kind = null;
+    if (el("evWizPick")) el("evWizPick").hidden = false;
+    if (el("evWizBack")) el("evWizBack").hidden = true;
+    if (el("evWizTitle")) el("evWizTitle").textContent = "Новое событие";
+    if (el("evWizSub")) el("evWizSub").textContent = "Выберите, какое событие заводим";
+    if (el("evWizNote")) el("evWizNote").textContent = "";
+  }
+
+  /** Показать форму выбранного рода внутри окна. */
+  function evWizUse(kind) {
+    var id = kind === "online" ? "evoForm" : "evfWizard";
+    var node = el(id);
+    if (!node) return;
+    /* Инициализация раздела ленивая (по первому открытию), а окно может открыться
+       раньше — тогда у формы не было бы ни справочников, ни обработчиков. */
+    if (kind === "online") { initOnline(); } else { initOffline(); }
+    evWiz.kind = kind;
+    evWiz.host = node.parentNode;
+    evWiz.next = node.nextSibling;
+    evWiz.node = node;
+    el("evWizBody").appendChild(node);
+    if (el("evWizPick")) el("evWizPick").hidden = true;
+    if (el("evWizBack")) el("evWizBack").hidden = false;
+    el("evWizTitle").textContent = kind === "online" ? "Онлайн-событие" : "Событие по расписанию";
+    el("evWizSub").textContent = kind === "online"
+      ? "Приходит извне: расписания нет, шаги заполняются подряд"
+      : "Мастер по шагам: настройки, выборка, шаблон, проверка";
+    el("evWizNote").textContent = "";
+  }
+
+  /** Вернуть форму в её секцию — ровно на то место, откуда взяли. */
+  function evWizRelease() {
+    if (!evWiz.node || !evWiz.host) return;
+    evWiz.host.insertBefore(evWiz.node, evWiz.next || null);
+    evWiz.node = null;
+    evWiz.host = null;
+    evWiz.next = null;
+  }
+
+  function evWizClose() {
+    evWizRelease();
+    var m = el("evWizModal");
+    if (m) m.classList.remove("open");
+    evWiz.kind = null;
+    if (el("evWizPick")) el("evWizPick").hidden = false;
+    if (el("evWizBack")) el("evWizBack").hidden = true;
+  }
+
   // ============================================================ СПИСОК СОБЫТИЙ
 
   var evl = { offset: 0, limit: 50, total: 0 };
@@ -1791,6 +1882,19 @@
     el("evlNext").onclick = function () {
       if (evl.offset + evl.limit < evl.total) { evl.offset += evl.limit; loadList(); }
     };
+    if (el("evlNew")) {
+      el("evlNew").onclick = evWizOpen;
+      /* Право спрашиваем после ответа /api/me — см. gateSubmit: раздел открывается
+         раньше, чем приезжает профиль, и проверка «сразу» гасила бы кнопку навсегда.
+         Права два, потому что и рода событий два: хватает любого. */
+      var gate = function () {
+        var may = can("add", "ev-online") || can("add", "ev-offline");
+        el("evlNew").disabled = !may;
+        el("evlNew").title = may ? "" : "Нет права на заведение событий";
+      };
+      gate();
+      if (window.CRM && CRM.meReady && CRM.meReady.then) CRM.meReady.then(gate, gate);
+    }
     /* Enter в поиске — то же, что «Показать»: набрал и нажал, без похода к кнопке. */
     el("evlQ").onkeydown = function (e) {
       if (e.key === "Enter") { evl.offset = 0; loadList(); }
