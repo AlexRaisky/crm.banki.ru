@@ -92,7 +92,10 @@ window.Cron = (function () {
           '<div class="cron-row"><label for="cron-group">' + T("job_group") + "</label>" +
             '<input id="cron-group" value="' + esc(data.jobGroup) + '"></div>' +
           '<div class="cron-row"><label for="cron-prio">' + T("Приоритет") + "</label>" +
-            '<select id="cron-prio">' + opts + "</select></div>" +
+            '<select id="cron-prio">' + opts + "</select>" +
+            '<span class="cron-hint">' +
+              T("Планировщик превращает слово в число и кладёт его в t_launch_settings.priority: LOW — 1, NORMAL — 5, HIGH — 10. Значение одно на все события.") +
+            "</span></div>" +
         "</div>" +
 
         '<label class="cron-chk"><span><input type="checkbox" id="cron-on"' +
