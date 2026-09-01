@@ -784,6 +784,156 @@
     return { ok: true, parts: p };
   }
 
+  /* Месяцы словами: родительный — для «1 сентября», предложный — для «в сентябре».
+     Два падежа, потому что одной формой обе фразы не собрать. */
+  var MONTHS = [
+    ["JAN", "января", "январе"], ["FEB", "февраля", "феврале"], ["MAR", "марта", "марте"],
+    ["APR", "апреля", "апреле"], ["MAY", "мая", "мае"], ["JUN", "июня", "июне"],
+    ["JUL", "июля", "июле"], ["AUG", "августа", "августе"], ["SEP", "сентября", "сентябре"],
+    ["OCT", "октября", "октябре"], ["NOV", "ноября", "ноябре"], ["DEC", "декабря", "декабре"]
+  ];
+
+  /**
+   * Выражение → человеческая подпись, независимо от полей построителя.
+   * <p>
+   * Полей наверху меньше, чем умеет Quartz: месяца среди них нет вовсе, списки чисел и
+   * диапазоны они тоже не изображают. Раньше на всём таком подпись пропадала целиком —
+   * «полями не изобразить» и молчание, хотя прочитать выражение и сказать, что оно
+   * значит, ничто не мешало. Поля и подпись — про разное: первое про то, чем это
+   * набрать, второе про то, что получится.
+   * <p>
+   * Разбираем обычный синтаксис: числа, имена, списки, диапазоны и шаг. На расширенном
+   * (L, W, #) и на всём, чего не поняли, возвращаем null — соврать в подписи хуже, чем
+   * её не дать.
+   *
+   * @return строка или null
+   */
+  function describeCron(p) {
+    var time = describeCronTime(p[0], p[1], p[2]);
+    if (!time) return null;
+    var days = describeCronDays(p[3], p[5], p[4]);
+    if (!days) return null;
+    var text = time.every
+      ? time.text + (days.every ? "" : ", " + days.text)
+      : days.text + " " + time.text;
+    /* Седьмое поле (год) необязательное, построитель его не ставит. Если оно есть и
+       чем-то ограничено — говорим, но отдельным хвостом: в основную фразу оно не
+       вписывается ни в одном падеже. */
+    if (p.length === 7 && p[6] !== "*" && p[6] !== "?") text += " (год: " + p[6] + ")";
+    return text;
+  }
+
+  /** Время суток. {text, every}: every — повторяется внутри суток. */
+  function describeCronTime(sec, min, hour) {
+    var plain = function (x) { return /^[0-9]+$/.test(x); };
+    var num = function (x) { return parseInt(x, 10); };
+    var mStep = min.match(/^([0-9]+)\/([0-9]+)$/);
+    if (mStep && hour === "*" && plain(sec)) {
+      return { every: true, text: "каждые " + num(mStep[2]) + " "
+        + plural(num(mStep[2]), "минуту", "минуты", "минут")
+        + ", начиная с :" + pad2(mStep[1]) };
+    }
+    var hStep = hour.match(/^([0-9]+)\/([0-9]+)$/);
+    if (hStep && plain(min) && plain(sec)) {
+      return { every: true, text: "каждые " + num(hStep[2]) + " "
+        + plural(num(hStep[2]), "час", "часа", "часов")
+        + ", начиная с " + pad2(hStep[1]) + ":" + pad2(min) };
+    }
+    if (!plain(min) || !plain(sec)) return null;
+    if (hour === "*") {
+      return { every: true, text: "каждый час в :" + pad2(min)
+        + (num(sec) ? ":" + pad2(sec) : "") };
+    }
+    if (!plain(hour)) return null;
+    return { every: false, text: "в " + pad2(hour) + ":" + pad2(min)
+      + (num(sec) ? ":" + pad2(sec) : "") };
+  }
+
+  /**
+   * Дни месяца, дни недели и месяцы одной фразой.
+   *
+   * @return {text, every} либо null; every — «без ограничения по дням»
+   */
+  function describeCronDays(dom, dow, mon) {
+    var months = mon === "*" || mon === "?" ? [] : cronValues(mon, MONTH_NAMES, 1);
+    if (months === null || months.length > 12) return null;
+    if (months.some(function (m) { return m < 1 || m > 12; })) return null;
+    var inMonths = months.length
+      ? " в " + months.map(function (m) { return MONTHS[m - 1][2]; }).join(" и ")
+      : "";
+
+    /* Одно число одного месяца — привычная дата: «1 сентября», а не «1-го числа в
+       сентябре». Ровно тот случай, на котором подпись и пропадала. */
+    if (/^[0-9]+$/.test(dom) && dow === "?" && months.length === 1) {
+      return { every: false, text: parseInt(dom, 10) + " " + MONTHS[months[0] - 1][1] };
+    }
+
+    var dStep = dom.match(/^([0-9]+)\/([0-9]+)$/);
+    if (dStep && dow === "?") {
+      var n = parseInt(dStep[2], 10);
+      var from = parseInt(dStep[1], 10);
+      return { every: false, text: "каждые " + n + " " + plural(n, "день", "дня", "дней")
+        + (from > 1 ? ", начиная с " + from + "-го" : "") + inMonths };
+    }
+    if (dom === "*" && dow === "?") {
+      return { every: !inMonths, text: "каждый день" + inMonths };
+    }
+    if (dow === "?") {
+      var days = cronValues(dom, null, 0);
+      if (!days || !days.length || days.length > 8) return null;
+      if (days.some(function (d) { return d < 1 || d > 31; })) return null;
+      return { every: false, text: days.map(function (d) { return d + "-го"; }).join(", ")
+        + " числа" + inMonths };
+    }
+    if (dom === "?") {
+      if (dow.toUpperCase() === "MON-FRI") {
+        return { every: false, text: "по будням" + inMonths };
+      }
+      /* В Quartz неделя начинается с воскресенья: 1 — SUN, 7 — SAT. */
+      var nums = cronValues(dow, DOW_NAMES, 1);
+      if (!nums || !nums.length || nums.some(function (d) { return d < 1 || d > 7; })) {
+        return null;
+      }
+      var words = nums.map(function (d) {
+        var code = DOW_NAMES[d - 1];
+        for (var i = 0; i < DOWS.length; i++) { if (DOWS[i][0] === code) return DOWS[i][2]; }
+        return code;
+      });
+      return { every: false, text: "по " + words.join(", ") + inMonths };
+    }
+    return null;
+  }
+
+  /**
+   * Поле в список чисел: «9», «1,15», «1-5», «MON,WED». Шаг и звёздочку сюда не
+   * отдаём — они описываются отдельно; не разобрали — null.
+   *
+   * @param names имена, если поле их допускает
+   * @param base  какое число соответствует первому имени
+   */
+  function cronValues(v, names, base) {
+    var out = [];
+    var parts = String(v).split(",");
+    for (var i = 0; i < parts.length; i++) {
+      var r = parts[i].split("-");
+      if (r.length > 2) return null;
+      var a = cronValue(r[0], names, base);
+      if (a === null) return null;
+      if (r.length === 1) { out.push(a); continue; }
+      var b = cronValue(r[1], names, base);
+      if (b === null || b < a || b - a > 31) return null;
+      for (var x = a; x <= b; x++) out.push(x);
+    }
+    return out;
+  }
+
+  function cronValue(t, names, base) {
+    if (/^[0-9]+$/.test(t)) return parseInt(t, 10);
+    if (!names) return null;
+    var i = names.indexOf(String(t).toUpperCase());
+    return i < 0 ? null : i + base;
+  }
+
   /**
    * Обратный разбор: выражение → поля построителя.
    * <p>
@@ -907,8 +1057,18 @@
         box.textContent = "Понято как: " + buildCron().words;
         box.classList.add("ok");
       } else {
-        box.textContent = "Выражение принимается" + (v.note ? ": " + v.note : "")
-          + ". Полями наверху такое расписание не изобразить — они остались как были.";
+        /* Формы построитель не знает, но прочитать выражение это не мешает: подпись
+           берём у описателя, а про поля говорим отдельно — они действительно остались
+           от прежнего расписания, и человек должен видеть, что они уже не про это. */
+        var words = v.loose ? null : describeCron(v.parts);
+        if (words) {
+          box.textContent = "Понято как: " + words
+            + ". Полями наверху такое не набрать — они остались как были.";
+          box.classList.add("ok");
+        } else {
+          box.textContent = "Выражение принимается" + (v.note ? ": " + v.note : "")
+            + ". Полями наверху такое расписание не изобразить — они остались как были.";
+        }
       }
       return;
     }
