@@ -40,7 +40,8 @@
 <link rel="stylesheet" href="css/section-abtests.css">
 <link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-entities.css">
-<link rel="stylesheet" href="css/section-events.css?v=10">
+<link rel="stylesheet" href="css/registry.css?v=2">
+<link rel="stylesheet" href="css/section-events.css?v=11">
 <link rel="stylesheet" href="css/section-comm-analytics.css?v=2">
 <link rel="stylesheet" href="css/section-admin.css">
 </head>
@@ -843,22 +844,40 @@
       <h1>Список <span class="grad">событий</span></h1>
       <p class="sub">Всё, что заведено в нашей модели: и созданное формой, и затянутое из crmdb. Поиск, фильтры и подсчёт идут на сервере — событий тысячи, и целиком в браузер они не грузятся. Клик по строке раскрывает карточку с расписанием, шагами выборки и связями с боевой базой.</p>
 
-      <div class="ev-step">
-        <div class="ev-fields">
-          <div class="ev-f"><label for="evlQ">Поиск</label><input type="text" id="evlQ" placeholder="имя события, система или source" autocomplete="off"></div>
-          <div class="ev-f"><label for="evlKind">Род</label><select id="evlKind"><option value="">любой</option><option value="income">онлайновое</option><option value="time">по расписанию</option></select></div>
-          <div class="ev-f"><label for="evlChannel">Канал</label><select id="evlChannel"><option value="">любой</option></select></div>
-          <div class="ev-f"><label for="evlActive">Активность</label><select id="evlActive"><option value="">любая</option><option value="true">только активные</option><option value="false">только выключенные</option></select></div>
-          <div class="ev-f"><label for="evlExported">В боевой базе</label><select id="evlExported"><option value="">неважно</option><option value="true">переливали</option><option value="false">не переливали</option></select></div>
+      <!-- Шапка реестра — та же, что у «Шаблонов и сегментов» (стили в css/registry.css).
+           Отличие одно: здесь реестр занимает раздел целиком, без карточки-обёртки, —
+           он тут единственное содержимое, и вторая рамка съедала бы место даром. -->
+      <div class="sf-head">
+        <div class="sf-obj">
+          <span class="sf-obj-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          </span>
+          <div>
+            <div class="sf-obj-kind">События коммуникаций</div>
+            <div class="sf-obj-title">Все события <span class="sf-caret">▾</span></div>
+          </div>
         </div>
-        <div class="ev-foot" style="border-top:0;margin-top:14px;padding-top:0">
-          <button class="ev-btn" id="evlApply" type="button">Показать</button>
-          <button class="ev-btn ghost" id="evlReset" type="button">Сбросить</button>
-          <button class="ev-btn accent" id="evlNew" type="button">＋ Завести событие</button>
-          <span class="ev-msg" id="evlMsg"></span>
+        <div class="sf-actions">
+          <input type="text" id="evlQ" class="sf-search" placeholder="Поиск в списке…" autocomplete="off">
+          <button class="sf-btn" id="evlApply" type="button">Показать</button>
+          <button class="sf-btn" id="evlReset" type="button">Сбросить фильтры</button>
+          <button class="sf-btn" id="evlExport" type="button" title="Выгрузить то, что видно в таблице: те же колонки и тот же фильтр">↓ Экспорт</button>
+          <button class="sf-btn primary" id="evlNew" type="button">＋ Завести событие</button>
         </div>
       </div>
 
+      <div class="filters-row">
+        <div class="field"><label for="evlKind">Род</label>
+          <select id="evlKind"><option value="">любой</option><option value="income">онлайновое</option><option value="time">по расписанию</option></select></div>
+        <div class="field"><label for="evlChannel">Канал</label>
+          <select id="evlChannel"><option value="">любой</option></select></div>
+        <div class="field"><label for="evlActive">Активность</label>
+          <select id="evlActive"><option value="">любая</option><option value="true">только активные</option><option value="false">только выключенные</option></select></div>
+        <div class="field"><label for="evlExported">В боевой базе</label>
+          <select id="evlExported"><option value="">неважно</option><option value="true">переливали</option><option value="false">не переливали</option></select></div>
+      </div>
+
+      <div class="sf-count"><span class="ev-msg" id="evlMsg"></span></div>
       <div id="evlBox"></div>
       <div class="ev-foot" id="evlPager" style="display:none">
         <button class="ev-btn ghost" id="evlPrev" type="button">← Назад</button>
@@ -2792,7 +2811,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=4"></script>
-<script src="js/events.js?v=34"></script>
+<script src="js/events.js?v=35"></script>
 <script src="js/comm-analytics.js?v=4"></script>
 <script src="js/event-chain.js?v=2"></script>
 

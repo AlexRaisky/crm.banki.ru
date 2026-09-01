@@ -1,0 +1,72 @@
+/* ===== Реестр записей: общий вид для мастера коммуникаций и списка событий =====
+
+   Раскладка Salesforce list view: шапка с объектом и действиями, строка фильтров,
+   таблица с липкой шапкой. Один и тот же вид у «Шаблонов и сегментов» и у «Событий» —
+   потому и стили общие: копия разошлась бы с оригиналом на первой же правке.
+
+   Область — обе секции сразу. Внутри #sec-admin реестр живёт в карточке (.form),
+   в списке событий — во всю ширину раздела: там он единственное содержимое, и
+   заворачивать его во вторую рамку значит терять место без выигрыша.
+
+   Разница между ними держится не здесь, а в section-events.css: там подняты границы
+   высоты таблицы, потому что над ней нет ни вкладок мастера, ни его шапки. */
+@scope (#sec-admin, #sec-event-list){
+  /* Строка фильтров над таблицей. Правило переехало сюда из стилей мастера по той же
+     причине, что и остальной реестр: список событий рисует ту же разметку, а раскладка,
+     оставленная только в одной секции, дала бы там столбик вместо строки. */
+  .filters-row{display:flex;gap:15px;flex-wrap:wrap;align-items:flex-end}
+  .filters-row .field{min-width:150px}
+
+  /* ---- Список шаблонов в формате Salesforce list view ---- */
+  .sf-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px}
+  .sf-obj{display:flex;align-items:center;gap:12px}
+  .sf-obj-ico{width:38px;height:38px;border-radius:10px;background:var(--grad);color:#06202B;
+      display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .sf-obj-ico svg{width:20px;height:20px}
+  .sf-obj-kind{font-size:11.5px;color:var(--faint)}
+  .sf-obj-title{font-size:17px;font-weight:700;letter-spacing:-.01em}
+  .sf-caret{color:var(--blue);font-size:12px}
+  .sf-actions{margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .sf-search{background:var(--bg2);border:1px solid var(--line);border-radius:10px;color:var(--ink);
+      font-family:var(--sans);font-size:13.5px;padding:9px 13px;min-width:220px;outline:none}
+  .sf-search:focus{border-color:rgba(80,195,255,.45)}
+  .sf-btn{padding:9px 15px;border-radius:10px;border:1px solid var(--line);background:var(--card2);
+      color:var(--ink);font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer}
+  .sf-btn:hover{border-color:var(--blue);color:var(--blue)}
+  .sf-count{font-size:12px;color:var(--faint);margin:2px 0 10px}
+  /* окно списка подстраивается под высоту экрана (шапка раздела ≈ 320px) */
+  .sf-table-wrap{max-height:calc(100vh - 320px);min-height:320px;overflow:auto;
+      border:1px solid var(--line);border-radius:12px}
+  .sf-table{width:100%;border-collapse:collapse}
+  .sf-table thead th{position:sticky;top:0;background:var(--card2);z-index:2;font-size:12px;color:var(--dim);
+      text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap;
+      border-right:1px solid var(--line)}
+  .sf-table thead th:last-child{border-right:none}
+  .sf-table th.sf-sortable{cursor:pointer;user-select:none}
+  .sf-table th.sf-sortable:hover{color:var(--ink)}
+  .sf-table .sf-sort{font-size:10px;color:var(--blue)}
+  /* лёгкая сетка: видно, к какому полю относится карандаш */
+  .sf-table tbody td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle;
+      border-right:1px solid var(--line)}
+  .sf-table tbody td:last-child{border-right:none}
+  .sf-table tbody tr:hover{background:rgba(80,195,255,.05)}
+  .sf-table tbody td:hover{background:rgba(80,195,255,.07)}
+  /* бейджи каналов — та же раскраска и шрифт Coil, что в «Планировании промо» */
+  .sf-table .channel-badge{display:inline-block;font-family:"Coil","Golos Text","Manrope",var(--sans);
+      font-weight:600;font-size:12px;padding:2px 8px;border-radius:10px;text-transform:none;
+      background:var(--blue-bg);color:var(--blue)}
+  .sf-table .channel-push,.sf-table .channel-mobile-push{background:var(--amber-bg);color:var(--amber)}
+  .sf-table .channel-cc{background:var(--green-bg);color:var(--green)}
+  .sf-table .channel-vk{background:rgba(140,140,255,.16);color:#9aa6ff}
+  .sf-table .channel-fa{background:rgba(255,107,138,.14);color:var(--coral)}
+  .sf-check-col{width:34px}
+  .sf-table input[type=checkbox]{accent-color:#3CFAB4;width:15px;height:15px;cursor:pointer}
+  .sf-link{color:var(--blue);cursor:pointer;font-weight:600;background:none;border:none;padding:0;
+      font-family:var(--sans);font-size:13px}
+  .sf-link:hover{text-decoration:underline}
+  /* Кнопка строки списка: явная надпись «Просмотр» вместо неразличимой стрелки */
+  .sf-row-menu{padding:5px 12px;border-radius:8px;border:1px solid rgba(80,195,255,.45);background:var(--blue-bg);
+      color:var(--blue);cursor:pointer;font-family:var(--sans);font-size:12.5px;font-weight:600;
+      line-height:1.2;white-space:nowrap}
+  .sf-row-menu:hover{background:var(--blue);color:#08131f;border-color:var(--blue)}
+}

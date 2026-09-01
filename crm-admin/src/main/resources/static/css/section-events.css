@@ -229,6 +229,22 @@
      в две-три колонки и блоки SQL. В 900px они складывались бы в столбик, и мастер в
      окне читался бы хуже, чем на странице, ради чего его в окно и переносили. */
   .ev-modal-wide .ev-modal-card{width:min(1180px,100%);max-height:92vh}
+
+  /* Реестр событий занимает раздел целиком: над таблицей только шапка и фильтры, а не
+     вкладки мастера, — поэтому места ей дано больше, чем в «Шаблонах и сегментах».
+     Сами стили таблицы общие, лежат в css/registry.css. */
+  .sf-table-wrap{max-height:calc(100vh - 260px)}
+  .filters-row{margin:14px 0 4px}
+  .filters-row label{color:var(--dim);display:block;font-size:12px;margin-bottom:6px}
+  .filters-row select{background:var(--bg2);border:1px solid var(--line);border-radius:10px;
+    color:var(--ink);font-family:var(--sans);font-size:13.5px;outline:none;padding:9px 12px;
+    min-width:170px}
+  .filters-row select:focus{border-color:rgba(80,195,255,.45)}
+  /* Кнопка заведения — единственная цветная в шапке: остальные действия смотрят на
+     список, а эта его меняет. */
+  .sf-btn.primary{background:var(--grad);border-color:transparent;color:#06202B}
+  .sf-btn.primary:hover{color:#06202B;filter:brightness(1.05)}
+  .sf-btn:disabled{cursor:not-allowed;opacity:.5}
   /* Форма внутри окна уже имеет свои отступы — снимаем внешние, чтобы не было полей
      в поле. Верхний заголовок секции в окно не переезжает: он остался в разделе. */
   .ev-modal-body>#evoForm,.ev-modal-body>#evfWizard{gap:18px}

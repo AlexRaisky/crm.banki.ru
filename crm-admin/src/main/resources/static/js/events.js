@@ -1882,6 +1882,7 @@
     el("evlNext").onclick = function () {
       if (evl.offset + evl.limit < evl.total) { evl.offset += evl.limit; loadList(); }
     };
+    if (el("evlExport")) el("evlExport").onclick = exportEventList;
     if (el("evlNew")) {
       el("evlNew").onclick = evWizOpen;
       /* Право спрашиваем после ответа /api/me — см. gateSubmit: раздел открывается
@@ -1922,6 +1923,9 @@
     say("evlMsg", "Загружаем…");
     evReq("GET", "/list" + listQuery()).then(function (d) {
       evl.total = Number(d.total || 0);
+      /* Строки держим у себя: их же выгружает «Экспорт» — иначе пришлось бы собирать
+         файл из разметки таблицы, а это чтение того, что сами и нарисовали. */
+      evl.rows = d.rows || [];
       say("evlMsg", evl.total ? "Найдено событий: " + evl.total : "Ничего не нашлось", "");
       renderList(d.rows || []);
       var pager = el("evlPager");
@@ -1951,7 +1955,11 @@
     var box = el("evlBox");
     if (!box) return;
     if (!rows.length) { box.innerHTML = ""; return; }
-    var html = '<div class="ev-rows"><table><thead><tr>' +
+    /* Разметка реестра — общая с «Шаблонами и сегментами» (css/registry.css): та же
+       шапка, та же липкая строка заголовков, тот же вид строк. Своей таблицы у списка
+       событий больше нет: два похожих, но разных списка расходились бы при каждой
+       правке одного из них. */
+    var html = '<div class="sf-table-wrap"><table class="sf-table"><thead><tr>' +
       "<th>id</th><th>Событие</th><th>Система</th><th>Род</th><th>Канал</th>" +
       "<th>Расписание</th><th>Шаблоны</th><th>Состояние</th><th>Активно</th><th>В проде</th>" +
       "<th></th>" +
@@ -1962,7 +1970,7 @@
         : (Number(r.templates_total || 0) ? "не опознаны (" + r.templates_total + ")" : "—");
       html += '<tr class="clickable" data-ev="' + esc(r.id) + '">' +
         "<td>" + esc(r.id) + "</td>" +
-        "<td>" + esc(r.event_name) + "</td>" +
+        '<td><span class="sf-link">' + esc(r.event_name) + "</span></td>" +
         "<td>" + esc(r.system || "—") + "</td>" +
         "<td>" + kindLabel(r.kind) + "</td>" +
         "<td>" + esc(r.notify_channel || "—") + "</td>" +
@@ -1974,7 +1982,7 @@
         /* Кнопка делает то же, что клик по строке, и стоит здесь не ради нового
            действия, а ради видимого: настройки события — шаги, шаблоны, планировщик —
            открывались только по клику куда-то в строку, и про них не знали. */
-        '<td><button type="button" class="ev-mini" data-ev-btn="' + esc(r.id) +
+        '<td><button type="button" class="sf-row-menu" data-ev-btn="' + esc(r.id) +
           '">Настройки</button></td>' +
         "</tr>" +
         '<tr data-card="' + esc(r.id) + '" style="display:none"><td colspan="11"></td></tr>';
@@ -1991,6 +1999,47 @@
         toggleCard(b.getAttribute("data-ev-btn"));
       };
     });
+  }
+
+  /* Выгрузка того, что видно: те же колонки таблицы, тот же фильтр, та же страница.
+     Страница, а не вся выборка: список постраничный, и «выгрузить всё» означало бы
+     обойти сервер десятком запросов ради файла, который нужен по текущему срезу. */
+  function exportEventList() {
+    var rows = evl.rows || [];
+    var cols = [
+      ["id", function (r) { return r.id; }],
+      ["Событие", function (r) { return r.event_name; }],
+      ["Система", function (r) { return r.system; }],
+      ["Род", function (r) { return r.kind === "income" ? "онлайновое" : "по расписанию"; }],
+      ["Канал", function (r) { return r.notify_channel; }],
+      ["Расписание", function (r) { return r.crontab; }],
+      ["Шаблоны", function (r) { return r.templates; }],
+      ["Активно", function (r) { return r.is_active ? "да" : "нет"; }],
+      ["В проде", function (r) { return Number(r.exported || 0) ? "да" : "нет"; }]
+    ];
+    var cell = function (v) {
+      var s = v == null ? "" : String(v);
+      /* Кавычки, точки с запятой и переносы ломают строку CSV (RFC 4180). */
+      return /[";
+
+]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    var lines = [cols.map(function (c) { return cell(c[0]); }).join(";")];
+    rows.forEach(function (r) {
+      lines.push(cols.map(function (c) { return cell(c[1](r)); }).join(";"));
+    });
+    /* Точка с запятой и BOM — иначе Excel с русской локалью складывает строку в одну
+       ячейку и показывает кириллицу кракозябрами. */
+    var blob = new Blob(["﻿" + lines.join("
+")], { type: "text/csv;charset=utf-8" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "events-" + new Date().toISOString().slice(0, 10) + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    say("evlMsg", "Выгружено строк: " + rows.length);
   }
 
   /* Карточка грузится по клику, а не вместе со списком: полная обвязка это ещё шесть
