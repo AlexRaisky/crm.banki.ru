@@ -747,6 +747,9 @@ function entListHtml(e){
     '<div class="ent-lv-acts">' +
       '<input class="ent-lv-search" id="entSearch" placeholder="' + entT("Поиск в списке…") + '" value="' + entEsc(ENT_CUR.q || "") + '">' +
       '<button type="button" class="ent-btn" data-lv-reset="1">' + entT("Сбросить фильтры") + "</button>" +
+      '<button type="button" class="ent-btn" data-export="1" title="' +
+        entT("Выгрузить то, что видно в таблице: те же колонки, тот же фильтр и порядок") +
+        '">↓ ' + entT("Экспорт") + "</button>" +
       '<button type="button" class="ent-btn accent" data-new="1">＋ ' + entT("Новая запись") + "</button>" +
       '<span class="ent-gear-wrap"><button type="button" class="ent-gear" data-gear="1" title="' +
         entT("Настройка полей и фильтров") + '">' + ENT_GEAR_ICO + "</button>" + entGearHtml(e) + "</span>" +
@@ -782,6 +785,43 @@ function entListHtml(e){
           entEsc(f.label || f.name) + (on ? '<span class="ar">' + (s.dir > 0 ? "▲" : "▼") + "</span>" : "") + "</th>";
       }).join("") +
     "</tr></thead><tbody>" + body + "</tbody></table></div>";
+}
+
+/* ---------- выгрузка списка ----------
+
+   Выгружаем ровно то, что человек видит: настроенные шестерёнкой колонки, текущий
+   фильтр, текущий порядок сортировки. Выгрузить «всё как в базе» было бы честнее
+   формально и бесполезнее на деле: список для того и настраивают, чтобы получить
+   нужный срез, и таблица в файле должна совпадать с таблицей на экране.
+
+   Значения берём тем же entPlain, что рисует ячейки, — иначе в файле окажутся
+   внутренние коды там, где на экране стоят подписи справочников. */
+function entCsvCell(v){
+  var s = v == null ? "" : String(v);
+  /* Кавычки, точки с запятой и переносы ломают строку CSV, поэтому поле берём в
+     кавычки, а внутренние кавычки удваиваем — так велит RFC 4180. */
+  return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function entExportCsv(e){
+  var cols = entCols(e), rows = entListRows(e);
+  var lines = [cols.map(function(f){ return entCsvCell(f.label || f.name); }).join(";")];
+  rows.forEach(function(r){
+    lines.push(cols.map(function(f){ return entCsvCell(entPlain(e, f, r)); }).join(";"));
+  });
+  /* Разделитель — точка с запятой, а не запятая: Excel с русской локалью читает
+     запятую как десятичный знак и складывает всю строку в одну ячейку.
+     BOM в начале — по той же причине: без него кириллица открывается кракозябрами. */
+  var blob = new Blob(["\ufeff" + lines.join("\r\n")],
+      { type: "text/csv;charset=utf-8" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (e.table || e.id) + "-" + entStamp().slice(0, 10) + ".csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+  entToast(entT("Выгружено строк: ") + rows.length);
 }
 
 /* ============================================================
@@ -1130,6 +1170,9 @@ function entWire(host, e, r){
     el.onclick = function(){ ENT_CUR.tab = el.dataset.tab; ENT_CUR.edit = null; entRender(); };
   });
   host.querySelectorAll("[data-new]").forEach(function(el){ el.onclick = function(){ entNewRecord(e); }; });
+  host.querySelectorAll("[data-export]").forEach(function(el){
+    el.onclick = function(){ entExportCsv(e); };
+  });
   host.querySelectorAll("[data-del]").forEach(function(el){ el.onclick = function(){ entDeleteRecord(e, r); }; });
   host.querySelectorAll(".ent-sec-title").forEach(function(el){
     el.onclick = function(){
