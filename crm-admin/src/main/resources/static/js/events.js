@@ -1906,7 +1906,14 @@
     loadList();
   }
 
-  function listQuery() {
+  /**
+   * Условия отбора строкой запроса.
+   *
+   * @param over переопределение окна выборки: {limit, offset}. Нужно выгрузке — она
+   *             идёт по тем же фильтрам, но большими кусками и до конца, а не по
+   *             странице, которую человек сейчас видит.
+   */
+  function listQuery(over) {
     var p = [];
     function add(k, v) { if (v) p.push(k + "=" + encodeURIComponent(v)); }
     add("q", str("evlQ"));
@@ -1914,8 +1921,8 @@
     add("channel", str("evlChannel"));
     add("active", str("evlActive"));
     add("exported", str("evlExported"));
-    p.push("limit=" + evl.limit);
-    p.push("offset=" + evl.offset);
+    p.push("limit=" + ((over && over.limit) || evl.limit));
+    p.push("offset=" + ((over && over.offset != null) ? over.offset : evl.offset));
     return "?" + p.join("&");
   }
 
@@ -2001,11 +2008,40 @@
     });
   }
 
-  /* Выгрузка того, что видно: те же колонки таблицы, тот же фильтр, та же страница.
-     Страница, а не вся выборка: список постраничный, и «выгрузить всё» означало бы
-     обойти сервер десятком запросов ради файла, который нужен по текущему срезу. */
+  /* Выгрузка всего, что подходит под фильтр, — а не той страницы, что на экране.
+     Список постраничный, поэтому идём за остальным на сервер: теми же условиями,
+     кусками по 500 строк, пока не кончится. Потолок стоит от бесконечного цикла и
+     от файла, который никто не откроет; упёрлись — говорим прямо. */
+  var EXPORT_CHUNK = 500, EXPORT_MAX = 20000;
+
   function exportEventList() {
-    var rows = evl.rows || [];
+    var btn = el("evlExport");
+    if (btn) btn.disabled = true;
+    say("evlMsg", "Собираем выгрузку…");
+    var all = [];
+    function step(offset) {
+      return evReq("GET", "/list" + listQuery({ limit: EXPORT_CHUNK, offset: offset }))
+        .then(function (d) {
+          var got = d.rows || [];
+          all = all.concat(got);
+          say("evlMsg", "Собираем выгрузку… " + all.length);
+          if (got.length === EXPORT_CHUNK && all.length < EXPORT_MAX) return step(offset + EXPORT_CHUNK);
+        });
+    }
+    step(0).then(function () {
+      var capped = all.length >= EXPORT_MAX;
+      writeEventCsv(all);
+      say("evlMsg", capped
+        ? "Выгружено строк: " + all.length + " — это потолок выгрузки, сузьте фильтр"
+        : "Выгружено строк: " + all.length, capped ? "warn" : "");
+    }).catch(function (e) {
+      fail("evlMsg", e);
+    }).then(function () {
+      if (btn) btn.disabled = false;
+    });
+  }
+
+  function writeEventCsv(rows) {
     var cols = [
       ["id", function (r) { return r.id; }],
       ["Событие", function (r) { return r.event_name; }],
@@ -2020,9 +2056,7 @@
     var cell = function (v) {
       var s = v == null ? "" : String(v);
       /* Кавычки, точки с запятой и переносы ломают строку CSV (RFC 4180). */
-      return /[";
-
-]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
     var lines = [cols.map(function (c) { return cell(c[0]); }).join(";")];
     rows.forEach(function (r) {
@@ -2030,8 +2064,7 @@
     });
     /* Точка с запятой и BOM — иначе Excel с русской локалью складывает строку в одну
        ячейку и показывает кириллицу кракозябрами. */
-    var blob = new Blob(["﻿" + lines.join("
-")], { type: "text/csv;charset=utf-8" });
+    var blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "events-" + new Date().toISOString().slice(0, 10) + ".csv";
@@ -2039,7 +2072,6 @@
     a.click();
     document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-    say("evlMsg", "Выгружено строк: " + rows.length);
   }
 
   /* Карточка грузится по клику, а не вместе со списком: полная обвязка это ещё шесть
