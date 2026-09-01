@@ -20,6 +20,27 @@
   function el(id) { return document.getElementById(id); }
   function can(cap, section) { return !!(window.CRM && CRM.can && CRM.can(cap, section)); }
 
+  /**
+   * Состояние кнопки заведения по праву add в разделе.
+   * <p>
+   * Спрашиваем дважды: сразу и ещё раз после ответа {@code /api/me}. Профиль приезжает
+   * асинхронно, и раздел, открытый раньше ответа, видел пустой — can() честно отвечал
+   * «нет», кнопка гасла и оставалась такой навсегда: инициализация раздела выполняется
+   * один раз и второй проверки не делала. Внешне это выглядело как «панель не даёт
+   * завести событие», причём у пользователя с полными правами.
+   */
+  function gateSubmit(btnId, section) {
+    var apply = function () {
+      var b = el(btnId);
+      if (!b) return;
+      var may = can("add", section);
+      b.disabled = !may;
+      b.title = may ? "" : "Нет права на заведение событий в этом разделе";
+    };
+    apply();
+    if (window.CRM && CRM.meReady && CRM.meReady.then) CRM.meReady.then(apply, apply);
+  }
+
   /* Свой транспорт, как в abtests.js: в api.js методы именованные, и ради двух ручек
      раздела туда не лезем. Текст ошибки достаём из message — его кладёт
      ValidationErrorHandler, иначе пользователь видел бы «400 Bad Request». */
@@ -168,10 +189,7 @@
 
     el("evoSubmit").onclick = submitOnline;
     el("evoReset").onclick = function () { resetOnline(); };
-    if (!can("add", "ev-online")) {
-      el("evoSubmit").disabled = true;
-      el("evoSubmit").title = "Нет права на заведение событий в этом разделе";
-    }
+    gateSubmit("evoSubmit", "ev-online");
 
     dictionaries().then(function (d) {
       fillSelect(el("evoChannel"), d.notifyChannels);
