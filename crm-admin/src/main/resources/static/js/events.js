@@ -1561,7 +1561,11 @@
               col("template_id", nTpl ? codes : "", "код из формы, НЕ id справочника")
             ] },
           { name: "commapi.d_definition_mapping", rows: 1, note: "ключи определения в проде", cols: [
-            colAuto("get_event_id", "id из scheduler.t_get_event"),
+            (body.isBatch
+              /* У массового метода строка определения не привязана к событию:
+                 связь идёт парой event_name + system. Колонки в запросе не будет. */
+              ? colNn("get_event_id", "", "у массового метода не заполняется")
+              : colAuto("get_event_id", "id из scheduler.t_get_event")),
             col("event_name", body.eventName),
             colNn("system", body.system),
             col("notify_channel", body.notifyChannel),

@@ -245,7 +245,14 @@ public class EventFormService {
                     f.notifyChannel(), t.code(), bool(f.isChain(), false));
         }
         insertB(rows, eventId, "commapi.d_definition_mapping", m -> {
-            m.put("get_event_id", getEventId);
+            /* Ссылка на событие — только у единичного метода. У массового строка
+               определения относится к рассылке целиком, а не к конкретному событию:
+               связь идёт парой event_name + system, как у онлайн-событий. Проставленный
+               get_event_id ошибкой не выглядит и вставку не ломает — поэтому и заметить
+               его можно только по поведению отправки. */
+            if (!batch) {
+                m.put("get_event_id", getEventId);
+            }
             m.put("event_name", eventName);
             m.put("system", nn(system));
             m.put("notify_channel", f.notifyChannel());
