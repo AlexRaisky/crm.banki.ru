@@ -40,7 +40,7 @@
 <link rel="stylesheet" href="css/section-abtests.css">
 <link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-entities.css">
-<link rel="stylesheet" href="css/registry.css?v=2">
+<link rel="stylesheet" href="css/registry.css?v=4">
 <link rel="stylesheet" href="css/section-events.css?v=11">
 <link rel="stylesheet" href="css/section-comm-analytics.css?v=2">
 <link rel="stylesheet" href="css/section-admin.css">
@@ -879,7 +879,11 @@
 
       <div class="sf-count"><span class="ev-msg" id="evlMsg"></span></div>
       <div id="evlBox"></div>
-      <div class="ev-foot" id="evlPager" style="display:none">
+      <!-- Карточка события. Не под строкой списка, а вместо него: читают её целиком, а
+           раскрытая внутри таблицы она отрезалась колонками по бокам и терялась при
+           первом же обновлении списка. Разметку рисует renderEventCard. -->
+      <div id="evCardHost" hidden></div>
+      <div class="ev-foot" id="evlPager" style="display:none" data-list-part="1">
         <button class="ev-btn ghost" id="evlPrev" type="button">← Назад</button>
         <span class="ev-msg" id="evlPage"></span>
         <button class="ev-btn ghost" id="evlNext" type="button">Вперёд →</button>
@@ -2811,7 +2815,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=4"></script>
-<script src="js/events.js?v=36"></script>
+<script src="js/events.js?v=37"></script>
 <script src="js/comm-analytics.js?v=4"></script>
 <script src="js/event-chain.js?v=2"></script>
 

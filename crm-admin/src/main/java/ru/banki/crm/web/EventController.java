@@ -3,6 +3,7 @@ package ru.banki.crm.web;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -248,6 +249,21 @@ public class EventController {
        незачем, ошибку исправляет тот же человек, который её сделал.
        Capability.EDIT, а не ADD: право «добавлять» и право «менять уже работающее»
        в матрице разные, и второе выдают осторожнее. */
+
+    /**
+     * Правка одного поля события из карточки.
+     * <p>
+     * По полю за раз, а не формой целиком: карточка правит значения на месте, и запрос
+     * «сохранить всё» перезаписал бы поля, которых человек не касался, — вместе с
+     * чужими правками, сделанными в соседней вкладке.
+     */
+    @PatchMapping("/{id}")
+    public Map<String, Object> updateField(@PathVariable long id,
+                                           @RequestBody Map<String, Object> body) {
+        access.requireCapability(Capability.EDIT, Sections.EV_OFFLINE, Sections.EV_ONLINE);
+        String field = body == null ? "" : String.valueOf(body.get("field"));
+        return edit.updateField(id, field, body == null ? null : body.get("value"));
+    }
 
     @PutMapping("/{id}/steps")
     public Map<String, Object> updateSteps(@PathVariable long id,

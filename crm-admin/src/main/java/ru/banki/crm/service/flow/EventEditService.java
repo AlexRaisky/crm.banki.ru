@@ -63,6 +63,88 @@ public class EventEditService {
     }
 
     /**
+     * Правка отдельных полей события — из карточки, по одному полю за раз.
+     * <p>
+     * Меняем только нашу модель ({@code flow.*}). В боевые таблицы это само не уедет:
+     * там уже лежит копия, сделанная переливом, и трогать её отсюда нельзя — рассылка
+     * читает её прямо сейчас. Поэтому в ответе возвращаем признак {@code exported}:
+     * карточка по нему говорит, что правку нужно довезти переливом или обновлением
+     * задания планировщика.
+     * <p>
+     * Список полей закрытый. Имени события в нём нет намеренно: оно же {@code selection},
+     * по нему в проде связаны три таблицы, и переименование здесь означало бы тихий
+     * разрыв этой связи. Имя меняют заведением нового события.
+     *
+     * @param field поле из {@link #EDITABLE}
+     * @param value новое значение; для флагов — {@code true}/{@code false}
+     */
+    @Transactional
+    public Map<String, Object> updateField(long eventId, String field, Object value) {
+        Map<String, Object> ev = event(eventId);
+        Editable col = EDITABLE.get(field);
+        if (col == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Поле «" + field + "» в карточке не правится. Доступны: "
+                    + String.join(", ", EDITABLE.keySet()));
+        }
+        Object val = col.parse(value);
+        if (col.schedule()) {
+            /* Расписание живёт отдельной строкой, и у онлайн-события её нет вовсе:
+               предлагать там кронтаб было бы обещанием, которого мы не сдержим. */
+            Integer has = jdbc.queryForObject(
+                    "SELECT count(*) FROM flow.d_event_schedule WHERE event_id = ?",
+                    Integer.class, eventId);
+            if (has == null || has == 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "У этого события нет расписания: поле «" + field + "» к нему не относится");
+            }
+            jdbc.update("UPDATE flow.d_event_schedule SET " + col.column() + " = ?"
+                    + " WHERE event_id = ?", val, eventId);
+        } else {
+            jdbc.update("UPDATE flow.d_event SET " + col.column() + " = ? WHERE id = ?", val, eventId);
+        }
+        adminLog.logTable(col.schedule() ? "flow.d_event_schedule" : "flow.d_event", "UPDATE",
+                "{\"event_id\":" + eventId + ",\"field\":\"" + field + "\"}");
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("status", "ok");
+        out.put("field", field);
+        out.put("value", val);
+        out.put("exported", exported(eventId));
+        out.put("eventName", ev.get("event_name"));
+        return out;
+    }
+
+    /** Поле карточки: куда пишем и как приводим значение. */
+    private record Editable(String column, boolean schedule, String type) {
+        Object parse(Object v) {
+            String s = v == null ? "" : String.valueOf(v).trim();
+            return switch (type) {
+                case "bool" -> Boolean.parseBoolean(s) || "on".equalsIgnoreCase(s);
+                /* Пустая строка и null — разные вещи только для NOT NULL-колонок; здесь
+                   их нет, поэтому пустое значение чистит поле, а не пишет пустую строку. */
+                default -> s.isEmpty() ? null : s;
+            };
+        }
+    }
+
+    /**
+     * Что можно править в карточке.
+     * <p>
+     * Ровно то, что относится к нашей модели и не ломает связей: пометки, флаг
+     * активности и параметры расписания. Канал, ключи определения и шаблоны правятся
+     * своими ручками — у них другая цена ошибки.
+     */
+    private static final Map<String, Editable> EDITABLE = Map.of(
+            "source",      new Editable("source", false, "text"),
+            "description", new Editable("description", false, "text"),
+            "system",      new Editable("system", false, "text"),
+            "is_active",   new Editable("is_active", false, "bool"),
+            "crontab",     new Editable("crontab", true, "text"),
+            "database",    new Editable("database", true, "text"),
+            "is_batch",    new Editable("is_batch", true, "bool"));
+
+    /**
      * Переписать шаги выборки.
      *
      * @param steps по порядку: {@code sql}, {@code active}, {@code returnsResultSet}

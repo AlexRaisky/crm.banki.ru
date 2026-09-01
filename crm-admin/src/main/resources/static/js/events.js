@@ -1927,6 +1927,9 @@
   }
 
   function loadList() {
+    /* Список перерисовывается — карточка, открытая поверх него, уже не про то, что
+       на экране: возвращаемся к списку сами, а не оставляем её висеть. */
+    if (el("evCardHost") && !el("evCardHost").hidden) showListPart(true);
     say("evlMsg", "Загружаем…");
     evReq("GET", "/list" + listQuery()).then(function (d) {
       evl.total = Number(d.total || 0);
@@ -1991,8 +1994,7 @@
            открывались только по клику куда-то в строку, и про них не знали. */
         '<td><button type="button" class="sf-row-menu" data-ev-btn="' + esc(r.id) +
           '">Настройки</button></td>' +
-        "</tr>" +
-        '<tr data-card="' + esc(r.id) + '" style="display:none"><td colspan="11"></td></tr>';
+        "</tr>";
     });
     box.innerHTML = html + "</tbody></table></div>";
     box.querySelectorAll("[data-ev]").forEach(function (tr) {
@@ -2075,25 +2077,272 @@
   }
 
   /* Карточка грузится по клику, а не вместе со списком: полная обвязка это ещё шесть
-     запросов на строку, и на странице в пятьдесят строк вышло бы триста запросов. */
+     запросов на строку, и на странице в пятьдесят строк вышло бы триста запросов.
+
+     Показывается вместо списка, а не под строкой: читают её целиком — расписание, шаги,
+     шаблоны, связи с продом, — а раскрытая внутри таблицы она была зажата колонками и
+     пропадала при первом же обновлении списка. Возврат — кнопкой «К списку», как в
+     карточке шаблона. */
   function toggleCard(id) {
-    var row = el("evlBox").querySelector('[data-card="' + id + '"]');
-    if (!row) return;
-    if (row.style.display !== "none") { row.style.display = "none"; return; }
-    var cell = row.firstChild;
-    cell.innerHTML = '<div class="ev-card">Загружаем…</div>';
-    row.style.display = "";
+    showListPart(false);
+    var host = el("evCardHost");
+    host.hidden = false;
+    host.innerHTML = '<div class="sfd"><div class="sfd-head"><b>Загружаем…</b></div></div>';
     evReq("GET", "/list/" + encodeURIComponent(id)).then(function (d) {
-      cell.innerHTML = renderCard(d);
+      evCard = d;
+      host.innerHTML = renderEventCard(d);
+      wireEventCard(id);
       /* Состояние задания спрашиваем отдельным запросом, а не вместе с карточкой: он
          ходит в чужой сервис, и карточка не должна ждать его или падать вместе с ним. */
       loadCron(id);
     }).catch(function (e) {
-      cell.innerHTML = '<div class="ev-card" style="color:var(--red,#e5484d)">' +
-        esc((e && e.message) || "Не удалось загрузить карточку") + "</div>";
+      host.innerHTML = '<div class="sfd"><div class="sfd-head"><b style="color:var(--red,#e5484d)">' +
+        esc((e && e.message) || "Не удалось загрузить карточку") + "</b></div></div>";
+    });
+    var v = el("sec-event-list");
+    if (v) v.scrollTop = 0;
+  }
+
+  /** Показать список (шапка, фильтры, таблица) или спрятать его под карточкой. */
+  function showListPart(on) {
+    ["sf-head", "filters-row", "sf-count"].forEach(function (cls) {
+      var n = document.querySelector("#sec-event-list ." + cls);
+      if (n) n.hidden = !on;
+    });
+    if (el("evlBox")) el("evlBox").hidden = !on;
+    var pager = el("evlPager");
+    if (pager) pager.style.display = on && evl.total > evl.limit ? "" : "none";
+    if (!on) return;
+    var host = el("evCardHost");
+    if (host) { host.hidden = true; host.innerHTML = ""; }
+  }
+
+  /** Открытая карточка — для перерисовки после правки поля. */
+  var evCard = null;
+
+  /* Карточка события тем же видом, что карточка шаблона: шапка с состоянием, секции со
+     свёрткой, поля в две колонки, правка на месте по карандашу. Стили общие
+     (css/registry.css) — читаются они одинаково, и человек, научившийся одной карточке,
+     умеет обе. */
+  function renderEventCard(d) {
+    var e = d.event || {}, dv = d.delivery || {}, s = d.schedule || {}, st = d.state || {};
+    var time = e.kind === "time";
+    var may = canEditEvent();
+
+    var head = '<div class="sfd-top">' +
+        '<button type="button" class="sf-btn" data-ev-back="1">← К списку событий</button>' +
+      "</div>" +
+      '<div class="sfd"><div class="sfd-head">' +
+        '<span class="sfd-ch">' + (time ? "ПО РАСПИСАНИЮ" : "ОНЛАЙН") + "</span>" +
+        "<b>" + esc(e.id) + " — " + esc(e.event_name || "") + "</b>" +
+        '<span class="sfd-status ' + (e.is_active ? "on" : "off") + '">' +
+          (e.is_active ? "АКТИВНО" : "ВЫКЛЮЧЕНО") + "</span>" +
+      "</div>";
+
+    var body = sec("Событие", [
+      row("Имя события", e.event_name, null, "имя же уходит в selection: по нему в проде связаны три таблицы, поэтому здесь оно только показывается"),
+      row("Система", e.system, may && "system"),
+      row("Source", e.source, may && "source"),
+      row("Описание", e.description, may && "description"),
+      row("Род", time ? "по расписанию" : "онлайновое"),
+      flagRow("Активно", e.is_active, may && "is_active"),
+      row("Заведено", String(e.timestamp_cr || "").slice(0, 19).replace("T", " "))
+    ]);
+
+    body += sec("Доставка", [
+      row("Канал", dv.notify_channel),
+      row("Sub channel", dv.sub_channel),
+      row("Платформа", dv.platform),
+      row("Задержка", dv.send_delay),
+      row("Время жизни", dv.life_time),
+      row("ML", dv.allow_ml ? "да" : "нет")
+    ]);
+
+    if (time) {
+      body += sec("Расписание", [
+        row("Кронтаб", s.crontab, may && "crontab", cronWords(s.crontab)),
+        row("База выборки", s.database, may && "database"),
+        flagRow("Массовая отправка", s.is_batch, may && "is_batch"),
+        row("Попыток", s.max_retry_attempts),
+        row("Группа заданий", s.job_group),
+        row("Фаза", st.phase),
+        row("Крон", st.cron_state),
+        row("Прошлый прогон", st.last_result),
+        row("Следующий запуск", st.date_next)
+      ]);
+      /* Планировщик — про то, знает ли Quartz об этом событии, а не про то, что мы
+         записали в расписание. Эти две вещи расходятся, и ровно из-за этого заведённое
+         панелью событие могло не сработать ни разу. */
+      body += '<div class="sfd-sec"><div class="sfd-sec-title">Планировщик</div>' +
+        '<div class="sfd-chain" id="evCron-' + esc(e.id) + '">' +
+        '<span style="color:var(--faint)">читаю…</span></div></div>';
+      body += stepsSec(d.steps || [], e.id, may);
+    }
+
+    body += tplSec(d.templates || [], e.id, may);
+    body += linksSec(d.links || []);
+
+    return head + body + "</div>";
+  }
+
+  /** Секция карточки: заголовок и поля в две колонки. */
+  function sec(title, rows) {
+    var inner = rows.filter(Boolean).join("");
+    return '<div class="sfd-sec"><div class="sfd-sec-title">' + esc(title) + "</div>" +
+      '<div class="sfd-grid">' + inner + "</div></div>";
+  }
+
+  /**
+   * Строка поля.
+   *
+   * @param field имя поля для правки; пусто — поле только показывается
+   * @param note  подпись под значением: чем поле является и почему его нельзя трогать
+   */
+  function row(label, value, field, note) {
+    var empty = value === null || value === undefined || value === "";
+    return '<div class="sfd-row"' + (field ? ' data-field="' + esc(field) + '"' : "") + ">" +
+      '<div class="l">' + esc(label) + "</div>" +
+      '<div class="v' + (empty ? " empty" : "") + '">' + (empty ? "—" : esc(value)) + "</div>" +
+      (note ? '<div class="l" style="margin-top:4px">' + esc(note) + "</div>" : "") +
+      (field ? penHtml() : "") + "</div>";
+  }
+
+  function flagRow(label, on, field) {
+    return '<div class="sfd-row"' + (field ? ' data-field="' + esc(field) + '" data-bool="1"' : "") + ">" +
+      '<div class="l">' + esc(label) + "</div>" +
+      '<div class="v"><span class="' + (on ? "flag-on" : "flag-off") + '">' +
+        (on ? "да" : "нет") + "</span></div>" +
+      (field ? penHtml() : "") + "</div>";
+  }
+
+  function penHtml() {
+    return '<button type="button" class="sfd-pen" title="Править">' +
+      '<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>';
+  }
+
+  /** Расписание словами — тем же описателем, что и в мастере. */
+  function cronWords(expr) {
+    if (!expr) return "";
+    var v = validateCron(expr);
+    if (!v.ok) return v.error;
+    return v.loose ? "" : (describeCron(v.parts) || "");
+  }
+
+  function stepsSec(steps, id, may) {
+    var head = '<div class="sfd-sec"><div class="sfd-sec-title">Шаги выборки (' + steps.length + ")" +
+      (may ? ' <button type="button" class="ev-mini" onclick="evEditSteps(' + esc(id) + ')">Править</button>' : "") +
+      "</div>";
+    var body = steps.length ? steps.map(function (x) {
+      return '<div style="margin-bottom:8px"><b>' + esc(x.order_num) + ". " + esc(x.process_name || "") + "</b>" +
+        (x.returns_result_set ? " · возвращает результат" : "") +
+        (x.is_active ? "" : " · выключен") +
+        "<pre>" + esc(x.sql_text || "") + "</pre></div>";
+    }).join("") : '<span style="color:var(--faint)">нет</span>';
+    return head + '<div class="sfd-chain" id="evEditSteps-' + esc(id) + '">' + body + "</div></div>";
+  }
+
+  function tplSec(tpl, id, may) {
+    var head = '<div class="sfd-sec"><div class="sfd-sec-title">Шаблоны (' + tpl.length + ")" +
+      (may ? ' <button type="button" class="ev-mini" onclick="evEditTemplates(' + esc(id) + ')">Править</button>' : "") +
+      "</div>";
+    var body = tpl.length
+      ? '<div class="ev-rows"><table><tbody>' + tpl.map(function (x) {
+          return "<tr><td>" + (x.step_no == null ? "одиночный" : "шаг " + esc(x.step_no)) + "</td>" +
+            "<td>" + (x.code ? esc(x.channel) + ":" + esc(x.code) : "не найден у нас") + "</td>" +
+            "<td>" + esc(x.communication_name || "") + "</td></tr>";
+        }).join("") + "</tbody></table></div>"
+      : '<span style="color:var(--faint)">нет</span>';
+    return head + '<div class="sfd-chain" id="evEditTpl-' + esc(id) + '">' + body + "</div></div>";
+  }
+
+  function linksSec(links) {
+    if (!links.length) return "";
+    return '<div class="sfd-sec"><div class="sfd-sec-title">Связи с crmdb (' + links.length + ")</div>" +
+      '<div class="sfd-chain"><div class="ev-rows"><table><thead><tr><th>Таблица</th>' +
+      "<th>наш id</th><th>id в crmdb</th><th>Направление</th></tr></thead><tbody>" +
+      links.map(function (x) {
+        return '<tr><td class="tbl">' + esc(x.our_table) + "</td><td>" + esc(x.our_id) +
+          "</td><td>" + esc(x.prod_id) + "</td><td>" +
+          (x.direction === "IMPORT" ? "затянуто из crmdb" : "отправлено в crmdb") + "</td></tr>";
+      }).join("") + "</tbody></table></div></div></div>";
+  }
+
+  /* Обработчики карточки: возврат к списку, свёртка секций, правка полей. */
+  function wireEventCard(id) {
+    var host = el("evCardHost");
+    host.querySelectorAll("[data-ev-back]").forEach(function (b) {
+      b.onclick = function () { showListPart(true); };
+    });
+    host.querySelectorAll(".sfd-sec-title").forEach(function (t) {
+      t.onclick = function (e) {
+        /* Кнопки внутри заголовка («Править») сворачивать секцию не должны. */
+        if (e.target.closest("button")) return;
+        t.parentNode.classList.toggle("closed");
+      };
+    });
+    host.querySelectorAll(".sfd-row[data-field] .sfd-pen").forEach(function (pen) {
+      pen.onclick = function () { editField(id, pen.closest(".sfd-row")); };
     });
   }
 
+  /**
+   * Правка поля на месте: значение заменяется полем ввода, ✓ сохраняет, ✕ отменяет.
+   * <p>
+   * Одним полем за раз и отдельным запросом: карточка не форма, и «сохранить всё»
+   * перезаписало бы то, чего человек не касался, — вместе с чужими правками из соседней
+   * вкладки.
+   */
+  function editField(id, rowEl) {
+    if (!rowEl || rowEl.classList.contains("editing")) return;
+    var field = rowEl.getAttribute("data-field");
+    var isBool = rowEl.getAttribute("data-bool") === "1";
+    var vEl = rowEl.querySelector(".v");
+    var old = vEl.textContent.trim();
+    rowEl.classList.add("editing");
+
+    var input = isBool
+      ? '<input type="checkbox" class="sfd-edit-check"' + (old === "да" ? " checked" : "") + ">"
+      : '<input type="text" class="sfd-edit" value="' + esc(old === "—" ? "" : old) + '">';
+    vEl.innerHTML = input +
+      ' <button type="button" class="ev-mini" data-ok="1">✓</button>' +
+      ' <button type="button" class="ev-mini" data-no="1">✕</button>';
+
+    var ctl = vEl.querySelector(".sfd-edit, .sfd-edit-check");
+    if (ctl && !isBool) { ctl.focus(); ctl.select(); }
+
+    var close = function () { rowEl.classList.remove("editing"); toggleCard(id); };
+    vEl.querySelector("[data-no]").onclick = close;
+    vEl.querySelector("[data-ok]").onclick = function () {
+      var value = isBool ? ctl.checked : ctl.value;
+      vEl.textContent = "Сохраняем…";
+      evReq("PATCH", "/" + encodeURIComponent(id), { field: field, value: value })
+        .then(function (res) {
+          /* Правится наша модель. У перелитого события в crmdb лежит своя копия, и
+             сама она не обновится — говорим об этом прямо, а не оставляем человека
+             в уверенности, что рассылка уже читает новое значение. */
+          say("evlMsg", res && res.exported
+            ? "Сохранено. Событие уже в crmdb — правка туда не уехала: перелейте его заново"
+            : "Сохранено", res && res.exported ? "warn" : "");
+          close();
+        })
+        .catch(function (e) {
+          fail("evlMsg", e);
+          close();
+        });
+    };
+    if (!isBool) {
+      ctl.onkeydown = function (ev) {
+        if (ev.key === "Enter") vEl.querySelector("[data-ok]").click();
+        if (ev.key === "Escape") close();
+      };
+    }
+  }
+
+  /* Прежняя карточка-аккордеон (renderCard) удалена: карточка теперь одна и
+     показывается экраном — см. renderEventCard. Два способа показать одно и то же
+     расходятся на первой же правке, и человек видит разное в зависимости от того,
+     откуда открыл. Список пар остался: им пользуется блок планировщика. */
   function dlist(pairs) {
     var out = "";
     pairs.forEach(function (p) {
@@ -2101,71 +2350,6 @@
       out += "<dt>" + esc(p[0]) + "</dt><dd>" + esc(p[1]) + "</dd>";
     });
     return out ? "<dl>" + out + "</dl>" : '<div style="color:var(--faint)">пусто</div>';
-  }
-
-  function renderCard(d) {
-    var e = d.event || {}, dv = d.delivery || {}, s = d.schedule || {}, st = d.state || {};
-    var html = '<div class="ev-card"><h4>Событие</h4>' + dlist([
-      ["source", e.source], ["группа", e.group_event_descr], ["описание", e.description],
-      ["заведено", String(e.timestamp_cr || "").slice(0, 19).replace("T", " ")]
-    ]) + "</div>";
-
-    html += '<div class="ev-card"><h4>Доставка</h4>' + dlist([
-      ["канал", dv.notify_channel], ["sub_channel", dv.sub_channel], ["платформа", dv.platform],
-      ["задержка", dv.send_delay], ["время жизни", dv.life_time], ["ML", dv.allow_ml ? "да" : null]
-    ]) + "</div>";
-
-    if (e.kind === "time") {
-      html += '<div class="ev-card"><h4>Расписание</h4>' + dlist([
-        ["кронтаб", s.crontab], ["база выборки", s.database],
-        ["массовая отправка", s.is_batch ? "да" : "нет"],
-        ["попыток", s.max_retry_attempts], ["группа заданий", s.job_group],
-        ["фаза", st.phase], ["крон", st.cron_state], ["прошлый прогон", st.last_result],
-        ["следующий запуск", st.date_next]
-      ]) + "</div>";
-
-      /* Планировщик — отдельным блоком: он про то, знает ли Quartz об этом событии, а
-         не про то, что мы записали в расписание. Эти две вещи расходятся, и ровно из-за
-         этого заведённое панелью событие могло не сработать ни разу. */
-      html += '<div class="ev-card" id="evCron-' + esc(e.id) + '"><h4>Планировщик</h4>' +
-        '<div style="color:var(--faint)">читаю…</div></div>';
-
-      var steps = d.steps || [];
-      html += '<div class="ev-card" id="evEditSteps-' + esc(e.id) + '"><h4>Шаги выборки (' + steps.length + ")" +
-        (canEditEvent() ? ' <button type="button" class="ev-mini" onclick="evEditSteps(' + esc(e.id) + ')">Править</button>' : "") +
-        "</h4>";
-      html += steps.length ? steps.map(function (x) {
-        return '<div style="margin-bottom:8px"><b>' + esc(x.order_num) + ". " + esc(x.process_name || "") + "</b>" +
-          (x.returns_result_set ? " · возвращает результат" : "") +
-          (x.is_active ? "" : " · выключен") +
-          "<pre>" + esc(x.sql_text || "") + "</pre></div>";
-      }).join("") : '<div style="color:var(--faint)">нет</div>';
-      html += "</div>";
-    }
-
-    var tpl = d.templates || [];
-    html += '<div class="ev-card" id="evEditTpl-' + esc(e.id) + '"><h4>Шаблоны (' + tpl.length + ")" +
-      (canEditEvent() ? ' <button type="button" class="ev-mini" onclick="evEditTemplates(' + esc(e.id) + ')">Править</button>' : "") +
-      "</h4>";
-    html += tpl.length ? '<div class="ev-rows"><table><tbody>' + tpl.map(function (x) {
-      return "<tr><td>" + (x.step_no == null ? "одиночный" : "шаг " + esc(x.step_no)) + "</td>" +
-        "<td>" + (x.code ? esc(x.channel) + ":" + esc(x.code) : "не найден у нас") + "</td>" +
-        "<td>" + esc(x.communication_name || "") + "</td></tr>";
-    }).join("") + "</tbody></table></div>" : '<div style="color:var(--faint)">нет</div>';
-    html += "</div>";
-
-    var links = d.links || [];
-    if (links.length) {
-      html += '<div class="ev-card"><h4>Связи с crmdb (' + links.length + ")</h4>" +
-        '<div class="ev-rows"><table><thead><tr><th>Таблица</th><th>наш id</th>' +
-        "<th>id в crmdb</th><th>Направление</th></tr></thead><tbody>" +
-        links.map(function (x) {
-          return '<tr><td class="tbl">' + esc(x.our_table) + "</td><td>" + esc(x.our_id) +
-            "</td><td>" + esc(x.prod_id) + "</td><td>" +
-            (x.direction === "IMPORT" ? "затянуто из crmdb" : "отправлено в crmdb") + "</td></tr>";
-        }).join("") + "</tbody></table></div></div>";
-    }
-    return html;
   }
 
   /* ---------------------------------------------------------- правка события
@@ -2279,12 +2463,12 @@
     });
   };
 
+  /* Перерисовка после правки шагов или шаблонов — тем же путём, что и открытие:
+     карточка одна, и второй способ её собрать разошёлся бы с первым. */
   function evReloadCard(id) {
-    var row = el("evlBox").querySelector('[data-card="' + id + '"]');
-    if (!row) return;
-    evReq("GET", "/list/" + encodeURIComponent(id)).then(function (d) {
-      row.firstChild.innerHTML = renderCard(d);
-    });
+    var host = el("evCardHost");
+    if (!host || host.hidden) return;
+    toggleCard(id);
   }
 
   function evEditMsg(box, text, bad) {
