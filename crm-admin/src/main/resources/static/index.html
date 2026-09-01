@@ -643,6 +643,11 @@
               <span class="hint" id="evfBatchHint"></span></label>
             <label class="ev-chk"><input type="checkbox" id="evfChain"> Is chain
               <span class="hint">маппинг шаблона уйдёт в d_template_mapping_mass</span></label>
+            <!-- Только у массового метода: у единичного итоговый скрипт и есть вся
+                 выборка, пропускать там нечего. Прячется переключателем метода. -->
+            <label class="ev-chk" id="evfPromoBox"><input type="checkbox" id="evfPromo"> Is promo
+              <span class="hint">итоговый скрипт не составляется: в шаги уедут только запросы
+                с экрана «Шаги отбора»</span></label>
           </div>
         </div>
 
@@ -694,13 +699,13 @@
       <div class="wz-pane" id="evfPane2" hidden>
         <div class="ev-step">
           <div class="t">Шаги отбора общей базы</div>
-          <p class="wz-note">Выполняются планировщиком по порядку и готовят общую базу — тех, кто вообще попадает в рассылку. Результат движку отдают не они, а итоговый скрипт с четвёртого экрана: он уйдёт последним шагом и вернёт готовую выборку.</p>
+          <p class="wz-note" id="evfStepsNote">Выполняются планировщиком по порядку и готовят общую базу — тех, кто вообще попадает в рассылку. Результат движку отдают не они, а итоговый скрипт с четвёртого экрана: он уйдёт последним шагом и вернёт готовую выборку.</p>
           <div class="ev-fields">
             <div class="ev-f"><label for="evfStepCount">Количество шагов</label><input type="number" id="evfStepCount" value="1" min="1" max="20" step="1"></div>
           </div>
           <div id="evfSteps"></div>
         </div>
-        <div class="ev-step">
+        <div class="ev-step" id="evfFinalBox">
           <div class="t">Итоговая таблица</div>
           <div class="ev-fields">
             <div class="ev-f wide"><label for="evfFinalTable">Куда шаги складывают отобранную базу</label>
@@ -2760,7 +2765,7 @@
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
 <script src="js/entities.js?v=2"></script>
-<script src="js/events.js?v=29"></script>
+<script src="js/events.js?v=30"></script>
 <script src="js/comm-analytics.js?v=4"></script>
 <script src="js/event-chain.js?v=2"></script>
 

@@ -330,6 +330,7 @@
        сразу по переключению, а не при переходе на экран: человек ставит галку и тут же
        хочет видеть, что изменилось. */
     if (el("evfChain")) el("evfChain").onchange = applyChainMode;
+    if (el("evfPromo")) el("evfPromo").onchange = applyPromoMode;
 
     /* Окно с планом закрывается всеми привычными способами: крестиком, кнопкой, кликом
        по фону и Escape. Слушатель на документ висит один и проверяет класс — вешать его
@@ -439,6 +440,12 @@
         ? "включён: массовый метод отправки"
         : "выключен: единичный метод отправки";
     }
+    /* Промо — свойство массовой рассылки. Уходя на единичный метод, галку снимаем, а не
+       просто прячем: невидимый флаг, продолжающий выкидывать итоговый скрипт, — ровно
+       та ошибка, которую потом ищут по пустой выборке. */
+    if (el("evfPromoBox")) el("evfPromoBox").hidden = !batch;
+    if (!batch && el("evfPromo")) el("evfPromo").checked = false;
+    applyPromoMode();
     if (!evfLists) return;
     var L = evfLists[evfMethod];
     /* Канал перезаполняем вместе с парами: у массового метода их всего три, и
@@ -519,6 +526,10 @@
 
   function wzGo(n) {
     n = Math.max(1, Math.min(WZ_LAST, n));
+    /* Четвёртого экрана у промо-события нет: перешагиваем его в ту сторону, в которую
+       шли, — иначе «Далее» с третьего упиралось бы в пустую страницу, а «Назад» с
+       пятого возвращало бы на неё же. */
+    if (n === 4 && isPromo()) n = wzStep >= 4 ? 3 : 5;
     wzStep = n;
     for (var i = 1; i <= WZ_LAST; i++) {
       var pane = el("evfPane" + i);
@@ -542,6 +553,8 @@
      следующий экран бессмыслен, а не всё подряд: имя события нужно серверу, но на
      втором экране оно ни на что не влияет. */
   function wzValidate(n) {
+    /* У промо четвёртый экран выключен — проверять на нём нечего. */
+    if (n === 4 && isPromo()) return true;
     if (n === 1) {
       if (!str("evfName")) return wzFail("Не заполнено имя события (event_name)");
       if (!str("evfChannel")) return wzFail("Не выбран канал (notify_channel)");
@@ -558,7 +571,7 @@
       if (!steps.length || steps.some(function (s) { return !s.sql; })) {
         return wzFail("У каждого шага отбора должен быть SQL");
       }
-      if (!str("evfFinalTable")) {
+      if (!isPromo() && !str("evfFinalTable")) {
         return wzFail("Не указана итоговая таблица — из неё читает итоговый скрипт");
       }
       return true;
@@ -1178,6 +1191,45 @@
   }
 
   /**
+   * Промо-событие: выборку целиком делают шаги отбора, итогового скрипта нет.
+   * <p>
+   * Флаг только у массового метода. У единичного итоговый скрипт и есть вся выборка —
+   * пропускать там нечего, и галка, оставшаяся от массового, молча выкинула бы из
+   * события его единственный запрос. Поэтому смотрим и на метод, а не только на галку:
+   * скрытое поле не должно ни на что влиять.
+   */
+  function isPromo() {
+    return evfMethod === "batch" && chk("evfPromo");
+  }
+
+  /**
+   * Показать форму такой, какая она при этом флаге.
+   * <p>
+   * Четвёртый экран не прячем «на всякий случай», а именно выключаем: при промо он не
+   * участвует ни в переходах, ни в проверках, ни в теле запроса. Оставленная вкладка
+   * приглашала бы заполнить поле, которое никуда не уедет.
+   */
+  function applyPromoMode() {
+    var promo = isPromo();
+    var tab = document.querySelector('#evfTabs .wz-tab[data-wz="4"]');
+    if (tab) tab.hidden = promo;
+    if (el("evfStepsNote")) {
+      el("evfStepsNote").textContent = promo
+        ? "Промо: в шаги события уедут только эти запросы, итогового скрипта не будет."
+          + " Выборку отдаёт последний из них — у него returns_result_set = true."
+        : "Выполняются планировщиком по порядку и готовят общую базу — тех, кто вообще"
+          + " попадает в рассылку. Результат движку отдают не они, а итоговый скрипт с"
+          + " четвёртого экрана: он уйдёт последним шагом и вернёт готовую выборку.";
+    }
+    /* Итоговая таблица нужна ровно затем, чтобы собрать из неё итоговый скрипт. Его
+       нет — и спрашивать её незачем. */
+    if (el("evfFinalBox")) el("evfFinalBox").hidden = promo;
+    /* Стоим на выключенном экране — уходим с него, иначе человек остался бы на
+       странице, которой в этом режиме нет. */
+    if (promo && wzStep === 4) wzGo(3);
+  }
+
+  /**
    * Показать нужную половину третьего экрана.
    * <p>
    * Скрытую половину не очищаем: человек может переключить флаг туда-обратно, и терять
@@ -1292,6 +1344,13 @@
     var steps = collectSteps();
     var maxOrd = 0;
     steps.forEach(function (s) { maxOrd = Math.max(maxOrd, s.orderNum || 0); });
+    if (isPromo()) {
+      /* Промо: итогового скрипта нет вовсе, в шаги уходят только запросы второго
+         экрана. Выборку тогда отдаёт последний из них — иначе ни один шаг не вернёт
+         результат и рассылке нечего будет отправлять. */
+      if (steps.length) steps[steps.length - 1].returnsResultSet = true;
+      return offlineFields(steps);
+    }
     /* Сервисное событие ничего не возвращает: движок не ждёт от него выборки, и
        returns_result_set у последнего шага должен стоять false. У обычной рассылки
        наоборот — именно последний шаг и отдаёт выборку. Шаги отбора не трогаем, они
@@ -1301,6 +1360,14 @@
       orderNum: maxOrd + 10,
       returnsResultSet: !chk("evfService")
     });
+    return offlineFields(steps);
+  }
+
+  /* Поля события; шаги приходят готовыми — их состав зависит от режима (см. offlineBody).
+     is_promo серверу не отправляется: колонки такой нет ни у нас, ни в проде, а весь его
+     смысл уже выражен составом шагов. В окне плана он показан отдельной строкой, чтобы
+     человек видел, почему шагов на один меньше. */
+  function offlineFields(steps) {
     return {
       /* selection не передаём: он равен имени события, и сервер подставит его сам —
          иначе форма несла бы два поля с одним и тем же значением. */
@@ -1318,7 +1385,10 @@
       isChain: chk("evfChain"),
       database: str("evfDatabase"),
       crontab: str("evfCrontab"),
-      steps: steps
+      steps: steps,
+      /* Не для сервера, а для окна плана: оно строится из этого же тела. Поле уходит из
+         запроса перед отправкой (sendOffline). */
+      isPromo: isPromo()
     };
   }
 
@@ -1382,7 +1452,12 @@
        тоже false, и «true у итогового» было бы неправдой в плане, который для того и
        читают, чтобы свериться. */
     var lastRrs = nSteps ? String(!!steps[nSteps - 1].returnsResultSet) : "true";
-    var rrs = nSteps > 1 ? "false у шагов отбора, " + lastRrs + " у итогового" : lastRrs;
+    var rrs = body.isPromo
+      ? (nSteps > 1 ? "false у всех, кроме последнего шага отбора — у него true" : lastRrs)
+      : (nSteps > 1 ? "false у шагов отбора, " + lastRrs + " у итогового" : lastRrs);
+    var stepNote = body.isPromo
+      ? "только шаги отбора: у промо итогового скрипта нет"
+      : "шаги отбора + итоговый скрипт";
     // строки слоя B: событие + расписание + шаги + маппинги шаблонов + маппинг определения
     var bRows = 2 + nSteps + nTpl + 1;
 
@@ -1409,7 +1484,7 @@
             col("database", body.database, "внешний ключ на flow.d_database"),
             col("is_batch", body.isBatch)
           ] },
-          { name: "flow.d_event_step", rows: nSteps, note: "шаги отбора + итоговый скрипт", cols: [
+          { name: "flow.d_event_step", rows: nSteps, note: stepNote, cols: [
             colAuto("event_id", "id события"),
             col("order_num", ords, "по шагам, в порядке экрана «Шаги отбора»"),
             col("process_name", sel),
@@ -1552,7 +1627,8 @@
     groups.forEach(function (g) {
       g.tables.forEach(function (t) { tables++; rows += t.rows; });
     });
-    el("evfPlanSum").textContent = tables + " таблиц · " + nRow(rows);
+    el("evfPlanSum").textContent = tables + " таблиц · " + nRow(rows)
+      + (body.isPromo ? " · is promo: без итогового скрипта" : "");
     el("evfPlanBody").innerHTML = groups.map(function (g) {
       return '<div class="ev-plan-g"><div class="ev-plan-gt">' + esc(g.title) + '</div>' +
         (g.note ? '<p class="ev-plan-gn">' + esc(g.note) + '</p>' : '') +
@@ -1579,7 +1655,7 @@
     var go = el("evfPlanGo");
     go.disabled = true;
     if (el("evfPlanNote")) el("evfPlanNote").textContent = "Заводим…";
-    evReq("POST", "/offline", planBody).then(function (res) {
+    evReq("POST", "/offline", requestBody(planBody)).then(function (res) {
       closePlan();
       /* wzGo первым: он гасит строку состояния при переходе между экранами, и
          поставленное до него сообщение об успехе исчезло бы, не успев показаться. */
@@ -1617,6 +1693,7 @@
     if (el("evfActive")) el("evfActive").checked = false;
     if (el("evfChain")) el("evfChain").checked = false;
     if (el("evfService")) el("evfService").checked = false;
+    if (el("evfPromo")) el("evfPromo").checked = false;
     if (el("evfTplCode")) el("evfTplCode").value = "";
     applyChainMode();
     applyMethod();          // метод человек выбрал сам — сбрасываем не его, а поля под ним
@@ -1641,13 +1718,25 @@
      кнопкой в окне (sendOffline): событие пишется и в нашу модель, и в боевые таблицы, а
      откатывается руками в psql, поэтому между «нажал» и «записалось» стоит экран, где
      видно, во что именно это превратится. */
+  /* Тело в том виде, в каком оно уходит на сервер. isPromo — поле формы, а не запроса:
+     колонки такой нет ни у нас, ни в проде, и весь его смысл уже выражен составом шагов.
+     В окне плана он показан, в запросе его быть не должно — и на экране «Отправка» тоже,
+     иначе там стояло бы поле, которого сервер никогда не увидит. */
+  function requestBody(body) {
+    var out = {};
+    Object.keys(body || {}).forEach(function (k) {
+      if (k !== "isPromo") out[k] = body[k];
+    });
+    return out;
+  }
+
   function submitOffline() {
     var i;
     for (i = 1; i < WZ_LAST; i++) {
       if (!wzValidate(i)) { wzGo(i); return; }
     }
     var body = offlineBody();
-    el("evfPayload").textContent = JSON.stringify(body, null, 2);
+    el("evfPayload").textContent = JSON.stringify(requestBody(body), null, 2);
     say("evfMsg", "Проверьте план и подтвердите заведение в окне.");
     renderResult("evfResult", null);
     if (el("evfPlanNote")) {
