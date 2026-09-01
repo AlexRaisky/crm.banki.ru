@@ -2115,7 +2115,7 @@ window.EventSync = (function(){
   function importFromProd(){
     var btn = $("#evImportBtn");
     btn.disabled = true;
-    var total = 0, pass = 0, byTable = {}, failed = {}, evBuilt = 0, evOnline = 0, evOffline = 0, evErrors = [], pending = 0;
+    var total = 0, pass = 0, byTable = {}, failed = {}, evBuilt = 0, evOnline = 0, evOffline = 0, evErrors = [], pending = 0, evAdopted = 0;
     /* Процесс могли остановить в «Процессах переливов» — прямо посреди наших проходов.
        Сервер гасит more, цикл заканчивается сам, но человеку надо сказать почему:
        иначе «готово, тянуть больше нечего» соврало бы. */
@@ -2145,6 +2145,9 @@ window.EventSync = (function(){
         "<div style=\"margin-bottom:10px\">" + (done ? "Готово. " : "Проход " + pass + "… ") +
         "Затянуто строк <b>" + total + "</b>, собрано событий <b>" + evBuilt + "</b> (онлайновых " +
         evOnline + ", по расписанию " + evOffline + ")." +
+        /* Привязанные строки — не новые события, но и не бездействие: без этой цифры
+           прогон, который только чинил потерянные связи, выглядел бы как пустой. */
+        (evAdopted ? " Привязано к уже заведённым событиям: <b>" + evAdopted + "</b>." : "") +
         (done && more ? " Остановились на потолке в " + MAX_PASSES + " проходов — нажмите ещё раз." : "") +
         "</div>" +
         "<table class=\"tbl\"><thead><tr><th>Таблица</th><th>Итог</th><th>Строк</th>" +
@@ -2167,6 +2170,7 @@ window.EventSync = (function(){
         evBuilt += Number(d.eventsBuilt || 0);
         evOnline += Number(d.eventsOnline || 0);
         evOffline += Number(d.eventsOffline || 0);
+        evAdopted += Number(d.eventsAdopted || 0);
         (d.eventErrors || []).forEach(function(x){ if (evErrors.length < 100) evErrors.push(x); });
         (d.summary || []).forEach(function(r){
           byTable[r.table] = (byTable[r.table] || 0) + Number(r.rows || 0);

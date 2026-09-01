@@ -315,6 +315,7 @@ public class EventImportService {
         Map<String, Object> online = buildOnlineEvents();
         Map<String, Object> offline = buildOfflineEvents();
         int built = intOf(online.get("built")) + intOf(offline.get("built"));
+        int adopted = intOf(online.get("adopted")) + intOf(offline.get("adopted"));
         int eventErrors = intOf(online.get("failed")) + intOf(offline.get("failed"));
         adminLog.logTable("flow.d_event", "INSERT",
                 "{\"imported_rows\":" + total + ",\"events\":" + built + "}");
@@ -327,6 +328,10 @@ public class EventImportService {
         out.put("eventsOnline", online.get("built"));
         out.put("eventsOffline", offline.get("built"));
         out.put("eventsFailed", eventErrors);
+        /* Строки, привязанные к событиям, которые уже были заведены у нас. Новых событий
+           из них не появилось, но и «затянуто ноль» про них сказать нельзя: работа
+           сделана, и без этой цифры она выглядела бы как ничего. */
+        out.put("eventsAdopted", adopted);
         out.put("eventErrors", concat(online.get("errors"), offline.get("errors")));
         out.put("pending", pendingTotal);
         /* Отложенные строки — тоже повод для следующего прогона: их зависимости приехали
@@ -493,14 +498,25 @@ public class EventImportService {
                 "                    WHERE m.our_entity = 'flow.d_event'" +
                 "                      AND m.prod_table = 'tracker.t_event_comm'" +
                 "                      AND m.prod_id = ec.id::text)");
-        int built = 0;
+        int built = 0, adopted = 0;
         List<String> errors = new ArrayList<>();
         for (Map<String, Object> r : rows) {
           try {
             Long eventId = insertEvent("income", str(r, "event_name"), str(r, "system"), null,
                     str(r, "group_event_descr"), bool(r, "is_active"), null);
             if (eventId == null) {
-                continue;   // такое имя+система уже есть: событие собрано другим проходом
+                /* Событие с таким именем и системой уже есть — но это НЕ значит, что оно
+                   знает про эту строку. Так бывает, когда событие завели формой, а строку
+                   слоя B потеряли (её удалили руками, импорт затянул заново с новым id).
+                   Раньше здесь стоял голый continue: строка оставалась без отметки о
+                   принадлежности, каждый прогон снова попадала в выборку и не собиралась
+                   никогда, а событие в панели выглядело как непереведённое в прод —
+                   переливать у него было нечего. Теперь привязываем строку к событию. */
+                if (adopt(findEventId(str(r, "event_name"), str(r, "system")),
+                        "tracker.t_event_comm", num(r.get("id")))) {
+                    adopted++;
+                }
+                continue;
             }
             jdbc.update("INSERT INTO flow.d_event_delivery" +
                             " (event_id, notify_channel, sub_channel, platform, send_delay," +
@@ -519,7 +535,8 @@ public class EventImportService {
             dropEvent(str(r, "event_name"), str(r, "system"));
           }
         }
-        return Map.of("built", built, "failed", errors.size(), "errors", errors);
+        return Map.of("built", built, "adopted", adopted,
+                "failed", errors.size(), "errors", errors);
     }
 
     /** События по расписанию: t_get_event + настройки запуска + шаги выборки. */
@@ -530,7 +547,7 @@ public class EventImportService {
                 "                    WHERE m.our_entity = 'flow.d_event'" +
                 "                      AND m.prod_table = 'scheduler.t_get_event'" +
                 "                      AND m.prod_id = ge.id::text)");
-        int built = 0;
+        int built = 0, adopted = 0;
         List<String> errors = new ArrayList<>();
         for (Map<String, Object> r : rows) {
           try {
@@ -538,6 +555,12 @@ public class EventImportService {
             Long eventId = insertEvent("time", str(r, "event_name"), str(r, "system"),
                     str(r, "source"), str(r, "group_event_descr"), bool(r, "is_active"), selection);
             if (eventId == null) {
+                /* См. онлайн-ветку: имя занято существующим событием, а строка про него не
+                   знает. Привязываем, иначе она будет всплывать в каждом прогоне. */
+                if (adopt(findEventId(str(r, "event_name"), str(r, "system")),
+                        "scheduler.t_get_event", num(r.get("id")))) {
+                    adopted++;
+                }
                 continue;
             }
             jdbc.update("INSERT INTO flow.d_event_delivery" +
@@ -556,7 +579,8 @@ public class EventImportService {
             dropEvent(str(r, "event_name"), str(r, "system"));
           }
         }
-        return Map.of("built", built, "failed", errors.size(), "errors", errors);
+        return Map.of("built", built, "adopted", adopted,
+                "failed", errors.size(), "errors", errors);
     }
 
     /**
@@ -663,6 +687,47 @@ public class EventImportService {
                 " ON CONFLICT (event_name, system) DO NOTHING RETURNING id",
                 Long.class, kind, eventName, nz(system, ""), source, group, description, active);
         return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    /** id события по имени и системе; null — нет или неоднозначно. */
+    private Long findEventId(String eventName, String system) {
+        List<Long> ids = jdbc.queryForList(
+                "SELECT id FROM flow.d_event" +
+                " WHERE event_name = ? AND coalesce(system,'') = coalesce(?,'')",
+                Long.class, eventName, nz(system, ""));
+        /* Двух событий с одним именем быть не должно — на паре стоит уникальность. Но
+           если они как-то появились, выбирать между ними наугад нельзя: привязанная не к
+           тому событию строка уедет в прод под чужим именем. */
+        return ids.size() == 1 ? ids.get(0) : null;
+    }
+
+    /**
+     * Привязать существующее событие к строке слоя B, о которой оно не знает.
+     * <p>
+     * Только отметка о принадлежности — ни доставку, ни маппинги здесь не заводим: у
+     * события они уже есть, а вставка вторых сделала бы из одного события полтора.
+     * <p>
+     * Не трогаем событие, у которого своя строка этой таблицы уже есть: значит в проде
+     * лежат две строки с одним именем, и вторая — не его. Такую оставляем как есть, она
+     * видна в сверке как незатянутая.
+     *
+     * @return true, если привязали
+     */
+    private boolean adopt(Long eventId, String table, Long ourId) {
+        if (eventId == null || ourId == null) {
+            return false;
+        }
+        Integer has = jdbc.queryForObject(
+                "SELECT count(*) FROM flow.t_materialization" +
+                " WHERE our_entity = 'flow.d_event' AND our_id = ? AND prod_table = ?",
+                Integer.class, String.valueOf(eventId), table);
+        if (has != null && has > 0) {
+            return false;
+        }
+        link(eventId, table, ourId);
+        log.info("event-import: строка {}#{} привязана к уже заведённому событию {}",
+                table, ourId, eventId);
+        return true;
     }
 
     /** Отметка «эта строка нашего слоя B принадлежит этому событию» — как у материализации. */
