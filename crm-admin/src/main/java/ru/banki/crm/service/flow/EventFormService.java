@@ -209,6 +209,12 @@ public class EventFormService {
             m.put("is_active", active);
             m.put("is_deferred", false);
             m.put("allow_ml", false);
+            /* Задержка отправки. Форма её не спрашивает, и до сих пор колонка уезжала в
+               прод пустой — а у событий, заведённых цепочкой, там стоит 2 (см.
+               MaterializationService). Двух разных умолчаний у одной колонки быть не
+               должно: событие, заведённое формой, вело бы себя иначе, чем такое же,
+               заведённое канвой. */
+            m.put("send_delay", 2);
         });
         long launchId = insertB(rows, eventId, "scheduler.t_launch_settings", m -> {
             m.put("selection", selection);

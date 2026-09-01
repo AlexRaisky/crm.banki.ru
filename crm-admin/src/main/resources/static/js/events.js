@@ -1520,7 +1520,8 @@
             col("notify_channel", body.notifyChannel),
             col("is_active", body.isActive),
             col("is_deferred", false),
-            col("allow_ml", false)
+            col("allow_ml", false),
+            col("send_delay", 2, "форма его не спрашивает — ставится сервером")
           ] },
           { name: "scheduler.t_launch_settings", rows: 1,
             note: "создаёт ПЛАНИРОВЩИК (POST /api/v1/event), не мы — его id уходит в шаги", cols: [
