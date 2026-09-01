@@ -218,10 +218,11 @@ public class JiraService {
                 JsonNode ready = coerce(f, value);
                 if (ready == null) {
                     /* Единственный случай — пользователь не нашёлся (см. coerce). */
-                    String hint = "в Jira нет пользователя «" + value + "». Если он там"
-                            + " записан иначе — Александра вместо Саши, — свяжите написания"
-                            + " в «Настройки» → «Интеграции» → Jira → «Соответствие"
-                            + " значений», либо укажите в плане его логин или рабочую почту";
+                    String hint = "в Jira не нашёлся пользователь «" + value + "». Человека"
+                            + " ищем по почте: она должна стоять в его учётке панели"
+                            + " («Настройки» → «Доступ») и совпадать с почтой в Jira."
+                            + " Если учётки в панели нет, задайте пару имя → логин Jira в"
+                            + " «Настройки» → «Интеграции» → Jira → «Соответствие значений»";
                     if (Boolean.TRUE.equals(f.get("required"))) {
                         throw bad("Поле «" + f.get("name") + "» обязательно, но " + hint + ".");
                     }
@@ -355,45 +356,96 @@ public class JiraService {
 
     /**
      * Логин в Jira по почте, логину или имени. Нужен для Reporter и полей-пользователей:
-     * Data Center ждёт именно логин, а панель знает человека кто как — почтой у себя в
-     * профиле, а в плане и вовсе живой строкой «Саша».
+     * Data Center ждёт именно логин.
      * <p>
-     * Ищем в три захода, потому что ручки ищут по-разному: {@code user/search} — по
-     * логину и почте, {@code user/picker} — ещё и по отображаемому имени, третий заход
-     * с {@code query} на случай инстанса, который понимает облачный параметр.
+     * <b>Главный ключ — почта.</b> Она одна и та же в панели и в Jira, и по ней находится
+     * тот самый человек, а не похожий. Имена совпадать не обязаны: в плане пишут «Саша»,
+     * в Jira она «Александра», и поиск по имени тут либо не находит ничего, либо находит
+     * не того. Поэтому сначала превращаем имя в почту — по учётке в самой панели
+     * ({@code app.users.display_name}), — и уже почтой спрашиваем Jira.
      * <p>
-     * Не нашли — null. Дальше это уже не «поле не заполнится»: за {@code null} следят
-     * вызывающие, потому что отправленная в Jira строка, которая не логин, роняет
-     * создание задачи целиком.
+     * Порядок такой:
+     * <ol>
+     *   <li>значение — почта: ищем ею;</li>
+     *   <li>значение — имя, известное панели: берём почту из учётки и ищем ею;</li>
+     *   <li>значение — логин: обычный поиск по {@code username};</li>
+     *   <li>последняя попытка — поиск по отображаемому имени ({@code user/picker}).</li>
+     * </ol>
+     * Найденного по почте сверяем по этой же почте: {@code user/search} ищет вхождением,
+     * и по «i.ivanov@» вернутся все Ивановы разом. Взять из них первого значило бы
+     * поставить в задачу чужого человека — молча и правдоподобно.
+     * <p>
+     * Не нашли — null. Это не «поле останется пустым»: за {@code null} следят вызывающие,
+     * потому что строка, отправленная в Jira вместо логина, роняет создание задачи.
      */
     private String userLogin(String emailOrName) {
         String q = emailOrName == null ? "" : emailOrName.trim();
         if (q.isEmpty()) {
             return null;
         }
-        String hit = firstUser("/rest/api/2/user/search?maxResults=5&username=" + enc(q), null);
-        if (hit == null) {
-            hit = firstUser("/rest/api/2/user/picker?maxResults=5&query=" + enc(q), "users");
+        String email = q.contains("@") ? q : panelEmail(q);
+        if (email != null && !email.isBlank()) {
+            String byMail = findUser("/rest/api/2/user/search?maxResults=20&username=" + enc(email),
+                    null, email);
+            if (byMail != null) {
+                return byMail;
+            }
         }
-        if (hit == null) {
-            hit = firstUser("/rest/api/2/user/search?maxResults=5&query=" + enc(q), null);
+        if (!q.contains("@")) {
+            String byLogin = findUser("/rest/api/2/user/search?maxResults=5&username=" + enc(q), null, null);
+            if (byLogin != null) {
+                return byLogin;
+            }
+            return findUser("/rest/api/2/user/picker?maxResults=5&query=" + enc(q), "users", null);
         }
-        return hit;
+        return null;
     }
 
     /**
-     * Логин первого найденного человека.
+     * Почта человека по имени, как он записан в панели.
+     * <p>
+     * Ответственного в плане выбирают из списка, который собран в том числе из
+     * {@code display_name} наших пользователей, — значит у имени почти всегда есть
+     * учётка, а у учётки почта. Двух одинаковых имён быть не должно, но если они есть,
+     * возвращаем null: угаданный не тот человек хуже незаполненного поля.
+     */
+    private String panelEmail(String displayName) {
+        @SuppressWarnings("unchecked")
+        List<String> mails = em.createNativeQuery(
+                        "SELECT email FROM app.users"
+                        + " WHERE enabled AND lower(btrim(display_name)) = lower(btrim(:n))")
+                .setParameter("n", displayName)
+                .getResultList();
+        return mails.size() == 1 ? String.valueOf(mails.get(0)) : null;
+    }
+
+    /**
+     * Логин человека из ответа поиска.
      *
      * @param arrayField где в ответе лежит массив: у {@code user/picker} это
      *                   {@code users}, у {@code user/search} — сам ответ
+     * @param wantEmail  если задан — берём только совпадение по этой почте, иначе первого
      */
-    private String firstUser(String path, String arrayField) {
+    private String findUser(String path, String arrayField, String wantEmail) {
         try {
             JsonNode res = client().get(path);
             JsonNode arr = arrayField == null ? res : res.path(arrayField);
-            if (arr != null && arr.isArray() && arr.size() > 0) {
-                String name = arr.get(0).path("name").asText("");
-                return name.isBlank() ? null : name;
+            if (arr == null || !arr.isArray()) {
+                return null;
+            }
+            for (JsonNode u : arr) {
+                String name = u.path("name").asText("");
+                if (name.isBlank()) {
+                    continue;
+                }
+                if (wantEmail == null) {
+                    return name;
+                }
+                /* Почта у picker называется иначе, чем у search, — смотрим оба поля. */
+                String mail = u.path("emailAddress").asText(u.path("email").asText(""));
+                if (wantEmail.equalsIgnoreCase(mail.trim())) {
+                    return name;
+                }
             }
         } catch (RuntimeException ignored) {
             /* Ручки может не быть на этой версии или нет прав на поиск людей —
