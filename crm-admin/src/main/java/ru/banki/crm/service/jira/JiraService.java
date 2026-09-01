@@ -178,6 +178,9 @@ public class JiraService {
         /* Значения в том написании, которое приняла Jira: заголовок задачи должен читаться
            как её же поля — «E-mail - Карты - Debitcards», а не «email - Карты - general». */
         Map<String, String> shown = new LinkedHashMap<>();
+        /* Что не доехало и почему — одним списком: и пропущенные поля, и поля вне экрана
+           создания. Человеку важно одно — чего в задаче не будет. */
+        List<String> notes = new ArrayList<>();
         create.set("project", om.createObjectNode().put("key", project));
         create.set("issuetype", om.createObjectNode().put("name", type));
         String reporter = str(data.get("reporterEmail"));
@@ -213,6 +216,18 @@ public class JiraService {
                 shown.put(ourKey, value);
             } else {
                 JsonNode ready = coerce(f, value);
+                if (ready == null) {
+                    /* Единственный случай — пользователь не нашёлся (см. coerce). */
+                    String hint = "в Jira нет пользователя «" + value + "». Если он там"
+                            + " записан иначе — Александра вместо Саши, — свяжите написания"
+                            + " в «Настройки» → «Интеграции» → Jira → «Соответствие"
+                            + " значений», либо укажите в плане его логин или рабочую почту";
+                    if (Boolean.TRUE.equals(f.get("required"))) {
+                        throw bad("Поле «" + f.get("name") + "» обязательно, но " + hint + ".");
+                    }
+                    notes.add("поле «" + f.get("name") + "» осталось пустым: " + hint);
+                    return;
+                }
                 create.set(fieldId, ready);
                 /* option приходит объектом {"value": …} — в заголовок берём именно это
                    написание, оно и стоит потом в карточке. */
@@ -240,9 +255,11 @@ public class JiraService {
                 out.put("lateFilled", later.size());
             } catch (ResponseStatusException e) {
                 /* Задача уже есть — не падаем, а говорим, что дозаполнить руками. */
-                out.put("warning", "Задача " + key + " создана, но поля вне экрана создания не записались: "
-                        + e.getReason());
+                notes.add("поля вне экрана создания не записались: " + e.getReason());
             }
+        }
+        if (!notes.isEmpty()) {
+            out.put("warning", "Задача " + key + " создана, но " + String.join("; ", notes) + ".");
         }
         return out;
     }
@@ -279,6 +296,9 @@ public class JiraService {
      * объект с value, пользовательское поле — логин, массив — массив. Для поля, которого
      * на экране создания нет ({@code f == null}), типа мы не знаем — шлём строкой, такие
      * поля у нас текстовые.
+     * <p>
+     * {@code null} в ответе значит «значение отправлять нельзя»: так возвращается
+     * пользовательское поле, для которого в Jira не нашлось человека.
      */
     private JsonNode coerce(Map<String, Object> f, String raw) {
         if (f == null) {
@@ -309,7 +329,11 @@ public class JiraService {
                 return om.createObjectNode().put("value", value);
             case "user":
                 String login = userLogin(value);
-                return om.createObjectNode().put("name", login == null ? value : login);
+                /* Не нашли — не отправляем нашу строку вместо логина. Jira отвечает на
+                   это 400 по всей задаче («User 'Саша' was not found in the system»), и
+                   из-за одного поля не заводится ничего. Решает вызывающий: поле
+                   необязательное — оставим пустым, обязательное — объясним человеку. */
+                return login == null ? null : om.createObjectNode().put("name", login);
             case "number":
                 try {
                     return om.getNodeFactory().numberNode(Double.parseDouble(value));
@@ -330,22 +354,50 @@ public class JiraService {
     }
 
     /**
-     * Логин в Jira по адресу почты или имени. Нужен для Reporter и полей-пользователей:
-     * Data Center ждёт именно логин, а панель знает человека по почте. Не нашли — вернём
-     * null, и поле просто не заполнится: из-за одного постановщика заваливать заведение
-     * задачи не стоит.
+     * Логин в Jira по почте, логину или имени. Нужен для Reporter и полей-пользователей:
+     * Data Center ждёт именно логин, а панель знает человека кто как — почтой у себя в
+     * профиле, а в плане и вовсе живой строкой «Саша».
+     * <p>
+     * Ищем в три захода, потому что ручки ищут по-разному: {@code user/search} — по
+     * логину и почте, {@code user/picker} — ещё и по отображаемому имени, третий заход
+     * с {@code query} на случай инстанса, который понимает облачный параметр.
+     * <p>
+     * Не нашли — null. Дальше это уже не «поле не заполнится»: за {@code null} следят
+     * вызывающие, потому что отправленная в Jira строка, которая не логин, роняет
+     * создание задачи целиком.
      */
     private String userLogin(String emailOrName) {
-        if (emailOrName == null || emailOrName.isBlank()) {
+        String q = emailOrName == null ? "" : emailOrName.trim();
+        if (q.isEmpty()) {
             return null;
         }
+        String hit = firstUser("/rest/api/2/user/search?maxResults=5&username=" + enc(q), null);
+        if (hit == null) {
+            hit = firstUser("/rest/api/2/user/picker?maxResults=5&query=" + enc(q), "users");
+        }
+        if (hit == null) {
+            hit = firstUser("/rest/api/2/user/search?maxResults=5&query=" + enc(q), null);
+        }
+        return hit;
+    }
+
+    /**
+     * Логин первого найденного человека.
+     *
+     * @param arrayField где в ответе лежит массив: у {@code user/picker} это
+     *                   {@code users}, у {@code user/search} — сам ответ
+     */
+    private String firstUser(String path, String arrayField) {
         try {
-            JsonNode res = client().get("/rest/api/2/user/search?maxResults=2&username=" + enc(emailOrName.trim()));
-            if (res != null && res.isArray() && res.size() > 0) {
-                return res.get(0).path("name").asText(null);
+            JsonNode res = client().get(path);
+            JsonNode arr = arrayField == null ? res : res.path(arrayField);
+            if (arr != null && arr.isArray() && arr.size() > 0) {
+                String name = arr.get(0).path("name").asText("");
+                return name.isBlank() ? null : name;
             }
         } catch (RuntimeException ignored) {
-            // прав на поиск людей может не быть — тогда просто без постановщика
+            /* Ручки может не быть на этой версии или нет прав на поиск людей —
+               пробуем следующую, а не падаем. */
         }
         return null;
     }
@@ -460,14 +512,20 @@ public class JiraService {
             }
             @SuppressWarnings("unchecked")
             List<String> allowed = (List<String>) f.getOrDefault("values", List.of());
-            if (allowed.isEmpty()) {
+            boolean user = "user".equals(str(f.get("type")));
+            if (allowed.isEmpty() && !user) {
                 return;   // свободный текст: сопоставлять нечего
             }
+            /* Поля-пользователи попадают сюда без списка значений: людей в инстансе
+               тысячи, и списком их не выдают. Пара всё равно нужна — «Саша» в плане и
+               «Александра» в Jira это один человек, а связать их больше негде: поиск
+               по имени такого не находит, а править план ради Jira неправильно. */
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("key", ourKey);
             row.put("title", title);
             row.put("fieldId", fieldId);
             row.put("allowed", allowed);
+            row.put("user", user);
             Map<String, String> pairs = new LinkedHashMap<>();
             valueMap.path(ourKey).fields().forEachRemaining(e -> pairs.put(e.getKey(), e.getValue().asText("")));
             row.put("pairs", pairs);

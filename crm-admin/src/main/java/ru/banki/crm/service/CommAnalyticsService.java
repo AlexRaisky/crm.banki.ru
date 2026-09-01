@@ -331,6 +331,18 @@ public class CommAnalyticsService {
             log.info("comm-analytics: блок {} не прочитан: {}", name, msg);
             block.put("rows", List.of());
             block.put("error", msg);
+        } finally {
+            /* Обязательно, и именно здесь. Соединение работает с autoCommit=false (иначе
+               не будет курсора), а в PostgreSQL упавший запрос отравляет всю транзакцию:
+               следующий блок получает «current transaction is aborted» вместо своей
+               настоящей ошибки, и одна отсутствующая витрина гасит весь экран. Откат
+               после каждого блока делает их независимыми — коммитить нам всё равно
+               нечего, мы только читаем. */
+            try {
+                c.rollback();
+            } catch (Exception ignore) {
+                /* Соединение уже разорвано — следующий блок скажет об этом сам. */
+            }
         }
         return block;
     }

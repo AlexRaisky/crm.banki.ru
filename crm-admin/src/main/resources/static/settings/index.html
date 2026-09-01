@@ -2493,8 +2493,8 @@ window.JiraSetup = (function(){
   function renderValues(){
     var fields = (jvData && jvData.fields) || [];
     if (!fields.length){
-      box("jvBox", "Полей-списков нет: либо карта полей пуста, либо у привязанных полей " +
-        "свободный текст — тогда сопоставлять нечего.", true);
+      box("jvBox", "Сопоставлять нечего: карта полей пуста либо у всех привязанных полей " +
+        "свободный текст. Пары нужны спискам и полям с людьми.", true);
       return;
     }
     var html = fields.map(function(f){
@@ -2508,7 +2508,9 @@ window.JiraSetup = (function(){
       }).join("");
       return '<div class="jv-field"><div class="jv-head">' + esc(f.title) +
           ' <span class="mono">' + esc(f.fieldId) + '</span>' +
-          '<span class="jv-allowed">' + esc(f.allowed.join(", ")) + "</span></div>" +
+          '<span class="jv-allowed">' + (f.user
+            ? "поле с человеком: справа — логин или почта в Jira"
+            : esc(f.allowed.join(", "))) + "</span></div>" +
         rows +
         '<div class="jv-row jv-new" data-key="' + esc(f.key) + '">' +
           '<input class="dbc-in jv-our" placeholder="наше значение">' +
@@ -2521,6 +2523,12 @@ window.JiraSetup = (function(){
   }
 
   function jvSelect(f, cur){
+    /* У поля с человеком списка значений нет и быть не может — людей в инстансе тысячи.
+       Поэтому там обычное поле ввода: логин или почта, как они записаны в Jira. */
+    if (f.user){
+      return '<input class="dbc-in jv-jira mono" value="' + esc(cur || "") +
+        '" placeholder="логин или почта в Jira">';
+    }
     return '<select class="dbc-in jv-jira"><option value="">— значение Jira —</option>' +
       (f.allowed || []).map(function(v){
         return '<option value="' + esc(v) + '"' + (v === cur ? " selected" : "") + ">" + esc(v) + "</option>";
@@ -2535,7 +2543,7 @@ window.JiraSetup = (function(){
       b.onclick = function(){
         var row = b.closest(".jv-row");
         var our = (row.querySelector(".jv-our").value || "").trim();
-        var jira = row.querySelector(".jv-jira").value || "";
+        var jira = (row.querySelector(".jv-jira").value || "").trim();
         if (!our || !jira){ jvNote("Заполните обе половины пары", true); return; }
         var clone = row.cloneNode(true);
         clone.classList.remove("jv-new");
@@ -2562,7 +2570,7 @@ window.JiraSetup = (function(){
     $$("#jvBox .jv-row").forEach(function(row){
       if (row.classList.contains("jv-new")) return;      // строка добавления — не пара
       var our = (row.querySelector(".jv-our").value || "").trim();
-      var jira = row.querySelector(".jv-jira").value || "";
+      var jira = (row.querySelector(".jv-jira").value || "").trim();
       if (!our || !jira) return;
       var key = row.dataset.key;
       (map[key] = map[key] || {})[our] = jira;
