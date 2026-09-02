@@ -1174,6 +1174,74 @@ function sfdSyncCreate(){
    как библиотека, но отдельной кнопки для форм больше нет — цепочка
    перенесена в карточку (секция «Цепочка»). */
 
+/* ============================================================ СОБЫТИЯ ШАБЛОНА
+
+   Обратная сторона связи flow.d_event_template: в карточке события видно его
+   шаблоны, здесь — события, которые по этому шаблону ходят. Блок стоит колонкой
+   справа, как связанные объекты у клиента и у события.
+
+   Ответ кэшируем по паре канал+код: карточка перерисовывается на каждую правку
+   поля, и запрос на каждый рендер означал бы десятки одинаковых обращений. */
+var SFD_EVENTS = {};      /* "канал:код" -> {state:'load'|'ok'|'err'|'deny', rows:[]} */
+function sfdEvKey(d){
+    var code = (d && d.code != null && d.code !== '') ? d.code : (d && d.letteros_id);
+    return (d && d.channel && code) ? (d.channel + ':' + code) : null;
+}
+function sfdEnsureEvents(d){
+    var key = sfdEvKey(d);
+    if (!key || SFD_EVENTS[key]) return SFD_EVENTS[key] || null;
+    SFD_EVENTS[key] = { state:'load', rows:[] };
+    var i = key.indexOf(':');
+    fetch('/api/events/by-template?channel=' + encodeURIComponent(key.slice(0, i)) +
+          '&code=' + encodeURIComponent(key.slice(i + 1)),
+          { credentials:'same-origin', headers:{ Accept:'application/json' } })
+        .then(function(r){
+            /* 403 — у роли нет доступа к событиям. Это не ошибка карточки шаблона:
+               блок просто скажет, что показывать нечего, и не станет пугать красным. */
+            if (r.status === 403) { SFD_EVENTS[key] = { state:'deny', rows:[] }; return null; }
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function(rows){ if (rows) SFD_EVENTS[key] = { state:'ok', rows:rows || [] }; })
+        .catch(function(){ SFD_EVENTS[key] = { state:'err', rows:[] }; })
+        .then(function(){ sfdRenderUnlessTyping(); });
+    return SFD_EVENTS[key];
+}
+var SFD_EV_ICO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/>' +
+    '<path d="M16 2v4M8 2v4M3 10h18"/></svg>';
+function sfdEventsRailHtml(d){
+    var got = sfdEnsureEvents(d);
+    if (!got) return '';
+    var body;
+    if (got.state === 'load') {
+        body = '<div class="sfd-rl-empty">' + sfdT('читаю…') + '</div>';
+    } else if (got.state === 'deny') {
+        body = '<div class="sfd-rl-empty">' + sfdT('нет доступа к событиям') + '</div>';
+    } else if (got.state === 'err') {
+        body = '<div class="sfd-rl-empty">' + sfdT('не удалось загрузить') + '</div>';
+    } else if (!got.rows.length) {
+        body = '<div class="sfd-rl-empty">' + sfdT('событий нет') + '</div>';
+    } else {
+        body = got.rows.map(function(x){
+            var sub = (x.kind === 'time' ? sfdT('по расписанию') : sfdT('онлайновое')) +
+                (x.step_no == null ? '' : ' · ' + sfdT('шаг') + ' ' + sfdEsc(x.step_no)) +
+                (x.is_active ? '' : ' · ' + sfdT('выключено'));
+            return '<div class="sfd-rl-item" data-ev-id="' + sfdEsc(x.id) + '">' +
+                '<div class="t">' + sfdEsc(x.event_name || ('#' + x.id)) + '</div>' +
+                '<div class="s">' + sub + '</div>' +
+                '<div class="n">#' + sfdEsc(x.id) + '</div>' +
+            '</div>';
+        }).join('');
+    }
+    return '<section class="sfd-rl"><header class="sfd-rl-head">' +
+        '<span class="ico">' + SFD_EV_ICO + '</span><b>' + sfdT('События') + '</b>' +
+        '<span class="cnt">' + (got.state === 'ok' ? got.rows.length : '—') + '</span></header>' +
+        '<div class="sfd-rl-body">' + body + '</div>' +
+        '<div class="sfd-rl-foot">flow.d_event_template.template_id → template.d_template.id</div>' +
+    '</section>';
+}
+
 function sfdRender(){
     var st = SFD_STATE;
     if (!st) return;
@@ -1200,7 +1268,8 @@ function sfdRender(){
             /* список переехал в «Сущности» → «Шаблоны и сегменты» */
             : '<div class="sfd-top"><button type="button" class="sf-btn" onclick="openSection(\'entities\',\'ent-template\')">' +
                 sfdT('← К списку шаблонов') + '</button></div>') +
-        '<div class="sfd-layout"><div class="sfd">' +
+        /* Заводимому шаблону колонка событий не нужна: связей у него ещё нет. */
+        '<div class="sfd-layout' + (isCreate ? ' no-rail' : '') + '"><div class="sfd-main"><div class="sfd">' +
         '<div class="sfd-head">' +
             '<span class="sfd-ch">' + sfdEsc(chLabels[d.channel] || d.channel) + '</span>' +
             '<b>' + (isCreate
@@ -1231,7 +1300,16 @@ function sfdRender(){
                 '<button type="button" class="sf-btn accent" id="sfdSaveBtn">' + sfdT('Сохранить') + '</button>' +
                 '<button type="button" class="sf-btn" id="sfdCancelBtn">' + sfdT('Отменить') + '</button>' +
               '</div>' : '')) +
-        '</div><div class="sfd-side"></div></div>';
+        '</div></div>' +
+        (isCreate ? '' : '<aside class="sfd-rail">' + sfdEventsRailHtml(d) + '</aside>') +
+        '<div class="sfd-side"></div></div>';
+
+    /* переход в карточку события — той же дорогой, что и из списка событий */
+    output.querySelectorAll('.sfd-rl-item[data-ev-id]').forEach(function(it){
+        it.onclick = function(){
+            if (typeof window.openEventCard === 'function') window.openEventCard(it.dataset.evId);
+        };
+    });
 
     /* карандаши: включают редактирование поля */
     output.querySelectorAll('.sfd-pen').forEach(function(btn){

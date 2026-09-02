@@ -725,11 +725,46 @@ button:hover{filter:brightness(1.08)}
 
 /* ---- Карточка шаблона: раскладка с предпросмотром ---- */
 .sfd-top{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-/* Предпросмотр — отдельным окном ПОСЛЕ карточки настроек, а не сбоку:
-   вёрстке письма (e-mail) нужна полная ширина. */
-.sfd-layout{display:block}
-.sfd-side{position:static;margin-top:18px}
+/* Раскладка карточки: слева настройки, справа колонка связанных объектов (события,
+   по которым ходит шаблон) — как в карточках клиента и события. Предпросмотр остаётся
+   ПОД обеими колонками во всю ширину: вёрстке письма нужна полная ширина. */
+.sfd-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,26%);gap:16px;align-items:start}
+.sfd-layout.no-rail{grid-template-columns:minmax(0,1fr)}
+.sfd-main{min-width:0}
+.sfd-rail{min-width:0;position:sticky;top:0;max-height:calc(100dvh - 120px);overflow:auto}
+.sfd-rail:empty{display:none}
+.sfd-side{grid-column:1 / -1;position:static;margin-top:18px}
 .sfd-side:empty{display:none}
+
+/* Блок связанных объектов — тот же вид, что «Шаблоны» в карточке события и
+   «Контактные данные» у клиента. */
+.sfd-rl{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.sfd-rl-head{display:flex;align-items:center;gap:9px;padding:11px 14px;background:var(--card2);
+    border-bottom:1px solid var(--line)}
+.sfd-rl-head .ico{width:24px;height:24px;flex:0 0 auto;border-radius:7px;background:var(--blue-bg);
+    color:var(--blue);display:flex;align-items:center;justify-content:center}
+.sfd-rl-head .ico svg{width:13px;height:13px}
+.sfd-rl-head b{font-size:13.5px;font-weight:640;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sfd-rl-head .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--faint);
+    background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1px 8px}
+.sfd-rl-empty{padding:16px 14px;font-size:12.5px;color:var(--faint)}
+.sfd-rl-item{position:relative;padding:10px 52px 10px 14px;cursor:pointer}
+.sfd-rl-item + .sfd-rl-item{border-top:1px solid var(--line)}
+.sfd-rl-item:hover{background:var(--card2)}
+.sfd-rl-item .t{font-size:13px;font-weight:600;color:var(--blue);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sfd-rl-item:hover .t{text-decoration:underline}
+.sfd-rl-item .s{font-size:11.5px;color:var(--dim);margin-top:2px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sfd-rl-item .n{position:absolute;right:12px;top:10px;font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.sfd-rl-foot{padding:8px 14px;border-top:1px solid var(--line);font-family:var(--mono);
+    font-size:10.5px;color:var(--faint);background:var(--bg2)}
+
+/* Ниже 1080px на две колонки ширины не хватает — блок уходит под карточку. */
+@media(max-width:1080px){
+    .sfd-layout,.sfd-layout.no-rail{grid-template-columns:minmax(0,1fr)}
+    .sfd-rail{position:static;max-height:none;overflow:visible}
+}
 
 /* Карточка записи и правка полей на месте — в css/registry.css: тем же видом
    показывается карточка события, и держать две копии одной вёрстки значит однажды
