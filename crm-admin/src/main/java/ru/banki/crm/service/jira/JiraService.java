@@ -276,21 +276,28 @@ public class JiraService {
             return given;
         }
         List<String> parts = new ArrayList<>();
-        for (String k : List.of("channel", "customer", "product", "kind", "name", "sendDate")) {
+        for (String k : List.of("channel", "customer", "product", "kind", "name")) {
             String v = shown.getOrDefault(k, str(data.get(k)));
-            if (v.isBlank()) {
-                continue;
+            if (!v.isBlank()) {
+                parts.add(v);
             }
-            parts.add("sendDate".equals(k) ? humanDate(v) : v);
         }
-        return parts.isEmpty() ? "Промо" : String.join(" - ", parts);
+        if (parts.isEmpty()) {
+            /* Строка плана пустая настолько, что называть задачу нечем. Одна дата
+               заголовком — это задача без имени: в списке Jira такие неразличимы. */
+            parts.add("Промо");
+        }
+        /* Дата — сегодняшняя, день заведения задачи, а не дата отправки из строки плана.
+           Так заголовок отвечает на вопрос «когда это завели», а срок отправки живёт в
+           своём поле задачи, где его и ищут. Формат ддммгг — тот же, что в именах
+           коммуникаций (…_010926): заголовок и source читаются одинаково. */
+        parts.add(DATE_TAG.format(java.time.LocalDate.now()));
+        return String.join("_", parts);
     }
 
-    /** В заголовке дата принята по-русски: 20.08.2026, а не 2026-08-20. */
-    private static String humanDate(String iso) {
-        String[] p = iso.length() >= 10 ? iso.substring(0, 10).split("-") : new String[0];
-        return p.length == 3 ? p[2] + "." + p[1] + "." + p[0] : iso;
-    }
+    /** Дата в заголовке: 010926 — как в именах коммуникаций. */
+    private static final java.time.format.DateTimeFormatter DATE_TAG =
+            java.time.format.DateTimeFormatter.ofPattern("ddMMyy");
 
     /**
      * Значение в том виде, в каком его ждёт поле. Тип берём из createmeta: список хочет

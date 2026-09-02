@@ -150,10 +150,16 @@ public class PromoPlanService {
     }
 
     /** База и дополнительные условия к ней — в Jira это одно поле «Сегмент». */
+    /**
+     * Склейка базы и дополнительного условия в поле «Сегмент».
+     * <p>
+     * Через пробел, а не запятую: в Jira это одна фраза («вклады новые клиенты»), и
+     * запятая читалась там как перечисление двух разных сегментов.
+     */
     private static String joinNonEmpty(String a, String b) {
         if (a == null || a.isBlank()) return b == null ? "" : b;
         if (b == null || b.isBlank()) return a;
-        return a + ", " + b;
+        return a + " " + b;
     }
 
     /**
