@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -61,10 +60,17 @@ public class PanelSettingsController {
 
     private final AdminLogService adminLog;
     private final ObjectMapper json;
+    /* Запись конфига раньше закрывал @PreAuthorize("hasRole('ADMIN')"). Теперь панель
+       «Приложения и разделы» — обычная секция матрицы (set-apps), и право проверяется
+       так же, как везде. Двух гейтов быть не должно: роль с выданной секцией упиралась
+       бы в роль-проверку и не понимала бы, почему. */
+    private final ru.banki.crm.security.AccessGuard access;
 
-    public PanelSettingsController(AdminLogService adminLog, ObjectMapper json) {
+    public PanelSettingsController(AdminLogService adminLog, ObjectMapper json,
+                                  ru.banki.crm.security.AccessGuard access) {
         this.adminLog = adminLog;
         this.json = json;
+        this.access = access;
     }
 
     @GetMapping("/{key}")
@@ -81,9 +87,9 @@ public class PanelSettingsController {
     }
 
     @PutMapping("/{key}")
-    @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     public SettingDto put(@PathVariable String key, @RequestBody JsonNode value) {
+        access.requireCapability(ru.banki.crm.domain.Capability.EDIT, ru.banki.crm.service.Sections.SET_APPS);
         validateKey(key);
         if (value == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Пустое тело запроса");

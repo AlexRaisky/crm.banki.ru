@@ -38,51 +38,73 @@ var PROMO_CHAN_SRC = { 'callcenter':'contact', 'sms':'sms', 'e-mail':'email', 'm
 /* каналы, по которым считаются лимиты промо на продукт */
 var PROMO_MAIN_CHAN = ['e-mail', 'mobile-push', 'sms'];
 
-/* продукты: crm_product_segment (код + описание) */
+/* Продукты — ровно тот список, который принимает поле «Тип продукта» в Jira: значение
+   уходит в задачу как есть, и всё, чего в этом списке нет, Jira отвергает с ошибкой.
+   Порядок тоже её — чтобы глаз искал пункт там же, где на форме Jira.
+
+   Код рядом — наш сегмент (crm_product_segment), из него собирается source-имя
+   коммуникации. С написанием Jira он совпадает не всегда: у нас factoring, у них
+   Faktoring, — поэтому пара «код + имя», а не одно поле на оба смысла. */
 var PROMO_PRODUCTS = [
-  { code:'cash_register',       name:'Онлайн-кассы' },
-  { code:'kpk',                 name:'Кредитование потребительского кооператива (КПК)' },
-  { code:'business_credits',    name:'Кредиты для бизнеса' },
-  { code:'insurance_vzr',       name:'Выезд за рубеж (ВЗР)' },
-  { code:'insurance_health',    name:'Ипотечное страхование жизни и здоровья' },
-  { code:'insurance_combo',     name:'Ипотечное страхование комбо' },
-  { code:'insurance_estate',    name:'Ипотечное страхование недвижимости' },
-  { code:'insurance_mrtgg',     name:'Ипотечное страхование (объединённое)' },
-  { code:'kasko',               name:'Каско' },
-  { code:'general',             name:'Общие' },
-  { code:'insurance_etc',       name:'Страхование другое' },
-  { code:'acquiring',           name:'Эквайринг' },
-  { code:'autocredits',         name:'Автокредиты' },
-  { code:'bank_guarantees',     name:'Банковские гарантии' },
-  { code:'business_microloans', name:'Займы для бизнеса' },
-  { code:'creditcards',         name:'Кредитные карты' },
-  { code:'credits',             name:'Потребительские кредиты' },
-  { code:'cryptocurrency',      name:'Криптовалюта' },
-  { code:'debitcards',          name:'Дебетовые карты' },
-  { code:'deposits',            name:'Вклады' },
-  { code:'estate',              name:'Недвижимость' },
-  { code:'exchange_rate',       name:'Курсы валют (КВ)' },
-  { code:'factoring',           name:'Факторинг' },
-  { code:'investments',         name:'Инвестиции' },
-  { code:'leasing',             name:'Лизинг' },
-  { code:'lsre',                name:'Кредит под залог недвижимости (КПЗН)' },
-  { code:'microloans',          name:'Микрозаймы' },
-  { code:'mortgage_broker',     name:'Ипотечный брокер' },
-  { code:'mortgages',           name:'Ипотека' },
-  { code:'rvk',                 name:'РВК Страхование' },
-  { code:'savings_account',     name:'Накопительные счета' },
-  { code:'osago',               name:'ОСАГО' },
-  { code:'rko',                 name:'Расчётно-кассовое обслуживание (РКО)' }
+  { code:'autocredits',         name:'Autocredits' },
+  { code:'acquiring',           name:'Acquiring' },
+  { code:'business_credits',    name:'Business_credits' },
+  { code:'business_microloans', name:'Business_microloans' },
+  { code:'creditcards',         name:'Creditcards' },
+  { code:'credits',             name:'Credits' },
+  { code:'debitcards',          name:'Debitcards' },
+  { code:'deposits',            name:'Deposits' },
+  { code:'exchange_rate',       name:'Exchange_rate' },
+  { code:'factoring',           name:'Faktoring' },
+  { code:'general',             name:'General' },
+  { code:'leasing',             name:'Leasing' },
+  { code:'insurance_estate',    name:'Insurance_estate' },
+  { code:'insurance_etc',       name:'Insurance_etc' },
+  { code:'investments',         name:'Investments' },
+  { code:'kasko',               name:'Kasko' },
+  { code:'lsre',                name:'LSRE' },
+  { code:'microloans',          name:'Microloans' },
+  { code:'mortgages',           name:'Mortgages' },
+  { code:'osago',               name:'OSAGO' },
+  { code:'rko',                 name:'RKO' },
+  { code:'savings_account',     name:'Savings_account' }
 ];
-/* сокращения из прежней таблицы → продукт справочника */
+/* Продукты, которых в списке Jira нет, а в накопленном плане они встречаются.
+   В выпадашку не попадают: предложить их значило бы пообещать задачу, которую Jira не
+   примет. Но код по ним по-прежнему находится — старые строки не теряют source-имя и
+   не начинают считаться «продукт не указан». */
+var PROMO_PRODUCTS_LEGACY = [
+  { code:'cash_register',    name:'Онлайн-кассы' },
+  { code:'kpk',              name:'Кредитование потребительского кооператива (КПК)' },
+  { code:'insurance_vzr',    name:'Выезд за рубеж (ВЗР)' },
+  { code:'insurance_health', name:'Ипотечное страхование жизни и здоровья' },
+  { code:'insurance_combo',  name:'Ипотечное страхование комбо' },
+  { code:'insurance_mrtgg',  name:'Ипотечное страхование (объединённое)' },
+  { code:'bank_guarantees',  name:'Банковские гарантии' },
+  { code:'cryptocurrency',   name:'Криптовалюта' },
+  { code:'estate',           name:'Недвижимость' },
+  { code:'mortgage_broker',  name:'Ипотечный брокер' },
+  { code:'rvk',              name:'РВК Страхование' }
+];
+/* Прежние написания продукта → нынешнее. Сокращения из старой таблицы и русские
+   названия, стоявшие в плане до перехода на список Jira: строка, заведённая вчера,
+   не должна сегодня оказаться без продукта. */
 var PROMO_PROD_ALIAS = {
-  'КК':'Кредитные карты', 'ДК':'Дебетовые карты', 'ПК':'Потребительские кредиты',
-  'КВ':'Курсы валют (КВ)', 'НС':'Накопительные счета', 'ИС':'Ипотечное страхование (объединённое)',
-  'КПЗН':'Кредит под залог недвижимости (КПЗН)', 'МФО':'Микрозаймы',
-  'Ипотека':'Ипотека', 'ОСАГО':'ОСАГО', 'Вклады':'Вклады',
-  'РКО':'Расчётно-кассовое обслуживание (РКО)', 'general':'Общие',
-  'Кредит для бизнеса':'Кредиты для бизнеса', 'Бизнес':'Кредиты для бизнеса',
-  'Каско':'Каско', 'Инвестиции':'Инвестиции'
+  'КК':'Creditcards', 'ДК':'Debitcards', 'ПК':'Credits', 'КВ':'Exchange_rate',
+  'НС':'Savings_account', 'КПЗН':'LSRE', 'МФО':'Microloans', 'РКО':'RKO',
+  'Бизнес':'Business_credits', 'Кредит для бизнеса':'Business_credits',
+  'Ипотека':'Mortgages', 'ОСАГО':'OSAGO', 'Вклады':'Deposits', 'Каско':'Kasko',
+  'Инвестиции':'Investments', 'general':'General', 'Общие':'General',
+  'Кредитные карты':'Creditcards', 'Дебетовые карты':'Debitcards',
+  'Потребительские кредиты':'Credits', 'Автокредиты':'Autocredits',
+  'Накопительные счета':'Savings_account', 'Курсы валют (КВ)':'Exchange_rate',
+  'Микрозаймы':'Microloans', 'Эквайринг':'Acquiring', 'Лизинг':'Leasing',
+  'Факторинг':'Faktoring', 'Кредиты для бизнеса':'Business_credits',
+  'Займы для бизнеса':'Business_microloans', 'Инвестиции ':'Investments',
+  'Кредит под залог недвижимости (КПЗН)':'LSRE',
+  'Ипотечное страхование недвижимости':'Insurance_estate',
+  'Страхование другое':'Insurance_etc',
+  'Расчётно-кассовое обслуживание (РКО)':'RKO'
 };
 
 /* Партнёры: фолбэк на случай недоступного справочника. Основной источник —
@@ -125,7 +147,19 @@ var PROMO_STATUSES = ['', PROMO_STATUS_NEW, 'запланировано', 'в р
 var PROMO_BASES = ['Вклады', 'ОСАГО', 'Каско', 'НС', 'Инвестиции', 'КК', 'ДК', 'ПК',
                    'КПЗН', 'Ипотека', 'КВ', 'Бизнес', 'Диалог', 'ИС', 'МФО', 'Тотал'];
 var PROMO_OWNERS = [];        /* имена для выпадашки ответственных, приезжают с сервера */
-var PROMO_COLS = 13;          /* колонок до кнопки «+» в строке-дате */
+var PROMO_COLS = 17;          /* колонок до кнопки «+» в строке-дате */
+/* Заказчик — вертикаль. Список тот же, что в поле «Заказчик» в Jira, и в том же
+   порядке: значение уходит в задачу как есть, а всё, чего в этом списке нет, Jira
+   отвергает. Пустой пункт («None» на её форме) подставляет promoCustomerOpts.
+   Зашит здесь, а не читается справочником: направления (chain.chain,
+   gorizontal.gorizontal) заведены не на всех контурах, и там, где их нет, поле
+   оставалось свободным вводом — а значит и опечатками, по которым потом не
+   сгруппировать план.
+   Значение, заведённое до появления списка, из строки не пропадает: оно добавляется
+   в выпадашку отдельным пунктом (см. promoCustomerOpts). */
+var PROMO_VERTICALS = ['Бизнес', 'Ипотека', 'Карты', 'Кредиты', 'Сбережения',
+                       'Страхование', 'Маркетплейс', 'Мобильное приложение',
+                       'Лояльность', 'Диалог', 'Народный Рейтинг', 'Новости'];
 
 /* Строка баз → список. Разделители — запятая, точка с запятой и перевод строки:
    в накопленных данных встречаются все три. */
@@ -150,6 +184,35 @@ var PROMO_CLASH = {};         /* индекс строки → базы, пер�
 function pmT(s){ return (typeof t === 'function') ? t(s) : s; }
 function pmEsc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
 function pmAttr(s){ return pmEsc(s); }
+
+/* Длинные поля («доп. условия», комментарий) люди заполняют прозой и вставляют туда
+   ссылки на страницы banki.ru. Голый адрес в узкой ячейке разъезжается на три строки и
+   превращает строку таблицы в стену текста, а кликнуть по нему всё равно нельзя.
+   Поэтому адреса показываем короткой ссылкой: домен, многоточие и последний кусок пути,
+   полный адрес — в подсказке. Открытие ссылки редактор ячейки не запускает: обработчик
+   клика пропускает клики по <a> (см. ниже). */
+function pmLink(u){
+  var clean = u.replace(/[),.;:!?»]+$/, '');    // хвостовая пунктуация в адрес не входит
+  var tail = u.slice(clean.length);
+  var label = clean.replace(/^https?:\/\//, '').replace(/^www\./, '');
+  if (label.length > 44){
+    var parts = label.split('/').filter(Boolean);
+    var host = parts.shift() || label;
+    var lastSeg = parts.pop() || '';
+    if (lastSeg.length > 34) lastSeg = lastSeg.slice(0, 32) + '…';
+    label = parts.length ? host + '/…/' + lastSeg : host + '/' + lastSeg;
+  }
+  return '<a class="ext" href="' + pmAttr(clean) + '" target="_blank" rel="noopener noreferrer"' +
+         ' title="' + pmAttr(clean) + '">' + pmEsc(label) + '</a>' + pmEsc(tail);
+}
+function pmRich(s){
+  var str = String(s == null ? '' : s), out = '', re = /https?:\/\/[^\s<>"']+/g, last = 0, m;
+  while ((m = re.exec(str)) !== null){
+    out += pmEsc(str.slice(last, m.index)) + pmLink(m[0]);
+    last = m.index + m[0].length;
+  }
+  return out + pmEsc(str.slice(last));
+}
 
 /* ---------- даты ---------- */
 function promoToday(){
@@ -193,7 +256,8 @@ function promoNormProduct(v){
   var out = [];
   parts.forEach(function(p){
     var name = PROMO_PROD_ALIAS[p] || p;
-    var byCode = PROMO_PRODUCTS.filter(function(x){ return x.code === p; })[0];
+    var byCode = PROMO_PRODUCTS.concat(PROMO_PRODUCTS_LEGACY)
+      .filter(function(x){ return x.code === p; })[0];
     if (byCode) name = byCode.name;
     if (out.indexOf(name) === -1) out.push(name);
   });
@@ -273,6 +337,46 @@ function promoFail(e){
   return promoLoad();
 }
 
+/* ---------- задача в Jira из строки плана ----------
+   Всё, что нужно задаче, в строке уже есть — канал, заказчик, продукт, дата, сегмент,
+   ссылка. Кроме source: его собирает Конструктор source здесь же, на клиенте, поэтому
+   отправляем готовым, а не просим сервер повторить ту же сборку.
+
+   Заводит задачу сервер: у браузера нет ни адреса Jira, ни токена, и хорошо, что нет. */
+function promoCreateJira(i){
+  var r = PROMO_ROWS[i];
+  if (!r || !r.id) return;
+  if (promoTaskKey(r.task)){
+    alert(pmT('По этой строке уже есть задача') + ' ' + r.task);
+    return;
+  }
+  var nm = promoBuildName(r);
+  if (!nm.ok){
+    /* Без source задача заведётся, но останется без главного поля — а дозаполнять его
+       потом руками ровно то, ради чего кнопку и делали. Поэтому не молчим. */
+    if (!confirm(pmT('Не хватает данных для source: ') + nm.miss.join(', ') +
+                 '.\n' + pmT('Завести задачу без поля Source?'))) return;
+  }
+  var btn = document.querySelector('.jira-new[onclick*="(' + i + ')"]');
+  if (btn){ btn.disabled = true; btn.textContent = pmT('Заводим…'); }
+  /* Тип продукта в Jira выбирают кодом — General, Debitcards, — а в плане он назван
+     по-русски: «Общие», «Дебетовые карты». Код лежит в том же справочнике, из которого
+     собирается source, поэтому шлём его отсюда, а не заставляем сервер искать заново. */
+  promoReq('POST', '/' + r.id + '/jira', {
+    source: nm.ok ? nm.value : '',
+    productCode: promoProdCode(r.product)
+  })
+    .then(function(res){
+      if (res && res.warning) alert(res.warning);
+      return promoLoad();
+    })
+    .catch(function(e){
+      if (btn){ btn.disabled = false; btn.textContent = pmT('Завести'); }
+      if (e && e.status === 401) return;
+      alert(pmT('Не удалось завести задачу: ') + ((e && e.message) || e));
+    });
+}
+
 /* Заменить строку в наборе на пришедшую с сервера (по id). */
 function promoApplyRow(row){
   if (!row) return;
@@ -310,6 +414,17 @@ function promoLoadOwners(){
   }).catch(function(){ PROMO_OWNERS = []; });
 }
 
+/* Опции выпадашки заказчика. Кроме зашитых вертикалей показываем то, что уже стоит
+   в строке: список закрытый, но обнулять задним числом записи, заведённые до него,
+   он не должен — иначе первое же открытие ячейки стёрло бы заказчика. */
+function promoCustomerOpts(sel, emptyLabel){
+  var list = PROMO_VERTICALS.slice();
+  if (sel && list.indexOf(sel) === -1) list = [sel].concat(list);
+  return '<option value="">' + pmEsc(emptyLabel || '—') + '</option>' + list.map(function(c){
+    return '<option value="' + pmAttr(c) + '"' + (c === sel ? ' selected' : '') + '>' + pmEsc(c) + '</option>';
+  }).join('');
+}
+
 /* Пока раздел открыт — подтягиваем чужие правки. Во время правки ячейки
    и заведения записи не трогаем, чтобы не выдёргивать поле из-под рук. */
 function promoAutoRefresh(){
@@ -323,9 +438,13 @@ function promoAutoRefresh(){
 }
 
 /* ---------- название коммуникации (формат Конструктора source) ---------- */
+/* Код сегмента по названию продукта. Ищем и среди отменённых названий: строку,
+   заведённую до перехода на список Jira, source-имя терять не должно — она уже
+   отправлена, и «продукт не указан» на ней означало бы поломку на ровном месте. */
 function promoProdCode(product){
   var first = String(product || '').split(',')[0].trim();
-  var p = PROMO_PRODUCTS.filter(function(x){ return x.name === first; })[0];
+  var p = PROMO_PRODUCTS.concat(PROMO_PRODUCTS_LEGACY)
+    .filter(function(x){ return x.name === first; })[0];
   return p ? p.code : '';
 }
 function promoDatePart(iso, chan){
@@ -498,12 +617,29 @@ function promoComputeClash(){
     var bases = promoBaseList(r.base);
     if (!bases.length) return;
     var camp = promoCampaignKey(r);
+    /* Строки сравниваются внутри «день + продукт + канал + база»; кампанию внутри
+       этой корзины опознаёт уникальное имя. То есть акция — это продукт, канал,
+       база и имя вместе, и конфликт возникает, когда всё совпало, а имя разное.
+
+       Продукт в ключе: одна база под разными продуктами — разные срезы аудитории,
+       планируют их независимо («Инвестиции» и «Курсы валют» мешать друг другу не
+       могут). Канал в ключе: e-mail и push одного дня — разные касания, и человек
+       не получает два одинаковых сообщения; заодно строки одной акции в разных
+       каналах теперь просто не встречаются между собой. */
+    var prod = String(r.product == null ? '' : r.product).trim().toLowerCase();
+    /* Каналов у строки может быть несколько — считаем по каждому отдельно.
+       Канала нет вовсе — такие строки сравниваем между собой в общей корзине. */
+    var chans = (r.chan && r.chan.length ? r.chan : ['']).map(function(c){
+      return String(c == null ? '' : c).trim().toLowerCase();
+    });
     bases.forEach(function(b){
       var low = b.toLowerCase();
-      var k = r.d + '||' + low;
-      var slot = byDay[k] = byDay[k] || { base: low, rows: [], camps: {} };
-      slot.rows.push(i);
-      slot.camps[camp] = true;
+      chans.forEach(function(ch){
+        var k = r.d + '||' + prod + '||' + ch + '||' + low;
+        var slot = byDay[k] = byDay[k] || { base: low, rows: [], camps: {} };
+        slot.rows.push(i);
+        slot.camps[camp] = true;
+      });
     });
   });
   var keys = {};                                 /* индекс строки → базы, что конфликтуют */
@@ -595,7 +731,8 @@ function promoFiltered(){
     if (tv === 'no' && r.total) return false;
     if (q){
       var nm = promoBuildName(r);
-      var hay = [nm.value, r.base, r.baseExtra, r.product, r.partner, r.uniq, r.task, r.note].join(' ').toLowerCase();
+      var hay = [nm.value, r.base, r.baseExtra, r.product, r.partner, r.uniq, r.task, r.note,
+                 r.customer, r.link, r.content].join(' ').toLowerCase();
       if (hay.indexOf(q) === -1) return false;
     }
     return true;
@@ -695,6 +832,7 @@ function promoRender(){
     });
   }
   body.innerHTML = html;
+  promoBindCombos(body);
 
   var focusEl = body.querySelector('.cell-edit .cell-in');
   if (focusEl && PROMO_EDIT){
@@ -775,12 +913,49 @@ function promoRowHtml(x){
         ? '<span class="src-name" title="' + pmT('Название из импорта') + '">' + pmEsc(r.commName) + '</span>'
         : '<span class="need" title="' + pmT('Название собирается автоматически') + '">' + pmT('нужно заполнить') + ': ' + pmEsc(nm.miss.join(', ')) + '</span>');
 
+  /* Название задачи — то, что человек прочтёт в шапке Jira. Пишет его маркетолог или
+     постановщик, поэтому это свободный текст, а не сборка из полей. Пустое поле не
+     ошибка: тогда заголовок соберётся автоматически, как было до появления колонки. */
+  var titleEd = '<input class="cell-in" placeholder="' + pmT('О чём задача') + '" value="' +
+    pmAttr(draft != null ? draft : (r.title || '')) +
+    '" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
+  var titleHtml = r.title
+    ? '<span class="multi" title="' + pmAttr(r.title) + '">' + pmEsc(r.title) + '</span>'
+    : '<span class="need" title="' + pmT('Без него заголовок задачи соберётся из полей строки') + '">' +
+      pmT('соберётся из полей') + '</span>';
+
+  /* Заказчик — вертикаль из закрытого списка. Прежде было свободным вводом, и одна и та
+     же вертикаль писалась по-разному. Значение, заведённое до списка, остаётся выбранным
+     и не теряется при первом же открытии ячейки. */
+  var custVal = draft != null ? draft : (r.customer || '');
+  var custEd = '<select class="cell-in" onchange="promoDraft(this.value)">' +
+    promoCustomerOpts(custVal) + '</select>';
+  var custHtml = r.customer ? pmEsc(r.customer) : '—';
+
+  /* Ссылка и описание — их заполняет постановщик, и они же уезжают в задачу Jira
+     («Ссылка» и «Контент»). Ссылку показываем короткой — как в доп. условиях. */
+  var linkEd = '<input class="cell-in" value="' + pmAttr(draft != null ? draft : (r.link || '')) +
+    '" placeholder="https://www.banki.ru/…" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
+  var linkHtml = r.link ? '<span class="multi" title="' + pmAttr(r.link) + '">' + pmRich(r.link) + '</span>' : '—';
+
+  var contentEd = '<textarea class="cell-in ta" rows="4" placeholder="' +
+    pmT('Что учесть в тексте или визуале') + '" oninput="promoDraft(this.value)"' +
+    ' onkeydown="promoKey(event,true)">' + pmEsc(draft != null ? draft : (r.content || '')) + '</textarea>';
+  var contentHtml = r.content
+    ? '<span class="multi" title="' + pmAttr(r.content) + '">' + pmRich(r.content) + '</span>' : '—';
+
   var taskEd = '<input class="cell-in" value="' + pmAttr(draft != null ? draft : r.task) +
     '" placeholder="CRM-8748" oninput="promoDraft(this.value)" onkeydown="promoKey(event)">';
   var taskKey = promoTaskKey(r.task);
+  /* Пустая ячейка задачи — это не «нечего показать», а «задачу ещё не завели». Кнопка
+     стоит прямо здесь: заводить задачу из строки плана и есть смысл кнопки, а ключ
+     после заведения встанет на её место. */
   var taskHtml = taskKey
     ? '<a class="jira" href="' + PROMO_JIRA_BASE + pmAttr(taskKey) + '" target="_blank" rel="noopener">' + pmEsc(taskKey) + '</a>'
-    : '—';
+    : (promoCan('edit')
+        ? '<button type="button" class="jira-new" onclick="event.stopPropagation();promoCreateJira(' + x.i + ')">' +
+            pmT('Завести') + '</button>'
+        : '—');
 
   /* Ответственный — из пользователей панели. Текущее значение строки всегда есть в
      списке, даже если такого пользователя уже нет: иначе открытие редактора молча
@@ -825,20 +1000,26 @@ function promoRowHtml(x){
   return '<tr class="' + (r.total ? 'total-row ' : '') + (clash.length ? 'base-clash ' : '') +
       (f.bad.length ? 'rule-bad' : '') + '">' +
     promoCell(x, 'd', dateHtml, dateEd) +
+    promoCell(x, 'title', titleHtml, titleEd) +
+    promoCell(x, 'customer', custHtml, custEd) +
     promoCell(x, 'product', badIcon + (pmEsc(r.product) || '—'), prodEd) +
     promoCell(x, 'partner', pmEsc(r.partner) || '—', partEd) +
     promoCell(x, 'base', baseHtml, baseEd) +
-    promoCell(x, 'baseExtra', r.baseExtra ? '<span class="multi">' + pmEsc(r.baseExtra) + '</span>' : '—', extraEd) +
+    promoCell(x, 'baseExtra', r.baseExtra
+      ? '<span class="multi" title="' + pmAttr(r.baseExtra) + '">' + pmRich(r.baseExtra) + '</span>' : '—', extraEd) +
     promoCell(x, 'chan', promoChanBadges(r.chan), chanEd) +
     '<td class="c-total"><input type="checkbox" ' + (r.total ? 'checked' : '') +
       (promoCan('edit') ? '' : ' disabled') +
       ' onchange="promoSetTotal(' + i + ',this.checked)">' + warnIcon + '</td>' +
     promoCell(x, 'uniq', r.uniq ? '<span class="src-name">' + pmEsc(r.uniq) + '</span>' : '—', uniqEd) +
     '<td class="c-name">' + nameHtml + '</td>' +
+    promoCell(x, 'link', linkHtml, linkEd) +
+    promoCell(x, 'content', contentHtml, contentEd) +
     promoCell(x, 'task', taskHtml, taskEd) +
     promoCell(x, 'owner', pmEsc(r.owner) || '—', ownerEd) +
     promoCell(x, 'status', '<span class="st ' + stCls + '">' + (pmEsc(shown) || '—') + '</span>', statusEd) +
-    promoCell(x, 'note', r.note ? '<span class="multi">' + pmEsc(r.note) + '</span>' : '—', noteEd) +
+    promoCell(x, 'note', r.note
+      ? '<span class="multi" title="' + pmAttr(r.note) + '">' + pmRich(r.note) + '</span>' : '—', noteEd) +
     '<td>' + (promoCan('delete')
       ? '<button class="row-del" type="button" title="' + pmT('Удалить строку') + '" onclick="promoDelRow(' + i + ')">×</button>'
       : '') + '</td>' +
@@ -849,8 +1030,8 @@ function promoRowHtml(x){
 function promoNewOpen(iso){
   if (!promoCan('add')) return;
   PROMO_EDIT = null;
-  PROMO_NEW = { d: iso || promoToday(), product:'', partner:'', base:'', baseExtra:'', chan: [],
-                total:false, uniq:'', task:'', taskByChan:{}, owner:'',
+  PROMO_NEW = { d: iso || promoToday(), title:'', customer:'', product:'', partner:'', base:'', baseExtra:'', chan: [],
+                total:false, uniq:'', link:'', content:'', task:'', taskByChan:{}, owner:'',
                 status: PROMO_STATUS_NEW, note:'', err:'' };
   promoRender();
   var el = document.getElementById('promoNewDate');
@@ -859,6 +1040,18 @@ function promoNewOpen(iso){
   if (wrap) wrap.scrollTop = 0;
 }
 function promoNewClose(){ PROMO_NEW = null; promoRender(); }
+/* Заполнена ли форма хоть чем-нибудь. Дата не в счёт: она проставляется сама при
+   открытии, и терять в ней нечего. */
+function promoNewDirty(){
+  var n = PROMO_NEW;
+  if (!n) return false;
+  if (n.title || n.customer || n.product || n.partner || n.base || n.baseExtra) return true;
+  if (n.uniq || n.link || n.content || n.task || n.note || n.owner) return true;
+  if (n.total || (n.chan && n.chan.length)) return true;
+  if (n.status && n.status !== PROMO_STATUS_NEW) return true;
+  var byChan = n.taskByChan || {};
+  return Object.keys(byChan).some(function(c){ return !!byChan[c]; });
+}
 function promoNewSet(k, v){ if (PROMO_NEW){ PROMO_NEW[k] = v; promoNewPreview(); } }
 /* База в форме новой записи — та же механика, что и в редакторе ячейки. */
 function promoNewBase(b, on){
@@ -936,9 +1129,9 @@ function promoNewSave(){
   if (!n.d || !n.chan.length) return;
   if (n.uniq && !promoUniqOk(n.uniq)) return;
   if (!promoCan('add')){ alert(pmT('Нет прав на добавление записей.')); return; }
-  var common = { d:n.d, product:n.product, partner:n.partner, base:n.base, baseExtra:n.baseExtra,
-                 total:!!n.total, uniq:n.uniq, owner:n.owner,
-                 status:n.status || PROMO_STATUS_NEW, note:n.note };
+  var common = { d:n.d, title:n.title, customer:n.customer, product:n.product, partner:n.partner, base:n.base,
+                 baseExtra:n.baseExtra, total:!!n.total, uniq:n.uniq, link:n.link, content:n.content,
+                 owner:n.owner, status:n.status || PROMO_STATUS_NEW, note:n.note };
   var chans = n.chan.slice();
   PROMO_NEW = null;
 
@@ -968,6 +1161,11 @@ function promoNewRowHtml(){
   return '<tr class="new-row">' +
     '<td class="c-d"><input type="date" id="promoNewDate" class="cell-in" value="' + pmAttr(n.d) +
       '" onchange="promoNewSet(\'d\',this.value)"></td>' +
+    '<td><input class="cell-in" placeholder="' + pmT('О чём задача') + '" value="' + pmAttr(n.title) +
+      '" oninput="promoNewSet(\'title\',this.value)">' +
+      '<div class="hint-s">' + pmT('Заголовок задачи в Jira. Пусто — соберётся из полей строки') + '</div></td>' +
+    '<td><select class="cell-in" onchange="promoNewSet(\'customer\',this.value)">' +
+      promoCustomerOpts(n.customer, pmT('Заказчик') + '…') + '</select></td>' +
     '<td><select class="cell-in" onchange="promoNewSet(\'product\',this.value)">' +
       '<option value="">' + pmT('Продукт') + '…</option>' +
       prodOpts.map(function(p){ return '<option value="' + pmAttr(p) + '"' + (p === n.product ? ' selected' : '') + '>' + pmEsc(p) + '</option>'; }).join('') +
@@ -992,6 +1190,14 @@ function promoNewRowHtml(){
       pmAttr(n.uniq) + '" oninput="promoNewSet(\'uniq\',this.value)">' +
       '<div class="hint-s">' + pmT('Латиница, цифры и дефис. Если имени нет — NoComName') + '</div></div></td>' +
     '<td class="c-name"><span class="need">' + pmT('соберётся автоматически') + '</span></td>' +
+    /* Ссылка и описание уезжают в задачу Jira как «Ссылка» и «Контент». Заполняет их
+       постановщик — здесь, а не потом в самой задаче: иначе план и задача расходятся
+       с первой минуты. */
+    '<td><input class="cell-in" placeholder="https://www.banki.ru/…" value="' + pmAttr(n.link) +
+      '" oninput="promoNewSet(\'link\',this.value)">' +
+      '<div class="hint-s">' + pmT('Основная ссылка, куда ведём получателя') + '</div></td>' +
+    '<td><textarea class="cell-in ta" rows="4" placeholder="' + pmT('Что учесть в тексте или визуале') +
+      '" oninput="promoNewSet(\'content\',this.value)">' + pmEsc(n.content) + '</textarea></td>' +
     /* Задача: одно поле на один канал, по полю на каждый — когда каналов несколько.
        Подпись канала обязательна: без неё три одинаковых поля подряд не различить. */
     '<td>' + (n.chan.length > 1
@@ -1079,6 +1285,11 @@ function promoDraftUniq(v){
   if (okBtn) okBtn.disabled = !ok;
 }
 function promoKey(e, multiline){
+  /* Открытый список партнёров забирает Enter и Escape себе: там ими выбирают пункт и
+     закрывают список. Этот обработчик висит атрибутом и срабатывает раньше, чем
+     combobox, — не уступи мы, Enter закрывал бы ячейку вместо выбора из списка. */
+  if ((e.key === 'Enter' || e.key === 'Escape') &&
+      document.querySelector('#sec-promo .combo-pop.open')) return;
   if (e.key === 'Escape'){ e.preventDefault(); promoCancel(); return; }
   if (e.key === 'Enter' && !(multiline && !e.ctrlKey)){ e.preventDefault(); promoCommit(); }
 }
@@ -1095,7 +1306,8 @@ function promoCommit(){
   if (e.k === 'd' && !String(v || '').trim()){ PROMO_EDIT = null; promoRender(); return; }  /* дату не очищаем */
   if (e.k === 'task') v = promoTaskKey(v) || String(v || '').trim();
   if (e.k === 'chan') v = promoNormChan(v);   /* несколько каналов сервер развернёт в копии строк */
-  if (typeof v === 'string' && e.k !== 'base' && e.k !== 'baseExtra' && e.k !== 'note') v = v.trim();
+  /* Многострочные поля не трогаем: переносы в них — часть значения. */
+  if (typeof v === 'string' && ['base','baseExtra','note','content'].indexOf(e.k) === -1) v = v.trim();
 
   /* значение не изменилось — на сервер не ходим */
   var was = r[e.k];
@@ -1149,12 +1361,14 @@ function promoDelRow(i){
 /* клик мимо ячейки = сохранить; клик по другой ячейке сразу открывает её */
 document.addEventListener('mousedown', function(e){
   var t0 = e.target;
-  /* режим заведения промо: клик по пустой части страницы (не по форме и
-     не по кнопке, которая её открывает) — выходим без сохранения */
+  /* Режим заведения промо. Пустую форму клик по странице закрывает — терять нечего.
+     Заполненную не трогаем: раньше промах мимо формы сворачивал её вместе со всем
+     введённым, и полтора десятка полей приходилось набивать заново. Закрыть начатое
+     можно кнопкой «Отмена» — это осознанное действие, а не случайный клик. */
   if (PROMO_NEW && t0.closest){
     var inForm = t0.closest('.new-row') || t0.closest('.new-foot');
     var reopen = t0.closest('[onclick^="promoNewOpen"]');   /* «+» и кнопка сами переоткроют */
-    if (!inForm && !reopen) promoNewClose();
+    if (!inForm && !reopen && !promoNewDirty()) promoNewClose();
   }
   if (!PROMO_EDIT) return;
   if (t0.closest && (t0.closest('.cell-edit') || t0.closest('.new-row') || t0.closest('.new-foot'))) return;
@@ -1178,16 +1392,17 @@ document.addEventListener('click', function(e){
 });
 
 function promoExportCsv(){
-  var head = ['Дата','День недели','Продукт','Партнёр','База','Доп. условия','Канал','Тотал',
-              'Уникальное имя','Название коммуникации','Задача','Ответственный','Статус',
+  var head = ['Дата','День недели','Название','Заказчик','Продукт','Партнёр','База','Доп. условия','Канал','Тотал',
+              'Уникальное имя','Название коммуникации','Ссылка','Описание','Задача','Ответственный','Статус',
               'Комментарий','Замечания'];
   var rows = promoFiltered().map(function(x){
     var r = x.r, f = PROMO_FLAGS[x.i] || { bad: [], warn: [] };
     var key = promoTaskKey(r.task);
     var nm = promoBuildName(r);
-    return [promoFmtDate(r.d), promoDow(r.d), r.product, r.partner, r.base, r.baseExtra,
+    return [promoFmtDate(r.d), promoDow(r.d), r.title || '', r.customer || '', r.product, r.partner, r.base, r.baseExtra,
             (r.chan || []).join(', '), r.total ? 'TRUE' : 'FALSE', r.uniq,
-            nm.ok ? nm.value : (r.commName || ''), key ? PROMO_JIRA_BASE + key : '', r.owner,
+            nm.ok ? nm.value : (r.commName || ''), r.link || '', r.content || '',
+            key ? PROMO_JIRA_BASE + key : '', r.owner,
             promoStatusShown(r), r.note, f.bad.concat(f.warn).join(' | ')];
   });
   var csv = [head].concat(rows).map(function(line){
@@ -1214,13 +1429,21 @@ function promoExportCsv(){
  * у всех одинаково. Без права add кнопки нет: справочник общий, и пополнять его
  * должен тот, кому вообще позволено заводить записи.
  */
+/* Ввод партнёра: наш combobox, а не нативный datalist. Список у datalist рисует сам
+   браузер — страница до него не дотягивается ни шрифтом, ни отступами, — и в Chrome он
+   выходил во всю высоту строки текста страницы: четыре пункта на пол-экрана. Свой
+   список выглядит как остальная панель и заодно фильтрует по подстроке.
+   Сам <datalist> остаётся: по нему promoAddPartner сверяет, есть ли уже такой
+   партнёр в справочнике. */
 function promoPartnerEd(value, oninput, placeholder){
-  var inp = '<input class="cell-in" list="promoPartnerList" value="' + value +
+  var inp = '<input class="cell-in combo-input js-partner" value="' + value +
     '" placeholder="' + pmEsc(placeholder) + '" oninput="' + oninput + '" onkeydown="promoKey(event)">';
-  if (!promoCan('add')) return inp;
-  return '<div class="combo-add">' + inp +
+  var pop = '<div class="combo-pop"></div>';
+  if (!promoCan('add')) return '<div class="combo">' + inp + pop + '</div>';
+  return '<div class="combo combo-add">' + inp +
     '<button type="button" class="dict-add" title="' + pmT('Добавить партнёра в справочник') +
-    '" aria-label="' + pmT('Добавить партнёра в справочник') + '" onclick="promoAddPartner(this)">+</button></div>';
+    '" aria-label="' + pmT('Добавить партнёра в справочник') + '" onclick="promoAddPartner(this)">+</button>' +
+    pop + '</div>';
 }
 
 /* Короткое уведомление. Своего тоста в разделе нет, а alert на удачное действие —
@@ -1263,7 +1486,23 @@ function promoAddPartner(btn){
   }).then(function(){ btn.disabled = false; });
 }
 
+/* Текущий справочник партнёров — то, чем наполняются combobox'ы в строках.
+   Отдельной переменной, а не чтением <option> из datalist: список перерисовывается
+   при каждой правке ячейки, и разбирать ради этого разметку незачем. */
+var PROMO_PARTNER_OPTS = PROMO_PARTNERS.slice();
+
+/* Привязать combobox'ы в только что вставленной разметке и раздать им справочник.
+   Компонент сам ничего не находит: он цепляется к инпутам в момент вызова attach,
+   а строки таблицы появляются позже — после каждой перерисовки. */
+function promoBindCombos(root){
+  if (!window.Combobox) return;
+  Combobox.attach(root || document);
+  Combobox.setOptionsFor('#sec-promo input.js-partner', PROMO_PARTNER_OPTS);
+}
+
 function promoRenderPartnerList(list){
+  PROMO_PARTNER_OPTS = (list || []).slice();
+  if (window.Combobox) Combobox.setOptionsFor('#sec-promo input.js-partner', PROMO_PARTNER_OPTS);
   var dl = document.getElementById('promoPartnerList');
   if (!dl) return;
   dl.innerHTML = (list || []).map(function(p){ return '<option value="' + pmAttr(p) + '">'; }).join('');

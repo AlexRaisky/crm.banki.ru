@@ -224,16 +224,40 @@
     }
   }
 
-  els.copyBtn.addEventListener('click',async()=>{
+  /* navigator.clipboard живёт только в защищённом контексте (HTTPS или localhost).
+     Панель отдаётся по http://crm.banki.ru, объекта там нет вовсе — обращение
+     бросало TypeError, его глотал пустой catch, и кнопка молча ничего не делала.
+     Запасной путь через скрытое поле и execCommand: устарел, но контекста не
+     требует. Отказ показываем на самой кнопке. */
+  function copyText(value){
+    if(navigator.clipboard && window.isSecureContext){
+      return navigator.clipboard.writeText(value);
+    }
+    return new Promise((resolve,reject)=>{
+      const ta=document.createElement('textarea');
+      ta.value=value; ta.setAttribute('readonly','');
+      ta.style.cssText='position:fixed;top:-1000px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select(); ta.setSelectionRange(0,ta.value.length);
+      let ok=false;
+      try{ ok=document.execCommand('copy'); }catch(e){ ok=false; }
+      document.body.removeChild(ta);
+      ok?resolve():reject(new Error('execCommand'));
+    });
+  }
+
+  els.copyBtn.addEventListener('click',()=>{
     if(els.copyBtn.disabled) return;
     const value=els.result.textContent.trim();
     if(!value) return;
-    try{
-      await navigator.clipboard.writeText(value);
-      const orig=els.copyBtn.textContent;
+    const orig=els.copyBtn.textContent;
+    copyText(value).then(()=>{
       els.copyBtn.textContent='✓ Скопировано';
       setTimeout(()=>els.copyBtn.textContent=orig,1600);
-    }catch(e){}
+    }).catch(()=>{
+      els.copyBtn.textContent='Не удалось — скопируйте вручную';
+      setTimeout(()=>els.copyBtn.textContent=orig,2600);
+    });
   });
 
   els.campType.addEventListener('change',()=>{syncCampaignUI();update();});

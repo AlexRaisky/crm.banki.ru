@@ -1,5 +1,7 @@
 package ru.banki.crm.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -23,7 +25,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -55,11 +59,21 @@ import java.util.zip.ZipOutputStream;
 @Service
 public class SmsCheckReportService {
 
+    private static final Logger log = LoggerFactory.getLogger(SmsCheckReportService.class);
+
     private static final String SETTINGS_KEY = "smsCheckReport";
     private static final String TEMPLATE = "reports/sms-check-template.xlsx";
     private static final int QUERY_TIMEOUT_S = 120;
 
-    private static final String SQL =
+    /** Витрина DWH: имя нужно и запросу, и поиску колонки продукта. */
+    private static final String VIEW_SCHEMA = "crm";
+    private static final String VIEW_NAME = "v_crm_matrix_report";
+    private static final String VIEW = VIEW_SCHEMA + "." + VIEW_NAME;
+
+    /* Запрос разрезан надвое: между head и tail при выборе продукта встаёт ещё одно
+       условие. Имя колонки продукта в разных инсталляциях DWH своё, поэтому оно не
+       зашито, а определяется по information_schema (см. productColumn). */
+    private static final String SQL_HEAD =
             "select report_date, communication_name, event_name, source_type, template_id, template_text," +
             "  SUM(unique_sent) as unique_sent," +
             "  SUM(unique_delivered) as unique_delivered," +
@@ -76,12 +90,46 @@ public class SmsCheckReportService {
             "  COALESCE(SUM(revenue_fact)::float / NULLIF(SUM(ho_conversions_line), 0), 0) as epl," +
             "  COALESCE(SUM(revenue_fact)::float / NULLIF(SUM(ho_issued_line), 0), 0) as epi," +
             "  COALESCE(SUM(revenue_fact)::float / NULLIF(SUM(unique_delivered), 0) * 1000, 0) as epm" +
-            " from crm.v_crm_matrix_report" +
-            " where report_date >= ? and report_date < ? and channel_name ilike ?" +
+            " from " + VIEW +
+            " where report_date >= ? and report_date < ? and channel_name ilike ?";
+
+    private static final String SQL_TAIL =
             " group by report_date, communication_name, event_name, source_type, template_id, template_text" +
             " order by report_date";
 
-    private static final Map<String, String> CHANNELS = Map.of("sms", "sms", "push", "push", "email", "email");
+    /**
+     * Канал на странице → значение channel_name в витрине.
+     * <p>
+     * Совпадает не всё: пуш в DWH записан как {@code mobile-push}, и запрос с «push»
+     * молча возвращал пустоту — ошибки нет, просто ни одной строки не подошло.
+     * Тот же нейминг, что в campaign_name (см. sfdComputeCampaignName во фронте).
+     */
+    private static final Map<String, String> CHANNELS = Map.of("sms", "sms", "push", "mobile-push", "email", "email");
+
+    /**
+     * Сервисный шаблон, чьи косты в листе «по дням» вынесены отдельной строкой
+     * (в шаблоне это {@code SUMIFS('день'!$L:$L,'день'!$D:$D,"180")} — столбец D листа-дня
+     * это template_id). Значение зашито в книге, поэтому и у нас константой.
+     */
+    private static final String SERVICE_TEMPLATE_ID = "180";
+
+    /** Найденная колонка продукта на подключение: витрина не меняется между запросами. */
+    private final Map<Long, Optional<String>> productColCache = new ConcurrentHashMap<>();
+
+    /* Значения продуктов из витрины по ключу «подключение|месяц|канал»: заполняются
+       в фоне (см. refreshProducts), поэтому список на странице появляется мгновенно,
+       а данные витрины подмешиваются к следующему обращению. */
+    private final Map<String, List<String>> productValues = new ConcurrentHashMap<>();
+    private final Map<String, String> productNotes = new ConcurrentHashMap<>();
+    private final java.util.Set<String> productLoading = ConcurrentHashMap.newKeySet();
+    /* Один поток-демон: запросов мало, а очередь из них полезна — параллельно долбить
+       витрину списками продуктов незачем. Демон, чтобы не держать остановку приложения. */
+    private final java.util.concurrent.ExecutorService productPool =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "sms-check-products");
+                t.setDaemon(true);
+                return t;
+            });
 
     /** Заголовки колонок A–T листа-дня (5 разрезов + 15 метрик). */
     private static final String[] HEADERS = {
@@ -140,7 +188,7 @@ public class SmsCheckReportService {
 
     // ------------------------------------------------------------- построение
     /** Собрать .xlsx за месяц по каналу. */
-    public byte[] build(YearMonth month, String channelKey) {
+    public byte[] build(YearMonth month, String channelKey, String product) {
         String channel = CHANNELS.get(channelKey == null ? "" : channelKey.toLowerCase());
         if (channel == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный канал. Ожидается sms, push или email.");
         Long connId = configuredConnectionId();
@@ -148,7 +196,7 @@ public class SmsCheckReportService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Источник данных (DWH) не выбран. Администратор задаёт его в разделе «Отчёты».");
         }
-        Map<Integer, List<DayRow>> byDay = query(connId, month, channel);
+        Map<Integer, List<DayRow>> byDay = query(connId, month, channel, product);
         try {
             return patchTemplate(byDay, month.lengthOfMonth());
         } catch (ResponseStatusException e) {
@@ -157,6 +205,115 @@ public class SmsCheckReportService {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Не удалось сформировать Excel: " + rootMessage(e), e);
         }
+    }
+
+    // ------------------------------------------------------- лист «по дням»
+    /**
+     * Лист «по дням» — но на странице, без скачивания книги.
+     * <p>
+     * Считаем ровно то же, что формулы этого листа в шаблоне: он самодостаточен и берёт
+     * из каждого листа-дня только строку Grand Total (F2, K2, L2, M2) плюс один
+     * {@code SUMIFS} по сервисному шаблону. Данные те же самые, что уезжают в книгу
+     * (тот же {@link #query}), поэтому цифры на странице и в Excel сходятся по построению.
+     * <p>
+     * Две особенности шаблона намеренно НЕ повторяем:
+     * <ul>
+     *   <li>в строке «выдач» 11-й день там ссылается на лист «10» — опечатка автора,
+     *       из-за которой десятое число показано дважды;</li>
+     *   <li>динамика первого дня считается к 31-му числу ТОГО ЖЕ месяца
+     *       ({@code =B2/AF2-100%}); предыдущего дня у первого числа нет, оставляем пусто.</li>
+     * </ul>
+     */
+    public Map<String, Object> daily(YearMonth month, String channelKey, String product) {
+        String channel = CHANNELS.get(channelKey == null ? "" : channelKey.toLowerCase());
+        if (channel == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный канал. Ожидается sms, push или email.");
+        Long connId = configuredConnectionId();
+        if (connId == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Источник данных (DWH) не выбран. Администратор задаёт его в разделе «Отчёты».");
+        }
+        Map<Integer, List<DayRow>> byDay = query(connId, month, channel, product);
+        int days = month.lengthOfMonth();
+
+        double[] sent = new double[days + 1], issued = new double[days + 1], rev = new double[days + 1],
+                 cost = new double[days + 1], costSvc = new double[days + 1];
+        for (int d = 1; d <= days; d++) {
+            for (DayRow r : byDay.getOrDefault(d, List.of())) {
+                sent[d] += r.m[0];
+                issued[d] += r.m[5];
+                cost[d] += r.m[6];
+                rev[d] += r.m[7];
+                if (SERVICE_TEMPLATE_ID.equals(r.templateId)) costSvc[d] += r.m[6];
+            }
+        }
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        rows.add(metricRow("sent", "отправлено", "int", sent, days));
+        rows.add(metricRow("issued", "выдач", "int", issued, days));
+        rows.add(ratioRow("cr", "CR", issued, sent, days));
+        rows.add(metricRow("revenue", "rew", "money", rev, days));
+        rows.add(metricRow("cost", "cost", "money", cost, days));
+        rows.add(metricRow("costService", "cost-сервис", "money", costSvc, days));
+
+        double[] costRest = new double[days + 1], gm = new double[days + 1];
+        for (int d = 1; d <= days; d++) {
+            costRest[d] = cost[d] - costSvc[d];
+            gm[d] = rev[d] - costRest[d];
+        }
+        rows.add(metricRow("costRest", "cost без сервисных", "money", costRest, days));
+        rows.add(metricRow("gm", "GM", "money", gm, days));
+        rows.add(ratioRow("gmRate", "GM, %", gm, rev, days));
+        rows.add(deltaRow("sentDelta", "динамика отправок", sent, days));
+        rows.add(deltaRow("revenueDelta", "динамика rew", rev, days));
+        rows.add(ratioRow("smsCost", "ст-ть СМС", cost, sent, days));
+        rows.add(ratioRow("eps", "EPS", rev, issued, days));
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("month", month.toString());
+        out.put("channel", channelKey.toLowerCase());
+        out.put("product", product == null || product.isBlank() ? null : product);
+        out.put("days", days);
+        out.put("rows", rows);
+        return out;
+    }
+
+    /** Строка-сумма: значения по дням и итог месяца как их сумма. */
+    private static Map<String, Object> metricRow(String key, String label, String unit, double[] v, int days) {
+        double total = 0;
+        List<Double> vals = new ArrayList<>(days);
+        for (int d = 1; d <= days; d++) { vals.add(v[d]); total += v[d]; }
+        return row(key, label, unit, vals, total);
+    }
+
+    /** Строка-отношение: и по дням, и в итоге считается от сумм, а не усредняется. */
+    private static Map<String, Object> ratioRow(String key, String label, double[] num, double[] den, int days) {
+        double n = 0, d0 = 0;
+        List<Double> vals = new ArrayList<>(days);
+        for (int d = 1; d <= days; d++) {
+            vals.add(den[d] == 0 ? null : num[d] / den[d]);
+            n += num[d];
+            d0 += den[d];
+        }
+        return row(key, label, "ratio", vals, d0 == 0 ? null : n / d0);
+    }
+
+    /** Строка-динамика: к предыдущему дню. У первого числа предыдущего дня нет — пусто. */
+    private static Map<String, Object> deltaRow(String key, String label, double[] v, int days) {
+        List<Double> vals = new ArrayList<>(days);
+        for (int d = 1; d <= days; d++) {
+            vals.add(d == 1 || v[d - 1] == 0 ? null : v[d] / v[d - 1] - 1);
+        }
+        return row(key, label, "percent", vals, null);
+    }
+
+    private static Map<String, Object> row(String key, String label, String unit, List<Double> vals, Double total) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("key", key);
+        m.put("label", label);
+        m.put("unit", unit);
+        m.put("values", vals);
+        m.put("total", total);
+        return m;
     }
 
     /** Zip-хирургия: перезаписать XML листов-дней, остальное скопировать байт-в-байт. */
@@ -296,8 +453,36 @@ public class SmsCheckReportService {
         else cellStr(sb, col0, row, v);
     }
 
+    /**
+     * Ключ связки для листов-представлений: {@code source_type + template_id}.
+     * <p>
+     * Префикс {@code CFE_} (и {@code CFE_MKP_}) с источника снимаем. Кампания одна и та же —
+     * {@code CFE_sms_trigger_microloans_issue_10day} и {@code sms_trigger_microloans_issue_10day}
+     * это одна строка отчёта, — но в витрине она теперь идёт с префиксом, а перечни кампаний
+     * в листах-категориях составлены без него. Без нормализации SUMIFS не находит ничего и
+     * все представления показывают нули.
+     * <p>
+     * В самом листе-дне источник остаётся как в витрине, с префиксом: это данные, и подменять
+     * их нельзя. Нормализуем только ключ, по которому идёт сопоставление.
+     */
+    private static final Pattern SOURCE_PREFIX = Pattern.compile("^CFE(?:_MKP)?_");
+
+    /**
+     * Источники, которые сами по себе и есть значение, а не кампания с префиксом.
+     * Без этой проверки {@code CFE_MKP} обрезался бы до {@code MKP}: строка начинается
+     * с {@code CFE_}, и правило срабатывало на ней же.
+     */
+    private static final java.util.Set<String> SOURCE_AS_IS = java.util.Set.of("CFE", "CFE_MKP");
+
     private static String key(String source, String templateId) {
-        return (source == null ? "" : source) + (templateId == null ? "" : templateId);
+        String s = source == null ? "" : source;
+        if (!SOURCE_AS_IS.contains(s)) {
+            Matcher m = SOURCE_PREFIX.matcher(s);
+            /* остаток проверяем отдельно: от «CFE_» без продолжения ключ стал бы
+               голым template_id и слипся бы с чужими строками */
+            if (m.find() && m.end() < s.length()) s = s.substring(m.end());
+        }
+        return s + (templateId == null ? "" : templateId);
     }
 
     // ---------------------------------------------------- правка служебных XML
@@ -391,30 +576,184 @@ public class SmsCheckReportService {
         return b.toString();
     }
 
-    // ------------------------------------------------------------------ SQL
-    private Map<Integer, List<DayRow>> query(long connId, YearMonth month, String channel) {
+    // ------------------------------------------------------- подключение к DWH
+    /** Соединение с источником по записи из app.db_connection. Всегда read-only. */
+    private Connection connect(long connId) throws Exception {
         Map<String, Object> c;
         try {
             c = jdbc.queryForMap("SELECT jdbc_url, username, password FROM app.db_connection WHERE id = ?", connId);
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Подключение-источник удалено. Задайте его заново.");
         }
-        LocalDate from = month.atDay(1), to = month.plusMonths(1).atDay(1);
-        Map<Integer, List<DayRow>> byDay = new HashMap<>();
         Properties props = new Properties();
         String user = str(c.get("username")), pass = str(c.get("password"));
         if (!user.isEmpty()) props.setProperty("user", user);
         if (!pass.isEmpty()) props.setProperty("password", pass);
         props.setProperty("connectTimeout", "20");
         props.setProperty("socketTimeout", String.valueOf(QUERY_TIMEOUT_S + 10));
+        Connection conn = DriverManager.getConnection(str(c.get("jdbc_url")), props);
+        try { conn.setReadOnly(true); } catch (Exception ignore) {}
+        return conn;
+    }
 
-        try (Connection conn = DriverManager.getConnection(str(c.get("jdbc_url")), props)) {
-            try { conn.setReadOnly(true); } catch (Exception ignore) {}
-            try (PreparedStatement ps = conn.prepareStatement(SQL)) {
+    /**
+     * Колонка продукта в витрине. Основная — {@code product_type}, остальные на случай
+     * другой инсталляции DWH.
+     * <p>
+     * Проверяем не каталогом, а самой витриной: {@code SELECT <col> FROM view WHERE false}.
+     * Через {@code information_schema.columns} колонка может не увидеться — этот вид
+     * показывает только то, на что у текущей роли есть права, и при доступе через
+     * представление или групповую выдачу список приходит пустым, хотя SELECT работает.
+     * Ровно так фильтр и не заводился: колонка есть, а мы её «не нашли».
+     * <p>
+     * Проба ничего не читает (планировщик отсекает всё по {@code WHERE false}), поэтому
+     * стоит она копейки, а результат кэшируется на подключение.
+     */
+    private static final List<String> PRODUCT_COLUMNS = List.of("product_type", "product_name", "product");
+
+    /**
+     * Значения product_type, какими они есть в витрине.
+     * <p>
+     * Список — основа, а не подсказка: он показывается всегда, даже если запрос за
+     * значениями за месяц ничего не вернул или упал. Причина простая — выпадающий
+     * список, в котором нет ни одного продукта, бесполезен, а причин у пустого
+     * ответа много (права, тайм-аут на тяжёлом DISTINCT, пустой период).
+     * <p>
+     * То, что реально пришло из витрины, добавляется сверху: новый продукт появится
+     * в фильтре сам, дописывать его сюда не придётся.
+     */
+    private static final List<String> KNOWN_PRODUCTS = List.of(
+            "autocredits", "business_credits", "business_microloans", "creditcards", "credits",
+            "debitcards", "deposits", "exchange_rate", "general", "insurance_combo",
+            "insurance_estate", "insurance_health", "investments", "kasko", "kpk", "lsre",
+            "microloans", "mortgages", "osago", "rko", "savings_account");
+
+    private String productColumn(Connection conn, long connId) {
+        Optional<String> cached = productColCache.get(connId);
+        if (cached != null) return cached.orElse(null);
+        String found = null;
+        for (String col : PRODUCT_COLUMNS) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT " + quoteIdent(col) + " FROM " + VIEW + " WHERE false")) {
+                ps.setQueryTimeout(20);
+                ps.executeQuery().close();
+                found = col;
+                break;
+            } catch (Exception e) {
+                /* нет такой колонки — пробуем следующую; до конца списка дошли молча */
+            }
+        }
+        if (found == null) log.warn("в {} не нашлось колонки продукта ни под одним из имён {}", VIEW, PRODUCT_COLUMNS);
+        productColCache.put(connId, Optional.ofNullable(found));
+        return found;
+    }
+
+    /** Идентификатор в кавычках: имя своё, из списка выше, но в SQL оно всё равно цитируется. */
+    private static String quoteIdent(String name) {
+        return "\"" + name.replace("\"", "\"\"") + "\"";
+    }
+
+    /**
+     * Продукты для выпадающего списка: известные значения плюс всё, что нашлось в
+     * витрине за выбранный месяц.
+     * <p>
+     * Список никогда не бывает пустым. Запрос за значениями — попытка, а не условие:
+     * он может не вернуть ничего по десятку причин (права, тяжёлый DISTINCT в тайм-аут,
+     * пустой период), и раньше в этом случае фильтр оказывался бесполезным. Ошибку
+     * запроса не поднимаем наверх, а кладём в ответ полем {@code note}: фильтр работает
+     * и без неё, а человеку видно, почему список мог не пополниться.
+     */
+    public Map<String, Object> products(YearMonth month, String channelKey) {
+        String channel = CHANNELS.get(channelKey == null ? "" : channelKey.toLowerCase());
+        if (channel == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный канал. Ожидается sms, push или email.");
+        Map<String, Object> out = new LinkedHashMap<>();
+        /* TreeSet: и порядок по алфавиту, и склейка известных значений с пришедшими */
+        java.util.TreeSet<String> products = new java.util.TreeSet<>(KNOWN_PRODUCTS);
+        Long connId = configuredConnectionId();
+        String col = PRODUCT_COLUMNS.get(0);
+        String note = null;
+        boolean pending = false;
+        if (connId == null) {
+            col = null;                                   // источника нет — фильтровать нечем
+        } else {
+            Optional<String> probed = productColCache.get(connId);
+            if (probed != null) col = probed.orElse(null);
+            String key = connId + "|" + month + "|" + channel;
+            List<String> cached = productValues.get(key);
+            if (cached != null) products.addAll(cached);
+            else { refreshProducts(connId, month, channel, key); pending = true; }
+            note = productNotes.get(key);
+        }
+        out.put("column", col);
+        out.put("products", new ArrayList<>(products));
+        out.put("note", note);
+        out.put("pending", pending);   // ответ витрины ещё в пути — клиент перечитает список позже
+        return out;
+    }
+
+    /**
+     * Дотянуть значения продуктов из витрины — в фоне.
+     * <p>
+     * Синхронно этого делать нельзя: {@code SELECT DISTINCT} по месяцу на большой витрине
+     * идёт столько же, сколько сам отчёт, и выпадающий список стоял пустым, пока не
+     * досчитается таблица. Отдаём известные значения сразу, а ответ витрины подмешиваем
+     * к следующему обращению — из кэша, уже мгновенно.
+     */
+    private void refreshProducts(long connId, YearMonth month, String channel, String key) {
+        if (!productLoading.add(key)) return;             // уже тянем — второй раз не начинаем
+        productPool.execute(() -> {
+            List<String> found = new ArrayList<>();
+            String note = null;
+            try (Connection conn = connect(connId)) {
+                String col = productColumn(conn, connId);
+                if (col == null) {
+                    note = "Колонку продукта в витрине найти не удалось — список показан по известным значениям.";
+                } else {
+                    String sql = "SELECT DISTINCT " + quoteIdent(col) + " AS p FROM " + VIEW +
+                            " WHERE report_date >= ? AND report_date < ? AND channel_name ilike ?" +
+                            " AND " + quoteIdent(col) + " IS NOT NULL";
+                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                        ps.setQueryTimeout(QUERY_TIMEOUT_S);
+                        ps.setObject(1, month.atDay(1));
+                        ps.setObject(2, month.plusMonths(1).atDay(1));
+                        ps.setString(3, channel);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            while (rs.next()) {
+                                String p = rs.getString("p");
+                                if (p != null && !p.isBlank()) found.add(p.trim());
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                note = "Список продуктов из витрины получить не удалось (" + rootMessage(e)
+                        + ") — показаны известные значения.";
+                log.warn("список продуктов из {} не получен: {}", VIEW, rootMessage(e));
+            } finally {
+                productLoading.remove(key);
+            }
+            /* Кладём и пустой ответ: значит за этот месяц продуктов нет, и дёргать
+               витрину снова при каждом открытии раздела незачем. */
+            productValues.put(key, found);
+            if (note == null) productNotes.remove(key); else productNotes.put(key, note);
+        });
+    }
+
+    // ------------------------------------------------------------------ SQL
+    private Map<Integer, List<DayRow>> query(long connId, YearMonth month, String channel, String product) {
+        LocalDate from = month.atDay(1), to = month.plusMonths(1).atDay(1);
+        Map<Integer, List<DayRow>> byDay = new HashMap<>();
+
+        try (Connection conn = connect(connId)) {
+            String col = productColumn(conn, connId);
+            boolean byProduct = product != null && !product.isBlank() && col != null;
+            String sql = byProduct ? SQL_HEAD + " AND " + quoteIdent(col) + " = ?" + SQL_TAIL : SQL_HEAD + SQL_TAIL;
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setQueryTimeout(QUERY_TIMEOUT_S);
                 ps.setObject(1, from);
                 ps.setObject(2, to);
                 ps.setString(3, channel);
+                if (byProduct) ps.setString(4, product);
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         LocalDate d = rs.getObject("report_date", LocalDate.class);

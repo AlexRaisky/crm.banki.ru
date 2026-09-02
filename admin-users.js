@@ -11,20 +11,68 @@
      меню, поэтому здесь их пункты, а не зонтичные reports/monitoring. */
   var SECTION_LABELS = {
     home: "Главная", deviations: "Панель отклонений", onelink: "OneLink Builder",
-    admin: "Мастер коммуникаций", templates: "Список шаблонов",
+    admin: "Мастер коммуникаций", viewer: "Просмотр настроек",
+    templates: "Список шаблонов",
     dashboard: "Общая статистика", promo: "Планирование промо",
     abtests: "А/Б тесты",
     journeys: "Цепочки", access: "Управление доступом",
     srcbuilder: "Конструктор source",
     heatmap: "Тепловая карта",
+    entities: "Сущности",
+    "ev-online": "Онлайн-событие", "ev-offline": "Событие по расписанию",
+    "ev-list": "Список событий", "ev-export": "Перелив событий в прод",
     "rep-planfact": "Plan-Fact", "rep-matrix": "CRM Matrix",
     "rep-leadgen": "CRM Leadgen", "rep-smscheck": "ЧЕК СМС траффик",
     "rep-demo": "Пример визуализации отчёта",
     "mon-campaigns": "Базовая работа кампаний",
-    uploads: "Загруженные инструменты"
+    uploads: "Загруженные инструменты",
+    "set-dbconn": "Подключения к БД", "set-jira": "Jira", "set-procs": "Процессы переливов",
+    "set-sync": "Синхронизация шаблонов",
+    "set-events": "Импорт событий из crmdb", "set-scheme": "Scheme Builder",
+    "set-objects": "Сущности (настройка)", "set-dbtree": "Схемы и таблицы",
+    "set-apps": "Приложения и разделы", "set-uploads": "Загруженные инструменты (настройка)",
+    "set-mon": "Мониторинг интеграций", "set-diag": "Диагностика хранилища",
+    "set-general": "Общие параметры"
   };
   function tr(s) { return (typeof window.t === "function") ? window.t(s) : s; }
-  function sectionLabel(s) { return tr(SECTION_LABELS[s] || s); }
+  /* Подписи сущностей (ent:client) в справочнике выше держать нельзя: сущности заводятся
+     в Scheme Builder, и список у каждой установки свой. Их подпись приходит с сервера
+     вместе со строкой матрицы — без неё в таблице стоял бы сырой ent:client. */
+  var serverLabels = {};
+  function sectionLabel(s) {
+    if (SECTION_LABELS[s]) return tr(SECTION_LABELS[s]);
+    return serverLabels[s] || s;
+  }
+  /* Контур, в котором сохранятся права. Матрица у прода, препрода и теста своя —
+     базы разные, роли не общие, — а страницы выглядят одинаково. Поэтому среда стоит
+     не только в шапке страницы, но и напротив каждого раздела: матрица длинная,
+     и заголовок уезжает вверх задолго до того, как дойдёшь до нужной галки.
+     Имя приходит из GET /api/env; настроечная страница кладёт его в window.SET_ENV
+     и зовёт accessApplyEnv, когда ответ дошёл после отрисовки. */
+  var ENV_LABEL = { prod: "ПРОД", preprod: "ПРЕПРОД", test: "ТЕСТ" };
+  function envName() {
+    var e = window.SET_ENV;
+    return (e && e.name) ? String(e.name).toLowerCase() : "";
+  }
+  function envText() {
+    var n = envName();
+    return n ? (ENV_LABEL[n] || n.toUpperCase()) : "";
+  }
+  function envCell() {
+    var s = h("span", { class: "acc-env" + (envName() ? " env-pill " + envName() : ""),
+                        title: "Права сохранятся в базе этого контура. У прода, препрода и теста роли свои." },
+              [envText()]);
+    return s;
+  }
+  /* Ответ про среду мог прийти после отрисовки матрицы — дозаполняем ячейки. */
+  window.accessApplyEnv = function () {
+    var n = envName(), t = envText();
+    document.querySelectorAll(".acc-env").forEach(function (el) {
+      el.textContent = t;
+      el.className = "acc-env" + (n ? " env-pill " + n : "");
+    });
+  };
+
   var CAPS = [
     { k: "read", t: "Просмотр" },
     { k: "add", t: "Добавление" },
@@ -91,7 +139,8 @@
         if (capKey === "read") cb.dispatchEvent(new Event("change"));
       });
     }
-    var head = h("tr", null, [h("th", { style: th.replace("center", "left") }, [tr("Раздел")])]
+    var head = h("tr", null, [h("th", { style: th.replace("center", "left") }, [tr("Раздел")]),
+                              h("th", { style: th.replace("center", "left") }, [tr("Применится в")])]
       .concat(CAPS.map(function (c) {
         return h("th", {
           style: th + ";cursor:pointer",
@@ -132,7 +181,15 @@
         if (group) {
           var gh = "padding:7px 8px;border-bottom:1px solid var(--line);background:var(--card2);" +
                    "color:var(--dim);font-size:11.5px;font-weight:600";
-          var gcells = [h("td", { style: gh }, [tr(group)])];
+          var gtitle = [tr(group)];
+          /* Сущности — единственная группа, где строка выше («Сущности» без группы)
+             перекрывает все строки внутри. Не сказать об этом — значит оставить
+             человека гадать, почему снятая галка ничего не изменила. */
+          if (group === "Сущности") {
+            gtitle.push(h("span", { style: "color:var(--faint);font-weight:400" },
+              [tr(" — поштучно; строка «Сущности» выше открывает сразу все")]));
+          }
+          var gcells = [h("td", { style: gh }, gtitle), h("td", { style: gh }, [])];
           CAPS.forEach(function (c) {
             gcells.push(h("td", {
               style: gh + ";text-align:center;cursor:pointer",
@@ -169,7 +226,8 @@
       var cells = [h("td", {
         style: td.replace("center", "left") + ";color:var(--ink)" +
                (sec.group ? ";padding-left:22px" : "")   // вложенность в группу — отступом
-      }, [sectionLabel(sec.id)])];
+      }, [sectionLabel(sec.id)]),
+      h("td", { style: td.replace("center", "left") }, [envCell()])];
       CAPS.forEach(function (c) {
         var cell = h("td", { style: td });
         if (c.k === "read" || sec.writable) cell.appendChild(checks[c.k]);
@@ -210,18 +268,24 @@
   /* ================= ПОЛЬЗОВАТЕЛИ ================= */
   /* Роли, которые текущий пользователь может назначить: без супер-роли; админ-роли —
      только супер-админ. */
-  function assignableRoles() {
+  function assignableRoles(currentRoleId) {
     return allRoles.filter(function (r) {
-      return !r.isSuperAdmin && (!r.isAdmin || isSuperAdmin());
+      if (r.isSuperAdmin) return false;
+      if (r.isAdmin && !isSuperAdmin()) return false;
+      /* Отключённую роль назначать нельзя — сервер такой запрос и не примет. Но если она
+         уже стоит у правимой учётки, оставляем её в списке: иначе выпадашка молча
+         подменила бы роль соседней, и человек сохранил бы не то, что видел. */
+      return r.active !== false || (currentRoleId != null && r.id === currentRoleId);
     });
   }
   function roleSelect(currentRoleId) {
     var sel = h("select", { style: fieldStyle() });
-    var list = assignableRoles();
+    var list = assignableRoles(currentRoleId);
     // роль редактируемой учётки может быть не в assignable (напр. её нельзя переназначить) —
     // но такие записи не редактируются (manageable=false), так что сюда не попадают.
     list.forEach(function (r) {
-      var o = h("option", { value: String(r.id) }, [r.name + (r.isAdmin ? " · админ" : "")]);
+      var o = h("option", { value: String(r.id) },
+        [r.name + (r.isAdmin ? " · админ" : "") + (r.active === false ? " · " + tr("отключена") : "")]);
       if (currentRoleId != null && r.id === currentRoleId) o.selected = true;
       sel.appendChild(o);
     });
@@ -267,7 +331,11 @@
     var email = existing ? null : h("input", { style: fieldStyle(), type: "email", placeholder: "name@banki.ru" });
     var name = h("input", { style: fieldStyle(), value: existing ? (existing.displayName || "") : "", placeholder: tr("Имя") });
     var pwd = existing ? null : h("input", { style: fieldStyle(), type: "password", placeholder: tr("Пароль (мин. 8)") });
-    var role = roleSelect(existing ? existing.roleId : null);
+    /* Роль без id — та, что список ролей не отдаёт (её нельзя ни выбрать, ни переназначить
+       через панель). Показывать выпадашку в этом случае нельзя: она встанет на первую
+       попавшуюся роль, и «Сохранить» тихо сменило бы человеку роль на неё. */
+    var lockedRole = !!existing && existing.roleId == null;
+    var role = lockedRole ? null : roleSelect(existing ? existing.roleId : null);
     var enabled = h("input", { type: "checkbox" }); if (existing) enabled.checked = existing.enabled;
 
     box.appendChild(h("div", { style: "font-weight:600;margin-bottom:8px" },
@@ -275,13 +343,18 @@
     if (email) box.appendChild(field(tr("Почта"), email));
     box.appendChild(field(tr("Имя"), name));
     if (pwd) box.appendChild(field(tr("Пароль"), pwd));
-    box.appendChild(field(tr("Роль"), role));
+    if (lockedRole) {
+      box.appendChild(field(tr("Роль"),
+        h("div", { style: "color:var(--dim)" }, [(existing.role || "—") + " · " + tr("роль этой учётки здесь не меняется")])));
+    } else {
+      box.appendChild(field(tr("Роль"), role));
+    }
     if (existing) box.appendChild(field(tr("Активен"), enabled));
 
     box.appendChild(h("button", {
       style: btnStyle() + ";margin-top:10px",
       onclick: function () {
-        var roleId = role.value ? Number(role.value) : null;
+        var roleId = role && role.value ? Number(role.value) : null;   // null — «роль не трогаем»
         var p = existing
           ? CRM.adminUpdateUser(existing.id, { displayName: name.value, roleId: roleId, enabled: enabled.checked })
           : CRM.adminCreateUser({ email: email.value.trim(), displayName: name.value, password: pwd.value, roleId: roleId });
@@ -337,8 +410,16 @@
         var cell = "padding:8px;border-bottom:1px solid var(--line)";
         var type = r.isSuperAdmin ? tr("супер-админ") : (r.isAdmin ? tr("админ") : tr("обычная"))
           + (r.isSystem ? " · " + tr("встроенная") : "");
-        table.appendChild(h("tr", null, [
-          h("td", { style: cell }, [r.name]),
+        var off = r.active === false;
+        /* Отключённая роль — вся строка приглушена: она остаётся в справочнике, но
+           никого никуда не пускает, и путать её с рабочей нельзя. */
+        var nameCell = [h("span", null, [r.name])];
+        if (off) nameCell.push(h("span", {
+          style: "margin-left:8px;font-size:11px;color:var(--coral,#ff6b8a);border:1px solid rgba(255,107,138,.4);" +
+                 "border-radius:10px;padding:2px 7px;white-space:nowrap"
+        }, [tr("отключена")]));
+        table.appendChild(h("tr", { style: off ? "opacity:.55" : "" }, [
+          h("td", { style: cell }, nameCell),
           h("td", { style: cell + ";color:var(--dim)" }, [type]),
           h("td", { style: cell + ";color:var(--dim);max-width:320px" }, [roleSummary(r)]),
           h("td", { style: cell }, [String(r.users)]),
@@ -348,8 +429,16 @@
               : [
                   h("button", { style: btnStyle("#334155"), onclick: function () { roleForm(r, container); } }, [tr("Изменить")]),
                   h("span", null, [" "]),
-                  r.isSystem ? h("span", { style: "color:var(--faint);font-size:12px" }, [tr("встроенная")])
-                    : h("button", { style: btnStyle("#991b1b"), onclick: function () { delRole(r, container); } }, [tr("Удалить")])
+                  /* Вместо «Удалить»: удаление отказывало на роли с носителями и на
+                     встроенной, то есть почти всегда. Деактивация делает то, что от
+                     удаления и хотели, — роль перестаёт использоваться, — и ничего не
+                     теряет: матрица остаётся, историю можно поднять. */
+                  h("button", {
+                    style: btnStyle(off ? "#166534" : "#991b1b"),
+                    title: off ? tr("Роль снова можно назначать, её носители смогут входить")
+                               : tr("Роль останется в списке, но назначать её будет нельзя, а её носители не смогут войти")
+                  , onclick: function () { toggleRole(r, container); } },
+                    [off ? tr("Включить") : tr("Отключить")])
                 ])
         ]));
       });
@@ -398,9 +487,20 @@
     container.insertBefore(box, container.firstChild);
   }
 
-  function delRole(r, container) {
-    if (!confirm(tr("Удалить роль") + " «" + r.name + "»?")) return;
-    CRM.adminDeleteRole(r.id).then(function () { renderRoles(container); }).catch(function (e) { alert(e.message); });
+  /* Отключение спрашиваем подтверждением и говорим, скольких оно коснётся: у роли с
+     носителями это отказ во входе, и узнать об этом лучше до нажатия, а не от коллег.
+     Включение обратно подтверждения не требует — оно возвращает штатное состояние. */
+  function toggleRole(r, container) {
+    var off = r.active === false;
+    if (!off) {
+      var who = r.users > 0
+        ? tr("Учёток на этой роли") + ": " + r.users + ". " + tr("Войти в панель они не смогут.")
+        : tr("Учёток на этой роли нет.");
+      if (!confirm(tr("Отключить роль") + " «" + r.name + "»? " + who + " " +
+                   tr("Роль и её права сохранятся, назначать её будет нельзя."))) return;
+    }
+    CRM.adminSetRoleActive(r.id, off).then(function () { renderRoles(container); })
+      .catch(function (e) { alert(e.message); });
   }
 
   /* ---------- вход в раздел ---------- */
@@ -416,6 +516,7 @@
     // сначала роли (нужны для выпадашки в форме пользователя), затем пользователи
     Promise.all([CRM.adminSections(), CRM.adminRoles()]).then(function (res) {
       matrixSections = (res[0] || []).filter(function (s) { return !s.adminOnly; });
+      matrixSections.forEach(function (s) { if (s.label) serverLabels[s.id] = s.label; });
       allRoles = res[1] || [];
       root.appendChild(sectionTitle("Пользователи"));
       root.appendChild(h("button", {

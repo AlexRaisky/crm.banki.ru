@@ -1,6 +1,21 @@
 spring:
   application:
     name: crm-admin
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          # Статику браузер обязан перепроверять при каждой загрузке.
+          #
+          # Без этого он кеширует index.html, css и js «на своё усмотрение», и после
+          # выката человек видит старую панель: правка есть в образе, есть в ответе
+          # сервера, а на экране её нет. Лечилось это Ctrl+F5 — то есть каждый раз
+          # приходилось объяснять, что нажать, вместо того чтобы просто работало.
+          #
+          # no-cache не значит «качать всё заново»: браузер шлёт условный запрос с
+          # If-Modified-Since, и на неизменившийся файл сервер отвечает 304 без тела.
+          # Для внутренней панели на пару мегабайт статики это ничего не стоит.
+          no-cache: true
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/crm}
     username: ${DB_USER:crm}
@@ -44,10 +59,17 @@ app:
   # Разделы в разработке (Цепочки и далее) видны только там, где флаг включён (preprod/test).
   features:
     dev: ${FEATURES_DEV:false}
-  # First super-admin, created idempotently on startup.
+  # Супер-админы: список почт через запятую, закрепляется на каждом старте.
   admin:
     email: ${ADMIN_EMAIL:admin@banki.ru}
     password: ${ADMIN_PASSWORD:admin12345}
+  # Выкатки: адреса соседних контуров во внутренней сети compose, общий секрет для
+  # запроса версии и данные для текста команды (ветка и каталог на сервере).
+  deploy:
+    peers: ${DEPLOY_PEERS:}
+    peer-token: ${DEPLOY_PEER_TOKEN:}
+    branch: ${DEPLOY_BRANCH:admin-panel}
+    dir: ${DEPLOY_DIR:~/crm.banki.ru}
   # Restrict login/registration email domain (empty = no restriction).
   email-domain: ${APP_EMAIL_DOMAIN:}
   # Постоянная авторизация (remember-me). Ключ должен быть стабильным между рестартами.
@@ -68,6 +90,17 @@ app:
     overlap-minutes: ${ETL_OVERLAP_MINUTES:0}     # 0: метки в проде выставлены разом, перекрытие тянуло бы всю таблицу
     initial-delay-ms: ${ETL_INITIAL_DELAY_MS:60000}
     full-cron: ${ETL_FULL_CRON:0 0 22 * * *}      # полный прогон в 22:00
+  # Сверка событий с crmdb: частый опрос «что новее нашего последнего id»
+  # плюс вечерний полный проход — он подбирает то, что хвост пропустил из-за неприехавших связей.
+  event-import:
+    # enabled здесь больше нет: выключатель один — строка event-import в
+    # «Настройки» → «Переливы» → «Процессы переливов». Свойство перекрывало её и делало
+    # экран неправдой.
+    interval-ms: ${EVENT_IMPORT_INTERVAL_MS:300000}     # хвост раз в 5 минут
+    initial-delay-ms: ${EVENT_IMPORT_INITIAL_DELAY_MS:90000}
+    full-cron: ${EVENT_IMPORT_FULL_CRON:0 30 22 * * *}  # полная сверка в 22:30, после ETL шаблонов
+    increment-limit: ${EVENT_IMPORT_INCREMENT_LIMIT:500}
+    full-limit: ${EVENT_IMPORT_FULL_LIMIT:5000}
   proddb:
     url: ${PROD_DB_URL:}
     user: ${PROD_DB_USER:}

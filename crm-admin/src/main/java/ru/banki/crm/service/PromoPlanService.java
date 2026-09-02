@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ru.banki.crm.security.CurrentUser;
+import ru.banki.crm.service.jira.JiraService;
 
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -39,7 +40,11 @@ public class PromoPlanService {
             Map.entry("uniq", "uniq_name"),
             Map.entry("task", "task_key"),
             Map.entry("owner", "owner_name"),
-            Map.entry("status", "status"));
+            Map.entry("status", "status"),
+            Map.entry("customer", "customer"),
+            Map.entry("link", "link"),
+            Map.entry("content", "content"),
+            Map.entry("title", "title"));
     /** note вынесен отдельно: Map.of ограничен 10 парами. */
     private static final String NOTE_COLUMN = "note";
 
@@ -51,7 +56,11 @@ public class PromoPlanService {
      */
     private static final String ROW_COLUMNS =
             "id, plan_date, product, partner, base, channel, is_total," +
-            " uniq_name, task_key, owner_name, status, note, communication_name, base_extra, timestamp_upd";
+            " uniq_name, task_key, owner_name, status, note, communication_name, base_extra," +
+            /* Новые колонки дописываются в КОНЕЦ, даже если по смыслу им место в середине:
+               toDto читает Object[] по индексам, и вставка в середину молча сдвинула бы
+               всё, что правее. */
+            " customer, link, content, timestamp_upd, title";
 
     private static final String STATUS_PLANNED = "запланировано";
     private static final String STATUS_SENT = "отправлено";
@@ -60,9 +69,91 @@ public class PromoPlanService {
     private EntityManager em;
 
     private final AdminLogService adminLog;
+    private final JiraService jira;
 
-    public PromoPlanService(AdminLogService adminLog) {
+    public PromoPlanService(AdminLogService adminLog, JiraService jira) {
         this.adminLog = adminLog;
+        this.jira = jira;
+    }
+
+    // ------------------------------------------------------------------ задача в Jira
+
+    /**
+     * Завести задачу по строке плана и запомнить её ключ.
+     * <p>
+     * Строка плана и задача должны говорить об одном и том же, поэтому поля берём отсюда,
+     * а не просим заполнить заново. Source приходит с клиента: его собирает Конструктор
+     * source из канала, продукта, партнёра, уникального имени и даты — там же, где он
+     * показан человеку, и второй раз ту же логику на сервере повторять незачем.
+     * <p>
+     * Вторую задачу на ту же строку не заводим: раз ключ уже стоит, значит задача есть, а
+     * дубль в Jira потом никто не вычистит.
+     */
+    @Transactional
+    public Map<String, Object> createJiraTask(long id, String source, String productCode) {
+        Object[] r = rowById(id);
+        String existing = str(r[8]);
+        if (!existing.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "По этой строке уже заведена задача " + existing + ". Уберите ключ, если нужна новая.");
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("channel", str(r[5]));
+        data.put("customer", str(r[14]));
+        /* В Jira тип продукта — код латиницей (General, Debitcards), в плане он записан
+           по-русски. Код приходит с клиента из того же справочника, что и source; нет
+           кода — отправим как есть и получим внятный отказ со списком допустимых. */
+        data.put("product", firstNonEmpty(text(productCode), str(r[2])));
+        /* «Вид рассылки» в Jira — Total или Mono, и это ровно наш флаг «тотал»: рассылка
+           либо на всю базу, либо на сегмент. Отдельного поля в плане нет, поэтому берём
+           флаг; не совпадёт со справочником Jira — придёт понятный отказ со списком. */
+        data.put("kind", Boolean.TRUE.equals(r[6]) ? "Total" : "Mono");
+        data.put("name", firstNonEmpty(str(r[12]), str(r[7])));   // название коммуникации, иначе уникальное имя
+        data.put("sendDate", String.valueOf(r[1]));
+        data.put("meaning", str(r[11]));                          // примечание строки = бизнес-смысл
+        data.put("link", str(r[15]));
+        data.put("content", str(r[16]));
+        data.put("segment", firstNonEmpty(joinNonEmpty(str(r[4]), str(r[13])), ""));
+        data.put("analyst", str(r[9]));
+        data.put("source", text(source));
+        /* Заголовок задачи. Написан человеком — уходит как есть; не написан — JiraService
+           соберёт его из полей строки, как делал до появления этого поля. */
+        data.put("summary", str(r[18]));
+        data.put("reporterEmail", CurrentUser.email());
+
+        Map<String, Object> res = jira.createIssue(data);
+        String key = String.valueOf(res.get("key"));
+        em.createNativeQuery("UPDATE app.promo_plan SET task_key = :k, timestamp_upd = now(),"
+                        + " updated_by = :u WHERE id = :id")
+                .setParameter("k", key)
+                .setParameter("u", CurrentUser.email())
+                .setParameter("id", id)
+                .executeUpdate();
+        writeLog(operationSnapshot(id), "JIRA");
+        return res;
+    }
+
+    private Object[] rowById(long id) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery(
+                        "SELECT " + ROW_COLUMNS + " FROM app.promo_plan WHERE id = :id")
+                .setParameter("id", id)
+                .getResultList();
+        if (rows.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Строка плана не найдена");
+        }
+        return rows.get(0);
+    }
+
+    private static String firstNonEmpty(String a, String b) {
+        return a == null || a.isBlank() ? (b == null ? "" : b) : a;
+    }
+
+    /** База и дополнительные условия к ней — в Jira это одно поле «Сегмент». */
+    private static String joinNonEmpty(String a, String b) {
+        if (a == null || a.isBlank()) return b == null ? "" : b;
+        if (b == null || b.isBlank()) return a;
+        return a + ", " + b;
     }
 
     /**
@@ -85,6 +176,37 @@ public class PromoPlanService {
                         "   SELECT DISTINCT trim(owner_name) FROM app.promo_plan" +
                         "    WHERE coalesce(trim(owner_name), '') <> ''" +
                         " ) s ORDER BY name")
+                .getResultList();
+        return out;
+    }
+
+    /**
+     * Кого можно поставить заказчиком: имена из справочников направлений — chain.chain и
+     * gorizontal.gorizontal — плюс те, что уже проставлены в плане.
+     * <p>
+     * Таблиц может не быть: пока они заведены только на тестовом контуре. Существование
+     * проверяем через to_regclass, а НЕ через try/catch вокруг запроса: в Postgres
+     * упавший запрос помечает всю транзакцию на откат, и «мягкая» обработка ошибки
+     * уронила бы весь вызов. Нет таблицы — просто нет её половины списка.
+     * <p>
+     * Имена из плана добавлены по той же причине, что и у ответственных: значение,
+     * выбранное когда-то, не должно исчезнуть из списка из-за правки справочника.
+     */
+    @Transactional(readOnly = true)
+    public List<String> customerCandidates() {
+        List<String> parts = new ArrayList<>();
+        for (String table : List.of("chain.chain", "gorizontal.gorizontal")) {
+            Object reg = em.createNativeQuery("SELECT to_regclass(:t)")
+                    .setParameter("t", table).getSingleResult();
+            if (reg != null) {
+                parts.add("SELECT DISTINCT trim(name) AS name FROM " + table);
+            }
+        }
+        parts.add("SELECT DISTINCT trim(customer) AS name FROM app.promo_plan");
+        @SuppressWarnings("unchecked")
+        List<String> out = em.createNativeQuery(
+                        "SELECT name FROM (" + String.join(" UNION ", parts) + ") s" +
+                        " WHERE name IS NOT NULL AND name <> '' ORDER BY name")
                 .getResultList();
         return out;
     }
@@ -125,7 +247,11 @@ public class PromoPlanService {
         m.put("note", str(r[11]));
         m.put("commName", str(r[12]));   // сохранённое «Название коммуникации» (обычно из импорта)
         m.put("baseExtra", str(r[13]));  // доп. условия для базы, словами
-        m.put("ver", instant(r[14]));
+        m.put("customer", str(r[14]));   // заказчик — он же обязательное поле задачи в Jira
+        m.put("link", str(r[15]));       // основная ссылка, куда ведём получателя
+        m.put("content", str(r[16]));    // что учесть в тексте или визуале
+        m.put("ver", instant(r[17]));
+        m.put("title", str(r[18]));      // название задачи словами — заголовок в Jira
         return m;
     }
 
@@ -175,9 +301,9 @@ public class PromoPlanService {
             em.createNativeQuery(
                             "INSERT INTO app.promo_plan (id, plan_date, product, partner, base, base_extra," +
                             " channel, is_total, uniq_name, task_key, owner_name, status, note," +
-                            " created_by, updated_by)" +
+                            " customer, link, content, title, created_by, updated_by)" +
                             " VALUES (:id, :d, :product, :partner, :base, :baseExtra, :ch, :total, :uniq," +
-                            " :task, :owner, :status, :note, :u, :u)")
+                            " :task, :owner, :status, :note, :customer, :link, :content, :title, :u, :u)")
                     .setParameter("id", id)
                     .setParameter("d", date)
                     .setParameter("product", text(body.get("product")))
@@ -191,6 +317,10 @@ public class PromoPlanService {
                     .setParameter("owner", text(body.get("owner")))
                     .setParameter("status", text(body.get("status")))
                     .setParameter("note", text(body.get("note")))
+                    .setParameter("customer", text(body.get("customer")))
+                    .setParameter("link", text(body.get("link")))
+                    .setParameter("content", text(body.get("content")))
+                    .setParameter("title", text(body.get("title")))
                     .setParameter("u", CurrentUser.email())
                     .executeUpdate();
             ids.add(id);
@@ -266,9 +396,12 @@ public class PromoPlanService {
             em.createNativeQuery(
                             "INSERT INTO app.promo_plan (plan_date, product, partner, base, base_extra," +
                             " channel, is_total, uniq_name, task_key, owner_name, status, note," +
-                            " communication_name, created_by, updated_by)" +
+                            " communication_name, customer, link, content, title, created_by, updated_by)" +
+                            /* task_key копируем намеренно: у копии свой канал, но задача пока
+                               общая — до тех пор, пока для нового канала не заведут свою. */
                             " SELECT plan_date, product, partner, base, base_extra, :ch, is_total, uniq_name," +
-                            " task_key, owner_name, status, note, communication_name, :u, :u" +
+                            " task_key, owner_name, status, note, communication_name, customer, link, content," +
+                            " title, :u, :u" +
                             " FROM app.promo_plan WHERE id = :id")
                     .setParameter("ch", ch)
                     .setParameter("u", CurrentUser.email())

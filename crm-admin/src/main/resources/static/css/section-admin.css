@@ -717,85 +717,11 @@ button:hover{filter:brightness(1.08)}
 .wizard-channel{margin-bottom:16px}
 
 /* ---- Карточка настроек шаблона в стиле Salesforce Details ---- */
-.sfd{border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden}
-.sfd-head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);
-    background:var(--card2);flex-wrap:wrap}
-.sfd-head .sfd-ch{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;
-    padding:4px 11px;border-radius:14px;background:var(--blue-bg);color:var(--blue)}
-.sfd-head b{font-size:15.5px}
-.sfd-head .sfd-status{font-family:var(--mono);font-size:11px;font-weight:700;padding:4px 11px;border-radius:14px}
-.sfd-head .sfd-status.on{background:var(--green-bg);color:var(--green)}
-.sfd-head .sfd-status.off{background:var(--coral-bg);color:var(--coral)}
-.sfd-head .sfd-actions{margin-left:auto}
-.sfd-sec{border-bottom:1px solid var(--line)}
-.sfd-sec:last-child{border-bottom:none}
-.sfd-sec-title{display:flex;align-items:center;gap:8px;padding:11px 18px;background:rgba(13,24,38,.45);
-    font-size:13px;font-weight:640;color:var(--ink);cursor:pointer;user-select:none}
-.sfd-sec-title::before{content:"▾";color:var(--blue);font-size:11px;transition:transform .15s}
-.sfd-sec.closed .sfd-sec-title::before{transform:rotate(-90deg)}
-.sfd-sec.closed .sfd-grid{display:none}
-.sfd-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:38px;padding:4px 18px 10px}
-.sfd-row{padding:9px 0;border-bottom:1px solid var(--line);min-width:0}
-.sfd-row .l{font-size:11.5px;color:var(--label);margin-bottom:3px}
-.sfd-row .v{font-size:13.5px;color:var(--ink);word-break:break-word;white-space:pre-wrap}
-.sfd-row .v.empty{color:var(--faint)}
-.sfd-row .v .flag-on{color:var(--green);font-weight:600}
-.sfd-row .v .flag-off{color:var(--faint)}
-.sfd-row.wide{grid-column:1 / -1}
-@media(max-width:900px){.sfd-grid{grid-template-columns:1fr}}
 
-/* ---- Список шаблонов в формате Salesforce list view ---- */
-.sf-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px}
-.sf-obj{display:flex;align-items:center;gap:12px}
-.sf-obj-ico{width:38px;height:38px;border-radius:10px;background:var(--grad);color:#06202B;
-    display:flex;align-items:center;justify-content:center;flex:0 0 auto}
-.sf-obj-ico svg{width:20px;height:20px}
-.sf-obj-kind{font-size:11.5px;color:var(--faint)}
-.sf-obj-title{font-size:17px;font-weight:700;letter-spacing:-.01em}
-.sf-caret{color:var(--blue);font-size:12px}
-.sf-actions{margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.sf-search{background:var(--bg2);border:1px solid var(--line);border-radius:10px;color:var(--ink);
-    font-family:var(--sans);font-size:13.5px;padding:9px 13px;min-width:220px;outline:none}
-.sf-search:focus{border-color:rgba(80,195,255,.45)}
-.sf-btn{padding:9px 15px;border-radius:10px;border:1px solid var(--line);background:var(--card2);
-    color:var(--ink);font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer}
-.sf-btn:hover{border-color:var(--blue);color:var(--blue)}
-.sf-count{font-size:12px;color:var(--faint);margin:2px 0 10px}
-/* окно списка подстраивается под высоту экрана (шапка раздела ≈ 320px) */
-.sf-table-wrap{max-height:calc(100vh - 320px);min-height:320px;overflow:auto;
-    border:1px solid var(--line);border-radius:12px}
-.sf-table{width:100%;border-collapse:collapse}
-.sf-table thead th{position:sticky;top:0;background:var(--card2);z-index:2;font-size:12px;color:var(--dim);
-    text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap;
-    border-right:1px solid var(--line)}
-.sf-table thead th:last-child{border-right:none}
-.sf-table th.sf-sortable{cursor:pointer;user-select:none}
-.sf-table th.sf-sortable:hover{color:var(--ink)}
-.sf-table .sf-sort{font-size:10px;color:var(--blue)}
-/* лёгкая сетка: видно, к какому полю относится карандаш */
-.sf-table tbody td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle;
-    border-right:1px solid var(--line)}
-.sf-table tbody td:last-child{border-right:none}
-.sf-table tbody tr:hover{background:rgba(80,195,255,.05)}
-.sf-table tbody td:hover{background:rgba(80,195,255,.07)}
-/* бейджи каналов — та же раскраска и шрифт Coil, что в «Планировании промо» */
-.sf-table .channel-badge{display:inline-block;font-family:"Coil","Golos Text","Manrope",var(--sans);
-    font-weight:600;font-size:12px;padding:2px 8px;border-radius:10px;text-transform:none;
-    background:var(--blue-bg);color:var(--blue)}
-.sf-table .channel-push,.sf-table .channel-mobile-push{background:var(--amber-bg);color:var(--amber)}
-.sf-table .channel-cc{background:var(--green-bg);color:var(--green)}
-.sf-table .channel-vk{background:rgba(140,140,255,.16);color:#9aa6ff}
-.sf-table .channel-fa{background:rgba(255,107,138,.14);color:var(--coral)}
-.sf-check-col{width:34px}
-.sf-table input[type=checkbox]{accent-color:#3CFAB4;width:15px;height:15px;cursor:pointer}
-.sf-link{color:var(--blue);cursor:pointer;font-weight:600;background:none;border:none;padding:0;
-    font-family:var(--sans);font-size:13px}
-.sf-link:hover{text-decoration:underline}
-/* Кнопка строки списка: явная надпись «Просмотр» вместо неразличимой стрелки */
-.sf-row-menu{padding:5px 12px;border-radius:8px;border:1px solid rgba(80,195,255,.45);background:var(--blue-bg);
-    color:var(--blue);cursor:pointer;font-family:var(--sans);font-size:12.5px;font-weight:600;
-    line-height:1.2;white-space:nowrap}
-.sf-row-menu:hover{background:var(--blue);color:#08131f;border-color:var(--blue)}
+/* ---- Список в формате Salesforce list view ----
+   Стили уехали в css/registry.css: тем же видом пользуется список событий, а держать
+   две копии одной вёрстки значит однажды поправить только одну из них. Файл подключён
+   после этого и объявлен на обе секции сразу. */
 
 /* ---- Карточка шаблона: раскладка с предпросмотром ---- */
 .sfd-top{display:flex;align-items:center;gap:10px;margin-bottom:14px}
@@ -805,23 +731,10 @@ button:hover{filter:brightness(1.08)}
 .sfd-side{position:static;margin-top:18px}
 .sfd-side:empty{display:none}
 
-/* карандаш и inline-редактирование (как в Salesforce) */
-.sfd-row{position:relative;padding-right:30px}
-/* Карандаш правки: виден всегда; padding:0 и box-sizing перебивают общее правило button{padding:10px 18px} */
-.sfd-row .sfd-pen{position:absolute;right:2px;top:50%;transform:translateY(-50%);
-    width:28px;height:28px;min-width:28px;padding:0;box-sizing:border-box;
-    border-radius:7px;border:1px solid var(--line);background:var(--card2);color:var(--dim);cursor:pointer;
-    display:inline-flex;align-items:center;justify-content:center;font-size:14px;line-height:1;transition:.12s}
-.sfd-row .sfd-pen svg{width:14px;height:14px;display:block;stroke:currentColor;fill:none}
-.sfd-row:hover .sfd-pen{border-color:rgba(80,195,255,.45);color:var(--blue)}
-.sfd-row .sfd-pen:hover{color:#08131f;background:var(--blue);border-color:var(--blue)}
-.sfd-row.editing{padding-right:8px}
-.sfd-row .sfd-edit{width:100%;background:var(--bg2);border:1px solid rgba(80,195,255,.45);border-radius:8px;
-    color:var(--ink);font-family:var(--sans);font-size:13.5px;padding:7px 10px;outline:none}
-.sfd-row textarea.sfd-edit{resize:vertical;min-height:64px}
-.sfd-row select.sfd-edit{cursor:pointer}
-.sfd-row select.sfd-edit option{background:#0D1826;color:#F2F7FD}
-.sfd-row .sfd-edit-check{width:17px;height:17px;accent-color:#3CFAB4;cursor:pointer}
+/* Карточка записи и правка полей на месте — в css/registry.css: тем же видом
+   показывается карточка события, и держать две копии одной вёрстки значит однажды
+   поправить только одну из них. */
+
 /* combo с пополнением справочника: поле + кнопка «+» справа от него */
 .sfd-row .sfd-combo-add{display:flex;align-items:center;gap:6px}
 .sfd-row .sfd-combo-add .sfd-edit{flex:1;min-width:0}

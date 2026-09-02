@@ -230,6 +230,20 @@
   .jr-tb-item.tb-subflow::before{background:var(--blue)}
   .jr-tb-item.tb-logic::before{background:var(--amber)}
   .jr-tb-item.tb-data::before{background:var(--coral)}
+  /* Примечание не участвует в потоке — и метка у него не цветом группы, а нейтральная */
+  .jr-tb-item.tb-note::before{background:var(--faint)}
+  /* Масштаб в тулбаре: минус, процент, плюс — одной группой, чтобы читались как один
+     орган управления, а не три кнопки подряд. */
+  .jr-zoom{display:inline-flex;align-items:stretch;border:1px solid var(--line);
+    border-radius:8px;overflow:hidden;background:var(--card)}
+  .jr-zoom button{background:none;border:none;color:var(--dim);cursor:pointer;
+    font-family:var(--sans);font-size:13px;padding:0 9px;min-width:28px}
+  .jr-zoom button:hover{background:var(--card2);color:var(--ink)}
+  .jr-zoom #jrZoomPct{min-width:52px;font-family:var(--mono);font-size:11.5px;
+    border-left:1px solid var(--line);border-right:1px solid var(--line)}
+  /* transform-origin: 0 0 — иначе начало отсчёта масштаба лежит в центре холста и
+     плавает вместе с размером окна: и родной зум Drawflow, и наш считают от нуля. */
+  #jrCanvas .drawflow{transform-origin:0 0}
   #jrCanvas{flex:1;position:relative;background:
     radial-gradient(circle,rgba(80,195,255,.10) 1px,transparent 1px) 0 0/26px 26px,var(--bg)}
   body[data-readonly] .jr-btn.jr-save,body[data-readonly] .jr-btn.jr-delete,
@@ -237,8 +251,10 @@
 
   /* Drawflow: тёмная тема под стиль панели */
   #jrCanvas .drawflow{width:100%;height:100%}
+  /* z-index у блоков — чтобы рамка группировки (z-index:1) всегда оставалась под ними,
+     в каком бы порядке её ни добавили на холст. */
   #jrCanvas .drawflow .drawflow-node{background:var(--card);border:1px solid var(--line);
-    border-radius:12px;color:var(--ink);padding:0;width:230px;min-height:auto;
+    border-radius:12px;color:var(--ink);padding:0;width:230px;min-height:auto;z-index:2;
     box-shadow:0 8px 24px rgba(0,0,0,.35)}
   #jrCanvas .drawflow .drawflow-node.selected{border-color:var(--blue);
     box-shadow:0 0 0 2px rgba(80,195,255,.35)}
@@ -249,6 +265,14 @@
   #jrCanvas .drawflow .drawflow-node .input:hover,
   #jrCanvas .drawflow .drawflow-node .output:hover{background:var(--green);border-color:var(--green);
     box-shadow:0 0 0 5px rgba(60,250,180,.25)}
+  /* Подписи выходов Decision прямо у точек: «да» и «нет» на карточке словами — это
+     список, а на схеме важно, ИЗ КАКОЙ точки вышла стрелка. У Loop выходов тоже два,
+     но значат они другое, поэтому подпись привязана к типу узла, а не к числу выходов. */
+  #jrCanvas .drawflow .jrn-t-decision .output::after{position:absolute;left:19px;top:-4px;
+    font-family:var(--sans);font-size:10px;font-weight:700;letter-spacing:.06em;
+    white-space:nowrap;pointer-events:none}
+  #jrCanvas .drawflow .jrn-t-decision .output_1::after{content:"ДА";color:var(--green)}
+  #jrCanvas .drawflow .jrn-t-decision .output_2::after{content:"НЕТ";color:var(--coral)}
   #jrCanvas .drawflow .connection .main-path{stroke:var(--blue);stroke-width:2.5px;marker-end:url(#jrArrow)}
   #jrArrow path{fill:var(--blue)}   /* наконечник стрелки следует теме */
   #jrCanvas .drawflow .connection .main-path:hover,
@@ -258,6 +282,11 @@
   .jrn{font-family:var(--sans)}
   .jrn-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);
     border-radius:12px 12px 0 0;font-weight:700;font-size:13px}
+  /* Метка на заголовке блока (Decision → step exit): отличается от названия типа,
+     потому что говорит не «что это за блок», а «эта проверка исполняется». */
+  .jrn-tag{margin-left:auto;padding:1px 7px;border-radius:999px;font-size:9.5px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--coral);
+    background:var(--coral-bg);border:1px solid rgba(255,107,138,.4)}
   .jrn-body{padding:8px 10px;display:flex;flex-direction:column;gap:6px}
   .jrn-body label{font-size:10px;color:var(--faint);margin:0;letter-spacing:.05em;text-transform:uppercase}
   .jrn input,.jrn textarea,.jrn select{background:var(--bg2);color:var(--ink);border:1px solid var(--line);
@@ -277,6 +306,26 @@
   .jrn-logic .jrn-head{background:rgba(255,184,77,.10);color:var(--amber)}
   .jrn-data .jrn-head{background:rgba(255,107,138,.10);color:var(--coral)}
   .jrn-start .jrn-head{background:rgba(178,140,255,.12);color:#B99CFF}
+  /* Примечание: карточка без входов и выходов — не участник потока, а подпись к нему,
+     поэтому нейтральная, без цвета группы. */
+  .jrn-note .jrn-head{background:var(--card2);color:var(--dim)}
+  .jrn-note .jrn-sum{white-space:pre-line}
+  /* Рамка группировки. Прозрачная и без тени: она подложка под блоками шага, а не
+     ещё один блок — иначе на схеме два уровня карточек и не понять, что главное.
+     Ширина и высота приходят инлайном из данных узла: у остальных блоков ширина одна,
+     у рамки — ровно та, чтобы накрыть свои блоки. */
+  /* Рамка не ловит мышь всей своей площадью, а только заголовком: иначе она накрыла
+     бы собой блоки и связи, лежащие на ней, и кликнуть по ним стало бы нельзя.
+     Тащат её за подпись — как рамку и тащат. */
+  #jrCanvas .drawflow .drawflow-node.jrnode-group{background:rgba(80,195,255,.045);
+    border:1.5px dashed var(--line);border-radius:14px;box-shadow:none;z-index:1;
+    width:auto;pointer-events:none}
+  #jrCanvas .drawflow .drawflow-node.jrnode-group.selected{border-color:var(--blue)}
+  #jrCanvas .drawflow .drawflow-node.jrnode-group .drawflow_content_node{height:100%}
+  .jrn-group{display:inline-block;padding:7px 12px 8px;font-family:var(--sans);
+    pointer-events:auto;cursor:move;border-radius:14px 0 12px 0;background:var(--bg2)}
+  .jrn-gtitle{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+  .jrn-gnote{font-size:11.5px;color:var(--faint);margin-top:2px}
   /* Communication Alert: цвет по выбранному каналу */
   .jrn-ch-sms .jrn-head{background:rgba(60,250,180,.16);color:var(--green)}
   .jrn-ch-push .jrn-head{background:rgba(255,184,77,.16);color:var(--amber)}
@@ -300,6 +349,44 @@
     color:var(--dim);text-transform:none;letter-spacing:0;cursor:pointer}
   .jre-step-act input{margin:0;cursor:pointer}
   .jre-warn{color:var(--coral);font-size:12px;margin-top:4px}
+  /* ---- Модалка заведения цепочки ----
+     Поля тут свои, а не унаследованные от модалки настроек блока: та стилизована
+     селектором #jrEditBody, и без собственных правил инпуты здесь оставались
+     системными — белая рамка поверх тёмной карточки. */
+  #jrNewChain .jr-modal-card{width:min(660px,94%)}
+  #jrNewChain .jr-modal-body{padding:16px 20px 20px;gap:16px}
+  #jrNewChain .jre-field{gap:7px;margin-bottom:0}
+  #jrNewChain label{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);font-weight:600}
+  #jrNewChain input,#jrNewChain textarea,#jrNewChain select{background:var(--card);color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:13.5px;
+    width:100%;box-sizing:border-box;font-family:var(--sans)}
+  #jrNewChain input::placeholder,#jrNewChain textarea::placeholder{color:var(--faint)}
+  #jrNewChain input:focus,#jrNewChain textarea:focus,#jrNewChain select:focus{outline:none;
+    border-color:var(--blue);box-shadow:0 0 0 3px rgba(80,195,255,.16)}
+  #jrNewChain textarea{min-height:74px;resize:vertical;font-family:var(--mono);
+    font-size:11.5px;line-height:1.55}
+  #jrNewChain .jr-hint{font-size:11.5px;color:var(--faint);line-height:1.45}
+  /* Тип цепочки — ровно две карточки в ряд, а не по ширине контейнера: их всегда две,
+     и «сколько влезет» здесь превратилось бы в одну на узком экране. */
+  #jrNewTypes{grid-template-columns:1fr 1fr;max-height:none;overflow:visible}
+  /* Строка под выпадающим списком событий: сколько их или почему не прочитались. */
+  #jrNewList{padding:2px 2px 0}
+  /* Карточками остался только выбор типа цепочки (#jrNewTypes). Событие выбирают
+     списком: карточки показывали больше, но искать нужное среди сотен оказалось хуже,
+     чем набрать первые буквы в <select>. */
+  .jr-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:8px;
+    overflow-y:auto;padding:2px}
+  .jr-card{position:relative;text-align:left;background:var(--card);color:var(--ink);
+    border:1px solid var(--line);border-radius:10px;padding:10px 32px 11px 12px;cursor:pointer;
+    display:flex;flex-direction:column;gap:4px}
+  .jr-card:hover{background:var(--card2);border-color:rgba(80,195,255,.3)}
+  .jr-card.sel{border-color:var(--blue);background:var(--blue-bg)}
+  .jr-card.sel::after{content:"✓";position:absolute;top:9px;right:9px;width:17px;height:17px;
+    display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;
+    color:#08131f;background:var(--blue);border-radius:50%}
+  .jr-card-t{font-size:13px;font-weight:600;word-break:break-word}
+  .jr-card-d{font-size:11.5px;color:var(--faint);line-height:1.4}
 
   /* меню «стрелка в никуда» и иконка удаления связи */
   #jrPick{position:absolute;z-index:70;width:190px;max-height:320px;overflow-y:auto;
@@ -311,6 +398,41 @@
     background:var(--coral);color:#fff;border:none;font-size:13px;font-weight:700;line-height:1;
     cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.45)}
   #jrConnDel:hover{filter:brightness(1.15)}
+  /* Область действия отменяющего события: рамка вокруг всей цепочки. Живёт на холсте
+     (в precanvas), поэтому ездит и масштабируется вместе с ним. Мышь не ловит — под
+     ней лежат блоки и связи, и перехватывать по ним клики она не должна.
+     Без заливки: розовая подложка под всей схемой красила собой и блоки, и связи,
+     а сказать должна ровно одно — докуда достаёт условие. Это говорит рамка. */
+  #jrExitScope{position:absolute;z-index:0;pointer-events:none;border-radius:18px;
+    border:1.5px dashed rgba(255,107,138,.32);background:none}
+  /* Подпись области на холсте — только название, без списка: держать один список в
+     двух местах значит однажды показать в них разное. */
+  .jr-exit-tag{position:absolute;top:10px;left:16px;display:flex;align-items:center;
+    gap:6px;font-family:var(--sans);line-height:1.2}
+  .jr-exit-tag b{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+    color:rgba(255,107,138,.75)}
+
+  /* Строка над холстом: кнопка со счётчиком, имена — в выпадающем списке. Десять
+     плашек в строку занимали всю ширину раздела ради того, что смотрят изредка. */
+  .jr-exit-bar{position:relative;display:flex;align-items:center;gap:8px;padding:6px 16px;
+    border-bottom:1px solid var(--line);font-family:var(--sans);line-height:1.2;flex:0 0 auto}
+  .jr-exit-btn{display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+    background:var(--card);color:var(--coral);border:1px solid rgba(255,107,138,.4);
+    border-radius:999px;padding:4px 12px;font-family:var(--sans)}
+  .jr-exit-btn:hover{background:var(--card2)}
+  .jr-exit-btn b{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .jr-exit-count{font-size:11.5px;color:var(--dim)}
+  .jr-exit-caret{font-size:9px;color:var(--faint)}
+  .jr-exit-pop{position:absolute;top:calc(100% - 2px);left:16px;z-index:80;
+    display:flex;flex-wrap:wrap;gap:6px;max-width:min(680px,calc(100% - 32px));
+    max-height:260px;overflow-y:auto;padding:10px;border-radius:12px;
+    background:var(--bg2);border:1px solid var(--line);box-shadow:0 16px 48px rgba(0,0,0,.5)}
+  /* flex:0 0 auto обязателен: без него плашки не переносятся, а ужимаются, и имена
+     событий обрезаются посреди слова — как раз то, ради чего их сюда и вынесли. */
+  .jr-exit-pop i{flex:0 0 auto;font-style:normal;font-family:var(--mono);font-size:10.5px;
+    color:var(--coral);padding:2px 8px;border-radius:999px;background:var(--card);
+    border:1px solid rgba(255,107,138,.45)}
+  .jr-exit-pop i.jr-exit-raw{font-family:var(--sans);max-width:100%;overflow:hidden;text-overflow:ellipsis}
   /* мультивыделение нод и рамка выделения */
   #jrCanvas .drawflow-node.jr-msel{outline:2px dashed var(--amber);outline-offset:3px}
   #jrBand{position:absolute;z-index:65;border:1.5px dashed var(--blue);

@@ -17,8 +17,9 @@ public final class RoleDtos {
             boolean isSuperAdmin,  // всё; привязана к ADMIN_EMAIL
             boolean isSystem,      // встроенная: удалить/переименовать нельзя
             List<SectionAccessDto> access,   // матрица прав роли по разделам
-            boolean manageable,    // может ли текущий пользователь править/удалять эту роль
-            long users             // сколько учёток на роли (для защиты от удаления)
+            boolean manageable,    // может ли текущий пользователь править эту роль
+            long users,            // сколько учёток на роли
+            boolean active         // роль активна: назначается и пускает своих носителей
     ) {}
 
     // isSuperAdmin через панель не задаётся — супер-роль одна, встроенная.

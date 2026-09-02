@@ -21,6 +21,20 @@ function renderTemplateDetails(data, templateId) {
     var work = Object.assign({}, data);
     /* флаг cross не хранится в БД отдельным полем — восстанавливаем из communication_name */
     if (work.cross == null) work.cross = !!(work.comname && String(work.comname).indexOf('-cross') !== -1);
+    /* is_contact — ровно та же история: своей колонки в notice.* у него нет, но он
+       виден в campaign_name, где вместо канала стоит contact_. Оттуда и читаем,
+       иначе галка при открытии сохранённого шаблона всегда была бы снята. */
+    if (work.cc_cross == null) work.cc_cross = /^contact_/.test(String(work.source || ''));
+    /* is_autopromo — тоже без своей колонки: виден суффиксом -autopromo в
+       communication_name, оттуда и читаем при открытии сохранённого шаблона */
+    if (work.autopromo == null) work.autopromo = sfdAutopromoOn(work);
+    /* дата в имени — не сегодняшняя: значит её задавали руками. Восстанавливаем и флаг,
+       и саму дату, иначе первая же правка пересчитала бы имя на сегодня. */
+    if (work.delayed == null){
+        var был = sfdDelayedFromSource(work);
+        work.delayed = !!был;
+        if (был && !work.promo_date) work.promo_date = был;
+    }
     SFD_STATE = {
         id: templateId || null,
         orig: data,
@@ -39,7 +53,7 @@ function renderTemplateDetails(data, templateId) {
 function sfdStripComnameFlags(v){
     v = String(v == null ? '' : v).trim();
     if (v.indexOf('marketplace-') === 0) v = v.slice('marketplace-'.length);
-    var sufs = ['-cross','-dialog','-loyalty','-nr','-news','-mobile-app'];
+    var sufs = ['-cross','-dialog','-loyalty','-nr','-news','-mobile-app','-autopromo'];
     var changed = true;
     while (changed){
         changed = false;
@@ -48,26 +62,89 @@ function sfdStripComnameFlags(v){
             if (v.length > s.length && v.slice(-s.length) === s){ v = v.slice(0, -s.length); changed = true; break; }
         }
     }
-    return v || 'NoComName';
+    /* Пустое имя так и остаётся пустым: NoComName здесь подставлялся как заглушка, из-за
+       чего поле выглядело заполненным, а сохранить шаблон всё равно не давало. Теперь
+       NoComName — только плейсхолдер в поле, значением он не становится. */
+    return v;
 }
 function sfdComputeComname(d){
     var b = sfdStripComnameFlags(d.comname);
     /* база out-trigger- достраивается партнёром (правило updateComNameFromContext) */
     if (b.indexOf('out-trigger-') === 0) b = 'out-trigger-' + (d.partner || '');
-    var v = (d.marketplace ? 'marketplace-' : '') + (b || 'NoComName');
+    /* без имени суффиксы вешать не на что: собранное из одних флагов «-cross-nr»
+       именем не является и в campaign_name уехало бы мусором */
+    if (!b) return '';
+    var v = (d.marketplace ? 'marketplace-' : '') + b;
     if (d.cross) v += '-cross';
     if (d.dialog) v += '-dialog';
     if (d.loyalty) v += '-loyalty';
     if (d.national_rating) v += '-nr';
     if (d.news) v += '-news';
     if (d.mobile_app) v += '-mobile-app';
+    /* autopromo — последним суффиксом. Дефис только если есть к чему цеплять:
+       у пустого имени коммуникации остаётся голое autopromo. */
+    if (d.autopromo) v += (v ? '-' : '') + 'autopromo';
     return v;
 }
+/* Флаг is_autopromo своей колонки в notice.* не имеет — признак живёт суффиксом в
+   communication_name. Правки из списка шаблонов приходят объектом без ключа
+   autopromo (dtoToV1 его не знает), поэтому при отсутствии ключа читаем имя:
+   иначе переименование строки в списке вернуло бы в campaign_name дату. */
+function sfdAutopromoOn(d){
+    if (d.autopromo != null) return !!d.autopromo;
+    return /(^|-)autopromo(-|$)/.test(String(d.comname || ''));
+}
+
+/* ---------- дата в имени кампании ----------
+   По умолчанию в campaign_name уходит сегодняшнее число: рассылку заводят в день
+   отправки. «Отложенное промо» — когда шаблон готовят заранее: дату задают руками,
+   и в имени оказывается она. Больше флаг ничего не меняет.
+   Своей колонки в БД у него нет — дата видна в самом имени, оттуда и читается при
+   открытии сохранённого шаблона (sfdDelayedFromSource). */
+function sfdPromoDate(d){
+    var today = (typeof formatDateDDMMYY === 'function') ? formatDateDDMMYY() : '';
+    if (!d) return today;
+    /* Ключа delayed нет вовсе — объект пришёл не из карточки, а из списка шаблонов
+       (dtoToV1 про флаг не знает). Тогда читаем дату из сохранённого имени: иначе
+       переименование строки в списке молча переставило бы её на сегодня. */
+    if (d.delayed == null){
+        var было = sfdDelayedFromSource(d);
+        if (!было) return today;
+        var q = было.split('-');
+        return q[2] + q[1] + q[0].slice(2);
+    }
+    var iso = String(d.promo_date ? d.promo_date : '').trim();
+    if (d.delayed && /^\d{4}-\d{2}-\d{2}$/.test(iso)){
+        var p = iso.split('-');
+        return p[2] + p[1] + p[0].slice(2);          /* 2026-08-20 -> 200826 */
+    }
+    return today;
+}
+/**
+ * Восстановить «отложенное промо» из сохранённого имени кампании.
+ * <p>
+ * Имя promo-кампании кончается на ддммгг. Стоит там не сегодняшнее число — значит дату
+ * задавали руками; иначе при первой же правке любого поля имя пересчиталось бы на
+ * сегодня и молча уехало от того, что согласовали.
+ */
+function sfdDelayedFromSource(d){
+    var m = /_(\d{2})(\d{2})(\d{2})(?:day)?$/.exec(String(d && d.source ? d.source : ''));
+    if (!m) return null;
+    var today = (typeof formatDateDDMMYY === 'function') ? formatDateDDMMYY() : '';
+    if ((m[1] + m[2] + m[3]) === today) return null;
+    return '20' + m[3] + '-' + m[2] + '-' + m[1];
+}
 function sfdComputeCampaignName(d){
+    /* «выгрузка в КЦ» (в развёрнутой форме — cb-sms-cc / cb-email-cc): вместо канала в
+       campaign_name встаёт contact. Своей колонки у флага нет, поэтому при открытии
+       он восстанавливается из префикса — но раз человек может его переключить, решает
+       именно галка, и только при её отсутствии смотрим на сохранённое имя. */
+    var ccOn = (d.cc_cross != null ? !!d.cc_cross : /^contact_/.test(String(d.source || '')));
     var senderType = d.trigger;
     if (senderType !== 'promo' && senderType !== 'trigger') return '';
     var product = d.product || '', partner = d.partner || '', comname = d.comname || '', day = d.day || '';
-    var date = (typeof formatDateDDMMYY === 'function') ? formatDateDDMMYY() : '';
+    /* autopromo: дата из имени кампании уходит — такие рассылки не привязаны ко дню */
+    var date = sfdAutopromoOn(d) ? '' : sfdPromoDate(d);
     if (d.channel === 'cc'){
         var segment = (d.segment != null && d.segment !== '') ? d.segment : (d.code || '');
         if (senderType === 'trigger') return 'contact_' + senderType + '_' + product + '_' + comname + '_' + segment + '_' + day + 'day';
@@ -77,16 +154,124 @@ function sfdComputeCampaignName(d){
        FA — как fin-assistent (единый нейминг с «Планированием промо») */
     var chTab = ({ sms:'sms', push:'mobile-push', 'mobile-push':'mobile-push', email:'email',
                    fa:'fin-assistent', vk:'vk' })[d.channel] || d.channel;
-    /* контекст «выгрузка в КЦ» (cb-sms-cc / cb-email-cc) отдельным полем не хранится —
-       восстанавливаем из сохранённого campaign_name (префикс contact_) */
-    var tab = /^contact_/.test(d.source || '') ? 'contact' : chTab;
-    if (senderType === 'promo') return tab + '_' + senderType + '_' + product + '_' + partner + '_' + comname + '_' + date;
+    var tab = ccOn ? 'contact' : chTab;
+    /* дата приклеивается отдельно: у autopromo её нет, и конкатенация оставила бы
+       висеть хвостовой разделитель — email_promo_kk_alfa_leto_.
+       Пустые product/partner при этом по-прежнему дают двойное подчёркивание:
+       так видно, что поле не заполнено, и правило нейминга это не меняет. */
+    if (senderType === 'promo'){
+        var head = tab + '_' + senderType + '_' + product + '_' + partner + '_' + comname;
+        return date ? head + '_' + date : head;
+    }
     return tab + '_' + senderType + '_' + product + '_' + comname + '_' + day + 'day';
 }
+/**
+ * Не заводим второй раз то, что уже заведено.
+ *
+ * Спрашиваем сервер ДО сохранения, чтобы показать вопрос человеку, а не отказ после
+ * нажатия. Проверок две, и они разной строгости:
+ *   letteros_id — точный ключ макета письма: совпадение означает то же самое письмо,
+ *                 и заводить второй шаблон незачем — предлагаем открыть существующий;
+ *   source      — имя кампании: обычно совпадение это повторное «Создать», но у А/Б-пары
+ *                 и у дней цепочки оно общее по замыслу, поэтому спрашиваем, а не запрещаем.
+ *
+ * Возвращает промис: null — не сохранять, объект {force} — сохранять (force сообщает
+ * серверу, что дубль по source осознанный). Проверка не удалась — работать не мешаем:
+ * сервер проверит то же самое сам.
+ */
+function sfdGuardDuplicate(d){
+    if (!CRM.willCreateFromV1(d)) return Promise.resolve({ force:false });
+    var source = d.source || '';
+    var letteros = (d.channel === 'email') ? (d.letteros_id || '') : '';
+    if (!source && !letteros) return Promise.resolve({ force:false });
+    return CRM.templateDuplicates(d.channel, source, letteros).then(function(res){
+        if (res && res.letterosId){
+            alert(sfdT('Письмо с таким Letteros Id уже заведено') + ': ' + d.channel + '/' + res.letterosId +
+                '.\n' + sfdT('Откройте существующий шаблон вместо создания нового.'));
+            return null;
+        }
+        if (res && res.source){
+            return confirm(sfdT('Шаблон с таким source уже есть') + ': ' + d.channel + '/' + res.source +
+                '\n' + source + '\n\n' +
+                sfdT('Создать ещё один? Так делают для А/Б-пары и для дней цепочки.'))
+                ? { force:true } : null;
+        }
+        return { force:false };
+    }).catch(function(){ return { force:false }; });
+}
+
+/* ---------- предзаполнение по типу отправителя ----------
+   У promo-рассылок эти четыре поля всегда одни и те же, и заполнять их руками каждый
+   раз незачем. Пишем во все четыре, а не только в пустые: правило жёсткое, и выбранное
+   раньше значение (например touch point из прошлой правки карточки) должно смениться на
+   promo — иначе выбор «promo» не приводил бы к обещанному состоянию полей. Срабатывает
+   только в момент выбора типа отправителя, при обычной правке других полей — нет. */
+var SFD_PROMO_DEFAULTS = { touch:'promo', day:'0', communication_type:'adv', biz_type:'adv' };
+function sfdApplyPromoDefaults(d){
+    if (d.trigger !== 'promo') return false;
+    var changed = false;
+    Object.keys(SFD_PROMO_DEFAULTS).forEach(function(k){
+        if (String(d[k] == null ? '' : d[k]) === SFD_PROMO_DEFAULTS[k]) return;
+        d[k] = SFD_PROMO_DEFAULTS[k];
+        changed = true;
+    });
+    return changed;
+}
+
+/* ---------- Landing page из ссылки ----------
+   aff_sub3 — путь посадочной страницы, и он всегда есть в самой ссылке. Берём то, что
+   идёт после домена banki.ru, и отбрасываем два вида шума:
+     · query и якорь — utm-метки к посадочной не относятся;
+     · служебный сегмент /webview/ — он про способ открытия, а не про страницу.
+   Примеры:
+     https://www.banki.ru/webview/promo/leto?utm_source=push  ->  /promo/leto
+     https://www.banki.ru/promo/leto                          ->  /promo/leto
+   Чужие домены не трогаем: там путь к нашей аналитике отношения не имеет. */
+function sfdLandingFromLink(url){
+    var s = String(url == null ? '' : url).trim();
+    if (!s) return '';
+    var m = /(?:^|\/\/|\.)((?:[a-z0-9-]+\.)*banki\.ru)(\/[^\s]*)?/i.exec(s);
+    if (!m) return '';
+    var tail = (m[2] || '').split('#')[0].split('?')[0];
+    var wv = /\/webview\/(.*)$/i.exec(tail);
+    if (wv) tail = '/' + wv[1];
+    return (tail === '' || tail === '/') ? '' : tail;
+}
+/* Ссылка, из которой берём посадочную: у пуша и Live Activity это webview (deep link
+   там служебный, с префиксом deepLink/webview?webviewUrl=), у финансового ассистента —
+   webview либо web_url. У остальных каналов ссылки в карточке нет. */
+function sfdLinkFieldsOf(channel){
+    if (channel === 'push' || channel === 'mobile-push' || channel === 'la') return ['webview'];
+    if (channel === 'fa') return ['webview', 'web_url'];
+    return [];
+}
+/**
+ * Подставить посадочную из ссылки.
+ * <p>
+ * Перетирать введённое руками нельзя, но и застревать на старом значении при смене
+ * ссылки тоже: помним последнее подставленное (st.landingAuto) и обновляем поле, только
+ * пока в нём стоит ровно оно либо пусто. Стоит своё — не трогаем совсем.
+ */
+function sfdApplyLandingFromLink(){
+    var st = SFD_STATE; if (!st) return false;
+    var d = st.work;
+    var fields = sfdLinkFieldsOf(d.channel);
+    var derived = '';
+    for (var i = 0; i < fields.length && !derived; i++) derived = sfdLandingFromLink(d[fields[i]]);
+    if (!derived) return false;
+    var cur = String(d.aff_sub3 == null ? '' : d.aff_sub3).trim();
+    if (cur !== '' && cur !== st.landingAuto) return false;   /* задано руками — оставляем */
+    if (cur === derived) return false;
+    d.aff_sub3 = derived;
+    st.landingAuto = derived;
+    return true;
+}
+
 /* touch здесь не ради comname/source (они его не используют), а ради адреса
    отправителя: renewal — первое условие в правиле. */
 var SFD_NAME_KEYS = { trigger:1, product:1, partner:1, comname:1, day:1, segment:1, touch:1,
-    marketplace:1, cross:1, dialog:1, loyalty:1, national_rating:1, news:1, mobile_app:1 };
+    marketplace:1, cross:1, cc_cross:1, dialog:1, loyalty:1, national_rating:1, news:1, mobile_app:1,
+    autopromo:1, delayed:1, promo_date:1 };
 /* Адрес отправителя e-mail — копия generateEmail из v2. Порядок проверок значимый:
    renewal (по touch_point) → service → info (по business_communication_type) →
    trigger+adv → promo+adv (по trigger_type) → newsletter как общий случай. */
@@ -100,6 +285,38 @@ function sfdComputeEmailFrom(d){
     else email = 'newsletter@email.banki.ru';
     return 'Банки.ру<' + email + '>';
 }
+/* Поля, от которых зависит СОСТАВ строк карточки: только они требуют полной
+   перерисовки. Тип отправителя открывает «Отложенное промо», флаг — поле даты,
+   тумблер LA — набор канальных полей. */
+var SFD_RELAYOUT = { trigger:1, delayed:1, is_la:1 };
+
+/**
+ * Обновить значения строк «только на чтение» без перерисовки карточки.
+ * <p>
+ * Campaign name, communication name и адрес отправителя считаются от других полей,
+ * и раньше их показывал только полный sfdRender. Перерисовка пересоздаёт поля ввода:
+ * у обычного текста это незаметно, а у нативного поля даты сбрасывает набранный
+ * сегмент — число ввести не получалось вовсе.
+ */
+/* Обновляем только то, что пересчитывает sfdRecalcNames. Остальные строки трогать
+   нельзя: часть из них показывается через fmt (канал как «SMS», а не «sms»), и
+   подстановка сырого значения испортила бы вид. */
+var SFD_COMPUTED = { source:1, comname:1, email_from:1 };
+
+function sfdRefreshViews(){
+    var st = SFD_STATE; if (!st) return;
+    var out = document.getElementById(st.mode === 'create' ? 'wizardOutput' : 'settingsOutput');
+    if (!out) return;
+    out.querySelectorAll('[data-view]').forEach(function(el){
+        var k = el.dataset.view;
+        if (!SFD_COMPUTED[k]) return;
+        var v = st.work[k];
+        var empty = (v === undefined || v === null || v === '');
+        el.textContent = empty ? '—' : String(v);
+        el.className = empty ? 'v empty' : 'v';
+    });
+}
+
 function sfdRecalcNames(){
     var st = SFD_STATE; if (!st) return;
     var d = st.work;
@@ -115,7 +332,7 @@ function sfdRecalcNames(){
 }
 
 /* ---------- справочники значений для карточки ----------
-   dictionary.d_touch_point и dictionary.d_communication_name уже отдаются бэкендом
+   reference.d_touch_point и reference.d_communication_name уже отдаются бэкендом
    (/api/dictionaries/*). Раньше их подтягивал wizard.js в старые канальные формы;
    формы ушли вместе с переходом мастера на карточку, и поля снова стали обычным
    вводом руками. Тянем справочники сюда: touch_point — строгий список, а
@@ -256,8 +473,11 @@ function sfdFieldDefs(d){
         content.push({ k:'email_from', label:'Email from', ro:true });
         content.push({ k:'letteros_id', label:'Letteros ID' });
     } else if (!isCC){
-        content.push({ k:'message', label:'Message text', wide:true, type:'textarea' });
+        /* У пуша заголовок идёт первым, а текст под ним — так же, как их видит человек
+           в шторке уведомления. Раньше порядок был обратный, и карточка расходилась с
+           тем, что получится на экране телефона. */
         if (isPush) content.push({ k:'title', label:'Title' });
+        content.push({ k:'message', label:'Message text', wide:true, type:'textarea' });
         if (isSms) content.push({ k:'sender_name', label:'Sender name', type:'select', opts:['','Banki.ru','Bamm.ru'] });
     }
     if (isPush){
@@ -348,9 +568,28 @@ function sfdFieldDefs(d){
         mainRows.push({ k:'code', label: sfdCodeLabel(ch), ro: !isCreate });
     }
     mainRows.push({ k:'active', label:sfdT('Статус'), type:'bool' });
+    /* «Выгрузка в КЦ» (в развёрнутой форме — SMS CallCenter / Email CallCenter):
+       меняет campaign_name, подставляя contact вместо канала. Стоит здесь, рядом со
+       статусом, а не среди служебных флагов: те правят communication_name суффиксами,
+       а этот — сам канал в имени, и решение по нему принимают в начале, а не в конце.
+       Канал только SMS и e-mail: у пуша и КЦ выгружать в кол-центр нечего. */
+    if (isSms || isEmail) mainRows.push({ k:'cc_cross', label:'is_contact', type:'bool' });
+    /* is_autopromo — рядом со статусом и is_contact, а не среди служебных флагов:
+       он тоже меняет само имя кампании (убирает из него дату), а не только вешает
+       суффикс. Во всех каналах кроме КЦ: у сегментов кол-центра имя строится по
+       своим правилам (contact_…day), суффикса там не предусмотрено. */
+    if (!isCC) mainRows.push({ k:'autopromo', label:'is_autopromo', type:'bool' });
+    /* «Отложенное промо» — только у promo: дата есть лишь в имени promo-кампании,
+       у trigger-а в хвосте стоит Nday, и подставлять туда нечего. Поле даты
+       показываем лишь при включённом флаге, чтобы не занимать строку впустую. */
+    if (d.trigger === 'promo'){
+        mainRows.push({ k:'delayed', label:sfdT('Отложенное промо'), type:'bool' });
+        if (d.delayed) mainRows.push({ k:'promo_date', label:sfdT('Дата в имени кампании'), type:'date' });
+    }
     /* combo, а не select: значение выбирается из справочника ИЛИ вписывается своё —
        новые имена коммуникаций заводятся регулярно, строгий список их бы отсёк. */
     mainRows.push({ k:'comname', label:'Communication name', wide:true, type:'combo',
+                    placeholder:'NoComName',
                     opts: sfdDictOpts(SFD_DICT.comm, null, false),
                     fmt:function(){ return SFD_STATE.work.comname; } });
 
@@ -446,6 +685,10 @@ var SFD_DB = {
     aff_sub3:           { all:'aff_sub3' },
     marketplace:        { all:'marketplace' },
     cross:              { all:'—' },
+    cc_cross:           { all:'—' },
+    autopromo:          { all:'—' },
+    delayed:            { all:'—' },
+    promo_date:         { all:'—' },
     dialog:             { all:'dialog' },
     loyalty:            { all:'loyalty' },
     national_rating:    { all:'national_rating' },
@@ -503,6 +746,10 @@ var SFD_HELP = {
     aff_sub3:           'Метка aff_sub3 для партнёрской аналитики.',
     marketplace:        'Продукт маркетплейса: в communication_name добавляется префикс marketplace-.',
     cross:              'Кросс-коммуникация: суффикс -cross. Отдельного поля в БД нет — признак живёт в communication_name.',
+    cc_cross:           'Выгрузка в кол-центр: в campaign_name вместо канала встаёт contact (sms_promo_… → contact_promo_…). Отдельного поля в БД нет — признак виден только в самом имени.',
+    delayed:            'Отложенное промо: шаблон готовят заранее, и в конце campaign_name ставится не сегодняшняя дата, а выбранная. Больше ничего не меняется. Отдельного поля в БД нет — дата видна в самом имени, оттуда и восстанавливается при открытии.',
+    promo_date:         'Дата, которая уйдёт в конец campaign_name в виде ддммгг. Действует только при включённом «Отложенном промо».',
+    autopromo:          'Автопромо: к communication_name добавляется суффикс -autopromo, а из campaign_name уходит дата (sms_promo_kk_alfa_leto_110826 → sms_promo_kk_alfa_leto-autopromo). Отдельного поля в БД нет — признак живёт в имени коммуникации.',
     dialog:             'Ведёт на страницу диалога: суффикс -dialog.',
     loyalty:            'Ссылка на продукты лояльности: суффикс -loyalty.',
     national_rating:    'Народный рейтинг: суффикс -nr.',
@@ -566,6 +813,11 @@ function sfdRowHtml(f){
             valHtml = '<select class="sfd-edit" data-k="' + f.k + '">' + f.opts.map(function(o){
                 return '<option value="' + o + '"' + (String(d[f.k] || '') === o ? ' selected' : '') + '>' + (o || '—') + '</option>';
             }).join('') + '</select>';
+        } else if (f.type === 'date'){
+            /* нативный выбор даты: значение хранится как ГГГГ-ММ-ДД, в имя кампании
+               уходит ддммгг (sfdPromoDate) */
+            valHtml = '<input type="date" class="sfd-edit" data-k="' + f.k + '"' +
+                      ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
         } else if (f.type === 'num'){
             /* Не type=number: он в разных браузерах пропускает e, +, - и знаки экспоненты,
                а нам нужны строго цифры. Текстовое поле с числовой клавиатурой на телефоне,
@@ -584,6 +836,7 @@ function sfdRowHtml(f){
                видит подсказку не из справочника, а из своего же прошлого мусора. */
             var inpHtml = '<input type="text" class="sfd-edit" data-k="' + f.k + '" list="' + lid + '"' +
                       ' autocomplete="off"' +
+                      (f.placeholder ? ' placeholder="' + sfdEsc(f.placeholder) + '"' : '') +
                       ' value="' + sfdEsc(d[f.k] == null ? '' : d[f.k]) + '">';
             /* f.create: вписанное значение можно тут же занести в справочник — иначе оно
                осталось бы только в этом шаблоне и в следующий раз его снова набирали бы руками */
@@ -607,9 +860,11 @@ function sfdRowHtml(f){
     } else if (f.type === 'bool'){
         valHtml = '<span class="v">' + (d[f.k] ? '<span class="flag-on">✓ ' + sfdT('да') + '</span>' : '<span class="flag-off">— ' + sfdT('нет') + '</span>') + '</span>';
     } else {
+        /* data-view: по нему значение обновляется на месте, без перерисовки карточки
+           (см. sfdRefreshViews) — иначе правка одного поля уводила бы курсор из другого */
         valHtml = (raw === undefined || raw === null || raw === '')
-            ? '<span class="v empty">—</span>'
-            : '<span class="v">' + sfdEsc(raw) + '</span>';
+            ? '<span class="v empty" data-view="' + f.k + '">—</span>'
+            : '<span class="v" data-view="' + f.k + '">' + sfdEsc(raw) + '</span>';
     }
     /* карандаш — только при праве edit; иначе поле остаётся, но правки нет (сервер отбил бы) */
     var pen = (!f.ro && !editing && sfdCan('edit'))
@@ -636,7 +891,9 @@ var SFD_PUSH_DEEPLINK = 'https://www.banki.ru/deepLink/webview?webviewUrl=';
    никто не выбирал. Пусть человек выберет сам; значения никуда не делись — они
    первые в своих списках. */
 function sfdBlank(channel){
-    return { channel: channel, code:'', active:true, comname:'NoComName', source:'',
+    /* comname пустой: NoComName стоит плейсхолдером в поле. Раньше он был значением,
+       и карточка выглядела заполненной, а завести шаблон не давала. */
+    return { channel: channel, code:'', active:true, comname:'', source:'',
              trigger:'', product:'', partner:'', touch:'', day:'',
              message:'', title:'', sender_name:'',
              /* только у пуша и Live Activity: у FA и VK свои правила ссылок */
@@ -650,7 +907,8 @@ function sfdBlank(channel){
              /* VK */ vk_template_name:'', ttl:'', ab_group:'', buttons:'',
              /* Live Activity */ activity_name:'', la_event:'', la_visualization:'',
              la_visualization_attributes:'', la_status:'', current_step:'',
-             marketplace:false, cross:false, dialog:false, loyalty:false,
+             marketplace:false, cross:false, cc_cross:false, autopromo:false, delayed:false, promo_date:'',
+             dialog:false, loyalty:false,
              national_rating:false, news:false, mobile_app:false, night_send:false };
 }
 function wizardCardOpen(channel){
@@ -788,12 +1046,11 @@ function sfdCreateMissing(d){
        читается сверху вниз ровно так, как человек будет их заполнять. */
     Object.keys(shown).forEach(function(k){
         if (k === 'comname'){
-            /* NoComName — полноценное значение справочника, но им же заводится пустая
-               карточка (sfdBlank) и его же подставляет sfdComputeComname при пустой базе.
-               По значению «не трогали поле» и «выбрали NoComName осознанно» не различить —
-               различаем по флагу, который ставится при первой правке поля. */
-            if (!d.comname || (d.comname === 'NoComName'
-                && !(SFD_STATE && SFD_STATE.comnameTouched))) miss.push('communication_name');
+            /* Имя обязательно и проверяется как обычное поле: карточка теперь открывается
+               с пустым полем и плейсхолдером NoComName, так что «не трогали» и «выбрали
+               осознанно» различать больше не нужно — раньше ради этого держали флаг
+               comnameTouched, и из-за него шаблон не заводился с виду заполненным полем. */
+            if (!String(d.comname || '').trim()) miss.push('communication_name');
             return;
         }
         if (SFD_REQUIRED.indexOf(k) < 0) return;          /* поле не обязательное */
@@ -808,6 +1065,10 @@ function sfdCreateMissing(d){
        никакого письма. При цепочке ID задаётся по дням в таблице. */
     if (d.channel === 'email' && !chainOn
         && !String(d.letteros_id == null ? '' : d.letteros_id).trim()) miss.push('Letteros ID');
+    /* FA ID требует сам прод: notice.fa_template закрыт проверкой chk_fa_or_msg_null,
+       и она в обеих ветках требует fa_id непустым. Без этой строки шаблон сохранялся
+       у нас и падал уже в очереди доставки — с ошибкой, которую видел не автор. */
+    if (d.channel === 'fa' && !String(d.fa_id == null ? '' : d.fa_id).trim()) miss.push('FA ID');
     /* Message text отдельной строкой здесь больше нет: он в SFD_REQUIRED, а карточка
        при включённой цепочке сама убирает по-дневные поля — проверка идёт по ним. */
     return miss;
@@ -848,20 +1109,30 @@ function sfdCreate(){
            уже не видно. Каждый день берёт контент только из своей строки таблицы. */
         var base = Object.assign({}, d);
         sfdChainKeys(d.channel).forEach(function(k){ base[k] = ''; });
-        var seq = rows.reduce(function(p, row){
-            return p.then(function(acc){
-                var dd = Object.assign({}, base, row.overrides, { day: String(row.day) });
-                if (dd.channel === 'email' && dd.letteros_id) dd.code = dd.letteros_id;
-                var src = sfdComputeCampaignName(dd);
-                if (src) dd.source = src;
-                return CRM.saveFromV1(dd).then(function(r){ acc.push(r && r.code); return acc; });
+        /* Дни цепочки делят одно имя кампании, поэтому спрашиваем про дубль один раз —
+           по первому дню, — а остальные идут с уже полученным согласием. Иначе второй
+           день упирался бы в только что созданный первый. */
+        var first = Object.assign({}, base, rows[0].overrides, { day: String(rows[0].day) });
+        var firstSrc = sfdComputeCampaignName(first);
+        if (firstSrc) first.source = firstSrc;
+        sfdGuardDuplicate(first).then(function(go){
+            if (!go) return;
+            var seq = rows.reduce(function(p, row){
+                return p.then(function(acc){
+                    var dd = Object.assign({}, base, row.overrides, { day: String(row.day) });
+                    if (dd.channel === 'email' && dd.letteros_id) dd.code = dd.letteros_id;
+                    var src = sfdComputeCampaignName(dd);
+                    if (src) dd.source = src;
+                    return CRM.saveFromV1(dd, { force: go.force || acc.length > 0 })
+                        .then(function(r){ acc.push(r && r.code); return acc; });
+                });
+            }, Promise.resolve([]));
+            return seq.then(function(codes){
+                alert(sfdT('Цепочка создана') + ': ' + rows.length + ' ' + sfdT('шаблон(ов)') +
+                    '.\nCode: ' + codes.filter(Boolean).join(', '));
+                refreshList();
+                wizardCardOpen(d.channel);
             });
-        }, Promise.resolve([]));
-        seq.then(function(codes){
-            alert(sfdT('Цепочка создана') + ': ' + rows.length + ' ' + sfdT('шаблон(ов)') +
-                '.\nCode: ' + codes.filter(Boolean).join(', '));
-            refreshList();
-            wizardCardOpen(d.channel);
         }).catch(function(e){ alert(sfdT('Ошибка сохранения') + ': ' + (e && e.message ? e.message : e)); });
         return;
     }
@@ -869,11 +1140,14 @@ function sfdCreate(){
     /* ---- одиночный шаблон ---- */
     if (d.channel === 'email' && !d.letteros_id) d.letteros_id = d.code;
     window.CRM_CURRENT = null;   /* новый шаблон — POST, а не PUT */
-    CRM.saveFromV1(d).then(function(res){
-        var code = (res && res.code != null) ? res.code : d.code;
-        alert(sfdT('Шаблон создан') + '.\ncommunication_name: ' + (d.comname || '') + '\nCode: ' + code);
-        refreshList();
-        wizardCardOpen(d.channel);
+    sfdGuardDuplicate(d).then(function(go){
+        if (!go) return;
+        return CRM.saveFromV1(d, go).then(function(res){
+            var code = (res && res.code != null) ? res.code : d.code;
+            alert(sfdT('Шаблон создан') + '.\ncommunication_name: ' + (d.comname || '') + '\nCode: ' + code);
+            refreshList();
+            wizardCardOpen(d.channel);
+        });
     }).catch(function(e){ alert(sfdT('Ошибка сохранения') + ': ' + (e && e.message ? e.message : e)); });
 }
 /* мастер: обновляем подвал (чего не хватает) без перерисовки — чтобы не терять фокус */
@@ -971,7 +1245,7 @@ function sfdRender(){
     /* редактируемые поля: изменения пишутся в рабочую копию; поля, влияющие на имена,
        пересчитывают communication_name / campaign_name по нашим правилам нейминга */
     output.querySelectorAll('.sfd-edit, .sfd-edit-check').forEach(function(inp){
-        var handler = function(){
+        var handler = function(commit){
             var k = inp.dataset.k;
             /* числовое поле: вычищаем всё, кроме цифр, прямо в поле — иначе набранная
                буква осталась бы на экране и уехала бы в source_type как часть Nday.
@@ -985,23 +1259,38 @@ function sfdRender(){
                 }
             }
             st.work[k] = inp.type === 'checkbox' ? inp.checked : inp.value;
-            /* поле тронули руками — дальше NoComName в нём считается осознанным выбором,
-               а не значением по умолчанию (см. sfdCreateMissing) */
-            if (k === 'comname') st.comnameTouched = true;
             /* тумблер Live Activity — не поле шаблона, а переключатель канала:
                набранное (текст, ссылки, сегментация) остаётся, меняется только
                набор канальных полей и таблица, в которую шаблон уедет */
             if (k === 'is_la') st.work.channel = inp.checked ? 'la' : 'push';
-            if (SFD_NAME_KEYS[k] || k === 'biz_type') sfdRecalcNames();
+            /* Подстановки, меняющие ДРУГИЕ поля карточки: типовые значения promo и
+               посадочная из ссылки. Разбор ссылки — только по commit (change/blur):
+               на каждый набранный символ он давал бы новое значение, а перерисовка
+               из-под рук уводит каретку из поля, в котором печатают. */
+            var filled = false;
+            if (k === 'trigger') filled = sfdApplyPromoDefaults(st.work);
+            if (commit && sfdLinkFieldsOf(st.work.channel).indexOf(k) >= 0) {
+                filled = sfdApplyLandingFromLink() || filled;
+            }
+            if (SFD_NAME_KEYS[k] || k === 'biz_type' || filled) sfdRecalcNames();
             sfdRenderPreview();
+            /* пересчитанные имена показываем на месте: перерисовывать всю карточку
+               ради одной строки незачем, а курсор из поля она уводит */
+            sfdRefreshViews();
+            return filled;
         };
-        inp.addEventListener('input', function(){ handler(); if (isCreate) sfdSyncCreate(); });
+        inp.addEventListener('input', function(){ handler(false); if (isCreate) sfdSyncCreate(); });
         /* чекбоксы и селекты: после change перерисовываем карточку,
            чтобы пересчитанные comname/source сразу были видны.
            В мастере то же делаем по потере фокуса у текстовых полей */
         inp.addEventListener('change', function(){
-            handler();
-            if (inp.type === 'checkbox' || inp.tagName === 'SELECT' || isCreate) sfdRender();
+            var filled = handler(true);
+            /* Перерисовываем только когда меняется НАБОР строк: тип отправителя открывает
+               «Отложенное промо», сам флаг — поле даты, тумблер LA — канальные поля.
+               Для остальных значений хватает обновления на месте, а перерисовка ломала
+               ввод: поле даты пересоздавалось после каждого сегмента, и число набрать
+               было невозможно. */
+            if (SFD_RELAYOUT[inp.dataset.k] || filled) sfdRender();
         });
     });
     /* «+» рядом с combo: занести введённое значение в справочник */
@@ -1435,6 +1724,7 @@ function collectFormData(formEl, channel) {
         else if (classes.includes('cb-night_send')) data.night_send = val;
         else if (classes.includes('cb-mobile_app')) data.mobile_app = val;
         else if (classes.includes('cb-cross')) data.cross = val;
+        else if (classes.includes('cb-autopromo')) data.autopromo = val;
         else if (classes.includes('cb-chain')) data.chain = val;
         else if (classes.includes('chain-count')) data.chain_count = val;
         else if (classes.includes('cb-sms-cc') || classes.includes('cb-email-cc')) data.cc_cross = val;
@@ -1502,29 +1792,44 @@ function saveFromChannelForm(channel) {
         if (rows == null) return;
         if (!rows.length) { alert('Сгенерируйте строки: введите дни и нажмите «Сгенерировать строки».'); return; }
         window.CRM_CURRENT = null;                    // цепочка — всегда создание
-        var seq = rows.reduce(function (p, row) {
-            return p.then(function (acc) {
-                var d = Object.assign({}, data, row.overrides, {
-                    day: String(row.day),
-                    source: computeCampaignName(formEl, row.day)
+        /* Про дубль спрашиваем один раз, по первому дню: имя кампании у дней общее,
+           и второй день упирался бы в только что созданный первый. */
+        var firstDay = Object.assign({}, data, rows[0].overrides, {
+            day: String(rows[0].day),
+            source: computeCampaignName(formEl, rows[0].day)
+        });
+        sfdGuardDuplicate(firstDay).then(function (go) {
+            if (!go) return;
+            var seq = rows.reduce(function (p, row) {
+                return p.then(function (acc) {
+                    var d = Object.assign({}, data, row.overrides, {
+                        day: String(row.day),
+                        source: computeCampaignName(formEl, row.day)
+                    });
+                    return CRM.saveFromV1(d, { force: go.force || acc.length > 0 })
+                        .then(function (r) { acc.push(r && r.code); return acc; });
                 });
-                return CRM.saveFromV1(d).then(function (r) { acc.push(r && r.code); return acc; });
+            }, Promise.resolve([]));
+            return seq.then(function (codes) {
+                alert('Цепочка сохранена: ' + rows.length + ' шаблон(ов).\nCode: ' + codes.filter(Boolean).join(', '));
+                window.CRM_CURRENT = null;
+                afterChannelSave();
             });
-        }, Promise.resolve([]));
-        seq.then(function (codes) {
-            alert('Цепочка сохранена: ' + rows.length + ' шаблон(ов).\nCode: ' + codes.filter(Boolean).join(', '));
-            window.CRM_CURRENT = null;
-            afterChannelSave();
         }).catch(function (e) { alert('Ошибка сохранения цепочки: ' + (e && e.message ? e.message : e)); });
         return;
     }
 
     // ---- Одиночный шаблон ----
     data.source = computeCampaignName(formEl, undefined) || data.source;
-    CRM.saveFromV1(data).then(function (r) {
-        alert('Сохранено.\ncommunication_name: ' + data.comname + '\nCode: ' + (r && r.code != null ? r.code : ''));
-        window.CRM_CURRENT = null;
-        afterChannelSave();
+    /* Проверка молчит, когда это правка открытого шаблона: спрашивать «такой уже есть»
+       про него же самого было бы издевательством (см. sfdGuardDuplicate). */
+    sfdGuardDuplicate(data).then(function (go) {
+        if (!go) return;
+        return CRM.saveFromV1(data, go).then(function (r) {
+            alert('Сохранено.\ncommunication_name: ' + data.comname + '\nCode: ' + (r && r.code != null ? r.code : ''));
+            window.CRM_CURRENT = null;
+            afterChannelSave();
+        });
     }).catch(function (e) { alert('Ошибка сохранения: ' + (e && e.message ? e.message : e)); });
 }
 

@@ -82,6 +82,37 @@ public class RoleService {
         return toView(roles.save(r));
     }
 
+    /**
+     * Включить или отключить роль — замена удалению.
+     * <p>
+     * Удалить роль можно было только пока ею никто не пользуется и она не встроенная, то
+     * есть практически никогда. Деактивация решает ту же задачу и ничего не теряет: роль
+     * остаётся в справочнике вместе со своей матрицей, но новым учёткам не назначается,
+     * а её носители в панель не пускаются (проверка на входе, рядом с «учётка выключена»).
+     * <p>
+     * Встроенность деактивации НЕ мешает: «Маркетолог» может стать ненужным ровно так же,
+     * как заведённая руками роль. А вот запереть себя снаружи нельзя: супер-роль не
+     * отключается вовсе, и последнюю активную админ-роль тоже не отдадим — иначе управлять
+     * доступом станет некому.
+     */
+    @Transactional
+    public RoleView setActive(Long id, boolean active) {
+        Role r = get(id);
+        if (r.isSuperAdmin()) throw forbidden();
+        if (r.isAdminLevel() && !currentIsSuperAdmin()) throw forbidden();
+        if (!active && r.isAdminLevel()) {
+            long liveAdmins = roles.findAll().stream()
+                    .filter(x -> x.isAdminLevel() && x.isActive() && !x.getId().equals(r.getId()))
+                    .count();
+            if (liveAdmins == 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Это последняя активная админ-роль — отключив её, управлять доступом будет некому");
+            }
+        }
+        r.setActive(active);
+        return toView(roles.save(r));
+    }
+
     @Transactional
     public void delete(Long id) {
         Role r = get(id);
@@ -135,6 +166,17 @@ public class RoleService {
             boolean w = Sections.isWritable(s);
             out.add(new SectionAccess(s, true, w && a.add(), w && a.edit(), w && a.delete()));
         }
+        /* Секции сущностей (ent:client) в Sections.ALL не лежат: их список задаёт схема,
+           а не константа. Поэтому проходим ещё раз по присланному — иначе матрица
+           показывала бы галки, а сохранение молча их выбрасывало. Права на запись у них
+           нет: данные сущностей пока живут в браузере, и обещать их защиту нечестно. */
+        if (!adminRole && access != null) {
+            for (SectionAccessDto a : access) {
+                if (!Sections.isEntity(a.section())) continue;
+                if (!(a.read() || a.add() || a.edit() || a.delete())) continue;
+                out.add(new SectionAccess(a.section(), true, false, false, false));
+            }
+        }
         return out;
     }
 
@@ -172,6 +214,6 @@ public class RoleService {
         // супер-роль — никогда; админ-роль — только супер-админ.
         boolean manageable = !r.isSuperAdmin() && (!r.isAdminLevel() || currentIsSuperAdmin());
         return new RoleView(r.getId(), r.getName(), r.isAdmin(), r.isSuperAdmin(),
-                r.isSystem(), access, manageable, userCount);
+                r.isSystem(), access, manageable, userCount, r.isActive());
     }
 }

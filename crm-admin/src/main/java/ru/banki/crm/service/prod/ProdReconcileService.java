@@ -42,14 +42,18 @@ public class ProdReconcileService {
     private final ObjectMapper om;
     private final TransactionTemplate tx;
 
+    private final ProcessControlService control;
+
     public ProdReconcileService(ProdDbService prod, TemplateStore store, JdbcTemplate jdbc,
-                                AdminLogService adminLog, ObjectMapper om, TransactionTemplate tx) {
+                                AdminLogService adminLog, ObjectMapper om, TransactionTemplate tx,
+                                ProcessControlService control) {
         this.prod = prod;
         this.store = store;
         this.jdbc = jdbc;
         this.adminLog = adminLog;
         this.om = om;
         this.tx = tx;
+        this.control = control;
     }
 
     // ---- фоновый импорт «всё из прода» (одна задача за раз, прогресс — поллингом) ----
@@ -69,6 +73,14 @@ public class ProdReconcileService {
     public Map<String, Object> startBulkImport() {
         Map<String, Object> out = new LinkedHashMap<>();
         if (!prod.configured()) { out.put("started", false); out.put("hint", "Прод-БД не настроена."); return out; }
+        /* Тот же выключатель, что и у обратного ETL: направление одно (прод → мы),
+           и разводить для него отдельный рычаг значило бы, что «остановил ETL», а данные
+           всё равно едут — просто другой кнопкой. */
+        if (!control.canStart(ProcessControlService.ETL_NOTICE)) {
+            out.put("started", false);
+            out.put("message", "Обратный ETL остановлен: «Переливы» → «Процессы переливов».");
+            return out;
+        }
         if (!bulkRunning.compareAndSet(false, true)) { out.put("started", false); out.put("message", "Импорт уже идёт."); return out; }
         bulkImported.set(0); bulkDone = false; bulkError = null; bulkPhase = null;
         bulkExec.submit(this::runBulkImport);
@@ -90,6 +102,13 @@ public class ProdReconcileService {
     private void runBulkImport() {
         try {
             for (String ch : CHANNELS) {
+                /* Безопасная граница — между каналами: пачка внутри канала пишется
+                   транзакцией, и обрывать её посередине нечестно по отношению к тому,
+                   кто потом будет сверять счётчики. */
+                if (control.stopRequested(ProcessControlService.ETL_NOTICE)) {
+                    bulkPhase = "остановлен по запросу перед каналом " + ch;
+                    break;
+                }
                 bulkPhase = ch;
                 final List<JsonNode> buf = new ArrayList<>();
                 try {

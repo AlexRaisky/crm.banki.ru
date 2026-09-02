@@ -21,8 +21,14 @@ const NAV = [
       /* «Список шаблонов» переехал в раздел «Сущности» как подраздел «Шаблоны и сегменты»
          (сущность template в схеме, source:"templates"). Пункт здесь не дублируем —
          id секции RBAC остался прежним (templates), права не менялись. */
-      /* «Просмотр настроек» — тот же раздел admin: ACL следует правам admin (data-acl-section) */
-      { id:"viewer",    label:"Просмотр настроек",   icon:"search", view:"sec-admin", adminMode:"view", aclSection:"admin" },
+      /* «Просмотр настроек» — тот же экран, что и мастер, но в режиме чтения. Секция
+         у пункта теперь своя (viewer), а не заимствованная у admin: смотреть настройки
+         коммуникаций часто нужно тем, кого в мастер не пускают. Миграция V38 выдала
+         viewer всем, у кого был admin, — пункт ни у кого не пропал. */
+      /* «Просмотр настроек» убран: это был тот же экран мастера в режиме чтения, а
+         карточка шаблона открывается из реестра — двух дверей в одну комнату не нужно.
+         Секция viewer в матрице прав осталась: права ею по-прежнему выдаются, просто
+         отдельного пункта в сайдбаре больше нет. */
       /* клиентские инструменты без серверной секции — не фильтруются по me.sections (data-no-acl) */
       { id:"srcbuilder",label:"Конструктор source",  icon:"pulse", view:"sec-srcbuilder" },
       /* promo: таблица давно переехала на сервер (app.promo_plan), noAcl снят в V29 —
@@ -34,14 +40,27 @@ const NAV = [
       { id:"abtests",   label:"А/Б тесты",           icon:"beaker", view:"sec-abtests" },
       { id:"heatmap",   label:"Тепловая карта",      icon:"grid2", view:"view-heatmap", appOnly:["Маркетинг"] },
   ]},
+  /* Группы «События» здесь больше нет: события стали сущностью (source:"events" в схеме)
+     и живут подразделом в «Сущностях», как раньше туда переехали шаблоны. Пункт ведёт
+     на тот же экран списка, а заведение — кнопкой в нём: окно спрашивает род события и
+     показывает нужную форму. Три отдельных пункта под одно действие были лишней
+     развилкой — человек выбирал раздел раньше, чем понимал, что заводит.
+
+     Секции RBAC не менялись: ev-online, ev-offline, ev-list и ev-export на месте, права
+     по ним выдаются как выдавались. Сами экраны (#sec-event-online, #sec-event-offline)
+     тоже остались в разметке — из них окно и забирает формы. */
   /* «Сущности» — данные CRM по схеме Scheme Builder. Подразделы НЕ задаются здесь:
      children заполняет js/entities.js (entSyncNav) по сущностям схемы, поэтому
      заведённая в Scheme Builder сущность появляется в панели сама.
      adminOnly:true — стартовое (безопасное) состояние: до ответа /api/me и загрузки
      схемы раздел считается админским. Дальше entSyncNav пересчитывает флаг: он
      снимается, только если пользователю доступна хотя бы одна сущность. По
-     умолчанию не-админам не доступна ни одна — доступ выдаётся явно, через
-     реестр crmpanel:entityAccess (entAccessSet). */
+     умолчанию не-админам не доступна ни одна — доступ выдаётся явно, в матрице
+     прав: секция ent:<сущность> на одну сущность, entities — на все сразу. */
+  /* id группы совпадает с секцией RBAC entities: гейт стоит не здесь, а в entAllowed
+     (entities.js) — раздел показывается, когда доступна хотя бы одна сущность, а
+     доступность теперь решает секция. Держать ещё и гейт на самой группе нельзя:
+     он отобрал бы раздел у ролей, которым сущность выдали клиентским реестром. */
   { id:"entities", label:"Сущности", icon:"db", overviewView:"view-entities-overview",
     adminOnly:true, children:[] },
   /* «Отчёты» — встраивание отчётов Tableau: обзор с карточками, у каждого отчёта
@@ -58,6 +77,16 @@ const NAV = [
   ]},
   { id:"dash", label:"Дашборд", icon:"gauge", overviewView:"view-dash-overview", children:[
       { id:"dashboard",  label:"Общая статистика",  icon:"chart", view:"sec-admin", adminMode:"dashboard" },
+      /* Аналитика коммуникаций — тот же дашборд, но на настоящих данных: витрины
+         sandbox.t_comm_* в Greenplum. «Общая статистика» рядом до сих пор рисуется по
+         демо-набору (FALLBACK_DASHBOARD), поэтому пункты разные, а не один.
+
+         id свой, а секция RBAC общая (aclSection: dashboard) — как у «Просмотра
+         настроек». Дать обоим пунктам один id нельзя: по нему оболочка и подсвечивает
+         активный пункт, и раскрывает flyout, и фильтрует по правам — два одинаковых
+         превратились бы в один. */
+      { id:"comm-analytics", label:"Аналитика коммуникаций", icon:"chart", view:"sec-comm-analytics",
+        aclSection:"dashboard" },
       { id:"deviations", label:"Панель отклонений", icon:"pulse", view:"sec-deviations" },
   ]},
   { id:"monitoring", label:"Мониторинг", icon:"monitor", overviewView:"view-mon-overview", children:[
@@ -95,6 +124,7 @@ const ICONS = {
   plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
   reports:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-4M12 17V8M16 17v-6"/></svg>',
+  bolt:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 4 14 11 14 10 22 20 10 13 10 13 2"/></svg>',
   /* «Сущности»: db — группа раздела, table — подраздел отдельной сущности */
   db:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/><path d="M4 11.5v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></svg>',
   table:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.5h18M9 9.5V20"/></svg>',
@@ -640,7 +670,27 @@ function renderLauncher(){
   });
 }
 /* элементы, доступные только в отдельных приложениях (appOnly) */
-function childVisible(k){ return !k.appOnly || k.appOnly.includes(currentApp); }
+/* Приложение может ограничивать не только разделы, но и отдельные подразделы:
+   набор задаётся в настройках («Приложения и разделы») и лежит в crmpanel:appSections
+   одним плоским списком id — родителя оболочка находит сама, по NAV.
+
+   Особый случай — набор, в котором нет НИ ОДНОГО подраздела этой группы: так выглядят
+   наборы, сохранённые до появления подразделов. Читать их как «все подразделы скрыты»
+   нельзя — выкат молча опустошил бы меню тем, у кого набор настроен. Считаем такую
+   группу разрешённой целиком; первое же сохранение из формы запишет подразделы явно. */
+function appAllowsChild(k){
+  const a = allowedSections();
+  if (!a) return true;
+  const parent = NAV.find(n => n.children && n.children.some(c => c.id === k.id));
+  if (!parent) return true;
+  const kids = parent.children.map(c => c.id);
+  if (!kids.some(id => a.includes(id))) return true;
+  return a.includes(k.id);
+}
+function childVisible(k){
+  if (k.appOnly && !k.appOnly.includes(currentApp)) return false;
+  return appAllowsChild(k);
+}
 
 /* ---------- очерёдность подразделов ----------
    Настраивается в настроечной админке («Приложения и разделы») и хранится
@@ -723,6 +773,11 @@ function renderNav(){
   navEl.innerHTML = "";
   NAV.forEach(item => {
     if (!appAllows(item.id)) return;
+    /* Группа, у которой приложение погасило все подразделы, сама превращается в пустой
+       флайаут — прячем её целиком. Динамические группы («Сущности», «Загруженные
+       инструменты») сюда не попадают: их children на момент отрисовки могут быть ещё
+       пусты, и правило скрывало бы раздел до загрузки схемы. */
+    if (item.children && item.children.length && !item.children.some(childVisible)) return;
     const el = document.createElement("div");
     el.className = "nav-item" + (item.id === cur.sid ? " active" : "");
     el.dataset.id = item.id; el.title = t(item.label);
@@ -904,6 +959,15 @@ function openSection(sid, cid){
   /* «ЧЕК СМС траффик» — выгрузка Excel (smscheck.js) */
   if (target.view === "view-report-smscheck" && typeof scInit === "function") scInit();
   if (sid === "journeys" && typeof initJourneysSection === "function") initJourneysSection();
+  /* завод событий: справочники тянутся при первом открытии формы, не на старте панели */
+  if (target.view === "sec-event-online" && typeof initEventOnlineSection === "function") initEventOnlineSection();
+  /* цепочка читается из чужой базы (crmdb) — тянем при первом показе раздела */
+  if (target.view === "sec-event-online" && window.EventChain) window.EventChain.open();
+  if (target.view === "sec-event-offline" && typeof initEventOfflineSection === "function") initEventOfflineSection();
+  if (target.view === "sec-event-list" && typeof initEventListSection === "function") initEventListSection();
+  /* Витрины пересобирают скриптом, и вчерашние числа ничем не лучше пустого экрана —
+     читаем при каждом открытии раздела. */
+  if (target.view === "sec-comm-analytics" && typeof initCommAnalyticsSection === "function") initCommAnalyticsSection();
   if (target.view === "sec-deviations") setTimeout(() => {
     /* графики Chart.js, созданные в скрытой секции, имеют нулевой размер —
        при первом показе пересоздаём их через renderAll(). setTimeout, а не rAF:

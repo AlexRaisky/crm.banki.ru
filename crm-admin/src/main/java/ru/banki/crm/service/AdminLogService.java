@@ -4,6 +4,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import ru.banki.crm.security.CurrentUser;
 
 /**
@@ -23,7 +24,21 @@ public class AdminLogService {
     @Value("${app.tables.admin-log:arch.t_admin_log}")
     private String logTable;
 
-    /** Запись в журнал по физическому имени таблицы (снимок строки d_template готовит вызывающий). */
+    /**
+     * Запись в журнал по физическому имени таблицы (снимок строки готовит вызывающий).
+     * <p>
+     * {@code @Transactional} обязателен: пишем через EntityManager, а он на
+     * {@code executeUpdate()} без активной транзакции бросает
+     * «Executing an update/delete query». Раньше это сходило с рук, потому что все
+     * вызывающие были транзакционными сами. Импорт событий из crmdb транзакцию снял
+     * намеренно (в Postgres первая же ошибка делает её нерабочей, а импорт обязан
+     * продолжаться) — и упёрся сюда в самом конце, уже затянув данные.
+     * <p>
+     * Распространение по умолчанию (REQUIRED), а не REQUIRES_NEW: у вызывающего с
+     * транзакцией ничего не меняется — запись журнала откатывается вместе с операцией,
+     * как и должно быть. Своя транзакция открывается только там, где её нет.
+     */
+    @Transactional
     public void logTable(String physicalTable, String operation, String rowJsonText) {
         em.createNativeQuery(
                         "INSERT INTO " + logTable +

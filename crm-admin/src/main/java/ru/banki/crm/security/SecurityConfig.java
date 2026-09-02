@@ -10,7 +10,15 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.authorization.AuthorizationManager;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
+import ru.banki.crm.service.Sections;
+
+import java.util.Set;
 
 @Configuration
 @EnableMethodSecurity
@@ -18,7 +26,15 @@ public class SecurityConfig {
 
     // Public endpoints: the login page + its helper assets, health, and the login/logout actions.
     private static final String[] PUBLIC = {
-            "/login.html", "/api/login", "/logout", "/favicon.ico", "/error"
+            "/login.html", "/api/login", "/logout", "/favicon.ico", "/error",
+            /* Версию сборки спрашивает соседний контур, у которого нашей куки нет.
+               Здесь маршрут только пропускается фильтром — кому отвечать, решает сам
+               контроллер: вошедшему пользователю либо соседу с верным секретом. */
+            "/api/build",
+            /* Соседний контур спрашивает, насколько его структура отстала от модели.
+               Куки у него нет, пропуск тот же — общий секрет; кому отвечать, решает
+               сам контроллер. */
+            "/api/schema/ddl/drift-peer"
     };
 
     /** Секретный ключ для подписи remember-me токена. Стабильный между рестартами → кука переживает перезапуск. */
@@ -36,6 +52,50 @@ public class SecurityConfig {
     @Value("${server.servlet.session.cookie.name:JSESSIONID}")
     private String sessionCookie;
 
+    /** Доступ по ЛЮБОЙ из перечисленных секций (право просмотра). Админ проходит всегда. */
+    private static AuthorizationManager<RequestAuthorizationContext> section(String... sectionIds) {
+        return (auth, ctx) -> new AuthorizationDecision(allowed(auth.get(), Set.of(sectionIds)));
+    }
+
+    /** Доступ, если есть хоть одна секция настроечной админки. */
+    private static AuthorizationManager<RequestAuthorizationContext> anySettings() {
+        return (auth, ctx) -> new AuthorizationDecision(allowed(auth.get(), Sections.SETTINGS));
+    }
+
+    /**
+     * Чтение модели схемы: перечисленные секции ИЛИ доступ к любой отдельной сущности.
+     * <p>
+     * Сущности выдаются поштучно (ent:client), и зонтичной секции entities у такой роли
+     * может не быть вовсе. Без этой ветки роль с одной выданной сущностью получала бы
+     * 403 на самой модели — а из неё строится всё: подразделы, колонки, карточки. Раздел
+     * просто исчезал бы из меню, ничего не сообщая.
+     */
+    private static AuthorizationManager<RequestAuthorizationContext> schemaRead(String... sectionIds) {
+        return (auth, ctx) -> new AuthorizationDecision(
+                allowed(auth.get(), Set.of(sectionIds)) || hasEntitySection(auth.get()));
+    }
+
+    private static boolean hasEntitySection(Authentication a) {
+        return a != null && a.isAuthenticated()
+                && a.getPrincipal() instanceof AppUserPrincipal p
+                && p.sections().stream().anyMatch(Sections::isEntity);
+    }
+
+    private static boolean allowed(Authentication a, Set<String> sectionIds) {
+        if (a == null || !a.isAuthenticated()) {
+            return false;
+        }
+        // админ обходит матрицу — иначе разделы, добавленные после создания учётки,
+        // были бы недоступны и ему (то же правило, что в AccessGuard)
+        boolean admin = a.getAuthorities().stream()
+                .anyMatch(g -> "ROLE_ADMIN".equals(g.getAuthority()));
+        if (admin) {
+            return true;
+        }
+        return a.getPrincipal() instanceof AppUserPrincipal p
+                && p.sections().stream().anyMatch(sectionIds::contains);
+    }
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -46,8 +106,44 @@ public class SecurityConfig {
         http
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC).permitAll()
+                /* Настроечная админка раздаётся ПОШТУЧНО: панель = секция матрицы прав.
+                   Правила идут от частного к общему, и последним стоит админский
+                   запасной вариант: любая ручка под /api/admin, которую здесь забыли
+                   перечислить, остаётся доступной только администратору. Забыть и молча
+                   открыть эндпоинт всем — так нельзя. */
+                .requestMatchers("/api/admin/db-connections/**").access(section(Sections.SET_DBCONN))
+                /* Карта интеграций сводит вместе то, что уже показывают три соседние
+                   панели, — и открыта тому, кому выдана любая из них. */
+                .requestMatchers("/api/admin/integrations/**").access(section(Sections.SET_DBCONN,
+                        Sections.SET_SYNC, Sections.SET_PROCS))
+                .requestMatchers("/api/admin/etl/**", "/api/admin/prod-db/**").access(section(Sections.SET_SYNC))
+                /* Выключатель процессов: читать состояние — по секции, нажимать кнопки —
+                   по праву edit внутри неё (проверяет сам контроллер). */
+                .requestMatchers("/api/admin/processes/**").access(section(Sections.SET_PROCS))
+                .requestMatchers("/api/admin/jira/**").access(section(Sections.SET_JIRA))
+                .requestMatchers("/api/admin/users/**", "/api/admin/roles/**",
+                                 "/api/admin/sections").access(section(Sections.ACCESS))
+                /* Саму МОДЕЛЬ схемы читает не только конструктор в настройках, но и
+                   раздел «Сущности» в панели: из неё он строит подразделы, колонки
+                   списков и поля карточек. Закрыв её настроечными секциями, мы отняли
+                   раздел у всех, кому выдали entities, — и он молча исчезал из меню,
+                   потому что группа прячется, когда у неё не осталось подразделов.
+                   Всё остальное под /api/schema (структура базы, версии, аудит, запись
+                   и DDL) остаётся за настройками. */
+                .requestMatchers(HttpMethod.GET, "/api/schema").access(schemaRead(Sections.ENTITIES,
+                        Sections.SET_SCHEME, Sections.SET_OBJECTS, Sections.SET_DBTREE))
+                .requestMatchers("/api/schema/**").access(section(Sections.SET_SCHEME, Sections.SET_OBJECTS,
+                                                                 Sections.SET_DBTREE))
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                .requestMatchers("/settings/**").hasRole("ADMIN")   // настроечная админка — только админам
+                /* Сама страница /settings данных не содержит — это оболочка, каждая её
+                   панель ходит за своими данными и проверяется отдельно. Пускаем всех, у
+                   кого есть хоть одна секция настроек. */
+                /* Описание схемы — запасной источник модели для раздела «Сущности»,
+                   когда API недоступен. Секретов в нём нет, а лежит он под /settings,
+                   куда не-админа не пускают: без этого исключения запасной путь для
+                   него всегда упирался бы в 403. */
+                .requestMatchers(HttpMethod.GET, "/settings/schema/**").authenticated()
+                .requestMatchers("/settings/**").access(anySettings())
                 .anyRequest().authenticated()
             )
             // Session-cookie SPA. CSRF is disabled for now (internal tool behind auth);

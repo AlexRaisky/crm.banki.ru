@@ -59,11 +59,13 @@ public class DbConnectionService {
         ours.putAll(ourTest);
         out.add(ours);
 
-        // пользовательские (прод-приёмник — тоже строка здесь, с флагом is_prod_sync)
+        /* Пользовательские. Приёмников тут ДВА и они разные: is_prod_sync — база
+           шаблонов (схемы notice/callcenter), is_event_db — база событий crmdb
+           (tracker/scheduler/template/commapi). Один флаг на оба не годится. */
         out.addAll(jdbc.query(
                 "SELECT id, name, jdbc_url, username, (password IS NOT NULL AND password <> '') AS has_pw, " +
-                "       purpose, is_active, is_prod_sync, last_status, last_error, last_latency_ms, last_checked_at " +
-                "FROM app.db_connection ORDER BY is_prod_sync DESC, name",
+                "       purpose, is_active, is_prod_sync, is_event_db, last_status, last_error, last_latency_ms, last_checked_at " +
+                "FROM app.db_connection ORDER BY is_prod_sync DESC, is_event_db DESC, name",
                 (rs, i) -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("id", rs.getLong("id"));
@@ -76,6 +78,7 @@ public class DbConnectionService {
                     m.put("purpose", rs.getString("purpose"));
                     m.put("active", rs.getBoolean("is_active"));
                     m.put("prodSync", rs.getBoolean("is_prod_sync"));
+                    m.put("eventDb", rs.getBoolean("is_event_db"));
                     m.put("status", rs.getString("last_status"));
                     m.put("error", rs.getString("last_error"));
                     Object lat = rs.getObject("last_latency_ms");
@@ -117,14 +120,16 @@ public class DbConnectionService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Подключение с таким именем уже есть: " + name);
         }
         boolean prodSync = truthy(body.get("prodSync"));
+        boolean eventDb = truthy(body.get("eventDb"));
         if (prodSync) jdbc.update("UPDATE app.db_connection SET is_prod_sync = false WHERE is_prod_sync");
+        if (eventDb) jdbc.update("UPDATE app.db_connection SET is_event_db = false WHERE is_event_db");
         jdbc.update(
-                "INSERT INTO app.db_connection (name, jdbc_url, username, password, purpose, is_active, is_prod_sync, created_by) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO app.db_connection (name, jdbc_url, username, password, purpose, is_active, is_prod_sync, is_event_db, created_by) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 name, url, nullIfEmpty(str(body.get("username"))),
                 nullIfEmpty(str(body.get("password"))), nullIfEmpty(str(body.get("purpose"))),
                 body.get("active") == null || Boolean.parseBoolean(String.valueOf(body.get("active"))),
-                prodSync, CurrentUser.email());
+                prodSync, eventDb, CurrentUser.email());
         Long id = jdbc.queryForObject("SELECT id FROM app.db_connection WHERE name = ?", Long.class, name);
         return Map.of("id", id);
     }
@@ -133,8 +138,10 @@ public class DbConnectionService {
         // пароль обновляем только если явно прислан (иначе оставляем старый)
         boolean setPw = body.containsKey("password") && !str(body.get("password")).isEmpty();
         boolean prodSync = truthy(body.get("prodSync"));
-        // приёмник только один — снимаем флаг с остальных перед установкой на эту строку
+        boolean eventDb = truthy(body.get("eventDb"));
+        // приёмник каждого вида только один — снимаем флаг с остальных перед установкой
         if (prodSync) jdbc.update("UPDATE app.db_connection SET is_prod_sync = false WHERE is_prod_sync AND id <> ?", id);
+        if (eventDb) jdbc.update("UPDATE app.db_connection SET is_event_db = false WHERE is_event_db AND id <> ?", id);
         boolean active = body.get("active") == null || Boolean.parseBoolean(String.valueOf(body.get("active")));
         List<Object> args = new ArrayList<>();   // ArrayList допускает null (List.of — нет)
         args.add(nullIfEmpty(str(body.get("name"))));      // COALESCE(?, name): null → оставить старое
@@ -143,8 +150,9 @@ public class DbConnectionService {
         args.add(nullIfEmpty(str(body.get("purpose"))));
         args.add(active);
         args.add(prodSync);
+        args.add(eventDb);
         String sql = "UPDATE app.db_connection SET name = COALESCE(?, name), jdbc_url = COALESCE(?, jdbc_url), " +
-                "  username = ?, purpose = ?, is_active = ?, is_prod_sync = ?" + (setPw ? ", password = ?" : "") + " WHERE id = ?";
+                "  username = ?, purpose = ?, is_active = ?, is_prod_sync = ?, is_event_db = ?" + (setPw ? ", password = ?" : "") + " WHERE id = ?";
         if (setPw) args.add(str(body.get("password")));
         args.add(id);
         jdbc.update(sql, args.toArray());

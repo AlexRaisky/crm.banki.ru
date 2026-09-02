@@ -1,5 +1,5 @@
 /* ===== Отчёты (Tableau): макет окна и страницы отчётов, изолированы ===== */
-@scope (#view-reports, #view-report-embed){
+@scope (#view-reports, #view-report-embed, #view-report-smscheck){
   /* Секция лежит внутри .view (position:absolute;inset:0;overflow-y:auto), то есть её
      высота УЖЕ равна высоте области контента. Поэтому вместо ручного вычитания
      «шапка + hero + настройки» делаем колонку-флекс: сколько бы ни занимали блоки
@@ -262,4 +262,37 @@
     .rp-embed-stub{min-height:min(46vh,260px);min-height:min(46dvh,260px)}
     .rp-embed-frame{min-height:100vh;min-height:100dvh}
   }
+}
+
+/* ===== ЧЕК СМС траффик: лист «по дням» на странице =====
+   Раздел добавлен в прелюдию выше — иначе .rp-hero/.rp-toolbar/.rp-setup ему не
+   доставались вовсе, и панель инструментов разъезжалась: подписи, поля и кнопки
+   ложились друг на друга. Разметка там ровно та же, что у отчётов Tableau, под эти
+   правила она и писалась.
+   Таблица широкая по определению — 31 день плюс итог, — поэтому листается внутри
+   рамки, а не растягивает страницу; шапка и колонка названий при прокрутке
+   остаются на месте, иначе на 20-м числе непонятно, какая это строка. */
+@scope (#view-report-smscheck){
+  /* flex:0 0 auto обязателен: .rp-embed — колонка-флекс, и по умолчанию элемент
+     сжимается под остаток свободного места. На невысоком экране остаток равен нулю,
+     и рамка схлопывалась в одну линию — таблицы не было видно вовсе. */
+  .sc-daily{flex:0 0 auto;overflow:auto;max-height:min(70vh,620px);max-height:min(70dvh,620px);
+    border:1px solid var(--line);border-radius:12px;background:var(--card)}
+  .sc-daily table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:12px}
+  .sc-daily th,.sc-daily td{padding:6px 10px;border-bottom:1px solid var(--line);
+    text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .sc-daily thead th{position:sticky;top:0;z-index:2;background:var(--card2);color:var(--faint);
+    font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  /* название строки — слева и «приклеено»: это единственная текстовая колонка */
+  .sc-daily th.sc-h{position:sticky;left:0;z-index:1;background:var(--card);text-align:left;
+    color:var(--ink);font-weight:600;text-transform:none;letter-spacing:0;font-size:12px}
+  .sc-daily thead th.sc-h{z-index:3;background:var(--card2)}
+  .sc-daily tbody tr:last-child th,.sc-daily tbody tr:last-child td{border-bottom:none}
+  .sc-daily tbody tr:hover td{background:rgba(80,195,255,.06)}
+  .sc-daily .sc-total{background:rgba(80,195,255,.07);font-weight:600;color:var(--ink)}
+  .sc-daily .neg{color:var(--coral)}
+  .sc-daily .sc-dash{color:var(--faint)}
+  /* строка состояния выгрузки идёт над таблицей: у отчётов Tableau она ждёт снизу,
+     здесь — сверху, иначе прыгает вслед за высотой таблицы */
+  .rp-embed-wait{margin:0 0 10px}
 }

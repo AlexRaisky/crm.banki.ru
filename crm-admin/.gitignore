@@ -19,3 +19,6 @@ Thumbs.db
 # --- Obsidian local UI state (notes themselves ARE tracked) ---
 .obsidian/workspace*.json
 .obsidian/cache/
+
+# Отметка о версии сборки: генерируется scripts/build.sh перед docker build
+src/main/resources/build-info.json

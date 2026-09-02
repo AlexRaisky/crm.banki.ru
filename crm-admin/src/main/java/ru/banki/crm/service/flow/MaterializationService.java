@@ -123,6 +123,20 @@ public class MaterializationService {
             if (blank(prop(s, "event_name"))) {
                 problems.add("У стартового узла не заполнено имя события (event_name)");
             }
+            /* Income event не заводит событие, а ссылается на уже заведённое в трекере —
+               так устроен и сам блок, там поле «Событие» это выбор из списка. Без выбора
+               материализовать нечего: имя, система и набор параметров доставки берутся у
+               выбранной строки, а не набираются здесь. */
+            if ("startIncome".equals(s.type())) {
+                Long commId = longProp(s, "t_event_comm_id");
+                if (commId == null) {
+                    problems.add("У Income event не выбрано событие: откройте блок и выберите"
+                            + " его из списка заведённых в tracker.t_event_comm");
+                } else if (!eventCommExists(commId)) {
+                    problems.add("Событие " + commId + " из блока Income event не найдено"
+                            + " в tracker.t_event_comm — выберите другое");
+                }
+            }
             if ("startTime".equals(s.type()) && sqlSteps(s).isEmpty()) {
                 problems.add("У Time event не заполнен ни один SQL-шаг выборки");
             }
@@ -157,22 +171,17 @@ public class MaterializationService {
         List<PlannedRow> rows = new ArrayList<>();
 
         if ("startIncome".equals(start.type())) {
-            rows.add(row("tracker.d_comm_creation", m -> {
-                m.put("allow_ml", boolProp(start, "allow_ml"));
-                m.put("send_delay", intProp(start, "send_delay", 2));
-                m.put("lifetime", intProp(start, "life_time", 1000));
-                m.put("notify_channel", prop(start, "notify_channel"));
-            }));
-            rows.add(row("tracker.t_event_comm", m -> {
-                m.put("event_name", prop(start, "event_name"));
-                m.put("system", prop(start, "system"));
-                m.put("id_comm_creation", AUTO);
-                m.put("is_active", boolProp(start, "is_active", true));
-                m.put("sub_channel", prop(start, "sub_channel"));
-                m.put("platform", prop(start, "platform"));
-                m.put("group_event_descr", prop(start, "group_event_descr"));
-                m.put("is_chain", chain);
-            }));
+            /* Онлайн-цепочка НИЧЕГО не заводит в трекере. Событие уже есть — блок его
+               выбирает, — и вместе с ним есть набор параметров доставки, на который оно
+               ссылается. Цепочка добавляет только маппинги шаблонов ниже.
+
+               Раньше здесь создавались обе строки: и tracker.t_event_comm, и
+               tracker.d_comm_creation. Это осталось от прежнего блока, который событие
+               заводил; после того как блок перевели на выбор, поля notify_channel,
+               send_delay, life_time и allow_ml из него исчезли — и план собирался из
+               null и умолчаний. В проде это давало дубль события рядом с выбранным и
+               двадцатую строку в справочнике параметров доставки, где новых строк быть
+               не должно: он заполняется руками с 2022 года. */
         } else { // startTime
             // selection == process_name (одно и то же имя процесса выборки)
             String selection = nz(prop(start, "process_name"), prop(start, "event_name"));
@@ -236,15 +245,22 @@ public class MaterializationService {
                     })));
         }
 
-        rows.add(row("commapi.d_definition_mapping", m -> {
-            m.put("get_event_id", "startTime".equals(start.type()) ? AUTO : null);
-            m.put("event_name", prop(start, "event_name"));
-            m.put("system", prop(start, "system"));
-            m.put("notify_channel", prop(start, "notify_channel"));
-            m.put("definition_key", prop(start, "definition_key"));
-            m.put("business_key_prefix", prop(start, "business_key_prefix"));
-            m.put("is_correlation", false);
-        }));
+        /* Ключи определения заводит тот, кто заводит событие. У Time event это мы — поля
+           definition_key и business_key_prefix есть в самом блоке. У Income event события
+           нет ни того ни другого: оно выбрано из трекера, и строка d_definition_mapping
+           для него в проде уже стоит — её сделали, когда событие заводили. Класть сюда
+           null было нельзя и раньше: definition_key объявлен NOT NULL без DEFAULT. */
+        if ("startTime".equals(start.type())) {
+            rows.add(row("commapi.d_definition_mapping", m -> {
+                m.put("get_event_id", AUTO);
+                m.put("event_name", prop(start, "event_name"));
+                m.put("system", prop(start, "system"));
+                m.put("notify_channel", prop(start, "notify_channel"));
+                m.put("definition_key", prop(start, "definition_key"));
+                m.put("business_key_prefix", prop(start, "business_key_prefix"));
+                m.put("is_correlation", false);
+            }));
+        }
 
         return new PreviewResult(List.of(), rows);
     }
@@ -535,8 +551,37 @@ public class MaterializationService {
         return new PlannedRow(table, m);
     }
 
+    /**
+     * Событие, выбранное в блоке Income event, ещё существует?
+     * <p>
+     * Проверяем при каждой материализации, а не только при выборе: цепочку рисуют
+     * сегодня, а материализуют через неделю, и за это время событие в трекере могли
+     * удалить. Молча собрать маппинги на несуществующее событие значит завести
+     * коммуникацию, которую никто никогда не пошлёт.
+     */
+    private boolean eventCommExists(long id) {
+        Number cnt = (Number) em.createNativeQuery(
+                        "SELECT count(*) FROM tracker.t_event_comm WHERE id = :id")
+                .setParameter("id", id)
+                .getSingleResult();
+        return cnt.longValue() > 0;
+    }
+
     private static String prop(JourneyNode n, String key) {
         return n.props() == null ? null : n.props().get(key);
+    }
+
+    /** Числовое свойство узла; null — не заполнено или не число (для нас это одно и то же). */
+    private static Long longProp(JourneyNode n, String key) {
+        String v = prop(n, key);
+        if (v == null || v.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(v.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** SQL-шаги Time event: props.sql_steps — JSON-массив строк; старые схемы — одиночный props.sql. */

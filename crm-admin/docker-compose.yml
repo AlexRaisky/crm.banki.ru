@@ -44,8 +44,17 @@ services:
       ETL_ENABLED: ${ETL_ENABLED:-false}
       ETL_INTERVAL_MS: ${ETL_INTERVAL_MS:-300000}
       ETL_FULL_CRON: ${ETL_FULL_CRON:-0 0 22 * * *}
+      # Сверка событий с crmdb: хвост каждые 5 минут + полная сверка вечером
+      EVENT_IMPORT_ENABLED: ${EVENT_IMPORT_ENABLED:-false}
+      EVENT_IMPORT_INTERVAL_MS: ${EVENT_IMPORT_INTERVAL_MS:-300000}
+      EVENT_IMPORT_FULL_CRON: ${EVENT_IMPORT_FULL_CRON:-0 30 22 * * *}
       # Среда: имя, dev-разделы выключены, свои имена кук
       APP_ENV: prod
+      # Выкатки: соседние контуры видны по именам сервисов внутри сети compose
+      DEPLOY_PEERS: ${DEPLOY_PEERS:-preprod=http://app-preprod:8080,prod=http://app-prod:8080,test=http://app-test:8080}
+      DEPLOY_PEER_TOKEN: ${DEPLOY_PEER_TOKEN:-}
+      DEPLOY_BRANCH: ${DEPLOY_BRANCH:-admin-panel}
+      DEPLOY_DIR: ${DEPLOY_DIR:-~/crm.banki.ru}
       FEATURES_DEV: "false"
       SESSION_COOKIE: CRMSID_PROD
       REMEMBER_COOKIE: crm-remember-prod
@@ -98,7 +107,16 @@ services:
       ETL_ENABLED: ${ETL_ENABLED:-false}
       ETL_INTERVAL_MS: ${ETL_INTERVAL_MS:-300000}
       ETL_FULL_CRON: ${ETL_FULL_CRON:-0 0 22 * * *}
+      # Сверка событий с crmdb: хвост каждые 5 минут + полная сверка вечером
+      EVENT_IMPORT_ENABLED: ${EVENT_IMPORT_ENABLED:-false}
+      EVENT_IMPORT_INTERVAL_MS: ${EVENT_IMPORT_INTERVAL_MS:-300000}
+      EVENT_IMPORT_FULL_CRON: ${EVENT_IMPORT_FULL_CRON:-0 30 22 * * *}
       APP_ENV: preprod
+      # Выкатки: соседние контуры видны по именам сервисов внутри сети compose
+      DEPLOY_PEERS: ${DEPLOY_PEERS:-preprod=http://app-preprod:8080,prod=http://app-prod:8080,test=http://app-test:8080}
+      DEPLOY_PEER_TOKEN: ${DEPLOY_PEER_TOKEN:-}
+      DEPLOY_BRANCH: ${DEPLOY_BRANCH:-admin-panel}
+      DEPLOY_DIR: ${DEPLOY_DIR:-~/crm.banki.ru}
       FEATURES_DEV: "false"
       SESSION_COOKIE: CRMSID_PREPROD
       REMEMBER_COOKIE: crm-remember-preprod
@@ -151,7 +169,16 @@ services:
       ETL_ENABLED: ${ETL_ENABLED:-false}
       ETL_INTERVAL_MS: ${ETL_INTERVAL_MS:-300000}
       ETL_FULL_CRON: ${ETL_FULL_CRON:-0 0 22 * * *}
+      # Сверка событий с crmdb: хвост каждые 5 минут + полная сверка вечером
+      EVENT_IMPORT_ENABLED: ${EVENT_IMPORT_ENABLED:-false}
+      EVENT_IMPORT_INTERVAL_MS: ${EVENT_IMPORT_INTERVAL_MS:-300000}
+      EVENT_IMPORT_FULL_CRON: ${EVENT_IMPORT_FULL_CRON:-0 30 22 * * *}
       APP_ENV: test
+      # Выкатки: соседние контуры видны по именам сервисов внутри сети compose
+      DEPLOY_PEERS: ${DEPLOY_PEERS:-preprod=http://app-preprod:8080,prod=http://app-prod:8080,test=http://app-test:8080}
+      DEPLOY_PEER_TOKEN: ${DEPLOY_PEER_TOKEN:-}
+      DEPLOY_BRANCH: ${DEPLOY_BRANCH:-admin-panel}
+      DEPLOY_DIR: ${DEPLOY_DIR:-~/crm.banki.ru}
       FEATURES_DEV: "true"
       SESSION_COOKIE: CRMSID_TEST
       REMEMBER_COOKIE: crm-remember-test

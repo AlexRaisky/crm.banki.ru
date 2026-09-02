@@ -14,4 +14,7 @@ RUN groupadd -r app && useradd -r -g app app
 COPY --from=build /build/target/crm-admin.jar /app/app.jar
 USER app
 EXPOSE 8080
-ENTRYPOINT ["java","-jar","/app/app.jar"]
+# После OutOfMemoryError JVM продолжает работать, но состояние приложения уже не то:
+# половина потоков умерла, половина висит, а снаружи это выглядит как «панель
+# странно себя ведёт». Пусть падает сразу — контейнер поднимет restart-политика.
+ENTRYPOINT ["java","-XX:+ExitOnOutOfMemoryError","-jar","/app/app.jar"]

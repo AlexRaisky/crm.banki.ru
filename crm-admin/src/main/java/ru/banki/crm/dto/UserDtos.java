@@ -29,11 +29,16 @@ public final class UserDtos {
             boolean manageable  // может ли текущий пользователь править/удалять эту запись
     ) {}
 
+    /* Сообщения проставлены у каждого ограничения намеренно: по умолчанию Bean Validation
+       отдаёт английские фразы вроде "must not be blank", а наружу они уезжают как есть
+       (ValidationErrorHandler склеивает именно их). Человек должен прочитать, что поправить. */
     public record CreateUser(
-            @NotBlank @Email String email,
+            @NotBlank(message = "Укажите почту")
+            @Email(message = "Почта должна быть вида name@banki.ru") String email,
             String displayName,
-            @NotNull Long roleId,
-            @NotBlank @Size(min = 8, message = "Пароль минимум 8 символов") String password
+            @NotNull(message = "Выберите роль") Long roleId,
+            @NotBlank(message = "Укажите пароль")
+            @Size(min = 8, message = "Пароль минимум 8 символов") String password
     ) {}
 
     public record UpdateUser(
@@ -43,11 +48,13 @@ public final class UserDtos {
     ) {}
 
     public record ResetPassword(
-            @NotBlank @Size(min = 8, message = "Пароль минимум 8 символов") String newPassword
+            @NotBlank(message = "Укажите пароль")
+            @Size(min = 8, message = "Пароль минимум 8 символов") String newPassword
     ) {}
 
     public record ChangeOwnPassword(
-            @NotBlank String currentPassword,
-            @NotBlank @Size(min = 8, message = "Пароль минимум 8 символов") String newPassword
+            @NotBlank(message = "Укажите текущий пароль") String currentPassword,
+            @NotBlank(message = "Укажите новый пароль")
+            @Size(min = 8, message = "Пароль минимум 8 символов") String newPassword
     ) {}
 }

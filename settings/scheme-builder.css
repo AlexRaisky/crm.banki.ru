@@ -12,15 +12,18 @@
 .sb-toolbar .sb-search:focus{border-color:rgba(80,195,255,.5)}
 .sb-toolbar .spacer{margin-left:auto}
 .sb-status{font-family:var(--mono);font-size:11px;color:var(--faint);white-space:nowrap}
-.sb-dirty{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--amber);
+/* Оба значка состояния скрыты видимостью, а не display: место в тулбаре остаётся за
+   ними всегда. Иначе каждое сохранение меняло бы размер тулбара, а за ним следит
+   ResizeObserver — тулбар подпрыгивал бы на каждой правке вместе с холстом. */
+.sb-dirty{display:inline-flex;visibility:hidden;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--amber);
   background:var(--amber-bg);border:1px solid rgba(255,184,77,.35);border-radius:20px;padding:4px 11px}
-.sb-dirty.on{display:inline-flex}
+.sb-dirty.on{visibility:visible}
 /* Парный значок удачного сохранения: та же форма и то же место, другой цвет —
    так глазу не приходится искать подтверждение в другом углу экрана. */
-.sb-saved{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--green);
+.sb-saved{display:inline-flex;visibility:hidden;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--green);
   background:rgba(60,250,180,.10);border:1px solid rgba(60,250,180,.30);border-radius:20px;padding:4px 11px;
   transition:opacity .2s}
-.sb-saved.on{display:inline-flex}
+.sb-saved.on{visibility:visible}
 /* «Не применено к базе» — состояние, а не вспышка: держится до применения, поэтому
    стоит вплотную к кнопке «Применить к базе» и окрашен в её же тон. */
 .sb-pending{display:none;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--blue);
@@ -35,8 +38,38 @@
    Высоту в пикселях проставляет JS (layoutShell) — она равна остатку экрана
    под тулбаром, поэтому раздел занимает всю доступную высоту без пустот и
    без прокрутки страницы. clamp ниже — запасной вариант, пока JS не отработал. */
-.sb-shell{display:grid;grid-template-columns:minmax(190px,15%) minmax(0,1fr) minmax(300px,22%);gap:12px;
+/* Левая колонка со списком сущностей была самой узкой из трёх, и длинные имена таблиц
+   в ней обрезались на середине. Даём ей больше ширины: канвас теряет немного, но по нему
+   и так ходят зумом, а список читают глазами. */
+/* Инспектор — то самое «поле для редактирования»: в нём формы с парами колонок, и на
+   22% они жались. Даём 26% и минимум 340px, но не больше: минимумы двух боковых колонок
+   вычитаются из холста, и слишком щедрый минимум душит схему на ноутбучном экране. */
+.sb-shell{display:grid;grid-template-columns:minmax(240px,18%) minmax(0,1fr) minmax(340px,26%);gap:12px;
   height:clamp(460px,calc(100vh - 270px),1200px)}
+/* Свёрнутая колонка убирается из сетки целиком, а не прячется под ноль ширины: холст
+   должен получить её место, иначе сворачивание не имеет смысла — ради этого всё и есть. */
+.sb-shell.no-list{grid-template-columns:minmax(0,1fr) minmax(340px,26%)}
+.sb-shell.no-inspect{grid-template-columns:minmax(240px,18%) minmax(0,1fr)}
+.sb-shell.no-list.no-inspect{grid-template-columns:minmax(0,1fr)}
+.sb-shell.no-list > .sb-list,
+.sb-shell.no-inspect > .sb-inspect{display:none}
+
+/* Язычки развёрнутой панели. Держим их поверх холста у самого края: свёрнутую колонку
+   иначе нечем вернуть, а отдельная кнопка в тулбаре теряется среди девяти других. */
+.sb-canvas-col{position:relative}
+.sb-tab-back{position:absolute;top:10px;z-index:5;display:none;align-items:center;gap:6px;
+  background:var(--card2);border:1px solid var(--line);border-radius:9px;color:var(--dim);
+  font-family:var(--sans);font-size:11.5px;padding:6px 9px;cursor:pointer}
+.sb-tab-back:hover{border-color:var(--blue);color:var(--blue)}
+.sb-tab-back.left{left:10px}
+.sb-tab-back.right{right:52px}          /* правее — кнопки масштаба */
+.sb-shell.no-list .sb-tab-back.left,
+.sb-shell.no-inspect .sb-tab-back.right{display:inline-flex}
+
+/* Кнопка сворачивания в шапке колонки. */
+.sb-fold{margin-left:auto;background:none;border:none;color:var(--faint);cursor:pointer;
+  font-size:14px;line-height:1;padding:2px 4px;border-radius:6px}
+.sb-fold:hover{color:var(--blue);background:var(--bg2)}
 .sb-col{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;
   display:flex;flex-direction:column;min-width:0}
 .sb-col-head{padding:10px 13px;background:var(--card2);border-bottom:1px solid var(--line);
@@ -82,6 +115,12 @@
 .sb-node-add{margin-left:auto;width:24px;height:24px;flex:0 0 auto;border-radius:7px;border:1px solid var(--line);
   background:var(--card);color:var(--dim);cursor:pointer;font-size:14px;line-height:1;padding:0}
 .sb-node-add:hover{color:var(--green);border-color:var(--green)}
+/* Крестик рядом с «+»: приглушён, пока на блок не навели — удаление не должно
+   бросаться в глаза сильнее, чем добавление. */
+.sb-node-del{width:24px;height:24px;flex:0 0 auto;border-radius:7px;border:1px solid var(--line);
+  background:transparent;color:var(--faint);font-size:15px;line-height:1;cursor:pointer;opacity:.5}
+.sb-node:hover .sb-node-del{opacity:1}
+.sb-node-del:hover{color:var(--coral);border-color:var(--coral)}
 .sb-node-fields{max-height:270px;overflow:auto}
 /* развёрнутый узел: список полей выше, но не бесконечный — дальше скроллится
    внутри самого узла, чтобы схема не растягивалась на весь канвас */
@@ -117,6 +156,9 @@
 .sb-tab.on{color:var(--blue);border-bottom-color:var(--blue);background:var(--card2)}
 .sb-form{padding:12px 13px}
 .sb-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+/* Описание — единственное поле формы, куда пишут не два слова: узкая полоска в три
+   строки заставляла прокручивать саму себя. Тянуть вручную при этом можно. */
+.sb-col.sb-inspect textarea{min-height:92px;resize:vertical}
 .sb-fg{margin-bottom:11px;min-width:0}
 .sb-fg label{display:block;font-size:11.5px;color:var(--faint);margin-bottom:5px}
 .sb-fg input,.sb-fg select,.sb-fg textarea{width:100%;background:var(--bg2);border:1px solid var(--line);
@@ -161,6 +203,13 @@
 .sb-modal{position:fixed;inset:0;background:rgba(4,12,22,.68);display:none;place-items:center;z-index:300;
   backdrop-filter:blur(2px)}
 .sb-modal.open{display:grid}
+/* Отказ формы — красной строкой над кнопками. Появляется только когда есть что сказать:
+   пустая рамка в модалке хуже, чем её отсутствие. */
+.sb-modal-err{display:none;margin:10px 0 0;padding:9px 11px;border-radius:9px;font-size:12.5px;
+  color:var(--coral);background:rgba(255,107,138,.12);border:1px solid rgba(255,107,138,.35)}
+.sb-modal-err.on{display:block}
+/* Пояснение, а не отказ: панель сделала не совсем то, что набрали, и говорит об этом. */
+.sb-modal-err.note{color:var(--blue);background:var(--blue-bg);border-color:rgba(80,195,255,.35)}
 .sb-modal-card{width:min(720px,94vw);max-height:88vh;overflow:auto;background:var(--card);
   border:1px solid var(--line);border-radius:18px;padding:20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.55)}
 .sb-modal-card h3{font-size:17px;font-weight:700;margin-bottom:14px;color:var(--ink)}
@@ -174,7 +223,14 @@
    поэтому канвас сжимался до нечитаемых ~230px. Складываем всё в одну
    колонку — схема получает полную ширину контента. */
 @media(max-width:1180px){
-  .sb-shell{grid-template-columns:1fr;height:auto !important}
+  .sb-shell,
+  .sb-shell.no-list,
+  .sb-shell.no-inspect,
+  .sb-shell.no-list.no-inspect{grid-template-columns:1fr;height:auto !important}
+  /* Узкий экран и так кладёт колонки одну под другую — прятать нечего и незачем. */
+  .sb-shell.no-list > .sb-list,
+  .sb-shell.no-inspect > .sb-inspect{display:flex}
+  .sb-tab-back{display:none !important}
   .sb-col.sb-list{height:210px}
   .sb-col.sb-canvas-col{height:min(58vh,480px)}
   .sb-col.sb-inspect{height:auto}          /* форма по содержимому — без второго скролла */
@@ -258,6 +314,17 @@
 .sb-item .lbl .sb-ent-sub{ display:block; font-style:normal; font-size:11px; color:var(--faint); margin-top:1px }
 .sb-item.sb-ent .cnt, .sb-item.sb-tbl .cnt{ white-space:nowrap }
 .sb-item .dot.opt{ opacity:.45 }
+/* Таблица, которая есть в базе, но не в модели: показываем приглушённо — это ещё не
+   наша сущность, а факт из базы, и кликом она никуда не ведёт. */
+.sb-item.sb-orphan{ cursor:default; opacity:.75 }
+.sb-item.sb-orphan .dot{ background:var(--faint) }
+.sb-item.sb-orphan:hover{ background:transparent; opacity:1 }
+/* Нарисовано, но не создано. Отличаем от «есть в базе, но не в модели» цветом точки:
+   там серое — «панель этого не знает», здесь янтарное — «база этого ещё не знает». */
+.sb-item.sb-drift{ cursor:default }
+.sb-item.sb-drift .dot{ background:var(--amber,#e2a336) }
+.sb-form .btn.tiny, .sb-item .btn.tiny{ padding:2px 9px; font-size:11px; border-radius:7px; margin-left:auto }
+.sb-item .btn.tiny{ margin-left:0 }
 .sb-col-del{ width:20px; height:20px; line-height:1; padding:0; border-radius:6px; cursor:pointer;
   border:1px solid var(--line); background:var(--card); color:var(--faint); font-size:13px }
 .sb-col-del:hover{ color:var(--coral); border-color:rgba(255,107,138,.45) }

@@ -4,7 +4,7 @@ tags: [backend, flow, materialization]
 
 # Материализация (Flow)
 
-Материализация — превращение схемы из [[Flow Builder (цепочки)]] (модель — [[Цепочки (Journeys)]]) в **реальные строки конфигурационных таблиц**, которые читают существующие движки. Пишутся два слоя:
+Материализация — превращение схемы из [[Flow Builder (цепочки)]] (модель — [Цепочки (Journeys)](Цепочки%20(Journeys).md)) в **реальные строки конфигурационных таблиц**, которые читают существующие движки. Пишутся два слоя:
 
 - **слой A** (`flow.*`) — наша нормализованная модель события, «истина» для UI: [[Слой A (flow)]];
 - **слой B** (`tracker.*`, `scheduler.*`, `template.*`, `commapi.*`) — копии продовых таблиц 1:1 по DDL: [[Слой B (процессные таблицы)]].
@@ -170,7 +170,7 @@ sequenceDiagram
 
 `source` события руками не вводится. `resolveSource(j)` берёт развёрнутые comm-ноды, сортирует по `day` и у первой читает `coalesce(channel_props->>'source', campaign_name)` из `template.d_template`. Первое непустое значение уходит в `scheduler.t_get_event.source` и `flow.d_event.source`; не нашлось ни у кого — `null`.
 
-`resolveUnifiedTemplateId(c)` возвращает `template.d_template.id` по паре `(channel, code)`; отсутствие строки даёт `null`, но до этого не доходит — `validate` уже потребовал существования шаблона. (Javadoc метода обещает синхронизацию из канальной прод-таблицы — это наследие прежней архитектуры, где шаблоны лежали в четырёх таблицах; сейчас `template.d_template` и есть единственное хранилище, синхронизировать не из чего. См. [[Шаблоны и мастер коммуникаций]].)
+`resolveUnifiedTemplateId(c)` возвращает `template.d_template.id` по паре `(channel, code)`; отсутствие строки даёт `null`, но до этого не доходит — `validate` уже потребовал существования шаблона. (Javadoc метода обещает синхронизацию из канальной прод-таблицы — это наследие прежней архитектуры, где шаблоны лежали в четырёх таблицах; сейчас `template.d_template` и есть единственное хранилище, синхронизировать не из чего. См. [Шаблоны и мастер коммуникаций](Шаблоны%20и%20мастер%20коммуникаций.md).)
 
 ### Вспомогательное
 
@@ -189,13 +189,23 @@ sequenceDiagram
 | `sub_channel`, `platform` | `flow.d_event_delivery` | `scheduler.t_get_event` (offline-путь) |
 | `group_event_descr` | `flow.d_event` | `scheduler.t_get_event` (offline-путь) |
 | `comm_decision_tree_id` | `flow.d_event_delivery` | `tracker.d_comm_creation`, `scheduler.t_get_event` |
-| `period_unit`, `period_q`, `date_start`, `date_end`, `priority` | `flow.d_event_schedule` | `scheduler.t_launch_settings` |
+| `priority` | `flow.d_event_schedule` | `scheduler.t_launch_settings` |
 | `correlation_keys`, `notify_channel_priority` | `flow.d_event_definition` | `commapi.d_definition_mapping` |
 
 Ни в одном из слоёв не заполняются `scheduler.t_get_event.product_id` и `scheduler.t_get_event.params` — соответствия в слое A у них нет.
+
+## Что изменила нормализация расписаний (`V33`)
+
+Миграция `V33__flow_job_normalization.sql` развела расписание по владельцу, и на материализацию это влияет в трёх местах:
+
+- **`flow.d_event_schedule` лишилась `time_start`, `period_unit`, `period_q`, `date_start`, `date_end`.** Их считает по кронтабу сам планировщик, и в конфигурации они были копией чужого расчёта, устаревающей на первом же тике. Материализация в них никогда и не писала (только `crontab`, `database`, `is_batch`), так что `upsertLayerA` не изменился; теперь эти значения зеркалятся из прода в `flow.t_event_state`, а история прогонов копится в `flow.t_event_run` / `flow.t_event_step_run` — и то, и другое наполняется не отсюда. Структура таблиц — [[Слой A (flow)]].
+- **`d_event_schedule.database` стала внешним ключом на справочник `flow.d_database`.** Материализация пишет туда `props.database` узла `startTime` с дефолтом `crmdb`; значения, которого нет в справочнике, вставка теперь не примет. Раньше опечатка в этом поле означала, что задание просто не запустится, и узнавали об этом постфактум.
+- **У `flow.d_event_step` появился `UNIQUE (event_id, order_num)`.** Материализация нумерует шаги 1..N и обвязку пересоздаёт целиком, так что ограничение ей не мешает; смысл его в том, что при двух шагах с одним номером порядок исполнения был бы не определён.
+
+`scheduler.t_launch_settings` — прод-таблица слоя B, её `V33` не касалась: `time_start = "now()"` туда по-прежнему пишется.
 
 Отдельно: `selection` — не самостоятельное поле, а синтез из `props.process_name` (с фолбэком на `event_name`).
 
 ## Связанные заметки
 
-[[Цепочки (Journeys)]] · [[Слой A (flow)]] · [[Слой B (процессные таблицы)]] · [[Справочники шаблонов]] · [[Flow Builder (цепочки)]] · [[Аудит и журналирование]] · [[Шаблоны и мастер коммуникаций]] · [[Флоу системы]]
+[Цепочки (Journeys)](Цепочки%20(Journeys).md) · [[Слой A (flow)]] · [[Слой B (процессные таблицы)]] · [[Справочники шаблонов]] · [[Flow Builder (цепочки)]] · [Аудит и журналирование](Аудит%20и%20журналирование.md) · [Шаблоны и мастер коммуникаций](Шаблоны%20и%20мастер%20коммуникаций.md) · [[Флоу системы]]

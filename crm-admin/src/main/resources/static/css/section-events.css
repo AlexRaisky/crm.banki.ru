@@ -1,0 +1,347 @@
+/* ===== Завод событий («Онлайн-событие» и «Событие по расписанию») — изолированы.
+   Форма пошаговая, как в старой Appsmith-админке: шаги идут сверху вниз, между ними
+   тонкая линия.
+   В прелюдии ОБЕ формы. Обзорной страницы группы (#view-events-overview) здесь нет
+   намеренно: она построена на общих классах .ov-* из shell.css, как все остальные
+   обзорные, и своих правил из этого файла не использует. Зато если в разделе появится
+   третья форма — её id обязан попасть сюда же: на #view-report-smscheck мы уже
+   наступали, забытая в прелюдии секция молча остаётся без всех правил файла. ===== */
+@scope (#sec-event-online, #sec-event-offline, #sec-event-list){
+  :scope{color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;padding:24px 22px 80px}
+
+  h1{font-size:26px;font-weight:700;letter-spacing:-.015em;margin:0}
+  h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:8px}
+  .sub{color:var(--dim);font-size:13.5px;margin:8px 0 22px;max-width:880px}
+
+  /* ---------- шаг формы ---------- */
+  .ev-step{border-top:1px solid var(--line);padding:18px 0 4px}
+  .ev-step:first-of-type{border-top:0;padding-top:0}
+  .ev-step > .t{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:12px}
+
+  /* Поля кладём в сетку с минимальной шириной колонки: на широком мониторе их
+     четыре в ряд, на ноутбуке два, на узком одно. Фиксированных колонок не ставим —
+     раздел настроек уже ломался на маленьком экране именно из-за них. */
+  .ev-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px 18px}
+  .ev-f{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .ev-f.wide{grid-column:1/-1}
+  .ev-f label{font-size:11.5px;color:var(--faint)}
+  /* Типы перечислены не поимённо, а «все, кроме флажков»: список по именам уже
+     подводил — поле времени в мастере расписания осталось белым просто потому, что
+     type=time в него не вписали. Следующий новый тип поля не должен ждать правки CSS. */
+  .ev-f input:not([type=checkbox]):not([type=radio]),
+  .ev-f select,.ev-f textarea{
+    background:var(--card);border:1px solid var(--line);border-radius:10px;
+    color:var(--ink);font:inherit;padding:9px 11px;width:100%;
+    /* без этого системный календарь и стрелки списка остаются светлыми на тёмной теме */
+    color-scheme:light dark}
+  .ev-f textarea{min-height:96px;font-family:var(--mono);font-size:12.5px;resize:vertical}
+  .ev-f input:disabled,.ev-f select:disabled{opacity:.55;cursor:not-allowed}
+  .ev-f .hint{font-size:11px;color:var(--faint)}
+  /* Подпись под выражением расписания говорит о нём же: разобрано и как понято, или
+     что не так. Цветом, потому что читают её именно в момент правки строки. */
+  .ev-f .hint.bad{color:var(--coral)}
+  .ev-f .hint.ok{color:var(--green)}
+
+  /* чекбоксы в один ряд с полями */
+  .ev-checks{display:flex;flex-wrap:wrap;gap:18px 26px;margin-top:14px}
+  .ev-chk{display:flex;align-items:center;gap:8px;font-size:13px}
+  .ev-chk input{width:16px;height:16px;accent-color:var(--blue)}
+  /* Флаг, который только отражает выбранный метод. Не приглушаем текст: строку читают
+     как сведения о событии, а не как недоступное поле, — гасим лишь сам квадратик. */
+  .ev-chk.fixed{cursor:default}
+  .ev-chk.fixed input{cursor:not-allowed;opacity:.75}
+
+  /* ---------- SQL-шаги ---------- */
+  .ev-sql{border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px;background:var(--card)}
+  .ev-sql .h{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+  .ev-sql .h b{font-size:13px}
+  .ev-sql .rm{background:none;border:1px solid var(--line);border-radius:8px;color:var(--dim);
+    cursor:pointer;font:inherit;font-size:12px;padding:4px 10px}
+  .ev-sql .rm:hover{color:var(--ink);border-color:var(--dim)}
+
+  /* ---------- подвал: кнопки и результат ---------- */
+  .ev-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    border-top:1px solid var(--line);margin-top:20px;padding-top:18px}
+  .ev-btn{background:var(--grad);border:0;border-radius:10px;color:#fff;cursor:pointer;
+    font:inherit;font-weight:600;padding:11px 20px}
+  .ev-btn:disabled{opacity:.5;cursor:not-allowed}
+  .ev-btn.ghost{background:none;border:1px solid var(--line);color:var(--dim);font-weight:500}
+  .ev-btn.ghost:hover{color:var(--ink)}
+  /* ---- Правка события в карточке (events.js) ----
+     Маленькая кнопка «Править» стоит в заголовке блока, а не отдельной строкой: правят
+     конкретный блок — шаги или шаблоны, — и кнопка должна быть при нём. */
+  .ev-mini{background:var(--card2);color:var(--dim);border:1px solid var(--line);border-radius:7px;
+    padding:2px 8px;font-size:11.5px;cursor:pointer;font-family:var(--sans);margin-left:8px}
+  .ev-mini:hover{color:var(--ink);border-color:rgba(80,195,255,.4)}
+  .ev-edit{display:flex;flex-direction:column;gap:10px}
+  .ev-edit-hint{font-size:12px;color:var(--faint)}
+  .ev-edit-step{display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--line);
+    border-radius:9px}
+  .ev-edit-step label{font-size:12.5px;color:var(--dim);display:flex;align-items:center;gap:6px}
+  .ev-edit-step textarea{width:100%;box-sizing:border-box;background:var(--bg2);color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-family:var(--mono);
+    font-size:12px;line-height:1.5;resize:vertical}
+  .ev-edit-step .ev-mini{align-self:flex-start;margin-left:0}
+  /* Строка шаблона: канал, код, день — узкими полями в ряд, чтобы список читался
+     столбцами, а не превращался в простыню полей во всю ширину. */
+  .ev-edit-tpl{display:grid;grid-template-columns:90px 110px 100px 1fr auto;gap:8px;align-items:center;
+    margin-bottom:6px}
+  .ev-edit-tpl input{background:var(--bg2);color:var(--ink);border:1px solid var(--line);
+    border-radius:7px;padding:5px 8px;font-size:12.5px;min-width:0}
+  .ev-edit-name{font-size:12px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ev-edit-row{display:flex;align-items:center;gap:10px}
+  .ev-edit-msg{font-size:12.5px;color:var(--dim)}
+  .ev-msg{font-size:13px}
+  .ev-msg.err{color:var(--red,#e5484d)}
+  .ev-msg.ok{color:var(--green,#30a46c)}
+  /* Событие заведено, но в прод не уехало — это не успех и не поломка: жёлтый, чтобы
+     человек прочитал причину, а не проскочил мимо зелёной строки. */
+  .ev-msg.warn{color:var(--amber,#e2a336)}
+
+  /* что создалось: таблица слоя B */
+  .ev-rows{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .ev-rows table{border-collapse:collapse;width:100%;font-size:12.5px}
+  .ev-rows th,.ev-rows td{border-bottom:1px solid var(--line);padding:8px 12px;text-align:left}
+  .ev-rows th{color:var(--faint);font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+    text-transform:uppercase;font-weight:500}
+  .ev-rows tr:last-child td{border-bottom:0}
+  .ev-rows td.tbl{font-family:var(--mono)}
+
+  /* строка списка раскрывается карточкой — курсор об этом говорит */
+  .ev-rows tr.clickable{cursor:pointer}
+  .ev-rows tr.clickable:hover td{background:var(--card2,rgba(127,127,127,.08))}
+  .ev-card{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:10px 0;padding:14px}
+  .ev-card h4{font-size:13px;margin:0 0 8px}
+  .ev-card dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0;font-size:12.5px}
+  .ev-card dt{color:var(--faint)}
+  .ev-card dd{margin:0}
+  .ev-card pre{background:var(--bg2,rgba(127,127,127,.06));border-radius:8px;font-size:12px;margin:6px 0 0;
+    overflow-x:auto;padding:10px;white-space:pre-wrap;word-break:break-word}
+
+  .ev-warn{border:1px solid var(--amber,#f5a524);border-radius:10px;color:var(--amber,#f5a524);
+    font-size:12.5px;margin-top:12px;padding:10px 12px}
+
+  /* ---------- цепочка онлайн-события ----------
+     Рисуется по commapi.events_chain. Раскладка повторяет то, как её рисуют на
+     бумаге: шаги в строку, а условие выхода — полосой под всеми сразу, потому что
+     оно обрывает весь поток, а не один шаг. */
+  .ev-chain{border-top:1px solid var(--line);margin-top:34px;padding-top:22px}
+  .ev-chain h2{font-size:19px;font-weight:700;letter-spacing:-.01em;margin:0}
+  .ev-pick{background:var(--card);border:1px solid var(--line);border-radius:9px;color:var(--ink);
+    font-family:var(--sans);font-size:13px;max-width:520px;padding:8px 10px}
+  .ev-pick:disabled{opacity:.55}
+
+  /* Длинная цепочка прокручивается внутри себя: страница вбок ехать не должна. */
+  .evc-scroll{overflow-x:auto;padding-bottom:6px}
+  .evc-flow{align-items:stretch;display:flex;gap:8px;min-width:max-content}
+  .evc-node{background:var(--card);border:1px solid var(--line);border-radius:11px;
+    border-top:2px solid var(--line);display:flex;flex-direction:column;gap:3px;
+    min-width:170px;padding:11px 13px}
+  .evc-node .evc-l{color:var(--faint);font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase}
+  .evc-node .evc-v{font-size:14.5px;font-weight:600}
+  .evc-node .evc-s{color:var(--dim);font-size:11.5px}
+  .evc-node.start{border-top-color:var(--amber,#f5a524)}
+  .evc-node.send{border-top-color:var(--green)}
+  .evc-node.wait{border-top-color:var(--line)}
+  .evc-node.off{border-top-color:var(--faint);opacity:.6}
+  /* Шаг без шаблона ничего не отправит — это видно цветом, а не только подписью. */
+  .evc-node.bad{border-top-color:var(--coral);border-color:var(--coral)}
+  .evc-arrow{align-items:center;color:var(--faint);display:flex;flex:0 0 auto;font-size:15px}
+
+  .evc-band{border:1px dashed var(--coral);border-radius:11px;background:var(--coral-bg);
+    display:flex;flex-direction:column;gap:2px;margin-top:14px;padding:11px 14px}
+  .evc-band .evc-l{color:var(--coral);font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase}
+  .evc-band .evc-v{font-size:14.5px;font-weight:600}
+  .evc-band .evc-s{color:var(--dim);font-size:11.5px}
+  /* Условия выхода нет — это не ошибка, но и не мелочь: цепочку не обрывает ничего. */
+  .evc-band.none{border-color:var(--line);background:transparent}
+  .evc-band.none .evc-l{color:var(--faint)}
+  .evc-band.none .evc-v{color:var(--dim);font-weight:500}
+
+  .evc-empty{color:var(--faint);font-size:13px;padding:14px 0}
+
+  /* ---------- переключатель метода отправки ----------
+     Сегментированной кнопкой, а не выпадающим списком: вариантов два, и оба должны быть
+     видны сразу — от метода зависит, какие значения вообще существуют в полях ниже. */
+  .wz-mode{display:inline-flex;background:var(--card);border:1px solid var(--line);
+    border-radius:11px;padding:3px;gap:3px;margin-bottom:10px}
+  .wz-mode-btn{background:none;border:0;border-radius:8px;color:var(--dim);cursor:pointer;
+    font:inherit;font-size:13px;padding:8px 16px}
+  .wz-mode-btn:hover{color:var(--ink)}
+  .wz-mode-btn.on{background:var(--grad);color:#fff;font-weight:600}
+
+  /* ---------- мастер заведения события по расписанию ----------
+     Вкладки кликабельны все, а не только пройденные. Мастер, который не пускает
+     назад к уже заполненному экрану, заставляет держать в голове, что там было
+     введено, — а форму заводят с бумажки и по ней же сверяют. */
+  .wz-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px}
+  .wz-tab{align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;
+    color:var(--dim);cursor:pointer;display:flex;font:inherit;font-size:12.5px;gap:8px;padding:8px 13px}
+  .wz-tab b{background:var(--card2,rgba(127,127,127,.12));border-radius:6px;color:var(--faint);
+    font-family:var(--mono);font-size:11px;padding:1px 6px}
+  .wz-tab:hover{color:var(--ink);border-color:rgba(80,195,255,.4)}
+  .wz-tab.on{color:var(--ink);border-color:transparent;
+    background:linear-gradient(var(--card),var(--card)) padding-box,var(--grad) border-box;
+    border:1px solid transparent}
+  .wz-tab.on b{background:var(--grad);color:#fff}
+
+  .wz-pane[hidden]{display:none}
+  .wz-note{color:var(--dim);font-size:12.5px;line-height:1.55;margin:0 0 14px;max-width:820px}
+
+  /* Тело запроса — моноширинным блоком с прокруткой: JSON события с десятком шаблонов
+     не помещается по высоте, а страницу вбок из-за длинного SQL уводить нельзя. */
+  .wz-json{background:var(--bg2,rgba(127,127,127,.06));border:1px solid var(--line);border-radius:10px;
+    color:var(--ink);font-family:var(--mono);font-size:12px;line-height:1.55;margin:0;max-height:460px;
+    overflow:auto;padding:12px 14px;white-space:pre}
+
+  /* Строка «день — шаблон» в форме заведения: колонок меньше, чем в правке карточки
+     (канал там спрашивают, здесь он взят с первого экрана). */
+  .ev-edit-tpl.form{grid-template-columns:90px 130px 1fr auto}
+
+  /* План записи — окном, а не блоком в потоке экрана: таблиц тринадцать, и в потоке они
+     оттесняли вниз тело запроса, ради которого экран и открывают. */
+  .ev-modal{position:fixed;inset:0;z-index:300;background:rgba(6,16,27,.62);backdrop-filter:blur(2px);
+    display:none;align-items:center;justify-content:center;padding:24px}
+  .ev-modal.open{display:flex}
+  .ev-modal-card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+    width:min(900px,100%);max-height:88vh;display:flex;flex-direction:column;
+    box-shadow:0 24px 64px rgba(0,0,0,.45)}
+  .ev-modal-head{align-items:baseline;border-bottom:1px solid var(--line);display:flex;gap:12px;
+    flex-wrap:wrap;padding:16px 20px}
+  .ev-modal-head h3{font-size:16.5px;font-weight:700;margin:0}
+  .ev-modal-sub{color:var(--faint);font-family:var(--mono);font-size:11px;letter-spacing:.08em;
+    text-transform:uppercase}
+  .ev-modal-x{align-self:center;background:none;border:1px solid var(--line);border-radius:8px;
+    color:var(--dim);cursor:pointer;flex:0 0 auto;font-size:13px;height:30px;margin-left:auto;width:30px}
+  .ev-modal-x:hover{border-color:rgba(255,107,138,.45);color:var(--coral,#ff6b8a)}
+  .ev-modal-body{display:flex;flex:1 1 auto;flex-direction:column;gap:20px;min-height:0;
+    overflow:auto;padding:16px 20px}
+  .ev-modal-foot{align-items:center;border-top:1px solid var(--line);display:flex;gap:12px;padding:14px 20px}
+  .ev-modal-note{color:var(--dim);font-size:12.5px}
+  .ev-modal-foot .ev-btn{margin-left:auto}
+
+  /* Окно заведения шире окна плана: внутрь переезжает мастер целиком — вкладки, поля
+     в две-три колонки и блоки SQL. В 900px они складывались бы в столбик, и мастер в
+     окне читался бы хуже, чем на странице, ради чего его в окно и переносили. */
+  .ev-modal-wide .ev-modal-card{width:min(1180px,100%);max-height:92vh}
+
+  /* Реестр событий занимает раздел целиком: над таблицей только шапка и фильтры, а не
+     вкладки мастера, — поэтому места ей дано больше, чем в «Шаблонах и сегментах».
+     Сами стили таблицы общие, лежат в css/registry.css. */
+  .sf-table-wrap{max-height:calc(100vh - 260px)}
+  .filters-row{margin:14px 0 4px}
+  .filters-row label{color:var(--dim);display:block;font-size:12px;margin-bottom:6px}
+  .filters-row select{background:var(--bg2);border:1px solid var(--line);border-radius:10px;
+    color:var(--ink);font-family:var(--sans);font-size:13.5px;outline:none;padding:9px 12px;
+    min-width:170px}
+  .filters-row select:focus{border-color:rgba(80,195,255,.45)}
+  /* Кнопка заведения — единственная цветная в шапке: остальные действия смотрят на
+     список, а эта его меняет. */
+  .sf-btn.primary{background:var(--grad);border-color:transparent;color:#06202B}
+  .sf-btn.primary:hover{color:#06202B;filter:brightness(1.05)}
+  .sf-btn:disabled{cursor:not-allowed;opacity:.5}
+  /* Пояснение под кнопками планировщика — подпись, а не ошибка: цвет спокойный. */
+  #evCardHost .ev-edit-msg{color:var(--faint);font-size:12px;line-height:1.5;margin-top:8px}
+  /* Форма внутри окна уже имеет свои отступы — снимаем внешние, чтобы не было полей
+     в поле. Верхний заголовок секции в окно не переезжает: он остался в разделе. */
+  .ev-modal-body>#evoForm,.ev-modal-body>#evfWizard{gap:18px}
+
+  /* Первый шаг: чем именно заводим. Две плитки, а не выпадающий список — выбор
+     определяет весь дальнейший путь, и у каждого варианта есть что сказать о себе. */
+  .ev-pick-kind{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  /* Явный display перебивает встроенное [hidden]{display:none} — без этой строки
+     выбор рода оставался на экране поверх открытой формы. */
+  .ev-pick-kind[hidden]{display:none}
+  .ev-kind{background:var(--bg-soft,rgba(255,255,255,.02));border:1px solid var(--line);
+    border-radius:14px;cursor:pointer;display:flex;flex-direction:column;gap:8px;
+    padding:18px;text-align:left;transition:border-color .15s,transform .15s}
+  .ev-kind:hover{border-color:var(--accent,#3ddc97);transform:translateY(-1px)}
+  .ev-kind-t{color:var(--fg);font-size:15.5px;font-weight:700}
+  .ev-kind-d{color:var(--dim);font-size:13px;line-height:1.5}
+  .ev-kind-tbl{color:var(--faint);font-family:var(--mono);font-size:11px;letter-spacing:.04em}
+
+  .ev-plan-gt{font-size:13px;font-weight:700;margin-bottom:4px}
+  .ev-plan-gn{color:var(--dim);font-size:12px;line-height:1.5;margin:0 0 10px;max-width:780px}
+  .ev-plan-t{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden}
+  .ev-plan-th{align-items:baseline;background:var(--card2,rgba(127,127,127,.08));
+    border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:10px;padding:9px 12px}
+  .ev-plan-th .tbl{font-family:var(--mono);font-size:12.5px}
+  .ev-plan-cnt{color:var(--faint);font-family:var(--mono);font-size:11px}
+  .ev-plan-tn{color:var(--dim);font-size:12px}
+  .ev-plan-t table{border-collapse:collapse;font-size:12.5px;table-layout:fixed;width:100%}
+  .ev-plan-t td{border-bottom:1px solid var(--line);overflow-wrap:anywhere;padding:6px 12px;
+    vertical-align:top}
+  .ev-plan-t tr:last-child td{border-bottom:0}
+  .ev-plan-t td.c{font-family:var(--mono);width:32%}
+  .ev-plan-t td.v{width:36%}
+  .ev-plan-t td.n{color:var(--dim);font-size:11.5px}
+  /* Значения, которых в форме нет: одно присвоит база или сервер, другого не будет вовсе.
+     Оба приглушены, но по-разному — иначе «колонки не будет» читается как значение. */
+  .ev-plan-t tr.k-auto td.v{color:var(--faint);font-family:var(--mono);font-size:11.5px}
+  .ev-plan-t tr.k-skip td.v{color:var(--faint);font-style:italic}
+  /* ---------- расшифровка кронтаба ---------- */
+  /* Не пояснение к полю, а прочитанное выражение — то, ради чего в поле и смотрят.
+     Ошибка разбора красная: показывать её тем же цветом, что и рабочее расписание,
+     значит прятать поломку. */
+  .sfd-row .l.ev-cron-words{color:var(--green);font-weight:600;font-size:12px}
+  .sfd-row .l.ev-cron-bad{color:var(--coral);font-weight:600;font-size:12px}
+
+  /* ---------- кодовое окно шага выборки ---------- */
+  /* Расстояние между шагами задаёт gap у .sfd-chain — свой margin его бы удвоил. */
+  .ev-step-view{min-width:0}
+  .ev-code{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:7px;
+    background:var(--bg2,rgba(127,127,127,.06))}
+  .ev-code-bar{display:flex;align-items:center;gap:8px;padding:6px 10px;
+    border-bottom:1px solid var(--line);background:var(--card2)}
+  .ev-code-lang{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint)}
+  .ev-code-sel{margin-left:auto;background:var(--card);border:1px solid var(--line);border-radius:7px;
+    color:var(--ink);font-family:var(--sans);font-size:12px;padding:3px 8px;outline:none;cursor:pointer}
+  .ev-code-sel:focus{border-color:rgba(80,195,255,.5)}
+  .ev-code pre{margin:0;padding:11px 12px;overflow-x:auto;background:none;
+    font-family:var(--mono);font-size:12px;line-height:1.55;white-space:pre}
+  .ev-code code{font-family:inherit}
+  /* Служебные слова, строки, числа и комментарии — четырьмя цветами палитры панели,
+     а не радугой: код в карточке читают, а не пишут. */
+  .ev-code .c-kw{color:var(--blue);font-weight:600}
+  .ev-code .c-str{color:var(--green)}
+  .ev-code .c-num{color:var(--amber)}
+  .ev-code .c-cmt{color:var(--faint);font-style:italic}
+
+  /* ---------- шаблоны связанным объектом ---------- */
+  .ev-rel{display:flex;flex-direction:column;gap:8px}
+  .ev-rel-item{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--card2);
+    padding:10px 92px 10px 13px;cursor:pointer;transition:border-color .15s,transform .15s}
+  .ev-rel-item:hover{border-color:rgba(80,195,255,.45);transform:translateY(-1px)}
+  .ev-rel-item .t{font-size:13px;font-weight:600;color:var(--blue);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ev-rel-item:hover .t{text-decoration:underline}
+  .ev-rel-item .s{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:3px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ev-rel-item .go{position:absolute;right:12px;top:50%;transform:translateY(-50%);
+    font-size:12px;font-weight:600;color:var(--blue)}
+  /* Шаблон, которого у нас нет, кликабельным не притворяется. */
+  .ev-rel-item.off{cursor:default;border-style:dashed}
+  .ev-rel-item.off:hover{border-color:var(--line);transform:none}
+  .ev-rel-item.off .t{color:var(--dim);text-decoration:none}
+  .ev-rel-item .go.none{color:var(--faint);font-weight:400}
+
+
+  @media (max-width:640px){
+    .ev-modal{padding:0}
+    .ev-modal-card{border-radius:0;max-height:100dvh;width:100%}
+    .ev-plan-t td.c,.ev-plan-t td.v{width:auto}
+  }
+}
+
+/* Светлая тема — вне @scope: правило начинается с html, а его предок обязан лежать
+   внутри корня области видимости, иначе селектор не совпадёт (так же сделано
+   в section-entities.css). Тёмная подложка под окном на светлом фоне читается
+   как ошибка отрисовки. */
+html.theme-light #sec-event-offline .ev-modal{background:rgba(226,234,243,.8)}
+html.theme-light #sec-event-offline .ev-modal-card{box-shadow:0 16px 48px rgba(30,60,100,.25)}

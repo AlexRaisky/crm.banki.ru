@@ -13,7 +13,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- ?v — метка версии: без неё браузер держит старый файл из HTTP-кеша
      и правки раздела доезжают к пользователю с задержкой. Поднимать при изменениях. -->
-<link rel="stylesheet" href="scheme-builder.css?v=17">
+<link rel="stylesheet" href="scheme-builder.css?v=25">
 <link rel="stylesheet" href="object-manager.css?v=4">
 <style>
   /* ============================================================
@@ -72,7 +72,44 @@
   .back:hover{background:var(--card2);color:var(--ink)}
 
   .shell{display:flex;flex:1;min-height:0}
-  .sidebar{width:262px;flex:0 0 auto;background:var(--bg2);border-right:1px solid var(--line);padding:12px 9px;overflow-y:auto}
+  .sidebar{width:262px;flex:0 0 auto;background:var(--bg2);border-right:1px solid var(--line);
+    padding:12px 9px;display:flex;flex-direction:column;min-height:0}
+  .snav-scroll{flex:1;min-height:0;overflow-y:auto}
+  /* Кнопка сворачивания прижата к низу и не уезжает вместе со списком пунктов. */
+  .snav-toggle{flex:0 0 auto;margin-top:8px;display:flex;align-items:center;gap:12px;width:100%;
+    padding:10px 11px;border-radius:10px;border:1px solid transparent;background:none;cursor:pointer;
+    color:var(--faint);font:inherit;font-size:13px;text-align:left}
+  .snav-toggle:hover{background:var(--card);color:var(--ink)}
+  .snav-toggle .ico{transition:transform .15s}
+
+  /* Свёрнутое меню: остаются иконки, подписи и заголовки групп уходят. Ширину меряем
+     по иконке с отступами, чтобы пункт не прыгал при переключении. */
+  body.snav-collapsed .sidebar{width:60px;padding:12px 7px}
+  body.snav-collapsed .nav-item .lbl,
+  body.snav-collapsed .snav-toggle .lbl{display:none}
+  body.snav-collapsed .snav-group{height:1px;margin:12px 6px;padding:0;overflow:hidden;
+    background:var(--line);color:transparent}
+  body.snav-collapsed .nav-item,
+  body.snav-collapsed .snav-toggle{justify-content:center;padding:10px 0}
+  body.snav-collapsed .snav-toggle .ico{transform:rotate(180deg)}
+  .snav-group{font-family:var(--mono,monospace);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faint);margin:16px 0 6px;padding:0 10px}
+  .snav-group:first-child{margin-top:4px}
+
+  /* Бейдж контура — те же цвета, что в панели (css/shell.css): зелёный прод,
+     жёлтый препрод, синий тест. Узнаваемость важнее экономии на дублировании. */
+  .env-pill{align-self:center;margin-left:12px;font-family:var(--mono);font-size:10px;font-weight:700;
+    letter-spacing:.12em;padding:4px 9px;border-radius:12px;white-space:nowrap}
+  .env-pill.prod{color:var(--green);background:var(--green-bg,rgba(60,250,180,.12));border:1px solid rgba(60,250,180,.3)}
+  .env-pill.preprod{color:var(--amber,#f5a524);background:rgba(255,184,77,.12);border:1px solid rgba(255,184,77,.35)}
+  .env-pill.test{color:var(--blue);background:var(--blue-bg);border:1px solid rgba(80,195,255,.35)}
+  /* Строка среды на панели доступа: там ошибка «выдал не в том контуре» дороже всего. */
+  .env-line{display:flex;align-items:center;gap:10px;margin:14px 0 0;padding:10px 12px;border-radius:10px;
+    border:1px solid var(--line);background:var(--card2);font-size:13px;color:var(--dim)}
+  .env-line .env-pill{margin-left:0}
+  /* Контур напротив раздела в матрице прав: тот же бейдж, но мельче — это подпись
+     к строке, а не заголовок страницы. */
+  .acc-env{margin-left:0;font-size:9px;padding:3px 7px;letter-spacing:.1em}
   .nav-item{display:flex;align-items:center;gap:12px;padding:10px 11px;border-radius:10px;cursor:pointer;
     color:var(--dim);white-space:nowrap;border:1px solid transparent;margin-bottom:2px;user-select:none;font-size:14px;font-weight:500}
   .nav-item:hover{background:var(--card);color:var(--ink)}
@@ -87,10 +124,16 @@
      полосу с прокруткой, а контент отдаём во всю ширину. */
   @media(max-width:900px){
     .shell{flex-direction:column}
-    .sidebar{width:100%;height:auto;flex:0 0 auto;display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;
+    .sidebar{width:100%;height:auto;flex:0 0 auto;display:flex;flex-direction:row;gap:6px;
       padding:9px 10px;border-right:none;border-bottom:1px solid var(--line)}
+    .snav-scroll{display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;flex:1}
     .sidebar h3{display:none}
     .nav-item{flex:0 0 auto;margin-bottom:0;white-space:nowrap}
+    /* На узком экране меню и так полоса — сворачивать нечего, кнопка только мешает. */
+    .snav-toggle{display:none}
+    body.snav-collapsed .sidebar{width:100%;padding:9px 10px}
+    body.snav-collapsed .nav-item .lbl{display:inline}
+    body.snav-collapsed .snav-group{display:none}
     .content{padding:16px 14px}
     .top{padding:0 12px}
   }
@@ -133,6 +176,11 @@
   .check-row:last-child{border-bottom:none}
   .check-row input{accent-color:#3CFAB4;width:17px;height:17px;cursor:pointer}
   .check-row input:disabled{cursor:not-allowed}
+  /* Подраздел — отступом и приглушённой подписью: строк в карточке стало под тридцать,
+     и без визуальной вложенности группа от своего пункта не отличалась. */
+  .check-row.sub{padding-left:30px;font-size:13px;color:var(--dim);border-bottom-style:dashed}
+  .check-row.sub input{width:15px;height:15px}
+  .check-row.sub input:disabled{opacity:.4}
   .check-row .muted{color:var(--faint);font-size:12px;margin-left:auto;font-family:var(--mono)}
 
   /* радио/селекты общих параметров */
@@ -163,7 +211,31 @@
   td .t-name{font-weight:600}
   td .mono{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
   td .btn{padding:6px 11px;font-size:12px;margin-left:6px}
+  /* Узкий экран. Значения вроде JDBC URL — длинная строка без пробелов, и таблица
+     распирается шире карточки: правая колонка с кнопками уезжала за край экрана,
+     «Удалить» не видно и не нажать. display:block делает таблицу блоком с собственной
+     горизонтальной прокруткой — лишняя ширина прокручивается внутри карточки, а не
+     ломает страницу; колонки шапки и строк при этом остаются выровненными (проверено).
+     Переносить длинные значения по любому символу (overflow-wrap:anywhere) НЕ надо:
+     колонка тогда схлопывается до трёх знаков и адрес рвётся посреди слова. */
+  table{display:block;overflow-x:auto}
   .empty{color:var(--faint);font-size:13.5px;padding:8px 2px}
+  /* Пояснения к кнопкам: что именно делает каждая. Отступ слева у описания —
+     чтобы список читался парами, а не сплошным текстом. */
+  /* Подсказка к кнопкам — раскрывающийся блок: нужна редко, а места занимала столько,
+     что списка под ней было не видно. */
+  .help-box{margin:0 0 14px}
+  .help-box>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px;
+    font-size:12.5px;color:var(--faint);padding:2px 0;user-select:none}
+  .help-box>summary::-webkit-details-marker{display:none}
+  .help-box>summary::before{content:"";width:0;height:0;border:5px solid transparent;
+    border-left-color:currentColor;transition:transform .15s;transform-origin:3px 50%}
+  .help-box[open]>summary::before{transform:rotate(90deg)}
+  .help-box>summary:hover{color:var(--ink)}
+  .btn-help{margin:8px 0 0;font-size:12.5px;line-height:1.55}
+  .btn-help dt{color:var(--ink);font-weight:600;margin-top:8px}
+  .btn-help dt:first-child{margin-top:0}
+  .btn-help dd{margin:2px 0 0 14px;color:var(--dim)}
 
   /* Подключения к БД: форма и статус-бейджи */
   .dbc-form{margin-top:14px;border-top:1px solid var(--line);padding-top:16px}
@@ -175,7 +247,9 @@
     font-family:var(--sans);font-size:14px;padding:9px 12px;width:100%}
   .dbc-in:focus{outline:none;border-color:var(--blue)}
   .dbc-in.mono{font-family:var(--mono);font-size:12.5px}
-  .badge{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;letter-spacing:.03em}
+  /* nowrap: «не проверялось» и «прод-синк» в узкой колонке рвались пополам, и половина
+     слова оставалась за скруглением плашки */
+  .badge{display:inline-block;white-space:nowrap;font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;letter-spacing:.03em}
   .badge.ok{background:var(--green-bg);color:var(--green)}
   .badge.err{background:var(--coral-bg);color:var(--coral)}
   .badge.off{background:var(--card2);color:var(--faint)}
@@ -212,13 +286,24 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
       <span data-i18n="Настройки">Настройки</span>
     </div>
+    <!-- Бейдж среды: настройки трёх контуров выглядят одинаково, а базы у них разные —
+         роли, выданные «не там», ищут потом долго. Имя приходит из GET /api/env. -->
+    <span class="env-pill" id="envPill" style="display:none"></span>
     <!-- относительный путь: работает и локально (/settings/ → /), и на GitHub Pages
          (/crm.banki.ru/settings/ → /crm.banki.ru/); абсолютный "/" уводил на корень домена -->
     <a class="back" href="../" data-i18n="← В панель управления">← В панель управления</a>
   </header>
 
   <div class="shell">
-    <aside class="sidebar" id="snav"></aside>
+    <!-- Сайдбар сворачивается до иконок: Scheme Builder и «Схемам и таблицам» экрана
+         не хватает, и 262 пикселя меню там дороже, чем список сущностей. -->
+    <aside class="sidebar" id="sside">
+      <div class="snav-scroll" id="snav"></div>
+      <button class="snav-toggle" id="snavToggle" type="button" title="Свернуть меню">
+        <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></span>
+        <span class="lbl">Свернуть меню</span>
+      </button>
+    </aside>
 
     <main class="content">
 
@@ -232,8 +317,9 @@
       <!-- ===== Приложения и разделы ===== -->
       <section class="pane" id="pane-apps">
         <h1 data-i18n-html="h_apps">Приложения <span class="grad">и разделы</span></h1>
-        <div class="sub" data-i18n="Какие разделы панели доступны в каждом приложении (App Launcher). Пока всем приложениям разрешены все разделы — набор будет корректироваться. «Главная» доступна всегда.">Какие разделы панели доступны в каждом приложении (App Launcher). Пока всем приложениям
-          разрешены все разделы — набор будет корректироваться. «Главная» доступна всегда.</div>
+        <div class="sub" data-i18n="Какие разделы и подразделы панели доступны в каждом приложении (App Launcher). Снятая группа скрывает всё, что внутри неё. «Главная» доступна всегда.">Какие разделы и подразделы панели доступны в каждом приложении (App Launcher).
+          Снятая группа скрывает всё, что внутри неё. «Главная» доступна всегда.</div>
+        <div class="sub" style="margin-top:8px">Это не права доступа: набор приложения решает, что видно в меню при выбранном приложении, а кому раздел вообще доступен — «Управление доступом». Скрытый здесь раздел остаётся доступным в другом приложении и по прямой ссылке.</div>
         <div id="appsBox"></div>
         <div class="actions">
           <button class="btn accent" id="saveApps" data-i18n="Сохранить">Сохранить</button>
@@ -241,6 +327,12 @@
           <span class="save-note" id="appsSaved" data-i18n="✓ Сохранено — панель применит при загрузке">✓ Сохранено — панель применит при загрузке</span>
           <span class="save-note err" id="appsError"></span>
         </div>
+        <dl class="btn-help">
+          <dt data-i18n="Сохранить">Сохранить</dt>
+          <dd data-i18n="Записывает набор разделов для всех приложений. Настройка общая: у остальных пользователей она применится при следующей загрузке панели.">Записывает набор разделов для всех приложений. Настройка общая: у остальных пользователей она применится при следующей загрузке панели.</dd>
+          <dt data-i18n="Сбросить (все разделы всем)">Сбросить (все разделы всем)</dt>
+          <dd data-i18n="Возвращает исходное состояние: каждому приложению разрешены все разделы. Права пользователей это не отменяет — человек всё равно видит только то, что открыто его ролью.">Возвращает исходное состояние: каждому приложению разрешены все разделы. Права пользователей это не отменяет — человек всё равно видит только то, что открыто его ролью.</dd>
+        </dl>
 
         <!-- очерёдность подразделов внутри разделов -->
         <h2 class="block-title" data-i18n="Очерёдность подразделов">Очерёдность подразделов</h2>
@@ -299,6 +391,13 @@
         <h1 data-i18n-html="h_access">Управление <span class="grad">доступом</span></h1>
         <div class="sub" data-i18n="Пользователи панели: роль задаёт уровень возможностей, набор разделов — что видит пользователь. Требуется запущенный crm-admin и роль ADMIN.">Пользователи панели: роль задаёт уровень возможностей, набор разделов — что видит
           пользователь. Требуется запущенный crm-admin и роль ADMIN.</div>
+        <!-- Среда прописана и здесь, а не только в шапке: пользователи и роли у каждого
+             контура свои, и «выдал права, а у человека ничего не появилось» почти всегда
+             означает, что выдали в другом. Пусть это будет видно там, где нажимают. -->
+        <div class="env-line" id="envLineAccess" style="display:none">
+          <span class="env-pill" id="envPillAccess"></span>
+          <span data-i18n="Права выдаются в этой среде. У прода, препрода и теста базы разные — роли и пользователи не общие.">Права выдаются в этой среде. У прода, препрода и теста базы разные — роли и пользователи не общие.</span>
+        </div>
         <!-- admin-users.js рендерит сюда (контейнер по историческому id) -->
         <div id="sec-access"></div>
       </section>
@@ -347,15 +446,38 @@
           <button class="btn accent" id="sbGit" data-i18n="Сохранить в Git">Сохранить в Git</button>
         </div>
 
-        <div class="sb-shell">
+        <!-- Панель конструктора: половина кнопок меняет только вид на экране, половина —
+             настоящие данные. Различие по названиям не читается, поэтому расписано. -->
+        <dl class="btn-help">
+          <dt data-i18n="+ Сущность / + Связь">+ Сущность / + Связь</dt>
+          <dd data-i18n="Добавляют таблицу или связь В МОДЕЛЬ. В базе при этом ничего не появляется — до «Применить к базе».">Добавляют таблицу или связь В МОДЕЛЬ. В базе при этом ничего не появляется — до «Применить к базе».</dd>
+          <dt data-i18n="Авто-раскладка / Вписать / Развернуть все / Вид">Авто-раскладка / Вписать / Развернуть все / Вид</dt>
+          <dd data-i18n="Только внешний вид схемы на экране: расположение блоков, масштаб, раскрытые поля. Данные не трогают вовсе.">Только внешний вид схемы на экране: расположение блоков, масштаб, раскрытые поля. Данные не трогают вовсе.</dd>
+          <dt>SQL DDL</dt>
+          <dd data-i18n="Показывает готовый текст запросов, которыми модель ляжет в базу. Ничего не выполняет — можно скопировать и отдать администратору БД.">Показывает готовый текст запросов, которыми модель ляжет в базу. Ничего не выполняет — можно скопировать и отдать администратору БД.</dd>
+          <dt data-i18n="Применить к базе">Применить к базе</dt>
+          <dd data-i18n="Единственная кнопка, меняющая саму базу. Сначала показывает предпросмотр: что создастся, что пропустится и почему. Защищённые схемы не трогаются — в них можно только заводить новые таблицы, существующие остаются как есть.">Единственная кнопка, меняющая саму базу. Сначала показывает предпросмотр: что создастся, что пропустится и почему. Защищённые схемы не трогаются — в них можно только заводить новые таблицы, существующие остаются как есть.</dd>
+          <dt data-i18n="Из Git">Из Git</dt>
+          <dd data-i18n="Перечитывает модель из файла в репозитории и ЗАМЕЩАЕТ ею текущую на экране. Несохранённые правки при этом теряются.">Перечитывает модель из файла в репозитории и ЗАМЕЩАЕТ ею текущую на экране. Несохранённые правки при этом теряются.</dd>
+          <dt data-i18n="Сохранить в Git">Сохранить в Git</dt>
+          <dd data-i18n="Кладёт модель в файл репозитория, чтобы она уехала вместе с кодом. К базе отношения не имеет.">Кладёт модель в файл репозитория, чтобы она уехала вместе с кодом. К базе отношения не имеет.</dd>
+        </dl>
+
+        <div class="sb-shell" id="sbShell">
           <div class="sb-col sb-list">
-            <div class="sb-col-head"><span data-i18n="Схемы и таблицы">Схемы и таблицы</span><span class="n" id="sbEntityCount">0</span></div>
+            <div class="sb-col-head"><span data-i18n="Схемы и таблицы">Схемы и таблицы</span><span class="n" id="sbEntityCount">0</span>
+              <button type="button" class="sb-fold" id="sbFoldList" title="Свернуть список">‹</button></div>
             <div class="sb-col-body" id="sbEntityList"></div>
             <div class="sb-col-head"><span data-i18n="Связи">Связи</span><span class="n" id="sbRelationCount">0</span></div>
-            <div class="sb-col-body" id="sbRelationList" style="flex:0 0 34%"></div>
+            <!-- Связей всегда меньше, чем таблиц, а треть колонки они занимали наравне.
+                 Отдаём место списку сущностей — его читают постоянно, связи от случая
+                 к случаю; свой скролл у блока остаётся. -->
+            <div class="sb-col-body" id="sbRelationList" style="flex:0 0 24%;min-height:96px"></div>
           </div>
 
           <div class="sb-col sb-canvas-col">
+            <button type="button" class="sb-tab-back left" id="sbShowList" title="Показать список">› <span data-i18n="Схемы">Схемы</span></button>
+            <button type="button" class="sb-tab-back right" id="sbShowInspect" title="Показать инспектор"><span data-i18n="Свойства">Свойства</span> ‹</button>
             <div class="sb-canvas" id="sbCanvas">
               <div class="sb-viewport" id="sbViewport">
                 <svg class="sb-edges" id="sbEdges"></svg>
@@ -383,13 +505,24 @@
         </div>
       </section>
 
-      <!-- ===== Схемы и таблицы — фактическое состояние базы (только чтение) =====
-           Содержимое рисует db-explorer.js по ответу GET /api/schema/db. -->
+      <!-- ===== Схемы и таблицы — фактическое состояние базы =====
+           Содержимое рисует db-explorer.js по ответу GET /api/schema/db. Единственное
+           изменяющее действие — удаление своих таблиц и пустых схем. -->
+      <section class="pane" id="pane-refs">
+        <h1 data-i18n-html="h_refs">Справочники <span class="grad">значений</span></h1>
+        <div class="sub" data-i18n="Списки, из которых выбирают формы панели. Выберите таблицу — откроется её содержимое. Значение добавляют не для себя, а для всех: оно сразу появляется в выпадашках. Занятое шаблонами значение выключают, а не удаляют — удаление уберёт его из списка, но в шаблонах оно останется.">Списки, из которых выбирают формы панели. Выберите таблицу — откроется её
+          содержимое. Значение добавляют не для себя, а для всех: оно сразу появляется в
+          выпадашках. Занятое шаблонами значение выключают, а не удаляют — удаление уберёт
+          его из списка, но в шаблонах оно останется.</div>
+        <div id="refsHost" class="refs-host"></div>
+      </section>
+
       <section class="pane" id="pane-dbtree">
         <h1 data-i18n-html="h_dbtree">Схемы и <span class="grad">таблицы</span></h1>
-        <div class="sub" data-i18n="Что реально лежит в базе панели: схемы, внутри — их таблицы. Показывается фактическое состояние, а не модель конструктора: часть схем заведена миграциями, часть — конструктором схемы. Раздел только читает и ничего не меняет.">Что реально лежит в базе панели: схемы, внутри — их таблицы. Показывается
+        <div class="sub" data-i18n="Что реально лежит в базе панели: схемы, внутри — их таблицы. Показывается фактическое состояние, а не модель конструктора: часть схем заведена миграциями, часть — конструктором схемы. Удалить можно только то, что создал конструктор — у таких строк есть кнопка.">Что реально лежит в базе панели: схемы, внутри — их таблицы. Показывается
           фактическое состояние, а не модель конструктора: часть схем заведена миграциями,
-          часть — конструктором схемы. Раздел только читает и ничего не меняет.</div>
+          часть — конструктором схемы. Удалить можно только то, что создал конструктор —
+          у таких строк есть кнопка.</div>
         <div id="dbxHost"></div>
       </section>
 
@@ -425,9 +558,22 @@
       </section>
 
       <!-- ===== Диагностика ===== -->
-      <section class="pane" id="pane-diag">
-        <h1 data-i18n-html="h_diag">Диагностика <span class="grad">хранилища</span></h1>
+      <!-- ===== Подключения к БД ===== -->
+      <!-- ===== Планировщик (crm-cron) =====
+           Содержимое рисует cron.js. Здесь только заголовок и место под него. -->
+      <section class="pane" id="pane-cron">
+        <h1 data-i18n-html="h_cron">Планировщик <span class="grad">Quartz</span></h1>
+        <div class="sub" data-i18n="События по расписанию исполняет Quartz, и знает он о них не по строке в scheduler.t_launch_settings, а по контексту, который создаёт сервис crm-cron. Панель строку пишет, контекст не создаёт — значит заведённое ею событие не срабатывает никогда. Здесь настраивается связь; сами задания заводятся кнопками в карточке события: «События» → «Список событий» → «Настройки» у строки → блок «Планировщик».">События по расписанию исполняет Quartz, и знает он о них не по строке
+          в <code>scheduler.t_launch_settings</code>, а по контексту, который создаёт сервис
+          crm-cron. Панель строку пишет, контекст не создаёт — значит заведённое ею событие
+          не срабатывает никогда. Здесь настраивается связь; сами задания заводятся кнопками
+          в карточке события: «События» → «Список событий» → «Настройки» у строки → блок
+          «Планировщик».</div>
+        <div id="cronHost" class="cron-host"></div>
+      </section>
 
+      <section class="pane" id="pane-dbconn">
+        <h1 data-i18n-html="h_dbconn">Подключения <span class="grad">к БД</span></h1>
         <!-- ===== Подключения к БД ===== -->
         <h2 style="margin-top:2px" data-i18n="Подключения к БД">Подключения к БД</h2>
         <div class="sub" data-i18n="Базы, к которым подключается панель. Встроенные (наша и прод) — только для чтения; свои можно добавлять. Пароль хранится на сервере и в списке не показывается.">Базы, к которым подключается панель. Встроенные (наша и прод) — только для чтения; свои можно добавлять. Пароль хранится на сервере и в списке не показывается.</div>
@@ -437,6 +583,14 @@
             <button class="btn" id="dbcTestAllBtn" data-i18n="Проверить все">Проверить все</button>
             <button class="btn" id="dbcRefreshBtn" data-i18n="Обновить">Обновить</button>
           </div>
+          <dl class="btn-help">
+            <dt data-i18n="+ Добавить подключение">+ Добавить подключение</dt>
+            <dd data-i18n="Завести ещё одну базу: имя, JDBC-адрес, пользователь и пароль. Пароль хранится на сервере и наружу не отдаётся. Встроенные подключения (наша база и прод) правке не подлежат.">Завести ещё одну базу: имя, JDBC-адрес, пользователь и пароль. Пароль хранится на сервере и наружу не отдаётся. Встроенные подключения (наша база и прод) правке не подлежат.</dd>
+            <dt data-i18n="Проверить все">Проверить все</dt>
+            <dd data-i18n="По очереди подключается к каждой базе из списка и показывает результат со временем ответа. Только проверка связи: ничего не читает и не пишет.">По очереди подключается к каждой базе из списка и показывает результат со временем ответа. Только проверка связи: ничего не читает и не пишет.</dd>
+            <dt data-i18n="Обновить">Обновить</dt>
+            <dd data-i18n="Перечитывает список из базы, не трогая сами подключения. Нужен, если запись меняли в другой вкладке или другим администратором.">Перечитывает список из базы, не трогая сами подключения. Нужен, если запись меняли в другой вкладке или другим администратором.</dd>
+          </dl>
           <div id="dbcBox" class="empty">…</div>
 
           <!-- Форма добавления / редактирования (скрыта до нажатия) -->
@@ -474,6 +628,11 @@
                   <span data-i18n="Приёмник синка шаблонов (прод)">Приёмник синка шаблонов (прод)</span>
                   <span class="opt-note mono" data-i18n="сюда доставляется очередь; может быть только один">сюда доставляется очередь; может быть только один</span>
                 </label>
+                <label class="opt-row" style="border:none;padding:2px 0;cursor:pointer">
+                  <input type="checkbox" id="dbcEventDb" style="accent-color:#3CFAB4;width:16px;height:16px">
+                  <span data-i18n="База событий (crmdb)">База событий (crmdb)</span>
+                  <span class="opt-note mono" data-i18n="tracker/scheduler/template/commapi; это ДРУГАЯ база, не приёмник шаблонов">tracker/scheduler/template/commapi; это ДРУГАЯ база, не приёмник шаблонов</span>
+                </label>
               </div>
             </div>
             <div class="actions">
@@ -483,10 +642,12 @@
             </div>
           </form>
         </div>
+      </section>
 
-        <div class="sub" style="margin-top:22px">Что панель хранит в localStorage браузера (префикс crmpanel:).</div>
-        <div class="card"><div id="diagBox"></div></div>
-
+      <!-- ===== Синхронизация шаблонов ===== -->
+      <section class="pane" id="pane-sync">
+        <h1 data-i18n-html="h_sync">Синхронизация <span class="grad">шаблонов</span></h1>
+        <div class="sub">Очередь доставки в базу шаблонов (схемы notice и callcenter) и обратный ETL. События сюда не относятся: у них своя база и свой раздел.</div>
         <!-- Очередь синка шаблонов: авто-показ счётчиков (снизу под диагностикой хранилища) -->
         <h2 style="margin-top:26px" data-i18n="Очередь синка шаблонов">Очередь синка шаблонов</h2>
         <div class="sub" data-i18n="Операции мастера, ожидающие доставки во внешнюю прод-базу.">Операции мастера, ожидающие доставки во внешнюю прод-базу.</div>
@@ -508,6 +669,14 @@
             <button class="btn" id="prodReconcileBtn" data-i18n="Сверка с продом">Сверка с продом</button>
             <button class="btn" id="prodImportAllBtn" data-i18n="Импортировать всё из прода">Импортировать всё из прода</button>
           </div>
+          <dl class="btn-help">
+            <dt data-i18n="Доставить очередь сейчас">Доставить очередь сейчас</dt>
+            <dd data-i18n="Не ждать фонового тика (он идёт каждые 20 секунд), а отправить в прод накопившееся прямо сейчас. Направление одно: от нас в прод. Ничего не читает и не сверяет.">Не ждать фонового тика (он идёт каждые 20 секунд), а отправить в прод накопившееся прямо сейчас. Направление одно: от нас в прод. Ничего не читает и не сверяет.</dd>
+            <dt data-i18n="Сверка с продом">Сверка с продом</dt>
+            <dd data-i18n="Только смотрит и ничего не меняет. Показывает четыре списка: совпадает, есть только в проде, разошлось по значениям, есть только у нас. Дальше можно отметить нужные строки и импортировать выборочно.">Только смотрит и ничего не меняет. Показывает четыре списка: совпадает, есть только в проде, разошлось по значениям, есть только у нас. Дальше можно отметить нужные строки и импортировать выборочно.</dd>
+            <dt data-i18n="Импортировать всё из прода">Импортировать всё из прода</dt>
+            <dd data-i18n="Забирает всю прод-базу шаблонов к нам: прод перезаписывает наши расхождения. Идёт в фоне с показом прогресса, на больших объёмах долго. То, что есть только у нас (например каналы FA, VK, Live Activity), не трогает и не удаляет.">Забирает всю прод-базу шаблонов к нам: прод перезаписывает наши расхождения. Идёт в фоне с показом прогресса, на больших объёмах долго. То, что есть только у нас (например каналы FA, VK, Live Activity), не трогает и не удаляет.</dd>
+          </dl>
           <div id="prodDbBox" class="empty" data-i18n="Проверить соединение можно в «Подключения к БД» выше.">Проверить соединение можно в «Подключения к БД» выше.</div>
           <div id="reconcileBox" style="margin-top:14px"></div>
         </div>
@@ -521,9 +690,438 @@
             <button class="btn" id="etlFullBtn" data-i18n="Полный прогон">Полный прогон</button>
             <button class="btn" id="etlRefreshBtn" data-i18n="Обновить статус">Обновить статус</button>
           </div>
+          <!-- Кнопки различаются не силой, а охватом, и по названиям это не читается:
+               «Синхронизировать» звучит как «сделать всё». Поясняем прямо здесь. -->
+          <dl class="btn-help">
+            <dt data-i18n="Синхронизировать сейчас">Синхронизировать сейчас</dt>
+            <dd data-i18n="Тянет только то, что изменилось с прошлого раза. То же самое происходит само каждые 5 минут. Быстро; для сверки «всё ли доехало» не годится — старые расхождения не увидит.">Тянет только то, что изменилось с прошлого раза. То же самое происходит само каждые 5 минут. Быстро; для сверки «всё ли доехало» не годится — старые расхождения не увидит.</dd>
+            <dt data-i18n="Полный прогон">Полный прогон</dt>
+            <dd data-i18n="Читает все шаблоны прода по всем каналам и перезаписывает нашу копию. То же самое идёт ночью в 22:00. Только он показывает «есть у нас, нет в проде» — удалённое в проде и наши собственные каналы (FA, VK, Live Activity). Долгий: таблицы читаются целиком.">Читает все шаблоны прода по всем каналам и перезаписывает нашу копию. То же самое идёт ночью в 22:00. Только он показывает «есть у нас, нет в проде» — удалённое в проде и наши собственные каналы (FA, VK, Live Activity). Долгий: таблицы читаются целиком.</dd>
+            <dt data-i18n="Обновить статус">Обновить статус</dt>
+            <dd data-i18n="Ничего не тянет и ничего не меняет. Просто показывает: включён ли синк, идёт ли прогон прямо сейчас, до какого момента дочитан каждый канал и чем кончился прошлый прогон.">Ничего не тянет и ничего не меняет. Просто показывает: включён ли синк, идёт ли прогон прямо сейчас, до какого момента дочитан каждый канал и чем кончился прошлый прогон.</dd>
+          </dl>
           <div id="etlBox" class="empty">…</div>
         </div>
       </section>
+
+      <!-- ===== События (crmdb) ===== -->
+      <section class="pane" id="pane-events">
+        <h1 data-i18n-html="h_events">События <span class="grad">crmdb</span></h1>
+        <div class="sub">Боевые события живут в отдельной базе — crmdb, схемы tracker, scheduler, template, commapi. Это НЕ приёмник шаблонов: у того свои схемы, notice и callcenter. Какое подключение считать базой событий, задаёт галка «База событий» в разделе «Подключения к БД».</div>
+        <div class="sub" style="margin-top:8px">Пользователю подключения нужен <b>SELECT</b> на все восемь таблиц. Права выдаются поштучно, и нехватка на одной видна в сверке отдельной строкой. Выдать разом (выполняется в crmdb под владельцем схем):
+          <div class="card mono" style="margin-top:6px;font-size:12px;white-space:pre-wrap">GRANT USAGE ON SCHEMA tracker, scheduler, template, commapi TO &lt;пользователь&gt;;
+GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
+  scheduler.t_get_event, scheduler.t_launch_settings, scheduler.t_execution_steps,
+  template.d_template_mapping, template.d_template_mapping_mass,
+  commapi.d_definition_mapping TO &lt;пользователь&gt;;</div>
+        </div>
+
+        <h2 style="margin-top:22px">Сравнить с продовой базой</h2>
+        <div class="sub">Сколько событий и строк обвязки лежит в crmdb и сколько из этого уже затянуто к нам. Ничего не меняет — только считает.</div>
+        <div class="card">
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn" id="evScanBtn">Сравнить с продом</button>
+            <button type="button" class="btn" id="evDdlBtn">Сверить колонки таблиц</button>
+            <span class="save-note" id="evScanNote"></span>
+          </div>
+          <div id="evScanBox" class="empty" style="margin-top:12px">Нажмите «Сравнить с продом».</div>
+        </div>
+
+        <h2 style="margin-top:26px">Импортировать из прода</h2>
+        <div class="sub">Затягивает события из crmdb и раскладывает их по нашей модели: справочник событий, доставка, расписание, шаги выборки, шаблоны, метод отправки и состояние планировщика. В crmdb ничего не пишет. Идёт порциями по тысяче строк на таблицу и продолжается сам, пока не вытянет всё; сводка обновляется после каждого прохода.</div>
+        <div class="card">
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn primary" id="evImportBtn">Импортировать из прода</button>
+            <span class="save-note" id="evImportNote"></span>
+          </div>
+          <div id="evImportBox" class="empty" style="margin-top:12px">Сначала сравните с продом — так видно, сколько предстоит затянуть.</div>
+        </div>
+      </section>
+
+      <!-- ===== Jira: подключение и карта полей ===== -->
+      <!-- ===== Карта интеграций =====
+           Сводит вместе то, что показывают «Подключения к БД», «Синхронизация»,
+           «Процессы переливов» и «Jira». Только чтение; рисует settings/integrations.js
+           по ответу GET /api/admin/integrations. -->
+      <section class="pane" id="pane-integrations">
+        <h1 data-i18n-html="h_integr">Карта <span class="grad">интеграций</span></h1>
+        <div class="sub">С кем панель разговаривает и в каком это состоянии прямо сейчас: боевая база
+          шаблонов, база событий crmdb, Jira, витрины под отчёты. Стрелка — поток данных, цвет —
+          состояние: зелёный работает, жёлтый работает с замечаниями, красный не отвечает,
+          серый выключен человеком или не настроен. Клик по узлу открывает раздел, где это настраивается.</div>
+
+        <div class="row" style="gap:10px;align-items:center;margin:16px 0 4px">
+          <button type="button" class="btn" id="igReload">Обновить состояние</button>
+          <span class="mono" id="igStamp" style="color:var(--faint);font-size:11.5px"></span>
+        </div>
+
+        <div class="card" style="padding:14px">
+          <div id="igHost" class="empty">Опрашиваем интеграции…</div>
+        </div>
+      </section>
+
+      <section class="pane" id="pane-jira">
+        <h1 data-i18n-html="h_jira">Интеграция <span class="grad">с Jira</span></h1>
+        <div class="sub">Из «Планирования промо» задача CRM-Промо заводится кнопкой. Здесь задаётся, куда ходить и под кем: адрес Jira, токен сервисной учётки, проект и тип задачи.</div>
+        <div class="sub" style="margin-top:8px">Токен — <b>personal access token</b> из профиля учётки в Jira (Profile → Personal Access Tokens). Нужны права <b>Browse Projects</b> и <b>Create Issues</b> в проекте, а чтобы постановщиком становился нажавший кнопку, а не робот, — ещё и <b>Modify Reporter</b>. Токен хранится на сервере и наружу не отдаётся.</div>
+
+        <div class="card">
+          <div class="dbc-grid">
+            <div class="dbc-fld wide">
+              <label>Адрес Jira</label>
+              <input class="dbc-in mono" id="jrUrl" placeholder="https://jira.banki.ru">
+            </div>
+            <div class="dbc-fld">
+              <label>Токен сервисной учётки</label>
+              <input class="dbc-in" id="jrToken" type="password" autocomplete="new-password" placeholder="••••••">
+              <span class="mono" id="jrTokenHint" style="color:var(--faint);font-size:11px">оставьте пустым — прежний токен сохранится</span>
+            </div>
+            <div class="dbc-fld">
+              <label>Ключ проекта</label>
+              <input class="dbc-in mono" id="jrProject" placeholder="CRM">
+            </div>
+            <div class="dbc-fld">
+              <label>Тип задачи</label>
+              <input class="dbc-in" id="jrType" placeholder="CRM-Промо">
+            </div>
+            <div class="dbc-fld">
+              <label>Метки по умолчанию</label>
+              <input class="dbc-in mono" id="jrLabels" placeholder="crm_retention">
+            </div>
+          </div>
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">
+            <button type="button" class="btn primary" id="jrSave">Сохранить</button>
+            <button type="button" class="btn" id="jrCheck">Проверить связь</button>
+            <button type="button" class="btn" id="jrMeta">Прочитать поля проекта</button>
+            <button type="button" class="btn" id="jrAuto">Сопоставить поля</button>
+            <span class="save-note" id="jrMsg"></span>
+          </div>
+          <div id="jrBox" class="empty" style="margin-top:12px">Заполните адрес и токен, затем нажмите «Проверить связь».</div>
+        </div>
+
+        <h2 style="margin-top:26px">Карта полей</h2>
+        <div class="sub">Поля в Jira называются <span class="mono">customfield_12345</span>, и угадать их снаружи нельзя — их отдаёт сама Jira. «Сопоставить поля» читает экран создания задачи и связывает поля по названию; что не совпало, останется пустым и будет видно здесь.</div>
+        <div class="card"><div id="jrMapBox" class="empty">Нажмите «Сопоставить поля».</div></div>
+
+        <!-- ===== Значения списков =====
+             Поля-списки в Jira закрытые: наше «Розница» не пройдёт, если в проекте
+             «Карты». Написание панель подбирает сама, а разные слова сводит человек. -->
+        <h2 style="margin-top:26px">Значения списков</h2>
+        <div class="sub">У полей-списков Jira принимает только свои значения. Разное написание
+          панель сводит сама — «email» находит «E-mail». Здесь задают пары, где слова разные:
+          слева наше значение из панели, справа значение из справочника Jira.</div>
+        <div class="row" style="gap:10px;align-items:center;margin:12px 0 4px">
+          <button type="button" class="btn" id="jvLoad">Показать списки</button>
+          <span class="save-note" id="jvMsg"></span>
+        </div>
+        <div id="jvBox" class="empty">Нажмите «Показать списки» — панель спросит у Jira допустимые значения.</div>
+      </section>
+
+      <!-- ===== Процессы переливов: остановить и пустить снова ===== -->
+      <section class="pane" id="pane-procs">
+        <h1 data-i18n-html="h_procs">Процессы <span class="grad">переливов</span></h1>
+        <div class="sub">Выключатель для каждого процесса, который переносит данные между нашей базой и боевыми. Нужен, когда в проде что-то идёт не так: перекрыть поток, разобраться, пустить снова.</div>
+        <div class="sub" style="margin-top:8px"><b>«Остановить»</b> делает две вещи: новые прогоны не начинаются, а текущий заканчивается на ближайшей безопасной границе — между записями очереди, между каналами, между таблицами. Посередине пачки процесс не рвётся: в проде осталась бы половина. Поэтому после нажатия прогон может ещё несколько секунд доработать.</div>
+        <div class="sub" style="margin-top:8px">Остановка переживает перезапуск приложения — состояние лежит в базе, а не в памяти. Приём правок она не перекрывает: очередь продолжает копиться и уедет, когда процесс запустят снова.</div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn" id="procReload">Обновить</button>
+            <span class="save-note" id="procMsg"></span>
+          </div>
+          <div id="procBox" class="empty" style="margin-top:12px">Загружаем…</div>
+
+          <!-- Сверка текстов согласования стоит отдельным блоком, а не строкой в таблице:
+               у неё свой порядок работы (сначала посмотреть, потом записать) и своя
+               цена ошибки — запись идёт в боевую таблицу шаблонов. -->
+          <div id="procSms" style="margin-top:30px"></div>
+          <!-- Отчёт прогона. Живёт вне блока: перерисовка блока не должна его стирать. -->
+          <div id="procSweep"></div>
+        </div>
+      </section>
+
+      <!-- ===== Перелив событий в прод =====
+           Переехало из панели («События» → «Перелив в прод»). Обратное направление —
+           соседняя панель «Импорт событий из crmdb»: две половины одного процесса
+           наконец стоят рядом. -->
+      <section class="pane" id="pane-evexport">
+        <h1 data-i18n-html="h_evexport">Перелив событий <span class="grad">в прод</span></h1>
+        <div class="sub">Отправляет собранное у нас событие в боевые таблицы crmdb: <b>tracker</b>, <b>scheduler</b>, <b>template</b>, <b>commapi</b>. Идентификаторы прод присваивает свои, ссылки внутри пачки переставляются автоматически. Повторный перелив уже уехавшие строки пропускает — дублей не будет.</div>
+        <div class="sub" style="margin-top:8px">Куда именно переливать, задаёт галка «База событий» в разделе «Подключения к БД». Кнопка «Перелить» требует права на добавление в разделе «Перелив событий в прод».</div>
+
+        <div class="card">
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn" id="evxReload">Обновить список</button>
+            <button type="button" class="btn" id="evxHealth">Сверить колонки с продом</button>
+            <span class="save-note" id="evxMsg"></span>
+          </div>
+          <div id="evxList" class="empty" style="margin-top:12px">Загружаем…</div>
+        </div>
+
+        <!-- Очередь стоит НАД списком событий: она про то, что уже должно было уехать
+             и не уехало, и смотреть на неё надо первым делом, а не после того, как
+             пролистал каталог. -->
+        <div class="card" style="margin-top:14px">
+          <h2 style="font-size:15px;margin:0 0 6px">Очередь перелива</h2>
+          <div class="sub" style="margin:0 0 10px">Заведённое событие встаёт сюда и уезжает само — фон разбирает очередь раз в двадцать секунд, как у шаблонов. Строка со статусом ERROR исчерпала попытки и ждёт человека: «Повтор» пробует ещё раз прямо сейчас, «Убрать» вычёркивает событие из очереди и оставляет его незалитым.</div>
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn" id="evqReload">Обновить очередь</button>
+            <span class="save-note" id="evqMsg"></span>
+          </div>
+          <div id="evqList" class="empty" style="margin-top:12px">Загружаем…</div>
+        </div>
+
+        <div id="evxResult"></div>
+      </section>
+
+      <!-- ===== Диагностика хранилища ===== -->
+      <section class="pane" id="pane-diag">
+        <h1 data-i18n-html="h_diag">Диагностика <span class="grad">хранилища</span></h1>
+        <div class="sub" style="margin-top:22px">Что панель хранит в localStorage браузера (префикс crmpanel:).</div>
+        <div class="card"><div id="diagBox"></div></div>
+      </section>
+
+      <!-- ===== Состояние системы =====
+           Одна страница на вопрос «всё ли в порядке»: итог, проверки с подсказками,
+           числа по таблицам, переливы и подключения. Рисует settings/health.js. -->
+      <section class="pane" id="pane-health">
+        <h1 data-i18n-html="h_health">Состояние <span class="grad">системы</span></h1>
+        <div class="sub">Сколько данных в таблицах, работают ли переливы, докуда доехала очередь,
+          отвечают ли базы и какая версия собрана. Страница только читает — ничего не запускает
+          и не останавливает; для этого есть «Процессы переливов».</div>
+
+        <div class="row" style="gap:10px;align-items:center;margin:16px 0 4px">
+          <button type="button" class="btn" id="hlReload">Обновить</button>
+          <span class="mono" id="hlStamp" style="color:var(--faint);font-size:11.5px"></span>
+        </div>
+
+        <div id="hlHost">
+          <div class="empty" id="hlLoading">Опрашиваем систему…</div>
+          <div id="hlTop"></div>
+          <div id="hlChecks" class="hl-checks"></div>
+
+          <!-- Машина: память, соединения, потоки. Здесь единственные цифры страницы,
+               которые нельзя пересчитать запросом. -->
+          <h2 class="hl-h">Нагрузка</h2>
+          <div id="hlRuntime" class="hl-gauges"></div>
+
+          <!-- Сутки очереди по часам. Пустая очередь ничего не значит сама по себе:
+               важно, отправлялось ли что-то ночью. -->
+          <h2 class="hl-h">Очередь синка за сутки</h2>
+          <div class="sub hl-sub">Столбик — час. Зелёное доставлено в прод, красное отказано,
+            синее поставлено в очередь. Провал в зелёном при непустой очереди значит, что доставка стояла.</div>
+          <div id="hlPulse" class="hl-panel"></div>
+
+          <!-- Отвалившийся молча перелив виден не по ошибке, а по возрасту последней
+               удачной записи. -->
+          <h2 class="hl-h">Когда последний раз</h2>
+          <div id="hlFresh" class="hl-fresh"></div>
+
+          <h2 class="hl-h">Данные</h2>
+          <div id="hlContent" class="hl-two"></div>
+          <div id="hlTables" class="hl-tables"></div>
+
+          <h2 class="hl-h">Место в базе</h2>
+          <div class="sub hl-sub">Считается по всей базе, а не по списку выше: место обычно
+            съедает то, о чём не думали, — журнал, очередь или таблица, приехавшая переносом.</div>
+          <div id="hlStorage" class="hl-two"></div>
+
+          <h2 class="hl-h">Работа в панели за две недели</h2>
+          <div id="hlActivity" class="hl-panel"></div>
+
+          <h2 class="hl-h">Переливы</h2>
+          <div id="hlProcs"></div>
+
+          <h2 class="hl-h">Подключения</h2>
+          <div id="hlConns" class="empty">Читаем подключения…</div>
+        </div>
+      </section>
+
+      <!-- ===== Выкатки =====
+           Что стоит на контурах, что не доехало и какой командой это доставить.
+           Панель выкат не выполняет — она готовит команду и ведёт журнал.
+           Рисует settings/deploy.js. -->
+      <section class="pane" id="pane-deploy">
+        <h1 data-i18n-html="h_deploy">Выкатки <span class="grad">между контурами</span></h1>
+        <div class="sub">Тест → препрод → прод. Раздел показывает, какая версия стоит на каждом контуре
+          и какие правки ещё не доехали до следующего, собирает команду на выбранный срез и ведёт журнал:
+          кто, когда и до какой правки катил. Саму команду вы выполняете на сервере — панель не имеет
+          доступа к docker и пересоздать контейнер не может.</div>
+
+        <div class="dp-tabs" id="dpTabs">
+          <button type="button" class="dp-tab on" data-tab="code">Код</button>
+          <button type="button" class="dp-tab" data-tab="settings">Настройки</button>
+          <button type="button" class="dp-tab" data-tab="changes">Изменения</button>
+        </div>
+
+        <div class="dp-tab-body" id="dpTab-code">
+        <div class="row" style="gap:10px;align-items:center;margin:16px 0 4px">
+          <button type="button" class="btn" id="dpReload">Обновить</button>
+          <span class="save-note" id="dpMsg"></span>
+        </div>
+        <!-- Состояние обработчика очереди на хосте: выкат выполняет он, а не панель.
+             Пока он молчит, кнопка «Выкатить» не показывается — иначе задания копились бы
+             молча, и это выглядело бы как сломанная панель. -->
+        <div class="dp-runner off" id="dpRunner"></div>
+
+        <div id="dpEnvs" class="dp-envs"></div>
+
+        <!-- Структура базы. Код и настройки едут своими путями, а таблицы и колонки —
+             третьим: модель переносится пакетом, а создаёт их «Применить к базе» уже на
+             приёмнике. Здесь видно, где структура отстала от модели. -->
+        <h2 style="margin-top:26px">Структура базы</h2>
+        <div class="sub">Сколько объектов нарисовано в конструкторе, но не создано в базе контура.
+          Модель переносится пакетом на вкладке «Настройки», а таблицы и колонки создаёт кнопка
+          «Применить к базе» — её нажимают в панели того контура, который меняют.</div>
+        <div id="dpSchema" class="empty" style="margin-top:12px">Читаем структуру…</div>
+
+        <h2 style="margin-top:26px">Что не доехало</h2>
+        <div id="dpList" class="empty">Читаем разницу между контурами…</div>
+        <div id="dpPlan" class="dp-plan"></div>
+
+        <h2 style="margin-top:30px">Журнал выкаток</h2>
+        <div class="sub">Запись появляется, когда вы берёте команду, и закрывается сама — когда панель
+          видит на целевом контуре ту версию, которую планировали.</div>
+        <div id="dpLog" class="empty">Выкаток ещё не было</div>
+        </div>
+
+        <!-- ===== Перенос настроек: то, что заведено руками в панели, а не в коде ===== -->
+        <div class="dp-tab-body" id="dpTab-settings" hidden>
+          <div class="sub" style="margin-top:16px">Роли, модель схемы и справочники живут в базе, и у каждого
+            контура она своя. Здесь их собирают в файл на одном контуре и применяют на другом.
+            Файлом, а не прямым соединением: прямое означало бы дать проду доступ в тест.
+            Учётки, пароли и токены в пакет не попадают никогда.</div>
+
+          <h2 style="margin-top:24px">Собрать пакет здесь</h2>
+          <div id="spItems" class="sp-items"></div>
+          <div class="row" style="gap:10px;align-items:center;margin-top:12px">
+            <button type="button" class="btn primary" id="spExport">Скачать пакет</button>
+            <span class="save-note" id="spMsg"></span>
+          </div>
+
+          <h2 style="margin-top:30px">Применить пакет с другого контура</h2>
+          <div class="sub">Сначала предпросмотр — что появится и что изменится, — и только потом применение.
+            Перед перезаписью снимается слепок «как было».</div>
+          <div class="row" style="gap:10px;align-items:center;margin-top:12px">
+            <input type="file" id="spFile" accept="application/json,.json" class="dbc-in" style="max-width:340px">
+          </div>
+          <div id="spPreview" class="sp-preview"></div>
+
+          <h2 style="margin-top:30px">Слепки «как было»</h2>
+          <div id="spSnaps" class="empty">Слепков нет: настройки ещё не переносили</div>
+        </div>
+
+        <!-- ===== Что менялось в контуре =====
+             Сводка из двух журналов: конструктор схемы и построчные правки. Отметки
+             стоят у объектов, а не у отдельных правок — пакет переносит объект целиком.
+             Рисует settings/changes.js. -->
+        <div class="dp-tab-body" id="dpTab-changes" hidden>
+          <div class="sub" style="margin-top:16px">Что трогали в этом контуре: правки конструктора схемы
+            и построчные изменения настроек, сведённые в один список. Отметьте, что пора везти дальше, —
+            панель соберёт из отмеченного тот же пакет, что и на вкладке «Настройки».</div>
+
+          <div class="row" style="gap:10px;align-items:center;margin:16px 0 4px">
+            <select class="dbc-in" id="chDays" style="max-width:190px">
+              <option value="7">за неделю</option>
+              <option value="14" selected>за две недели</option>
+              <option value="30">за месяц</option>
+              <option value="90">за три месяца</option>
+            </select>
+            <button type="button" class="btn" id="chReload">Обновить</button>
+            <button type="button" class="btn primary" id="chExport" disabled>Собрать пакет</button>
+            <span class="save-note" id="chMsg"></span>
+          </div>
+          <div class="mono" id="chHead" style="color:var(--faint);font-size:11.5px;margin-bottom:12px"></div>
+
+          <h2 style="margin-top:20px">Что менялось</h2>
+          <div class="sub">Галочка у объекта, а не у отдельной правки: пакет переносит объект целиком.
+            Отметив «менялись роли», вы увезёте все роли — иначе матрица прав приедет полурассыпанной.</div>
+          <div id="chGroups" class="empty" style="margin-top:12px">Читаем журналы…</div>
+
+          <h2 style="margin-top:30px">Правки по одной</h2>
+          <div class="sub">Отвечает на вопрос «почему это стоит везти». Изменения данных
+            (шаблоны, промо, заявки) сюда не попадают — переносить их между контурами нельзя.</div>
+          <div id="chList" class="empty" style="margin-top:12px">—</div>
+        </div>
+      </section>
+
+      <!-- ===== Обработчик выкатов =====
+           Выкат выполняет скрипт на сервере, а не панель: docker живёт на хосте, и сокет
+           хоста в контейнере равнялся бы root на сервере. Здесь видно, жив ли он, что в
+           очереди и чем кончились прошлые задания. Рисует settings/runner.js. -->
+      <section class="pane" id="pane-runner">
+        <h1 data-i18n-html="h_runner">Обработчик <span class="grad">выкатов</span></h1>
+        <div class="sub">Кнопка «Выкатить» в разделе «Выкатки» не запускает docker сама — она ставит
+          задание, а выполняет его скрипт на сервере (<span class="mono">scripts/deploy-runner.sh</span>,
+          systemd-таймер раз в минуту). Панели docker недоступен намеренно: сокет хоста в контейнере
+          равен правам root на сервере. Эта страница отвечает на вопросы «работает ли он»,
+          «что сейчас катится» и «почему прошлый выкат не удался».</div>
+
+        <div class="row" style="gap:10px;align-items:center;margin:16px 0 4px">
+          <button type="button" class="btn" id="rnReload">Обновить</button>
+          <button type="button" class="btn" id="rnPause">Поставить на паузу</button>
+          <span class="save-note" id="rnMsg"></span>
+        </div>
+
+        <div id="rnState" class="empty">Читаем состояние…</div>
+
+        <h2 style="margin-top:28px">Очередь и последние задания</h2>
+        <div class="sub">Задания берутся строго по одному: сборка идёт на одном теге образа,
+          и два выката собирали бы его друг поверх друга.</div>
+        <div id="rnJobs" class="empty" style="margin-top:12px">—</div>
+
+        <h2 style="margin-top:28px">Если обработчик не отвечает</h2>
+        <div id="rnHelp" class="rn-help"></div>
+      </section>
+
+      <!-- ===== Бэклог доработок =====
+           Раздел только для админов: /api/admin/** закрыт ролью на сервере, а пункт
+           меню прячется от остальных (adminOnly в PANES). Рисует settings/backlog.js. -->
+      <section class="pane" id="pane-backlog">
+        <h1 data-i18n-html="h_backlog">Бэклог <span class="grad">доработок</span></h1>
+        <div class="sub">Что просили сделать в панели: заявка, кто её принёс, в каком она состоянии.
+          Сюда пишут во время разговора у экрана — «вот это неудобно», «здесь не хватает колонки», —
+          чтобы мысль не потерялась до того, как дозреет до задачи в Jira.</div>
+
+        <div class="card">
+          <div class="dbc-grid">
+            <div class="dbc-fld wide">
+              <label>Задача</label>
+              <input class="dbc-in" id="bkTitle" placeholder="Коротко: что сделать">
+            </div>
+            <div class="dbc-fld">
+              <label>Раздел</label>
+              <input class="dbc-in" id="bkArea" placeholder="Планирование промо">
+            </div>
+            <div class="dbc-fld">
+              <label>Приоритет</label>
+              <select class="dbc-in" id="bkPriority">
+                <option value="high">Высокий</option>
+                <option value="normal" selected>Обычный</option>
+                <option value="low">Низкий</option>
+              </select>
+            </div>
+            <div class="dbc-fld">
+              <!-- Список исполнителей — учётки с супер-ролью: доработки делают они.
+                   Наполняется из GET /api/admin/backlog/assignees. -->
+              <label>Исполнитель</label>
+              <select class="dbc-in" id="bkAssignee"><option value="">не назначен</option></select>
+            </div>
+            <div class="dbc-fld wide">
+              <label>Описание</label>
+              <textarea class="dbc-in" id="bkDesc" rows="3" placeholder="Подробности: что мешает сейчас и каким должен стать результат"></textarea>
+            </div>
+          </div>
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">
+            <button type="button" class="btn primary" id="bkAdd">Добавить в бэклог</button>
+            <span class="save-note" id="bkMsg"></span>
+          </div>
+        </div>
+
+        <div class="row" id="bkTabs" style="gap:8px;flex-wrap:wrap;margin:22px 0 12px"></div>
+        <div id="bkList" class="empty">Читаем бэклог…</div>
+      </section>
+
 
     </main>
   </div>
@@ -624,7 +1222,9 @@ const S_EN = {
   "Занятость localStorage браузера данными панели.":"Panel data usage of the browser localStorage.",
   "Служебные настройки панели CRM Team. Выберите блок или воспользуйтесь меню слева.":"Service settings of the CRM Team panel. Pick a block or use the left menu.",
   "Открыть →":"Open →", "Статистика →":"Statistics →",
-  "Какие разделы панели доступны в каждом приложении (App Launcher). Пока всем приложениям разрешены все разделы — набор будет корректироваться. «Главная» доступна всегда.":"Which panel sections are available in each app (App Launcher). For now all apps have all sections — the set will be adjusted. Home is always available.",
+  "Какие разделы и подразделы панели доступны в каждом приложении (App Launcher). Снятая группа скрывает всё, что внутри неё. «Главная» доступна всегда.":"Which panel sections and subsections are available in each app (App Launcher). Unchecking a group hides everything inside it. Home is always available.",
+  "подразделы берутся из схемы":"subsections come from the schema",
+  "подразделы — сами загруженные файлы":"subsections are the uploaded files",
   "Сохранить":"Save", "Сбросить (все разделы всем)":"Reset (all sections for all)",
   "✓ Сохранено — панель применит при загрузке":"✓ Saved — the panel applies it on load",
   "✓ Сохранено":"✓ Saved",
@@ -724,6 +1324,9 @@ const S_EN = {
   "Самозапрет на кредиты":"Self-imposed credit ban", "Реквизиты":"Company details",
   "Доступность":"Reachability", "Конфигурация":"Configuration", "Связи":"Relations",
   "Флаги":"Flags", "Показатели":"Metrics", "Служебные":"System fields",
+  "Что делают кнопки":"What the buttons do", "Среда":"Environment",
+  "Права выдаются в этой среде. У прода, препрода и теста базы разные — роли и пользователи не общие.":"Permissions are granted in this environment. Prod, preprod and test have separate databases — roles and users are not shared.",
+  "Свернуть меню":"Collapse menu", "Развернуть меню":"Expand menu",
 };
 function t2(s){ return (LANG === "en" && S_EN[s]) ? S_EN[s] : s; }
 const S_HTML = {
@@ -733,58 +1336,169 @@ const S_HTML = {
         h_access:'Управление <span class="grad">доступом</span>',
         h_objects:'Сущности <span class="grad">CRM</span>',
         h_scheme:'Scheme <span class="grad">Builder</span>',
-        h_dbtree:'Схемы и <span class="grad">таблицы</span>' },
+        h_dbtree:'Схемы и <span class="grad">таблицы</span>',
+        h_dbconn:'Подключения <span class="grad">к БД</span>',
+        h_sync:'Синхронизация <span class="grad">шаблонов</span>',
+        h_events:'События <span class="grad">crmdb</span>',
+        h_evexport:'Перелив событий <span class="grad">в прод</span>',
+        h_procs:'Процессы <span class="grad">переливов</span>',
+        h_integr:'Карта <span class="grad">интеграций</span>',
+        h_health:'Состояние <span class="grad">системы</span>',
+        h_deploy:'Выкатки <span class="grad">между контурами</span>',
+        h_runner:'Обработчик <span class="grad">выкатов</span>',
+        h_backlog:'Бэклог <span class="grad">доработок</span>',
+        h_jira:'Интеграция <span class="grad">с Jira</span>' },
   en: { h_over:'Admin <span class="grad">settings</span>', h_apps:'Apps <span class="grad">& sections</span>',
         h_mon:'Integration <span class="grad">monitoring</span>', h_up:'Uploaded <span class="grad">tools</span>',
         h_gen:'General <span class="grad">settings</span>', h_diag:'Storage <span class="grad">diagnostics</span>',
         h_access:'Access <span class="grad">management</span>',
         h_objects:'CRM <span class="grad">objects</span>',
         h_scheme:'Scheme <span class="grad">Builder</span>',
-        h_dbtree:'Schemas and <span class="grad">tables</span>' }
+        h_dbtree:'Schemas and <span class="grad">tables</span>',
+        h_dbconn:'Database <span class="grad">connections</span>',
+        h_sync:'Template <span class="grad">sync</span>',
+        h_events:'Events <span class="grad">crmdb</span>',
+        h_evexport:'Event export <span class="grad">to prod</span>',
+        h_procs:'Transfer <span class="grad">processes</span>',
+        h_integr:'Integration <span class="grad">map</span>',
+        h_health:'System <span class="grad">health</span>',
+        h_deploy:'Rollouts <span class="grad">between environments</span>',
+        h_runner:'Deploy <span class="grad">runner</span>',
+        h_backlog:'Improvement <span class="grad">backlog</span>',
+        h_jira:'Jira <span class="grad">integration</span>' }
 };
 function translateStatic(){
   document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t2(el.dataset.i18n); });
-  document.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = (S_HTML[LANG] && S_HTML[LANG][el.dataset.i18nHtml]) || S_HTML.ru[el.dataset.i18nHtml]; });
+  /* Нет токена в словаре — оставляем разметку как есть. Раньше сюда подставлялся
+     undefined, и заголовок нового раздела превращался в слово «undefined»: словарь
+     пополняют отдельно от вёрстки, и забыть в нём строку — обычное дело. */
+  document.querySelectorAll("[data-i18n-html]").forEach(el => {
+    const html = (S_HTML[LANG] && S_HTML[LANG][el.dataset.i18nHtml]) || S_HTML.ru[el.dataset.i18nHtml];
+    if (html) el.innerHTML = html;
+  });
   document.querySelectorAll("[data-i18n-ph]").forEach(el => { el.placeholder = t2(el.dataset.i18nPh); });
 }
 
 /* Справочники — синхронизированы с пользовательской панелью */
 const APPS = ["Администрирование","Аналитика","Маркетинг","Бизнес","Контактный центр"];
+/* Порядок и состав повторяют NAV панели. Разделы, появившиеся позже («События»,
+   «Сущности», «Цепочки»), здесь отсутствовали — и приложение с заданным вручную
+   набором разделов их не показывало вовсе: отметить-то было нечего. */
 const SECTIONS = [
   { id:"home",       label:"Главная", locked:true },
-  { id:"comms",      label:"Управление коммуникациями" },
-  { id:"reports",    label:"Отчёты" },
-  { id:"dash",       label:"Дашборд" },
-  { id:"monitoring", label:"Мониторинг" },
-  { id:"uploads",    label:"Загруженные инструменты" },
+  { id:"comms",      label:"Управление коммуникациями", children:[
+      { id:"onelink",    label:"OneLink Builder" },
+      { id:"admin",      label:"Мастер коммуникаций" },
+      { id:"viewer",     label:"Просмотр настроек" },
+      { id:"srcbuilder", label:"Конструктор source" },
+      { id:"promo",      label:"Планирование промо" },
+      { id:"abtests",    label:"А/Б тесты" },
+      { id:"heatmap",    label:"Тепловая карта" } ]},
+  { id:"events",     label:"События", children:[
+      { id:"ev-online",  label:"Онлайн-событие" },
+      { id:"ev-offline", label:"Событие по расписанию" },
+      { id:"ev-list",    label:"Список событий" } ]},
+  /* Подразделы «Сущностей» и «Загруженных инструментов» захардкодить нельзя — они
+     строятся на лету, из схемы и из списка загруженных файлов, и у каждой установки
+     свои. Поэтому список подтягивается при открытии панели (loadAppDynKids). */
+  { id:"entities",   label:"Сущности", dyn:"entities", dynNote:"подразделы берутся из схемы" },
+  { id:"reports",    label:"Отчёты", children:[
+      { id:"rep-planfact", label:"Plan-Fact" },
+      { id:"rep-matrix",   label:"CRM Matrix" },
+      { id:"rep-leadgen",  label:"CRM Leadgen" },
+      { id:"rep-smscheck", label:"ЧЕК СМС траффик" },
+      { id:"rep-demo",     label:"Пример визуализации отчёта" } ]},
+  { id:"dash",       label:"Дашборд", children:[
+      { id:"dashboard",  label:"Общая статистика" },
+      { id:"deviations", label:"Панель отклонений" } ]},
+  { id:"monitoring", label:"Мониторинг", children:[
+      { id:"mon-campaigns", label:"Базовая работа кампаний" } ]},
+  { id:"uploads",    label:"Загруженные инструменты", dyn:"uploads", dynNote:"подразделы — сами загруженные файлы" },
+  { id:"journeys",   label:"Цепочки" },
 ];
 
 /* ---------- меню настроек ---------- */
 const PANES = [
   { id:"over",       label:"Обзор", desc:"Все настройки на одной странице.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>' },
-  { id:"apps",       label:"Приложения и разделы", desc:"Какие разделы панели видит каждое приложение из App Launcher.",
-    ico:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg>' },
-  { id:"monitoring", label:"Мониторинг", desc:"Работа с партнёрами: статусы, зависшие отправки, Context API.",
-    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>' },
-  { id:"uploads",    label:"Загруженные инструменты", desc:"Переименование и удаление загруженных HTML-инструментов.",
-    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' },
-  { id:"access",     label:"Управление доступом", desc:"Пользователи панели: роли и доступные разделы. Требуется запущенный crm-admin.",
-    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
-  { id:"objects",    label:"Сущности", desc:"Список объектов CRM: блоки карточки, порядок полей, поля в шапке и флаг «Техническая».",
+  { id:"objects", acl:"set-objects", group:"Данные", label:"Сущности", desc:"Список объектов CRM: блоки карточки, порядок полей, поля в шапке и флаг «Техническая».",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.5h18M9 9.5V20"/></svg>' },
-  { id:"scheme",     label:"Scheme Builder", desc:"Конструктор схемы данных CRM: сущности, поля, типы и связи.",
+  { id:"scheme", acl:"set-scheme", group:"Данные", label:"Scheme Builder", desc:"Конструктор схемы данных CRM: сущности, поля, типы и связи.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><rect x="3" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v6M17.5 15V12H6.5"/></svg>' },
-  { id:"dbtree",     label:"Схемы и таблицы", desc:"Что реально есть в базе: схемы, внутри — таблицы с описанием, числом колонок и оценкой строк.",
+  { id:"dbtree", acl:"set-dbtree", group:"Данные", label:"Схемы и таблицы", desc:"Что реально есть в базе: схемы, внутри — таблицы с описанием, числом колонок и оценкой строк.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>' },
-  { id:"general",    label:"Общие параметры", desc:"Тема оформления (светлая, тёмная, системная) и язык интерфейса.",
+  /* Карта идёт первой в группе: когда что-то не доехало, сначала смотрят «где рвётся»,
+     а уже потом лезут в конкретное подключение. */
+  { id:"refs", acl:"set-refs", group:"Данные", label:"Справочники значений", desc:"Списки, из которых выбирают формы: имена коммуникаций, точки касания, пары definition_key и business_key_prefix. Правка без похода в psql.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7M9 11h7"/></svg>' },
+  { id:"integrations", acl:"set-dbconn", group:"Интеграции", label:"Карта интеграций", desc:"Все внешние связи панели на одной схеме: боевая база шаблонов, crmdb, Jira, витрины отчётов — и состояние каждого потока.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="4" cy="5" r="2"/><circle cx="20" cy="5" r="2"/><circle cx="4" cy="19" r="2"/><circle cx="20" cy="19" r="2"/><path d="M6 6.5 10 10M18 6.5 14 10M6 17.5 10 14M18 17.5 14 14"/></svg>' },
+  { id:"dbconn", acl:"set-dbconn", group:"Интеграции", label:"Подключения к БД", desc:"Базы, к которым ходит панель. Здесь же отмечается, какая из них приёмник шаблонов, а какая — база событий crmdb.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>' },
+  /* Планировщик — adminOnly, как «Выкатки» и «Обработчик выкатов»: адрес сервиса один
+     на панель, и решает, на какой контур уедут боевые задания Quartz. Выдаваемого права
+     под него нет вовсе — на сервере ручки закрыты ролью. Настройка при этом действует
+     на всех: задания по кнопкам в карточке события заводит любой, у кого есть право
+     на события по расписанию. */
+  { id:"cron", adminOnly:true, group:"Интеграции", label:"Планировщик (Quartz)", desc:"Адрес crm-cron и выключатель. Через него события по расписанию попадают в Quartz — без него строка в расписании есть, а задание не срабатывает.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' },
+  { id:"jira", acl:"set-jira", group:"Интеграции", label:"Jira", desc:"Адрес, токен сервисной учётки и карта полей: из чего собирается задача CRM-Промо.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 10l8 8 8-8z"/><path d="M12 10v8"/></svg>' },
+  /* Первым в группе — выключатель: когда в проде что-то горит, ищут именно его,
+     а не очередь и не сверку. */
+  { id:"procs", acl:"set-procs", group:"Переливы", label:"Процессы переливов", desc:"Остановить перелив и пустить снова: доставка шаблонов, обратный ETL, импорт и перелив событий.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' },
+  { id:"sync", acl:"set-sync", group:"Переливы", label:"Синхронизация шаблонов", desc:"Очередь доставки в базу шаблонов, состояние прод-приёмника и обратный ETL.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>' },
+  { id:"events", acl:"set-events", group:"Переливы", label:"Импорт событий из crmdb", desc:"Сравнить нашу модель событий с боевой базой и затянуть события из неё.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 4 14 11 14 10 22 20 10 13 10 13 2"/></svg>' },
+  /* Перелив приехал из панели («События» → «Перелив в прод»). Его место здесь: рядом
+     стоят два других процесса доставки наружу, и человек, который следит за переливами,
+     держит их в одном разделе, а не ходит между панелью и настройками.
+     acl остался ev-export — та же секция, что и раньше, выданные права не потерялись. */
+  { id:"evexport", acl:"ev-export", group:"Переливы", label:"Перелив событий в прод", desc:"Отправка собранного у нас события в боевые таблицы crmdb и сверка колонок с продом.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' },
+  { id:"apps", acl:"set-apps", group:"Панель", label:"Приложения и разделы", desc:"Какие разделы панели видит каждое приложение из App Launcher.",
+    ico:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg>' },
+  { id:"uploads", acl:"set-uploads", group:"Панель", label:"Загруженные инструменты", desc:"Переименование и удаление загруженных HTML-инструментов.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' },
+  { id:"general", acl:"set-general", group:"Панель", label:"Общие параметры", desc:"Тема оформления (светлая, тёмная, системная) и язык интерфейса.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>' },
-  { id:"diag",       label:"Диагностика", desc:"Занятость localStorage браузера данными панели.",
+  { id:"access", acl:"access", group:"Доступ", label:"Управление доступом", desc:"Пользователи панели: роли и доступные разделы. Требуется запущенный crm-admin.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
+  { id:"monitoring", acl:"set-mon", group:"Служебное", label:"Мониторинг", desc:"Работа с партнёрами: статусы, зависшие отправки, Context API.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>' },
+  /* Выкатки и бэклог — админские целиком: закрыты ролью на сервере, поэтому вместо
+     секции матрицы у них флаг adminOnly. Заводить выдаваемое право под раздел, доступ к
+     которому всё равно решает роль, значило бы обещать то, чего нет. */
+  /* Состояние — первым в группе: с него начинают, когда «что-то не так», и им же
+     проверяют утром, что ночь прошла спокойно. */
+  { id:"health", acl:"set-diag", group:"Служебное", label:"Состояние системы", desc:"Проверки, нагрузка, сутки очереди по часам, возраст последних доставок, состав данных и место в базе — одной страницей.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-7 4 14L16 12h5"/></svg>' },
+  { id:"deploy", adminOnly:true, group:"Служебное", label:"Выкатки", desc:"Какая версия стоит на каждом контуре, что ещё не доехало до следующего и какой командой это доставить.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h16M4 18h10"/><path d="M17 3l3 3-3 3M17 15l3 3-3 3"/></svg>' },
+  { id:"runner", adminOnly:true, group:"Служебное", label:"Обработчик выкатов", desc:"Кто выполняет выкаты на сервере: жив ли он, что в очереди, чем закончились прошлые задания. Здесь же пауза на время инцидента.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>' },
+  { id:"backlog", adminOnly:true, group:"Служебное", label:"Бэклог", desc:"Задачи на доработку панели: что просили, что в работе, что сделано. Виден только администраторам.",
+    ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l2 2 4-4"/><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4V2M16 4V2"/></svg>' },
+  { id:"diag", acl:"set-diag", group:"Служебное", label:"Диагностика хранилища", desc:"Занятость localStorage браузера данными панели.",
     ico:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>' },
 ];
 
+/* Вкладки раздела «Выкатки»: код и настройки переносятся по-разному, но это одно
+   действие — перенос между контурами, — поэтому живут на одной странице. */
+document.addEventListener("click", function(ev){
+  const tab = ev.target.closest("#dpTabs .dp-tab");
+  if (!tab) return;
+  document.querySelectorAll("#dpTabs .dp-tab").forEach(t => t.classList.toggle("on", t === tab));
+  document.querySelectorAll(".dp-tab-body").forEach(b => {
+    b.hidden = b.id !== "dpTab-" + tab.dataset.tab;
+  });
+});
+
 const snav = $("#snav");
 let curPane = "over";   /* нужен, чтобы после смены языка вернуться в тот же раздел */
+/* модулям разделов нужен переход между страницами настроек */
 function openPane(id){
   curPane = id;
   document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.id === id));
@@ -792,6 +1506,24 @@ function openPane(id){
   document.getElementById("pane-" + id).classList.add("active");
   if (id === "uploads") renderTools();
   if (id === "diag") renderDiag();
+  /* Список подключений и состояние синка грузились ХВОСТОМ renderDiag — пережиток тех
+     времён, когда все пять блоков жили внутри «Диагностики». После разделения на панели
+     связь осталась, и «Подключения к БД» показывали многоточие до тех пор, пока кто-то
+     не откроет «Диагностику хранилища». Теперь каждая панель грузит своё. */
+  if (id === "dbconn") renderDbConnections();
+  if (id === "sync") { renderQueueStats(); etlStatus(); }
+  if (id === "events" && window.EventSync) EventSync.open();
+  if (id === "evexport" && window.EventExport) EventExport.open();
+  if (id === "procs" && window.ProcessControl) ProcessControl.open();
+  if (id === "jira" && window.JiraSetup) JiraSetup.open();
+  if (id === "integrations" && window.Integrations) Integrations.open();
+  if (id === "backlog" && window.Backlog) Backlog.open();
+  if (id === "health" && window.Health) Health.open();
+  if (id === "deploy" && window.Deploy) Deploy.open();
+  if (id === "deploy" && window.SettingsPack) SettingsPack.open();
+  if (id === "runner" && window.DeployRunner) DeployRunner.open();
+  /* Сущности и загруженные инструменты меняются мимо этой страницы — перечитываем */
+  if (id === "apps") loadAppDynKids();
   if (id === "monitoring") monBack();
   if (id === "access" && typeof renderAccessSection === "function") renderAccessSection();
   /* Scheme Builder инициализируется лениво: схема грузится при первом открытии */
@@ -800,15 +1532,173 @@ function openPane(id){
   if (id === "objects" && window.ObjectManager) window.ObjectManager.open();
   /* Структура базы меняется мимо панели (миграции, применение DDL) — читаем заново */
   if (id === "dbtree" && window.DbExplorer) window.DbExplorer.open();
+  /* Справочники меняются мимо панели (инсертом в psql, переливом настроек) — читаем заново */
+  /* Настройки планировщика читаем при каждом открытии: их правят и на другом контуре,
+     и прямо в базе, а показывать вчерашний адрес хуже, чем лишний раз спросить. */
+  if (id === "cron" && window.Cron) window.Cron.open();
+  if (id === "refs" && window.Refs) {
+    var rh = document.getElementById("refsHost");
+    if (rh && !rh.innerHTML) rh.innerHTML = Refs.markup();
+    Refs.open();
+  }
 }
+/* Пунктов стало тринадцать, и плоским списком они читались плохо: «Подключения к БД»
+   стояли между «Общими параметрами» и «Диагностикой». Рисуем заголовок группы перед
+   первым её пунктом — порядок задаётся самим массивом PANES, отдельного реестра нет. */
+let lastGroup = null;
 PANES.forEach(p => {
+  const group = p.group || "";
+  if (group && group !== lastGroup) {
+    const h = document.createElement("div");
+    h.className = "snav-group";
+    h.textContent = t2(group);
+    snav.appendChild(h);
+  }
+  lastGroup = group;
   const el = document.createElement("div");
   el.className = "nav-item" + (p.id === "over" ? " active" : "");
   el.dataset.id = p.id;
-  el.innerHTML = `<span class="ico">${p.ico}</span>${t2(p.label)}`;
+  /* Подпись в отдельном span, а не голым текстом: свёрнутое меню прячет её правилом
+     CSS, а текстовый узел спрятать нечем. title — чтобы в свёрнутом виде название
+     всё-таки читалось наведением. */
+  el.innerHTML = `<span class="ico">${p.ico}</span><span class="lbl">${t2(p.label)}</span>`;
+  el.title = t2(p.label);
   el.onclick = () => openPane(p.id);
   snav.appendChild(el);
 });
+
+/* ---------- бейдж среды (prod / preprod / test) ----------
+   Три контура открываются одинаковыми страницами, и перепутать их легко: адрес
+   отличается номером порта. Имя среды отдаёт бэкенд; нет ответа — бейдж не рисуем
+   вовсе, врать про контур хуже, чем промолчать. */
+const ENV_LABEL = { prod:"ПРОД", preprod:"ПРЕПРОД", test:"ТЕСТ" };
+fetch("../api/env", { credentials:"same-origin", headers:{ Accept:"application/json" } })
+  .then(r => r.ok ? r.json() : null)
+  .then(env => {
+    if (!env || !env.name) return;
+    const name = String(env.name).toLowerCase();
+    const label = ENV_LABEL[name] || name.toUpperCase();
+    ["envPill", "envPillAccess"].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.className = "env-pill " + name;
+      el.textContent = label;
+      el.title = t2("Среда") + ": " + name;
+      el.style.display = "";
+    });
+    /* Строку на панели доступа показываем только вместе с известной средой: пустая
+       рамка со словами «в этой среде» без имени бесполезна. */
+    const line = document.getElementById("envLineAccess");
+    if (line) line.style.display = "";
+    /* Матрица прав рисует контур напротив каждого раздела. Ответ мог прийти после
+       её отрисовки — тогда ячейки дозаполняются, а не остаются пустыми. */
+    window.SET_ENV = env;
+    if (typeof window.accessApplyEnv === "function") window.accessApplyEnv();
+    document.title = "CRM Team · " + t2("Настройки") + " · " + label;
+  })
+  .catch(() => { /* статика без бэкенда — раздел работает, бейджа просто нет */ });
+
+/* ---------- сворачивание меню ----------
+   Состояние держим в localStorage: свернул один раз — и оно таким остаётся, иначе
+   при каждом заходе в Scheme Builder пришлось бы сворачивать заново. */
+const SNAV_KEY = "crmpanel:setNavCollapsed";
+function snavApply(on){
+  document.body.classList.toggle("snav-collapsed", !!on);
+  const btn = $("#snavToggle");
+  if (btn) btn.title = t2(on ? "Развернуть меню" : "Свернуть меню");
+  /* Ширина сайдбара изменилась — раскладке Scheme Builder это важно, а события resize
+     от смены класса не приходит. Шлём его сами: на него подписан layoutShell. */
+  window.dispatchEvent(new Event("resize"));
+}
+(function(){
+  const btn = $("#snavToggle");
+  if (!btn) return;
+  let on = false;
+  try { on = localStorage.getItem(SNAV_KEY) === "1"; } catch(e){ on = false; }
+  snavApply(on);
+  btn.onclick = () => {
+    on = !document.body.classList.contains("snav-collapsed");
+    try { localStorage.setItem(SNAV_KEY, on ? "1" : "0"); } catch(e){ /* приватный режим — переживём */ }
+    snavApply(on);
+  };
+})();
+
+/* ---------- подсказки к кнопкам сворачиваются ----------
+   Блоки «что делает каждая кнопка» полезны один раз, а места занимают столько, что
+   на «Подключениях к БД» из-за них не было видно самого списка баз. Обёртку строим
+   здесь, а не в разметке каждого раздела: блоков девять, и новый должен получать
+   это поведение сам, без правки в двух местах. */
+const HELP_KEY = "crmpanel:helpOpen";
+function helpOpenSet(){
+  try { return new Set(JSON.parse(localStorage.getItem(HELP_KEY)) || []); } catch(e){ return new Set(); }
+}
+document.querySelectorAll("dl.btn-help").forEach(dl => {
+  const pane = dl.closest(".pane");
+  const key = pane ? pane.id : "";
+  const box = document.createElement("details");
+  box.className = "help-box";
+  box.open = helpOpenSet().has(key);
+  const sum = document.createElement("summary");
+  sum.textContent = t2("Что делают кнопки");
+  sum.dataset.i18n = "Что делают кнопки";   /* смена языка перерисовывает подпись */
+  dl.parentNode.insertBefore(box, dl);
+  box.appendChild(sum);
+  box.appendChild(dl);
+  box.addEventListener("toggle", () => {
+    const set = helpOpenSet();
+    if (box.open) set.add(key); else set.delete(key);
+    try { localStorage.setItem(HELP_KEY, JSON.stringify([...set])); } catch(e){ /* переживём */ }
+    /* Высота содержимого изменилась — Scheme Builder считает свою по остатку экрана. */
+    window.dispatchEvent(new Event("resize"));
+  });
+});
+
+/* Панели гейтятся секциями матрицы прав: «Подключения к БД» можно выдать, не
+   открывая Scheme Builder. Серверная проверка стоит в SecurityConfig и в контроллерах —
+   здесь только прячем то, чего всё равно не отдадут, чтобы человек не тыкал в 403. */
+fetch("../api/me", { credentials: "same-origin", headers: { Accept: "application/json" } })
+  .then(function(r){ return r.ok ? r.json() : null; })
+  .then(function(me){
+    /* Ответ держим: панелям нужны не только секции, но и права внутри секции —
+       «Перелив» гасит свою кнопку без права на добавление. */
+    window.SET_ME = me;
+    if (!me || me.isAdmin) return;              // админ обходит матрицу
+    var allowed = me.sections || [];
+    var hiddenIds = [];
+    PANES.forEach(function(pane){
+      /* adminOnly-раздел правом не выдаётся вовсе (на сервере он закрыт ролью),
+         поэтому для не-админа его просто нет — вне зависимости от матрицы. */
+      if (!pane.adminOnly && (!pane.acl || allowed.indexOf(pane.acl) >= 0)) return;
+      hiddenIds.push(pane.id);
+      document.querySelectorAll('.nav-item[data-id="' + pane.id + '"]').forEach(function(n){ n.remove(); });
+    });
+    /* Карточки на «Обзоре» рисуются из того же массива, поэтому прячем и их. */
+    document.querySelectorAll("#overGrid .ov-card").forEach(function(card, i){
+      var pane = PANES.filter(function(x){ return x.id !== "over"; })[i];
+      if (pane && hiddenIds.indexOf(pane.id) >= 0) card.remove();
+    });
+    /* Заголовок группы без единого пункта — мусор: убираем. */
+    document.querySelectorAll(".snav-group").forEach(function(h){
+      var n = h.nextElementSibling;
+      if (!n || !n.classList.contains("nav-item")) h.remove();
+    });
+    if (hiddenIds.indexOf(curPane) >= 0) openPane("over");
+  })
+  .catch(function(){ /* нет бэкенда (демо-режим) — показываем всё, данные всё равно не придут */ });
+
+/* Глубокая ссылка: #scheme открывает раздел сразу, #scheme:new — ещё и окно
+   заведения сущности. Нужна кнопке «+ Сущность» в самой панели: она ведёт сюда,
+   а не заводит вторую такую же форму у себя. */
+(function(){
+  const h = (location.hash || "").replace(/^#/, "");
+  if (!h) return;
+  const [pane, action] = h.split(":");
+  if (!pane || !document.getElementById("pane-" + pane)) return;
+  openPane(pane);
+  if (pane === "scheme" && action === "new" && window.SchemeBuilder && SchemeBuilder.newEntity){
+    SchemeBuilder.newEntity();
+  }
+})();
 
 /* ---------- обзор (страница с блоками главных разделов) ---------- */
 const overGrid = $("#overGrid");
@@ -844,6 +1734,55 @@ function appsSavedNote(){
   setTimeout(() => n.classList.remove("show"), 2500);
 }
 
+/* Подраздел отмечен, если он перечислен в наборе приложения. Особый случай — набор,
+   в котором нет НИ ОДНОГО подраздела этой группы: так выглядят наборы, сохранённые
+   до появления подразделов (в них были только разделы верхнего уровня). Считать их
+   «все подразделы скрыты» нельзя — выкат молча опустошил бы меню; читаем как «группа
+   разрешена целиком». Первое же сохранение из этой формы запишет подразделы явно.
+   То же правило работает и в оболочке панели (appAllowsChild в js/shell.js). */
+/* Подразделы, которых нет в коде: сущности берём из схемы, инструменты — из того же
+   localStorage, откуда их читает панель. Идентификаторы обязаны совпадать с id пунктов
+   меню (ent-<схема>, up-<файл>) — по ним оболочка и фильтрует.
+   Пустой список не беда: группа покажется одной строкой, как раньше. */
+let appDynKids = { entities: [], uploads: [] };
+
+function appEntityKids(model){
+  const schemas = (model && model.schemas) || [];
+  const tables = (model && model.entities) || [];
+  const head = id => tables.find(t => (t.schema || t.id) === id && t.id === id)
+                  || tables.find(t => (t.schema || t.id) === id);
+  return schemas.map(s => {
+    const h = head(s.id);
+    if (!h) return null;
+    /* Служебные сущности панель по умолчанию не показывает — и здесь не показываем:
+       строка, которой в меню всё равно нет, только запутает. */
+    if (h.technical) return null;
+    return { id: "ent-" + h.id, label: h.plural_label || h.label || s.label || s.id };
+  }).filter(Boolean);
+}
+
+function loadAppDynKids(){
+  const tools = store.get("uploadedTools", []) || [];
+  appDynKids.uploads = [{ id:"up-new", label:"Загрузить инструмент" }]
+    .concat(tools.map(t => ({ id:"up-" + t.id, label:t.name || t.id })));
+  return fetch("../api/schema", { credentials:"same-origin", headers:{ Accept:"application/json" } })
+    .then(r => r.ok ? r.json() : null)
+    .then(m => { appDynKids.entities = appEntityKids(m); })
+    .catch(() => { /* схема недоступна — покажем группу без раскрытия, как раньше */ })
+    .then(() => renderApps());
+}
+
+function appKids(s){
+  return s.children || (s.dyn ? appDynKids[s.dyn] : null) || [];
+}
+
+function appChildChecked(allowed, group, kid){
+  if (!allowed) return true;
+  const kids = appKids(group).map(k => k.id);
+  if (!kids.some(id => allowed.includes(id))) return true;
+  return allowed.includes(kid.id);
+}
+
 function renderApps(){
   const cfg = appsCfg || {};
   const box = $("#appsBox"); box.innerHTML = "";
@@ -854,13 +1793,45 @@ function renderApps(){
     card.dataset.app = app;
     card.innerHTML = `<h3><span class="app-badge">${app[0]}</span>${t2(app)}</h3>
       <div class="note">${allowed ? t2("Настроенный набор разделов") : t2("Все разделы (по умолчанию)")}</div>` +
-      SECTIONS.map(s => `
+      SECTIONS.map(s => {
+        const on = s.locked || !allowed || allowed.includes(s.id);
+        const head = `
         <label class="check-row">
-          <input type="checkbox" data-sec="${s.id}" ${s.locked ? "checked disabled" : (!allowed || allowed.includes(s.id)) ? "checked" : ""}>
+          <input type="checkbox" data-sec="${s.id}" ${s.locked ? "checked disabled" : on ? "checked" : ""}>
           ${t2(s.label)}
           ${s.locked ? '<span class="muted">' + t2("всегда доступна") + '</span>' : ""}
+          ${s.dyn && !appKids(s).length ? '<span class="muted">' + t2(s.dynNote) + '</span>' : ""}
+        </label>`;
+        const kids = appKids(s).map(k => `
+        <label class="check-row sub">
+          <input type="checkbox" data-sec="${k.id}" data-parent="${s.id}"
+                 ${appChildChecked(allowed, s, k) ? "checked" : ""} ${on ? "" : "disabled"}>
+          ${t2(k.label)}
         </label>`).join("");
+        return head + kids;
+      }).join("");
     box.appendChild(card);
+  });
+  /* Снятая группа гасит свои подразделы: отмечать пункты внутри скрытого раздела
+     бессмысленно, и включённая галка там читалась бы как «доступно». */
+  box.querySelectorAll('input[data-sec]:not([data-parent])').forEach(top => {
+    const kidsOf = () => [...top.closest(".card").querySelectorAll('input[data-parent="' + top.dataset.sec + '"]')];
+    top.addEventListener("change", () => {
+      kidsOf().forEach(k => {
+        k.disabled = !top.checked;
+        if (top.checked) k.checked = true;
+      });
+    });
+    /* Сняли последний подраздел — снимаем и саму группу. Иначе набор содержал бы
+       раздел без единого своего пункта, а это читается как «ограничений нет» (см.
+       appChildChecked): человек снял все три галки, а после перезагрузки они вернулись бы. */
+    if (!kidsOf().length) return;
+    kidsOf().forEach(k => k.addEventListener("change", () => {
+      if (!kidsOf().some(x => x.checked)) {
+        top.checked = false;
+        top.dispatchEvent(new Event("change"));
+      }
+    }));
   });
 }
 
@@ -906,6 +1877,9 @@ $("#saveApps").onclick = async () => {
   const cfg = {};
   document.querySelectorAll("#appsBox .card").forEach(card => {
     const ids = ["home"];
+    /* Пишем и разделы, и подразделы одним списком: оболочка панели различает их сама,
+       по родителю из NAV. Погашенные подразделы снятой группы не пишем — раздел и так
+       скрыт целиком. */
     card.querySelectorAll("input[data-sec]:not(:disabled)").forEach(ch => { if (ch.checked) ids.push(ch.dataset.sec); });
     cfg[card.dataset.app] = ids;
   });
@@ -1012,6 +1986,1164 @@ window.addEventListener("storage", e => { if (e.key === "crmpanel:theme") applyT
 applyTheme();
 
 /* ---------- Диагностика ---------- */
+/* ---------- События (crmdb): сравнение с боевой базой и импорт ----------
+   Живёт в настройках, а не в самой панели: это операция над базой, соседняя с
+   подключениями и синком шаблонов, а не повседневная работа с событиями.
+   Ходит в /api/events/import/* — те же ручки, что и у раздела «Перелив в прод». */
+window.EventSync = (function(){
+  var loaded = false;
+
+  function esc(v){ return String(v == null ? "" : v)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  /* .save-note по умолчанию прозрачна (opacity:0) и проявляется классом show — без него
+     подпись писалась в невидимый элемент, и кнопка выглядела молчащей. */
+  function note(id, text, bad){
+    var n = $("#" + id);
+    if (!n) return;
+    n.textContent = text || "";
+    n.classList.toggle("show", !!text);
+    n.style.color = bad ? "var(--red,#e5484d)" : "";
+  }
+
+  /* Пока запрос идёт, блок ДОЛЖЕН это показывать. Раньше состояние жило в мелкой
+     подписи сбоку, и нажатие выглядело как «ничего не происходит». */
+  function busy(noteId, boxId, text){
+    note(noteId, text);
+    var box = $("#" + boxId);
+    if (box){ box.className = ""; box.innerHTML = "<div style=\"opacity:.7\">" + esc(text) + "</div>"; }
+  }
+
+  /* Текст ошибки дублируем в блок: подпись сбоку мелкая и легко теряется, а «ничего не
+     происходит» — худшее, что может показать кнопка. */
+  function showError(noteId, boxId, e){
+    var msg = (e && e.message) || "Запрос не выполнен";
+    note(noteId, "Ошибка", true);
+    var box = $("#" + boxId);
+    if (box){ box.className = ""; box.innerHTML = "<div style=\"color:var(--red,#e5484d)\">" + esc(msg) + "</div>"; }
+  }
+
+  function req(method, url){
+    return fetch(url, { method: method, credentials: "same-origin",
+                        headers: { Accept: "application/json" } })
+      .then(function(r){
+        if (r.ok) return r.json();
+        return r.text().then(function(t){
+          var m = t;
+          try { m = JSON.parse(t).message || t; } catch(e){}
+          throw new Error(m || (r.status + " " + r.statusText));
+        });
+      });
+  }
+
+  function scan(){
+    busy("evScanNote", "evScanBox", "Считаем строки в crmdb…");
+    req("GET", "/api/events/import/scan").then(function(d){
+      if (!d.configured){
+        note("evScanNote", "Подключение не выбрано", true);
+        $("#evScanBox").className = "";
+        $("#evScanBox").innerHTML = "Отметьте нужное подключение галкой «База событий» в разделе «Подключения к БД».";
+        return;
+      }
+      var errs = [];
+      var rows = "";
+      Object.keys(d.tables || {}).forEach(function(t){
+        var r = d.tables[t];
+        if (r.error){
+          errs.push(t + ": " + r.error);
+          rows += "<tr><td class=\"mono\">" + esc(t) + "</td>" +
+                  "<td colspan=\"4\" style=\"color:var(--red,#e5484d)\">" + esc(r.error) + "</td></tr>";
+          return;
+        }
+        var behind = Number(r.prod || 0) - Number(r.linked || 0);
+        rows += "<tr><td class=\"mono\">" + esc(t) + "</td><td>" + esc(r.prod) +
+                "</td><td>" + esc(r.ours) + "</td><td>" + esc(r.linked) + "</td><td>" +
+                (behind > 0 ? "<b>" + behind + "</b>" : "0") + "</td></tr>";
+      });
+      /* Итог по событиям показываем, только если обе ключевые таблицы посчитались:
+         иначе число было бы неполным, а выглядело бы как полное. */
+      var head = d.eventsInProd == null
+        ? "<div style=\"margin-bottom:10px\">Общее число событий не посчитано: часть таблиц недоступна. " +
+          "У нас заведено: " + esc(d.eventsOurs) + ".</div>"
+        : "<div style=\"margin-bottom:10px\"><b>В crmdb событий: " + esc(d.eventsInProd) +
+          "</b> (онлайновых " + esc(d.eventsOnline) + ", по расписанию " + esc(d.eventsOffline) +
+          "). У нас заведено: " + esc(d.eventsOurs) + ".</div>";
+      var foot = errs.length
+        ? "<div style=\"margin-top:10px;color:var(--red,#e5484d)\">Недоступных таблиц: " + errs.length +
+          ". Нужен SELECT для пользователя подключения — команду смотрите ниже в описании раздела.</div>"
+        : "";
+      note("evScanNote", errs.length ? "Готово, но с ошибками доступа" : "Готово", errs.length > 0);
+      $("#evScanBox").className = "";
+      $("#evScanBox").innerHTML = head +
+        "<table class=\"tbl\"><thead><tr><th>Таблица</th><th>в crmdb</th><th>у нас</th>" +
+        "<th>связано</th><th>не затянуто</th></tr></thead><tbody>" + rows + "</tbody></table>" +
+        (d.error ? "<div style=\"margin-top:10px;color:var(--red,#e5484d)\">" + esc(d.error) + "</div>" : "") +
+        foot;
+      loaded = true;
+    }).catch(function(e){ showError("evScanNote", "evScanBox", e); });
+  }
+
+  /* Сверка DDL отдельной кнопкой: колонка, которой в проде нет, при переливе молча
+     отбрасывается, и знать об этом лучше до, а не после. */
+  function ddl(){
+    busy("evScanNote", "evScanBox", "Сверяем колонки таблиц с crmdb…");
+    req("GET", "/api/events/export/health").then(function(h){
+      if (!h.configured){ note("evScanNote", "База событий не выбрана", true); return; }
+      if (h.error){ note("evScanNote", h.error, true); return; }
+      var bad = [];
+      Object.keys(h.tables || {}).forEach(function(t){
+        var d = h.tables[t];
+        if (d.error) bad.push(t + ": " + d.error);
+        else if ((d.missingInProd || []).length)
+          bad.push(t + " — в проде нет колонок: " + d.missingInProd.join(", "));
+      });
+      note("evScanNote", bad.length ? "Есть расхождения" : "Колонки совпадают", bad.length > 0);
+      $("#evScanBox").className = "";
+      $("#evScanBox").innerHTML = bad.length
+        ? bad.map(function(b){ return "<div>" + esc(b) + "</div>"; }).join("")
+        : "Все восемь таблиц совпадают с боевыми по составу колонок.";
+    }).catch(function(e){ showError("evScanNote", "evScanBox", e); });
+  }
+
+  /* Импорт идёт порциями: сервер за прогон берёт не больше LIMIT строк на таблицу и
+     сообщает в more, осталось ли что-то. Раньше кнопка делала ровно один проход, и на
+     пяти тысячах событий её пришлось бы жать десяток раз подряд — теперь проходы идут
+     сами, пока сервер не скажет, что тянуть больше нечего.
+     Потолок проходов — страховка от бесконечного цикла, если сервер вдруг всегда будет
+     отвечать more=true: лучше остановиться и показать, сколько успели. */
+  var LIMIT = 1000, MAX_PASSES = 60;
+
+  function importFromProd(){
+    var btn = $("#evImportBtn");
+    btn.disabled = true;
+    var total = 0, pass = 0, byTable = {}, failed = {}, evBuilt = 0, evOnline = 0, evOffline = 0, evErrors = [], pending = 0, evAdopted = 0, evRepaired = 0;
+    /* Процесс могли остановить в «Процессах переливов» — прямо посреди наших проходов.
+       Сервер гасит more, цикл заканчивается сам, но человеку надо сказать почему:
+       иначе «готово, тянуть больше нечего» соврало бы. */
+    var stopped = null;
+
+    function render(done, more){
+      var rows = "";
+      Object.keys(byTable).forEach(function(t){
+        var err = failed[t];
+        rows += "<tr><td class=\"mono\">" + esc(t) + "</td>" +
+                "<td style=\"color:" + (err ? "var(--red,#e5484d)" : "var(--green,#30a46c)") + "\">" +
+                (err ? "пропущено" : "затянуто") + "</td>" +
+                "<td>" + esc(byTable[t]) + "</td>" +
+                "<td style=\"color:var(--red,#e5484d)\">" + esc(err || "") + "</td></tr>";
+      });
+      var evErr = evErrors.length
+        ? "<div style=\"margin-top:10px\"><b>Не собралось событий: " + evErrors.length + "</b>" +
+          evErrors.slice(0, 20).map(function(x){
+            return "<div style=\"color:var(--red,#e5484d)\">" + esc(x) + "</div>"; }).join("") +
+          "<div style=\"opacity:.8\">Такие события удалены целиком, полусобранных записей не " +
+          "остаётся — после устранения причины повторите импорт.</div></div>"
+        : "";
+      $("#evImportBox").className = "";
+      $("#evImportBox").innerHTML =
+        (stopped ? "<div style=\"margin-bottom:10px;color:var(--amber,#f5a524)\">" + esc(stopped) +
+                   ". Запустите процесс в разделе «Процессы переливов» и повторите.</div>" : "") +
+        "<div style=\"margin-bottom:10px\">" + (done ? "Готово. " : "Проход " + pass + "… ") +
+        "Затянуто строк <b>" + total + "</b>, собрано событий <b>" + evBuilt + "</b> (онлайновых " +
+        evOnline + ", по расписанию " + evOffline + ")." +
+        /* Привязанные строки — не новые события, но и не бездействие: без этой цифры
+           прогон, который только чинил потерянные связи, выглядел бы как пустой. */
+        (evAdopted ? " Привязано к уже заведённым событиям: <b>" + evAdopted + "</b>." : "") +
+        /* Достроенная обвязка — не новые события, но карточки, которые были пустыми
+           («Шаги (0)», «задание не заведено»), перестали такими быть. */
+        (evRepaired ? " Достроена обвязка у событий: <b>" + evRepaired + "</b>." : "") +
+        (done && more ? " Остановились на потолке в " + MAX_PASSES + " проходов — нажмите ещё раз." : "") +
+        "</div>" +
+        "<table class=\"tbl\"><thead><tr><th>Таблица</th><th>Итог</th><th>Строк</th>" +
+        "<th>Причина</th></tr></thead><tbody>" + rows + "</tbody></table>" +
+        (Object.keys(failed).length ? "<div style=\"margin-top:10px;opacity:.85\">Ссылки на строки " +
+          "из пропущенных таблиц останутся пустыми, пока не выдадут права и не повторят импорт.</div>" : "") +
+        /* Отложенные на последнем проходе разрешиться уже некому: их ссылок нет и в проде. */
+        (done && pending ? "<div style=\"margin-top:10px;color:var(--amber,#f5a524)\">Отложено строк: " +
+          pending + ". Ссылка на связанную запись у них есть, а самой записи в crmdb нет — " +
+          "осиротевшие строки. Импортировать их не получится, пока это не поправят в источнике.</div>" : "") +
+        evErr;
+    }
+
+    function step(){
+      pass++;
+      note("evImportNote", "Проход " + pass + ", затянуто строк " + total + "…");
+      return req("POST", "/api/events/import?limit=" + LIMIT).then(function(d){
+        total += Number(d.copiedRows || 0);
+        pending = Number(d.pending || 0);   // не копим: отложенное разрешается следующим проходом
+        evBuilt += Number(d.eventsBuilt || 0);
+        evOnline += Number(d.eventsOnline || 0);
+        evOffline += Number(d.eventsOffline || 0);
+        evAdopted += Number(d.eventsAdopted || 0);
+        evRepaired += Number(d.eventsRepaired || 0);
+        (d.eventErrors || []).forEach(function(x){ if (evErrors.length < 100) evErrors.push(x); });
+        (d.summary || []).forEach(function(r){
+          byTable[r.table] = (byTable[r.table] || 0) + Number(r.rows || 0);
+          if (r.error) failed[r.table] = r.error; else delete failed[r.table];
+        });
+        stopped = d.stopped || null;
+        render(false, d.more);
+        if (d.more && pass < MAX_PASSES) return step();
+        render(true, d.more);
+        note("evImportNote",
+          (stopped ? "Импорт остановлен в «Процессах переливов»"
+                   : d.more ? "Остановились на потолке проходов" : "Готово, тянуть больше нечего") +
+          (Object.keys(failed).length || evErrors.length ? " · есть пропуски, смотрите сводку" : ""),
+          !!stopped || (Object.keys(failed).length || evErrors.length) > 0);
+        scan();
+      });
+    }
+
+    busy("evImportNote", "evImportBox", "Тянем строки из crmdb… идёт первый проход.");
+    step().catch(function(e){
+      render(true, false);
+      showError("evImportNote", "evImportBox", e);
+    }).then(function(){ btn.disabled = false; });
+  }
+
+  /* Обработчики вешаем сразу при разборе скрипта, а не при открытии панели. Разметка к
+     этому моменту уже есть (скрипт идёт после неё), и кнопки перестают зависеть от того,
+     дошло ли до них ленивое open(): один промах в openPane делал их мёртвыми молча. */
+  function bind(){
+    var b1 = $("#evScanBtn"), b2 = $("#evDdlBtn"), b3 = $("#evImportBtn");
+    if (b1) b1.onclick = scan;
+    if (b2) b2.onclick = ddl;
+    if (b3) b3.onclick = importFromProd;
+  }
+  bind();
+
+  return {
+    open: function(){
+      bind();                // на случай, если разметку перерисовали
+      if (!loaded) scan();   // при первом открытии считаем сразу: это и есть ответ «сколько их»
+    }
+  };
+})();
+
+/* ---------- Jira: подключение и карта полей ----------
+   Токен наружу не отдаётся, поэтому поле пароля всегда пустое, а пустое значение при
+   сохранении означает «не менять». Иначе правка адреса стирала бы токен, и интеграция
+   ломалась бы молча — до следующей попытки завести задачу. */
+window.JiraSetup = (function(){
+  var bound = false, loaded = false, cfg = null;
+  /* Поля экрана создания, как их вернула Jira. Нужны, чтобы ненайденное поле можно было
+     выбрать руками: имя в чужом проекте бывает каким угодно, и угадать его нельзя. */
+  var jiraFields = null;
+  /* Поля, которые нашлись, но не на экране создания: в самой задаче они есть, а при
+     заведении Jira их не спросит — заполнятся вторым шагом. Помечаем, чтобы человек не
+     считал такую привязку ошибкой. */
+  var lateKeys = {};
+
+  function esc(v){ return String(v == null ? "" : v)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function note(text, bad){
+    var n = $("#jrMsg");
+    if (!n) return;
+    n.textContent = text || "";
+    n.classList.toggle("show", !!text);
+    n.style.color = bad ? "var(--coral)" : "";
+  }
+  function box(id, html, empty){
+    var b = $("#" + id);
+    if (!b) return;
+    b.className = empty ? "empty" : "";
+    b.innerHTML = html;
+  }
+  function req(method, url, body){
+    var opts = { method: method, credentials: "same-origin", headers: { Accept: "application/json" } };
+    if (body !== undefined){
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(body);
+    }
+    return fetch(url, opts).then(function(r){
+      if (r.ok) return r.status === 204 ? null : r.json();
+      return r.text().then(function(t){
+        var msg = "";
+        try { msg = JSON.parse(t).message || ""; } catch(e){ msg = ""; }
+        throw new Error(msg || (r.status + " " + r.statusText));
+      });
+    });
+  }
+
+  function load(){
+    loaded = true;
+    return req("GET", "../api/admin/jira/config").then(function(c){
+      cfg = c || {};
+      $("#jrUrl").value = cfg.baseUrl || "";
+      $("#jrProject").value = cfg.projectKey || "";
+      $("#jrType").value = cfg.issueType || "";
+      $("#jrLabels").value = cfg.labels || "";
+      $("#jrToken").value = "";
+      $("#jrTokenHint").textContent = cfg.hasToken
+        ? "токен сохранён; оставьте пустым — не изменится"
+        : "токен не задан";
+      if (cfg.lastStatus){
+        box("jrBox", "Последняя проверка: <b>" + esc(cfg.lastStatus) + "</b> " +
+            esc(String(cfg.lastCheckedAt || "").slice(0, 19).replace("T", " ")) +
+            (cfg.lastError ? "<div style=\"color:var(--coral);margin-top:6px\">" + esc(cfg.lastError) + "</div>" : ""));
+      }
+      renderMap();
+    }).catch(function(e){ note((e && e.message) || "Не удалось прочитать настройки", true); });
+  }
+
+  function save(){
+    note("Сохраняем…");
+    return req("PUT", "../api/admin/jira/config", {
+      baseUrl: $("#jrUrl").value.trim(),
+      token: $("#jrToken").value,
+      projectKey: $("#jrProject").value.trim(),
+      issueType: $("#jrType").value.trim(),
+      labels: $("#jrLabels").value.trim()
+    }).then(function(){
+      note("Сохранено");
+      return load();
+    }).catch(function(e){ note((e && e.message) || "Не удалось сохранить", true); });
+  }
+
+  function check(){
+    note("Проверяем связь…");
+    box("jrBox", "Идём в Jira…");
+    req("POST", "../api/admin/jira/check").then(function(res){
+      if (res && res.ok){
+        note("Связь есть");
+        box("jrBox", "Jira отвечает. Мы для неё: <b>" + esc(res.displayName || res.name) + "</b>" +
+          (res.name ? " <span class=\"mono\">(" + esc(res.name) + ")</span>" : "") +
+          (res.email ? "<div>" + esc(res.email) + "</div>" : ""));
+      } else {
+        note("Связи нет", true);
+        box("jrBox", "<div style=\"color:var(--coral)\">" + esc((res && res.error) || "Jira не ответила") + "</div>");
+      }
+    }).catch(function(e){
+      note("Ошибка", true);
+      box("jrBox", "<div style=\"color:var(--coral)\">" + esc((e && e.message) || "Запрос не выполнен") + "</div>");
+    });
+  }
+
+  /* Поля экрана создания: обязательные первыми — из-за них и падает создание задачи. */
+  function meta(){
+    note("Читаем поля проекта…");
+    box("jrBox", "Спрашиваем Jira, какие поля у экрана создания…");
+    req("GET", "../api/admin/jira/meta").then(function(m){
+      var fields = (m && m.fields) || [];
+      note("Полей: " + fields.length);
+      jiraFields = fields;   // теперь непривязанное поле можно выбрать из списка
+      renderMap();
+      var html = "<table><thead><tr><th>Поле</th><th>id</th><th>Обяз.</th><th>Значения</th></tr></thead><tbody>";
+      fields.forEach(function(f){
+        var vals = f.values || [];
+        html += "<tr><td class=\"t-name\">" + esc(f.name) + "</td>" +
+          "<td class=\"mono\">" + esc(f.id) + "</td>" +
+          "<td>" + (f.required ? "<b style=\"color:var(--coral)\">да</b>" : "нет") + "</td>" +
+          "<td class=\"mono\" style=\"font-size:11px\">" +
+            (vals.length ? esc(vals.slice(0, 12).join(", ")) + (vals.length > 12 ? " …" : "") : "—") +
+          "</td></tr>";
+      });
+      box("jrBox", html + "</tbody></table>");
+    }).catch(function(e){
+      note("Ошибка", true);
+      box("jrBox", "<div style=\"color:var(--coral)\">" + esc((e && e.message) || "Запрос не выполнен") + "</div>");
+    });
+  }
+
+  function autoMap(){
+    note("Сопоставляем…");
+    req("POST", "../api/admin/jira/automap").then(function(res){
+      note("Сопоставлено полей: " + (res && res.matched));
+      if (cfg) cfg.fieldMap = (res && res.fieldMap) || {};
+      jiraFields = (res && res.fields) || null;
+      lateKeys = {};
+      ((res && res.late) || []).forEach(function(l){ lateKeys[l.key] = true; });
+      renderMap(res && res.unmatched);
+    }).catch(function(e){ note((e && e.message) || "Не удалось сопоставить", true); });
+  }
+
+  /* Ручная привязка. Пишем всю карту целиком — ручка принимает её пакетом, а valueMap
+     передаём как есть, иначе сохранение полей стёрло бы сопоставление значений. */
+  function setField(key, id){
+    if (!cfg) return;
+    cfg.fieldMap = cfg.fieldMap || {};
+    if (id) cfg.fieldMap[key] = id; else delete cfg.fieldMap[key];
+    note("Сохраняем…");
+    req("PUT", "../api/admin/jira/maps", { fieldMap: cfg.fieldMap, valueMap: cfg.valueMap || {} })
+      .then(function(res){
+        if (res) cfg = res;
+        note("Сохранено");
+        renderMap();
+      })
+      .catch(function(e){ note((e && e.message) || "Не удалось сохранить", true); });
+  }
+
+  /* Карта показывается целиком: пустая строка — это «поле не найдено», и её надо видеть,
+     а не догадываться по отсутствию. */
+  var FIELD_NAMES = {
+    channel:"Канал", customer:"Заказчик", product:"Тип продукта", kind:"Вид рассылки",
+    name:"Название рассылки", sendDate:"Дата отправки рассылки", meaning:"Бизнес-смысл",
+    link:"Ссылка", content:"Контент", segment:"Сегмент", abTest:"А/В-тестирование",
+    source:"Source", service:"Сервис", analyst:"Ответственный аналитик"
+  };
+  /* Ячейка для непривязанного поля: список полей Jira, если он у нас есть, иначе просто
+     «не найдено» — список приезжает вместе с ответом «Сопоставить поля».
+     Поля разведены по группам не для красоты: то, чего нет на экране создания, Jira при
+     заведении задачи не примет — такое поле заполняется правкой уже созданной. */
+  function picker(key){
+    if (!jiraFields || !jiraFields.length) return "не найдено";
+    var onCreate = jiraFields.filter(function(f){ return f.onCreateScreen !== false; });
+    var other = jiraFields.filter(function(f){ return f.onCreateScreen === false; });
+    function opts(list){
+      return list.map(function(f){
+        return "<option value=\"" + esc(f.id) + "\">" + esc(f.name) +
+          (f.required ? " *" : "") + " (" + esc(f.id) + ")</option>";
+      }).join("");
+    }
+    var html = "<option value=\"\">— не найдено, выбрать —</option>";
+    html += other.length
+      ? "<optgroup label=\"На экране создания\">" + opts(onCreate) + "</optgroup>" +
+        "<optgroup label=\"Прочие поля Jira (заполнятся после создания)\">" + opts(other) + "</optgroup>"
+      : opts(onCreate);
+    return "<select class=\"dbc-in jr-pick\" data-key=\"" + esc(key) + "\" " +
+      "style=\"min-width:220px;font-size:12px\">" + html + "</select>";
+  }
+
+  function bindPickers(){
+    var list = document.querySelectorAll("#jrMapBox .jr-pick");
+    Array.prototype.forEach.call(list, function(sel){
+      sel.onchange = function(){ setField(sel.dataset.key, sel.value); };
+    });
+  }
+
+  function renderMap(unmatched){
+    var map = (cfg && cfg.fieldMap) || {};
+    var keys = Object.keys(FIELD_NAMES);
+    if (!keys.some(function(k){ return map[k]; })){
+      box("jrMapBox", "Карта пуста. Нажмите «Сопоставить поля» — панель прочитает экран создания задачи и свяжет поля по названию.", true);
+      return;
+    }
+    var html = "<table><thead><tr><th>Наше поле</th><th>Поле в Jira</th><th>id</th></tr></thead><tbody>";
+    keys.forEach(function(k){
+      var id = map[k] || "";
+      var late = id && lateKeys[k]
+        ? " <span style=\"color:var(--faint);font-size:11px\">после создания</span>" : "";
+      html += "<tr><td class=\"t-name\">" + esc(k) + "</td><td>" + esc(FIELD_NAMES[k]) + "</td>" +
+        "<td class=\"mono\"" + (id ? "" : " style=\"color:var(--coral)\"") + ">" +
+        (id ? esc(id) + late : picker(k)) + "</td></tr>";
+    });
+    html += "</tbody></table>";
+    if (Object.keys(lateKeys).length){
+      html += "<div class=\"empty\" style=\"margin-top:10px\">Пометка «после создания» значит, " +
+        "что поля нет на экране заведения задачи — Jira не примет его в запросе создания. " +
+        "Панель заполнит такое поле вторым шагом, правкой уже созданной задачи.</div>";
+    }
+    if (unmatched && unmatched.length){
+      /* Раньше здесь была одна строка «не нашлось». Толку от неё немного: человек и так
+         видит красное «не найдено», а вопрос у него другой — как поле называется в Jira
+         на самом деле. Поэтому показываем кандидатов с их id. */
+      html += "<div style=\"margin-top:12px\">";
+      var hasAmbiguous = false;
+      unmatched.forEach(function(u){
+        var name = u && u.name ? u.name : String(u);
+        var cand = (u && u.candidates) || [];
+        if (u && u.ambiguous){
+          /* Однофамильцы — отдельная беда: раньше панель молча брала первое поле, задача
+             заводилась, а значение уходило в чужое поле и пропадало. */
+          hasAmbiguous = true;
+          html += "<div style=\"color:var(--coral);margin-top:8px\">Несколько полей с именем <b>" +
+            esc(name) + "</b>: " + cand.map(function(c){
+              return esc(c.name) + " <span class=\"mono\">(" + esc(c.id) + ")</span>" +
+                (c.onCreateScreen ? "" : " <span style=\"color:var(--faint)\">— не на экране создания</span>");
+            }).join(", ") + " — выберите нужное сами.</div>";
+          return;
+        }
+        html += "<div style=\"color:var(--coral);margin-top:8px\">Не нашлось: <b>" + esc(name) + "</b>";
+        if (cand.length){
+          html += " <span style=\"color:var(--faint)\">— похожие поля на экране создания: " +
+            cand.map(function(c){ return esc(c.name) + " <span class=\"mono\">(" + esc(c.id) + ")</span>"; }).join(", ") +
+            "</span>";
+        }
+        html += "</div>";
+      });
+      html += "<div class=\"empty\" style=\"margin-top:8px\">" +
+        (hasAmbiguous
+          ? "Одноимённые поля панель не привязывает наугад: выберите нужное в списке напротив строки. "
+          : "") +
+        "Если поле называется иначе — выберите его в списке напротив строки. Если его нет " +
+        "совсем, значит оно не выведено на экран создания задачи этого типа, и это правится " +
+        "в Jira.</div></div>";
+    }
+    box("jrMapBox", html);
+    bindPickers();
+  }
+
+  // ------------------------------------------------------------ значения списков
+
+  /* Пары «наше значение → значение Jira». Правило то же, что у полей: пишем целиком
+     карту, а не по одной паре — ручка принимает её пакетом, и отправлять fieldMap рядом
+     обязательно, иначе сохранение значений стёрло бы сопоставление полей. */
+  var jvData = null;
+
+  /* На странице настроек есть только $ для одного элемента; списками пользуемся здесь. */
+  function $$(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+
+  function jvNote(text, bad){
+    var n = $("#jvMsg");
+    if (!n) return;
+    n.textContent = text || "";
+    n.style.color = bad ? "var(--coral)" : "";
+  }
+
+  function loadValues(){
+    jvNote("Спрашиваем Jira…");
+    req("GET", "../api/admin/jira/values").then(function(j){
+      jvData = j || {};
+      jvNote("");
+      renderValues();
+    }).catch(function(e){ jvNote((e && e.message) || "Не удалось прочитать списки", true); });
+  }
+
+  function renderValues(){
+    var fields = (jvData && jvData.fields) || [];
+    if (!fields.length){
+      box("jvBox", "Сопоставлять нечего: карта полей пуста либо у всех привязанных полей " +
+        "свободный текст. Пары нужны спискам и полям с людьми.", true);
+      return;
+    }
+    var html = fields.map(function(f){
+      var pairs = f.pairs || {};
+      var keys = Object.keys(pairs);
+      var rows = keys.map(function(our){
+        return '<div class="jv-row" data-key="' + esc(f.key) + '" data-our="' + esc(our) + '">' +
+          '<input class="dbc-in jv-our" value="' + esc(our) + '" placeholder="как у нас">' +
+          '<span class="jv-arrow">→</span>' + jvSelect(f, pairs[our]) +
+          '<button type="button" class="btn tiny jv-del">Убрать</button></div>';
+      }).join("");
+      return '<div class="jv-field"><div class="jv-head">' + esc(f.title) +
+          ' <span class="mono">' + esc(f.fieldId) + '</span>' +
+          '<span class="jv-allowed">' + (f.user
+            ? "поле с человеком: справа — логин или почта в Jira"
+            : esc(f.allowed.join(", "))) + "</span></div>" +
+        rows +
+        '<div class="jv-row jv-new" data-key="' + esc(f.key) + '">' +
+          '<input class="dbc-in jv-our" placeholder="наше значение">' +
+          '<span class="jv-arrow">→</span>' + jvSelect(f, "") +
+          '<button type="button" class="btn tiny jv-add">Добавить</button></div></div>';
+    }).join("");
+    box("jvBox", html + '<div class="row" style="margin-top:12px">' +
+      '<button type="button" class="btn primary" id="jvSave">Сохранить пары</button></div>');
+    bindValues();
+  }
+
+  function jvSelect(f, cur){
+    /* У поля с человеком списка значений нет и быть не может — людей в инстансе тысячи.
+       Поэтому там обычное поле ввода: логин или почта, как они записаны в Jira. */
+    if (f.user){
+      return '<input class="dbc-in jv-jira mono" value="' + esc(cur || "") +
+        '" placeholder="логин или почта в Jira">';
+    }
+    return '<select class="dbc-in jv-jira"><option value="">— значение Jira —</option>' +
+      (f.allowed || []).map(function(v){
+        return '<option value="' + esc(v) + '"' + (v === cur ? " selected" : "") + ">" + esc(v) + "</option>";
+      }).join("") + "</select>";
+  }
+
+  function bindValues(){
+    $$("#jvBox .jv-del").forEach(function(b){
+      b.onclick = function(){ b.closest(".jv-row").remove(); };
+    });
+    $$("#jvBox .jv-add").forEach(function(b){
+      b.onclick = function(){
+        var row = b.closest(".jv-row");
+        var our = (row.querySelector(".jv-our").value || "").trim();
+        var jira = (row.querySelector(".jv-jira").value || "").trim();
+        if (!our || !jira){ jvNote("Заполните обе половины пары", true); return; }
+        var clone = row.cloneNode(true);
+        clone.classList.remove("jv-new");
+        clone.querySelector(".jv-add").outerHTML =
+          '<button type="button" class="btn tiny jv-del">Убрать</button>';
+        /* cloneNode копирует разметку, а не состояние: у input значение живёт в свойстве
+           value, у select — в выбранном option. Без явного переноса добавленная пара
+           уезжала на сервер пустой и молча терялась. */
+        clone.querySelector(".jv-our").value = our;
+        clone.querySelector(".jv-jira").value = jira;
+        row.parentNode.insertBefore(clone, row);
+        row.querySelector(".jv-our").value = "";
+        row.querySelector(".jv-jira").value = "";
+        jvNote("");
+        bindValues();
+      };
+    });
+    var save = $("#jvSave");
+    if (save) save.onclick = saveValues;
+  }
+
+  function saveValues(){
+    var map = {};
+    $$("#jvBox .jv-row").forEach(function(row){
+      if (row.classList.contains("jv-new")) return;      // строка добавления — не пара
+      var our = (row.querySelector(".jv-our").value || "").trim();
+      var jira = (row.querySelector(".jv-jira").value || "").trim();
+      if (!our || !jira) return;
+      var key = row.dataset.key;
+      (map[key] = map[key] || {})[our] = jira;
+    });
+    jvNote("Сохраняем…");
+    req("PUT", "../api/admin/jira/maps", { fieldMap: (cfg && cfg.fieldMap) || {}, valueMap: map })
+      .then(function(res){
+        if (res) cfg = res;
+        jvNote("Сохранено");
+        loadValues();
+      })
+      .catch(function(e){ jvNote((e && e.message) || "Не удалось сохранить", true); });
+  }
+
+  function bind(){
+    if (bound) return;
+    var b = $("#jrSave");
+    if (!b) return;
+    bound = true;
+    b.onclick = save;
+    $("#jrCheck").onclick = check;
+    $("#jrMeta").onclick = meta;
+    $("#jrAuto").onclick = autoMap;
+    $("#jvLoad").onclick = loadValues;
+  }
+  bind();
+
+  return {
+    open: function(){
+      bind();
+      if (!loaded) load();
+    }
+  };
+})();
+
+/* ---------- Процессы переливов: остановить и пустить снова ----------
+   Состояние живёт в app.sync_process, а не в памяти приложения: остановка должна
+   переживать перезапуск, иначе рестарт молча возвращал бы поток в прод. */
+window.ProcessControl = (function(){
+  var bound = false, loaded = false, busy = false;
+
+  function esc(v){ return String(v == null ? "" : v)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function note(text, bad){
+    var n = $("#procMsg");
+    if (!n) return;
+    n.textContent = text || "";
+    n.classList.toggle("show", !!text);
+    n.style.color = bad ? "var(--coral)" : "";
+  }
+  function box(html, empty){
+    var b = $("#procBox");
+    if (!b) return;
+    b.className = empty ? "empty" : "";
+    b.innerHTML = html;
+  }
+  function when(iso){
+    if (!iso) return "—";
+    return String(iso).slice(0, 19).replace("T", " ");
+  }
+
+  /* Нажимать может тот, у кого право на редактирование в разделе; остальным раздел
+     остаётся витриной — видеть, что поток перекрыт, полезно всей команде. */
+  function mayToggle(){
+    var me = window.SET_ME;
+    if (!me) return true;                       // ответа ещё нет — сервер всё равно проверит
+    if (me.isAdmin) return true;
+    var c = me.caps && me.caps["set-procs"];
+    return !!(c && c.edit);
+  }
+
+  function req(method, url, body){
+    var opts = { method: method, credentials: "same-origin",
+                 headers: { Accept: "application/json" } };
+    if (body !== undefined){
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(body);
+    }
+    return fetch(url, opts).then(function(r){
+      if (r.ok) return r.status === 204 ? null : r.json();
+      return r.text().then(function(t){
+        var msg = "";
+        try { msg = JSON.parse(t).message || ""; } catch(e){ msg = ""; }
+        throw new Error(msg || (r.status + " " + r.statusText));
+      });
+    });
+  }
+
+  /* keepNote — что показать после перерисовки. Без него подпись «Процесс остановлен»
+     жила доли секунды: следом приходил свежий список и гасил её. */
+  function load(keepNote){
+    loaded = true;
+    note(keepNote || "Загружаем…");
+    req("GET", "../api/admin/processes").then(function(rows){
+      note(keepNote || "");
+      render(rows || []);
+    }).catch(function(e){
+      note("Ошибка", true);
+      box('<div style="color:var(--coral)">' + esc((e && e.message) || "Запрос не выполнен") + "</div>");
+    });
+  }
+
+  /* Состояние словами. «Запрещён настройкой сервера» — отдельный случай: у обратного
+     ETL есть ещё свойство app.etl.enabled, и без этой подписи кнопка «Запустить»
+     выглядела бы сломанной — нажал, а процесс всё равно стоит. */
+  function state(p){
+    if (p.configEnabled === false) return { text: "выключен настройкой сервера", cls: "var(--faint)" };
+    if (!p.enabled) return { text: "остановлен", cls: "var(--coral)" };
+    if (p.running) return { text: "идёт прогон", cls: "var(--green)" };
+    return { text: "работает", cls: "var(--green)" };
+  }
+
+  function render(rows){
+    if (!rows.length) { box("Процессы не заведены — не прогнали миграцию V39?", true); return; }
+    /* Сверку текстов согласования вынимаем из общей таблицы: у неё свой блок ниже.
+       Два места управления одним процессом путали бы больше, чем помогали. */
+    var sms = null;
+    rows = rows.filter(function(p){
+      if (p.code === "sms-approved"){ sms = p; return false; }
+      return true;
+    });
+    var may = mayToggle();
+    var html = "<table><thead><tr><th>Процесс</th><th>Состояние</th><th>Последний прогон</th>" +
+      "<th>Кто переключил</th><th></th></tr></thead><tbody>";
+    rows.forEach(function(p){
+      var st = state(p);
+      html += '<tr><td class="t-name">' + esc(p.title) + '<div class="mono">' + esc(p.code) + "</div></td>" +
+        '<td style="color:' + st.cls + '">' + st.text + "</td>" +
+        "<td>" + when(p.lastRunAt) + '<div class="mono">' + esc(p.lastResult || "—") + "</div></td>" +
+        "<td>" + esc(p.updatedBy || "—") + '<div class="mono">' + when(p.updatedAt) + "</div></td>" +
+        '<td style="text-align:right"><button class="btn' + (p.enabled ? " ghost-danger" : " accent") +
+          '" data-proc="' + esc(p.code) + '" data-on="' + (p.enabled ? "0" : "1") + '"' +
+          (may ? "" : " disabled") + ">" + (p.enabled ? "Остановить" : "Запустить") + "</button></td></tr>";
+    });
+    box(html + "</tbody></table>");
+    document.querySelectorAll("#procBox [data-proc]").forEach(function(b){
+      b.onclick = function(){ toggle(b.getAttribute("data-proc"), b.getAttribute("data-on") === "1", b); };
+    });
+    renderSms(sms);
+  }
+
+  /* ---- Блок «Тексты смс для согласования у операторов» ----
+     Отдельно от таблицы по двум причинам. Порядок работы у него свой: сначала
+     посмотреть, что получится, и только потом писать. И цена ошибки своя — запись
+     идёт в боевую таблицу шаблонов, а не в нашу. Поэтому он выключен по умолчанию:
+     включённым он сходил бы туда через две минуты после выката, ещё до того, как
+     человек успеет открыть раздел. */
+  function renderSms(p){
+    var host = $("#procSms");
+    if (!host) return;
+    if (!p){
+      host.innerHTML = '<h2>Тексты смс для согласования у операторов</h2>' +
+        '<div class="sub">Процесс не заведён — не прогнали миграцию V51?</div>';
+      return;
+    }
+    var may = mayToggle();
+    var on = !!p.enabled;
+    smsOn = on;
+    host.innerHTML =
+      "<h2>" + esc(p.title) + "</h2>" +
+      '<div class="sub">Раскладывает текст смс в вид, который согласовывают сотовые операторы: ' +
+        "переменные и ссылки заменяются на <b>%w</b>, числа на <b>%d</b>, даты и остальной текст " +
+        "остаются как есть. Заполняются только пустые строки; уже заполненные не трогаются — " +
+        "под ними стоят отметки согласования.</div>" +
+      '<div class="sub" style="margin-top:6px">Пишет в <b>боевую</b> таблицу, поэтому по умолчанию выключен. ' +
+        "«Проверить» показывает, что получится, и ничего не меняет. «Запустить» разрешает " +
+        "плановый прогон — он идёт раз в сутки, немедленного прохода не делает. " +
+        "Пройти по всем существующим шаблонам сейчас — «Проверить», затем «Записать в прод».</div>" +
+      '<div class="card" style="margin-top:14px">' +
+        '<div class="row" style="gap:14px;align-items:center;flex-wrap:wrap">' +
+          '<div><div class="hint-s">Состояние</div><div style="color:' +
+            (on ? "var(--green)" : "var(--coral)") + ';font-weight:600">' +
+            (on ? "работает" : "остановлен") + "</div></div>" +
+          '<div><div class="hint-s">Последний прогон</div><div>' + when(p.lastRunAt) +
+            '<span class="mono" style="color:var(--faint)"> ' + esc(p.lastResult || "—") + "</span></div></div>" +
+          '<div style="margin-left:auto;display:flex;gap:8px">' +
+            '<button class="btn" id="procSweepBtn">Проверить</button>' +
+            '<button class="btn' + (on ? " ghost-danger" : " accent") + '" id="procSmsToggle"' +
+              (may ? "" : " disabled") + ">" + (on ? "Остановить" : "Запустить") + "</button>" +
+          "</div>" +
+        "</div>" +
+      "</div>";
+    var sb = $("#procSweepBtn");
+    if (sb) sb.onclick = function(){ sweep(false, sb); };
+    var tb = $("#procSmsToggle");
+    if (tb) tb.onclick = function(){ toggle(p.code, !on, tb); };
+  }
+
+  /* ---- Сверка текстов смс для согласования у операторов ----
+     Два шага намеренно: сначала показать, что изменится, и только потом писать.
+     Запись идёт в БОЕВУЮ базу шаблонов, и «нажал и посмотрим» здесь не годится. */
+  var smsOn = false;   /* включён ли процесс — от этого зависит, предлагать ли запись */
+
+  function sweepBox(html){
+    var b = $("#procSweep");
+    if (b) b.innerHTML = html;
+  }
+
+  function sweep(apply, btn){
+    if (busy) return;
+    if (apply && !confirm("Записать тексты в боевую таблицу согласований?\n" +
+                          "Заполнены будут только пустые строки; уже заполненные не меняются.")) return;
+    busy = true;
+    if (btn) btn.disabled = true;
+    note(apply ? "Записываем…" : "Считаем…");
+    req("POST", "../api/admin/processes/sms-approved/run" + (apply ? "?apply=true" : ""))
+      .then(function(r){
+        busy = false;
+        if (btn) btn.disabled = false;
+        note(apply ? "Записано" : "");
+        renderSweep(r || {}, apply);
+        if (apply) load("Записано");
+      })
+      .catch(function(e){
+        busy = false;
+        if (btn) btn.disabled = false;
+        note((e && e.message) || "Прогон не удался", true);
+      });
+  }
+
+  function renderSweep(r, applied){
+    if (r.configured === false){
+      sweepBox('<div class="sub" style="margin-top:14px">' + esc(r.message || "Прод-БД не настроена") + "</div>");
+      return;
+    }
+    var counts = r.counts || {}, keys = Object.keys(counts);
+    var willFill = counts["заполнится"] || 0;
+    var html = '<h2 style="margin-top:26px">Сверка текстов согласования</h2>';
+    if (applied){
+      html += '<div class="sub">Записано строк: <b>' + (r.filled || 0) + "</b></div>";
+    }
+    html += '<div class="sub" style="margin-top:8px">Строки без текста, по причинам:</div>' +
+      '<ul class="rules" style="margin-top:6px">' +
+      (keys.length
+        ? keys.map(function(k){ return "<li>" + esc(k) + ": <b>" + counts[k] + "</b></li>"; }).join("")
+        : "<li>пустых строк нет</li>") +
+      "</ul>";
+
+    var s = r.samples || [];
+    if (s.length){
+      html += '<div class="sub" style="margin-top:12px">Как разложится (первые ' + s.length + "):</div>" +
+        '<div style="overflow-x:auto"><table style="margin-top:6px"><thead><tr>' +
+        "<th>Код</th><th>Было</th><th>Станет</th></tr></thead><tbody>" +
+        s.map(function(x){
+          return '<tr><td class="mono">' + esc(x.code) + "</td><td>" + esc(x.before) +
+            '</td><td class="mono">' + esc(x.after) + "</td></tr>";
+        }).join("") + "</tbody></table></div>";
+    }
+    if (!applied && willFill > 0 && mayToggle()){
+      /* Запись уважает выключатель — так же, как и на сервере. Показывать кнопку,
+         которая ответит отказом, значит предлагать наступить на грабли. */
+      html += smsOn
+        ? '<div style="margin-top:14px"><button class="btn accent" id="procSweepApply">' +
+            "Записать в прод (" + willFill + ")</button></div>"
+        : '<div class="sub" style="margin-top:14px">Процесс остановлен — записать нельзя. ' +
+            "Нажмите «Запустить» выше, если готовы.</div>";
+    }
+    sweepBox(html);
+    var ab = $("#procSweepApply");
+    if (ab) ab.onclick = function(){ sweep(true, ab); };
+  }
+
+  function toggle(code, enable, btn){
+    if (busy) return;
+    /* Остановка перекрывает поток в прод — переспрашиваем. Обратное действие (пустить)
+       подтверждения не требует: оно возвращает штатное состояние. */
+    if (!enable && !confirm("Остановить процесс «" + code + "»? Текущий прогон закончится на ближайшей безопасной границе.")) return;
+    busy = true;
+    if (btn) btn.disabled = true;
+    note(enable ? "Запускаем…" : "Останавливаем…");
+    req("PUT", "../api/admin/processes/" + encodeURIComponent(code), { enabled: enable })
+      .then(function(){
+        busy = false;
+        load(enable ? "Процесс запущен" : "Процесс остановлен, текущий прогон дорабатывает");
+      })
+      .catch(function(e){
+        busy = false;
+        if (btn) btn.disabled = false;
+        note((e && e.message) || "Не удалось переключить", true);
+      });
+  }
+
+  function bind(){
+    if (bound) return;
+    var b = $("#procReload");
+    if (!b) return;
+    bound = true;
+    b.onclick = load;
+  }
+  bind();
+
+  return {
+    open: function(){
+      bind();
+      /* Перечитываем при каждом открытии, а не только при первом: состояние меняет
+         не только эта вкладка — процесс мог остановить коллега. */
+      load();
+      loaded = true;
+    }
+  };
+})();
+
+/* ---------- Перелив событий в прод ----------
+   Приехало из панели (раздел «События» → «Перелив в прод»): наружу событие уезжает тем
+   же процессом, что и шаблоны, и место ему рядом с ними, а не в форме завода.
+   Ручки те же самые — /api/events/export*, секция та же — ev-export. */
+window.EventExport = (function(){
+  var bound = false, loaded = false;
+
+  function esc(v){ return String(v == null ? "" : v)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function note(text, bad){
+    var n = $("#evxMsg");
+    if (!n) return;
+    n.textContent = text || "";
+    n.classList.toggle("show", !!text);
+    n.style.color = bad ? "var(--coral)" : "";
+  }
+  function box(html, empty){
+    var b = $("#evxList");
+    if (!b) return;
+    b.className = empty ? "empty" : "";
+    b.innerHTML = html;
+    b.style.marginTop = "12px";
+  }
+  function result(html){
+    var b = $("#evxResult");
+    if (b) b.innerHTML = html || "";
+  }
+
+  /* Право на добавление в секции ev-export решает, живая кнопка «Перелить» или нет.
+     Админ проходит всегда: матрицу он обходит и на сервере. */
+  function canExport(){
+    var me = window.SET_ME;
+    if (!me) return true;                       // ответа ещё нет — сервер всё равно проверит
+    if (me.isAdmin) return true;
+    var c = me.caps && me.caps["ev-export"];
+    return !!(c && c.add);
+  }
+
+  function req(method, url){
+    return fetch(url, { method: method, credentials: "same-origin",
+                        headers: { Accept: "application/json" } })
+      .then(function(r){
+        if (r.ok) return r.status === 204 ? null : r.json();
+        return r.text().then(function(t){
+          /* Текст ошибки кладёт ValidationErrorHandler в поле message. Если ответ не
+             JSON (403 отдаёт HTML-страницу, а не объект), показываем строку состояния:
+             вываливать в блок целую HTML-страницу — это не сообщение об ошибке. */
+          var msg = "";
+          try { msg = JSON.parse(t).message || ""; } catch(e){ msg = ""; }
+          throw new Error(msg || (r.status + " " + r.statusText));
+        });
+      });
+  }
+
+  function load(){
+    loaded = true;
+    note("Загружаем…");
+    box("Загружаем…", true);
+    req("GET", "../api/events/export?limit=200").then(function(rows){
+      note("");
+      render(rows || []);
+    }).catch(function(e){ fail(e); });
+  }
+
+  function fail(e){
+    var msg = (e && e.message) || "Запрос не выполнен";
+    note("Ошибка", true);
+    box('<div style="color:var(--coral)">' + esc(msg) + "</div>");
+  }
+
+  /* Строка на событие: сколько строк слоя B оно сделало и сколько из них уже в проде.
+     Кнопка активна, пока переехало не всё; «переехало всё» — конечное состояние. */
+  function render(rows){
+    if (!rows.length) { box("Событий пока нет — заводятся они в панели, раздел «События».", true); return; }
+    var may = canExport();
+    var html = "<table><thead><tr><th>id</th><th>Событие</th><th>Система</th><th>Род</th>" +
+      "<th>Строк слоя B</th><th>В проде</th><th>Когда</th><th></th></tr></thead><tbody>";
+    rows.forEach(function(r){
+      var total = Number(r.rows_total || 0), done = Number(r.rows_exported || 0);
+      var full = total > 0 && done >= total;
+      html += "<tr><td>" + esc(r.id) + '</td><td class="t-name">' + esc(r.event_name) + "</td>" +
+        "<td>" + esc(r.system || "—") + "</td>" +
+        "<td>" + (r.kind === "time" ? "по расписанию" : "онлайн") + "</td>" +
+        "<td>" + total + "</td><td>" + done + "</td>" +
+        "<td>" + esc(r.exported_at ? String(r.exported_at).slice(0, 19).replace("T", " ") : "—") + "</td>" +
+        '<td style="text-align:right"><button class="btn' + (full || !total || !may ? "" : " accent") +
+          '" data-export="' + esc(r.id) + '"' + (full || !total || !may ? " disabled" : "") + ">" +
+          (full ? "уже в проде" : "Перелить") + "</button></td></tr>";
+    });
+    box(html + "</tbody></table>");
+    document.querySelectorAll("#evxList [data-export]").forEach(function(b){
+      b.onclick = function(){ run(b.getAttribute("data-export"), b); };
+    });
+  }
+
+  function run(eventId, btn){
+    if (btn) btn.disabled = true;
+    note("Переливаем…");
+    result("");
+    req("POST", "../api/events/export/" + encodeURIComponent(eventId)).then(function(res){
+      var sent = (res.sent || []).length, skip = (res.skipped || []).length;
+      note("«" + res.eventName + "»: отправлено строк " + sent +
+           (skip ? ", пропущено как уже уехавшие " + skip : ""));
+      showResult(res);
+      load();
+    }).catch(function(e){
+      fail(e);
+      if (btn) btn.disabled = false;
+    });
+  }
+
+  /* Показываем пары «наш id → id в проде»: по ним строку находят в crmdb руками. */
+  function showResult(res){
+    var all = (res.sent || []).map(function(r){ return { r:r, tag:"отправлено" }; })
+      .concat((res.skipped || []).map(function(r){ return { r:r, tag:"уже было" }; }));
+    if (!all.length) { result(""); return; }
+    result('<div class="card" style="margin-top:16px"><h3>Что уехало</h3><table><thead><tr>' +
+      "<th>Таблица</th><th>наш id</th><th>id в проде</th><th></th></tr></thead><tbody>" +
+      all.map(function(x){
+        return '<tr><td class="mono">' + esc(x.r.table) + "</td><td>" + esc(x.r.ourId) +
+               "</td><td>" + esc(x.r.prodId) + "</td><td>" + x.tag + "</td></tr>";
+      }).join("") + "</tbody></table></div>");
+  }
+
+  /* Сверка DDL: колонка, которой в проде нет, при вставке молча отбрасывается. */
+  function health(){
+    note("Сверяем…");
+    result("");
+    req("GET", "../api/events/export/health").then(function(h){
+      if (!h.configured) { note("База событий не выбрана — отметьте её в разделе «Подключения к БД»", true); return; }
+      if (h.error) { note(h.error, true); return; }
+      var bad = [];
+      Object.keys(h.tables || {}).forEach(function(t){
+        var d = h.tables[t];
+        if (d.error) bad.push(t + ": " + d.error);
+        else if ((d.missingInProd || []).length) bad.push(t + " — нет в проде: " + d.missingInProd.join(", "));
+      });
+      if (!bad.length) { note("Таблицы совпадают, расхождений нет"); return; }
+      note("Найдены расхождения", true);
+      result('<div class="card" style="margin-top:16px"><h3>Расхождения</h3>' +
+        bad.map(function(b){ return '<div class="empty" style="color:var(--coral)">' + esc(b) + "</div>"; }).join("") +
+        "</div>");
+    }).catch(function(e){ fail(e); });
+  }
+
+  function bind(){
+    if (bound) return;
+    var b1 = $("#evxReload"), b2 = $("#evxHealth");
+    if (!b1 || !b2) return;
+    bound = true;
+    b1.onclick = load;
+    b2.onclick = health;
+  }
+  bind();
+
+  /* ---------------------------------------------------------------- очередь перелива
+
+     Событие, не уехавшее с первой попытки, раньше зависело от того, вспомнит ли человек
+     нажать кнопку. Теперь оно стоит в очереди, и её разбирает фон — так же, как очередь
+     шаблонов. Здесь очередь только показывается: доставляет её сервер. */
+
+  var QSTATE = {
+    PENDING: { label: "ждёт", color: "var(--amber)" },
+    ERROR:   { label: "не уехало", color: "var(--coral)" },
+    OK:      { label: "уехало", color: "var(--green)" }
+  };
+
+  function qnote(text, bad){
+    var n = $("#evqMsg");
+    if (!n) return;
+    n.textContent = text || "";
+    n.classList.toggle("show", !!text);
+    n.style.color = bad ? "var(--coral)" : "";
+  }
+
+  function qrender(d){
+    var b = $("#evqList");
+    if (!b) return;
+    var rows = d.rows || [];
+    if (!rows.length) {
+      b.className = "empty";
+      b.innerHTML = d.configured
+        ? "Очередь пуста — всё заведённое уехало в crmdb."
+        : "Очередь пуста, но приёмник не настроен: галка «База событий» в «Подключениях к БД».";
+      return;
+    }
+    b.className = "";
+    b.innerHTML =
+      '<div class="sub" style="margin:0 0 8px">ждут: ' + (d.pending || 0) +
+        " · не уехали: " + (d.error || 0) + " · доставлены: " + (d.ok || 0) +
+        (d.running ? "" : " · <b style=\"color:var(--coral)\">перелив остановлен в «Процессах переливов»</b>") +
+      "</div>" +
+      '<table class="tbl"><thead><tr><th>Событие</th><th>Статус</th><th>Попыток</th>' +
+      "<th>Обновлено</th><th></th></tr></thead><tbody>" +
+      rows.map(function(r){
+        var st = QSTATE[r.status] || { label: r.status, color: "" };
+        return "<tr><td>" + esc(r.eventName || ("#" + r.eventId)) +
+            (r.system ? ' <span style="color:var(--faint)">· ' + esc(r.system) + "</span>" : "") +
+            (r.lastError ? '<div style="color:var(--coral);font-size:11.5px;margin-top:3px">' +
+              esc(r.lastError) + "</div>" : "") + "</td>" +
+          '<td style="color:' + st.color + '">' + esc(st.label) + "</td>" +
+          "<td>" + esc(r.attempts) + "</td>" +
+          "<td>" + esc(String(r.updatedAt || "").slice(0, 19).replace("T", " ")) + "</td>" +
+          '<td style="white-space:nowrap">' +
+            (r.status === "OK" ? "" :
+              '<button type="button" class="btn" data-qretry="' + r.id + '">Повтор</button> ') +
+            '<button type="button" class="btn" data-qdrop="' + r.id + '">Убрать</button>' +
+          "</td></tr>";
+      }).join("") + "</tbody></table>";
+
+    b.querySelectorAll("[data-qretry]").forEach(function(x){
+      x.onclick = function(){ qact("POST", "/export/queue/" + x.getAttribute("data-qretry") + "/retry"); };
+    });
+    b.querySelectorAll("[data-qdrop]").forEach(function(x){
+      x.onclick = function(){
+        if (!confirm("Убрать событие из очереди? Оно останется незалитым в crmdb.")) return;
+        qact("DELETE", "/export/queue/" + x.getAttribute("data-qdrop"));
+      };
+    });
+  }
+
+  function qload(){
+    return fetch("../api/events/export/queue", { credentials: "same-origin",
+        headers: { Accept: "application/json" } })
+      .then(function(r){
+        return r.text().then(function(t){
+          var j = null; try { j = t ? JSON.parse(t) : null; } catch(e){}
+          if (!r.ok) throw new Error((j && j.message) || t || ("HTTP " + r.status));
+          return j;
+        });
+      })
+      .then(function(d){ qrender(d); qnote(""); })
+      .catch(function(e){ qnote(e.message, true); });
+  }
+
+  function qact(method, path){
+    qnote("Отправляю…");
+    fetch("../api/events" + path, { method: method, credentials: "same-origin",
+        headers: { Accept: "application/json" } })
+      .then(function(r){
+        return r.text().then(function(t){
+          var j = null; try { j = t ? JSON.parse(t) : null; } catch(e){}
+          if (!r.ok) throw new Error((j && j.message) || t || ("HTTP " + r.status));
+          return j;
+        });
+      })
+      .then(function(d){ qrender(d); qnote("Готово"); })
+      .catch(function(e){ qnote(e.message, true); });
+  }
+
+  return {
+    open: function(){
+      bind();
+      var qb = $("#evqReload");
+      if (qb) qb.onclick = qload;
+      /* Очередь читаем при каждом открытии панели, а список событий — один раз:
+         очередь меняется сама, фоном, и вчерашний её вид ничего не значит. */
+      qload();
+      if (!loaded) load();   // список — это и есть содержимое панели, ждать нажатия незачем
+    }
+  };
+})();
+
 function renderDiag(){
   const box = $("#diagBox");
   const rows = [];
@@ -1030,9 +3162,6 @@ function renderDiag(){
         <td style="text-align:right"><span class="mono">${(r.size/1024).toFixed(1)} ${LANG==='en'?'KB':'КБ'}</span></td></tr>`).join("") +
       `</tbody></table><div class="empty" style="margin-top:10px">${t2('Итого:')} ${(total/1024).toFixed(1)} ${LANG==='en'?'KB':'КБ'} ${t2('(лимит браузера ≈ 5 МБ на сайт)')}</div>`
     : `<div class="empty">${t2('Панель ещё ничего не сохранила.')}</div>`;
-  renderDbConnections();
-  renderQueueStats();
-  etlStatus();
 }
 
 /* Счётчики очереди синка — лёгкий запрос без коннекта к проду, авто-показ под диагностикой. */
@@ -1258,18 +3387,26 @@ function dbcRenderList(list){
   var box = $("#dbcBox");
   if (!box) return;
   if (!DBC.length){ box.innerHTML = '<div class="empty">' + t2('Нет подключений.') + '</div>'; return; }
+  /* Класс empty остаётся на контейнере с разметки («…» до загрузки) и красит таблицу
+     в бледный мелкий шрифт — снимаем, раз показываем уже не заглушку. */
+  box.className = "";
   box.innerHTML =
     '<table><thead><tr>' +
       '<th>' + t2('Имя') + '</th><th>JDBC URL</th><th>' + t2('Пользователь') + '</th>' +
       '<th>' + t2('Статус') + '</th><th style="text-align:right">' + t2('Действия') + '</th>' +
     '</tr></thead><tbody>' +
     DBC.map(function(c){
-      var lat = (c.latencyMs != null) ? ' <span class="mono">(' + c.latencyMs + ' ms)</span>' : '';
+      /* Задержка — строкой ПОД бейджем, как описание и текст ошибки ниже. Инлайном она
+         вставала рядом с «OK» и в узкой колонке ломалась пополам: «(13» на одной строке,
+         «ms)» на другой. Скобки при переносе на свою строку не нужны. */
+      var lat = (c.latencyMs != null)
+        ? '<div class="mono" style="margin-top:3px;white-space:nowrap">' + c.latencyMs + ' ms</div>' : '';
       var err = (c.status === 'ERROR' && c.error)
         ? '<div class="mono" style="color:var(--coral);font-size:11px;margin-top:3px" title="' + esc(c.error) + '">' + esc(String(c.error).slice(0,120)) + '</div>' : '';
       var purpose = c.purpose ? '<div class="mono" style="margin-top:3px">' + esc(c.purpose) + '</div>' : '';
       var tag = c.builtin ? ' <span class="badge off">' + t2('встроенное') + '</span>' : '';
       if (c.prodSync) tag += ' <span class="badge ok">' + t2('прод-синк') + '</span>';
+      if (c.eventDb) tag += ' <span class="badge ok">' + t2('события crmdb') + '</span>';
       var idAttr = esc(String(c.id));
       var actions =
         '<button class="btn" onclick="dbcTest(\'' + idAttr + '\')">' + t2('Проверить') + '</button>' +
@@ -1341,6 +3478,7 @@ function dbcFormOpen(row){
   $("#dbcPass").value    = '';
   $("#dbcActive").checked = row ? (row.active !== false) : true;
   $("#dbcProdSync").checked = row ? !!row.prodSync : false;
+  $("#dbcEventDb").checked = row ? !!row.eventDb : false;
   $("#dbcPassHint").style.display = row ? 'inline' : 'none';
   $("#dbcNote").className = 'save-note';
   $("#dbcForm").style.display = 'block';
@@ -1359,7 +3497,8 @@ async function dbcSave(){
     username: $("#dbcUser").value.trim(),
     purpose: $("#dbcPurpose").value.trim(),
     active: $("#dbcActive").checked,
-    prodSync: $("#dbcProdSync").checked
+    prodSync: $("#dbcProdSync").checked,
+    eventDb: $("#dbcEventDb").checked
   };
   var pw = $("#dbcPass").value;
   if (pw) body.password = pw;
@@ -1465,6 +3604,10 @@ const SUBSECTIONS = [
       ["viewer","Просмотр настроек"], ["srcbuilder","Конструктор source"], ["promo","Планирование промо"],
       ["abtests","А/Б тесты"],
       ["heatmap","Тепловая карта"] ]},
+  { sid:"events", label:"События", items:[
+      /* «Перелив в прод» из группы ушёл: он теперь панель настроек, а не подраздел */
+      ["ev-online","Онлайн-событие"], ["ev-offline","Событие по расписанию"],
+      ["ev-list","Список событий"] ]},
   { sid:"reports", label:"Отчёты", items:[
       ["rep-planfact","Plan-Fact"], ["rep-matrix","CRM Matrix"], ["rep-leadgen","CRM Leadgen"],
       ["rep-smscheck","ЧЕК СМС траффик"],
@@ -1576,13 +3719,18 @@ window.CRM = window.CRM || (function(){
     adminRoles:        () => req("GET", "/admin/roles"),
     adminCreateRole:   r => req("POST", "/admin/roles", r),
     adminUpdateRole:   (id, r) => req("PUT", "/admin/roles/" + id, r),
-    adminDeleteRole:   id => req("DELETE", "/admin/roles/" + id)
+    adminDeleteRole:   id => req("DELETE", "/admin/roles/" + id),
+    /* Панель больше не удаляет роли, а отключает их: удаление отказывало на встроенных
+       и на ролях с носителями — то есть на всех, ради которых его и звали. */
+    adminSetRoleActive:(id, active) => req("PUT", "/admin/roles/" + id + "/active", { active: active })
   };
   req("GET", "/me").then(me => { C.me = me; }).catch(() => {});
   return C;
 })();
 </script>
-<script src="../admin-users.js"></script>
+<!-- версия в адресе: файл правится часто, а без неё браузер держит старую копию
+     и правка «не приезжает» ни после раската, ни после обычной перезагрузки -->
+<script src="../admin-users.js?v=4"></script>
 
 <!-- Scheme Builder: модалка и всплывающее уведомление раздела -->
 <div class="sb-modal" id="sbModal"><div class="sb-modal-card" id="sbModalCard"></div></div>
@@ -1590,13 +3738,504 @@ window.CRM = window.CRM || (function(){
   border:1px solid var(--line);color:var(--ink);padding:11px 15px;border-radius:11px;font-size:13px;
   box-shadow:0 14px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(8px);transition:.18s;pointer-events:none"></div>
 <style>#sbToast.show{opacity:1;transform:none}</style>
-<script src="scheme-builder.js?v=23"></script>
+<script src="scheme-builder.js?v=35"></script>
 <!-- «Сущности»: общий с панелью расчёт раскладки + сам раздел. Порядок важен:
      object-manager.js работает с хранилищем схемы из scheme-builder.js. -->
 <script src="../js/entity-layout.js?v=4"></script>
 <script src="object-manager.js?v=4"></script>
-<!-- «Схемы и таблицы»: обозреватель фактического состояния БД, только чтение -->
+<!-- «Схемы и таблицы»: обозреватель фактического состояния БД + удаление своих объектов -->
 <style>
+  /* ---- Выкатки ---- */
+  /* Контуры идут слева направо в том же порядке, в каком по ним катят, и раскрашены
+     той же семантикой, что в инструкции: зелёный — где можно ломать, красный — боевой. */
+  .dp-envs{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:14px}
+  .dp-env{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--card);
+    border-top:3px solid var(--faint)}
+  .dp-env.test{border-top-color:var(--green)}
+  .dp-env.preprod{border-top-color:var(--amber)}
+  .dp-env.prod{border-top-color:var(--coral)}
+  .dp-env.down{opacity:.6}
+  .dp-env-name{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+  .dp-env-ver{font-size:18px;font-weight:600;margin:4px 0 2px}
+  .dp-env-sub{font-size:12px;color:var(--dim);overflow-wrap:anywhere}
+  .dp-env-when{font-size:11px;color:var(--faint);margin-top:4px}
+  /* Кнопка «принять из соседа» живёт в самой карточке: вопрос «а не пора ли поставить
+     сюда то, что уже стоит на тесте» возникает именно при взгляде на две версии рядом. */
+  .dp-roll{margin-top:10px;font:inherit;font-size:11.5px;line-height:1;padding:5px 9px;
+    background:transparent;border:1px solid var(--line);border-radius:6px;color:var(--dim);cursor:pointer}
+  .dp-roll:hover:not(:disabled){border-color:var(--blue);color:var(--blue)}
+  .dp-roll:disabled{opacity:.5;cursor:default}
+
+  #dpList .dp-hint{color:var(--dim);font-size:12.5px;margin-bottom:10px}
+  #dpList .dp-commit{display:flex;align-items:flex-start;gap:10px;padding:9px 11px;border:1px solid var(--line);
+    border-radius:9px;margin-bottom:6px;cursor:pointer;background:var(--card)}
+  #dpList .dp-commit:hover{border-color:var(--blue)}
+  #dpList .dp-commit.on{background:var(--blue-bg);border-color:rgba(80,195,255,.35)}
+  #dpList .dp-commit input{margin-top:4px;flex:0 0 auto}
+  #dpList .dp-c-hash{font-size:12px;color:var(--faint);flex:0 0 auto;padding-top:1px}
+  #dpList .dp-c-main{flex:1;min-width:0}
+  #dpList .dp-c-subj{display:block;font-size:13px;overflow-wrap:anywhere}
+  #dpList .dp-c-meta{display:block;font-size:11px;color:var(--faint);margin-top:2px}
+  #dpList .dp-c-mig{flex:0 0 auto;font-size:10.5px;padding:2px 8px;border-radius:9px;
+    background:var(--amber-bg);color:var(--amber);white-space:nowrap}
+
+  .dp-plan{margin-top:16px}
+  .dp-plan .dp-plan-head{font-size:13.5px;margin-bottom:8px}
+  .dp-plan .dp-warn{background:var(--amber-bg);color:var(--amber);border-radius:9px;
+    padding:9px 12px;font-size:12.5px;margin-bottom:8px}
+  .dp-plan pre{background:var(--card2);border:1px solid var(--line);border-left:3px solid var(--blue);
+    border-radius:9px;padding:12px 14px;overflow-x:auto;margin:0}
+  .dp-plan pre code{font-family:var(--mono);font-size:12.5px;line-height:1.75;white-space:pre}
+
+  #dpLog .dp-tbl{width:100%;border-collapse:collapse;font-size:13px}
+  #dpLog .dp-tbl th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);
+    color:var(--dim);font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  #dpLog .dp-tbl td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  #dpLog .dp-tbl .num{font-variant-numeric:tabular-nums}
+  #dpLog .dp-st{font-size:11px;padding:2px 8px;border-radius:9px;background:var(--card2);color:var(--dim)}
+  #dpLog .dp-st.done{background:var(--green-bg);color:var(--green)}
+  #dpLog .dp-st.cancelled{color:var(--faint)}
+
+  /* ---- Состояние системы ---- */
+  /* Общая точка-индикатор: один и тот же кружок у вердикта, проверок, процессов и
+     подключений — цвет читается одинаково во всех четырёх списках. */
+  #hlHost .hl-dot{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:0 0 auto;margin-top:6px}
+  #hlHost .ok .hl-dot{background:var(--green)}
+  #hlHost .warn .hl-dot{background:var(--amber)}
+  #hlHost .down .hl-dot{background:var(--coral)}
+  #hlHost .off .hl-dot{background:var(--faint)}
+
+  #hlHost .hl-verdict{display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:11px;
+    border:1px solid var(--line);background:var(--card2)}
+  #hlHost .hl-verdict .hl-dot{width:12px;height:12px;margin-top:0}
+  #hlHost .hl-verdict-text{font-size:17px;font-weight:600}
+  #hlHost .hl-verdict-env{margin-left:auto;color:var(--faint);font-size:12px;text-transform:uppercase}
+  #hlHost .hl-verdict.ok{background:var(--green-bg);border-color:rgba(60,250,180,.25)}
+  #hlHost .hl-verdict.warn{background:var(--amber-bg);border-color:rgba(255,184,77,.3)}
+  #hlHost .hl-verdict.down{background:var(--coral-bg);border-color:rgba(255,107,138,.3)}
+
+  #hlHost .hl-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:12px}
+  #hlHost .hl-fact{border:1px solid var(--line);border-radius:10px;padding:11px 13px;background:var(--card)}
+  #hlHost .hl-fact-l{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+  #hlHost .hl-fact-v{font-size:15px;font-weight:600;margin-top:3px;overflow-wrap:anywhere}
+  #hlHost .hl-fact-s{font-size:11.5px;color:var(--dim);margin-top:3px;overflow-wrap:anywhere}
+
+  #hlHost .hl-checks{display:grid;gap:6px;margin-top:14px}
+  #hlHost .hl-check{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border:1px solid var(--line);
+    border-radius:9px;background:var(--card)}
+  #hlHost .hl-check-title{display:block;font-size:13px}
+  #hlHost .hl-check-hint{display:block;font-size:11.5px;color:var(--dim);margin-top:2px}
+
+  #hlHost .hl-tbl{width:100%;border-collapse:collapse;font-size:13px}
+  #hlHost .hl-tbl th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);color:var(--dim);
+    font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  #hlHost .hl-tbl td{padding:7px 10px;border-bottom:1px solid var(--line)}
+  #hlHost .hl-tbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  #hlHost .hl-tbl .hl-missing{opacity:.5}
+  #hlHost .hl-approx{color:var(--faint)}
+  #hlHost .hl-note{color:var(--faint);font-size:11.5px;margin-top:8px}
+
+  #hlHost .hl-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+  #hlHost .hl-card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--card);
+    border-left:3px solid var(--faint)}
+  #hlHost .hl-card.ok{border-left-color:var(--green)}
+  #hlHost .hl-card.warn{border-left-color:var(--amber)}
+  #hlHost .hl-card.down{border-left-color:var(--coral)}
+  #hlHost .hl-card-t{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+  #hlHost .hl-card-v{font-size:16px;font-weight:600;margin-top:3px}
+  #hlHost .hl-card-s{font-size:11.5px;color:var(--dim);margin-top:4px;overflow-wrap:anywhere}
+
+  #hlHost .hl-procs, #hlConns{display:grid;gap:6px;margin-top:10px}
+  #hlHost .hl-proc, #hlConns .hl-conn{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;
+    border:1px solid var(--line);border-radius:9px;background:var(--card)}
+  #hlHost .hl-proc-title, #hlConns .hl-conn-title{display:block;font-size:13px}
+  #hlHost .hl-proc-sub, #hlConns .hl-conn-sub{display:block;font-size:11px;color:var(--faint);margin-top:2px;
+    overflow-wrap:anywhere}
+  #hlConns .hl-stale{color:var(--faint);font-size:11px}
+
+  /* ---- Состояние системы: графики ----
+     Ни одной библиотеки: графики рисуются как SVG прямо в разметке. Цвет берётся из
+     переменных темы, поэтому одна и та же картинка читается и в тёмной, и в светлой —
+     захардкоженный #3CFAB4 на светлом фоне пропал бы. */
+  #hlHost .hl-h{margin-top:30px;font-size:15px;letter-spacing:.01em}
+  #hlHost .hl-sub{margin-top:4px;font-size:12px;color:var(--dim)}
+  #hlHost .hl-panel{margin-top:12px;border:1px solid var(--line);border-radius:12px;
+    background:var(--card);padding:14px 16px 10px}
+  #hlHost .hl-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-top:12px}
+  #hlHost .hl-two .hl-panel{margin-top:0}
+  #hlHost .hl-panel-t{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);
+    margin-bottom:10px;display:flex;align-items:baseline;gap:8px}
+  #hlHost .hl-panel-t b{margin-left:auto;color:var(--ink);font-size:13px;font-weight:600;
+    letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums}
+
+  /* Кольцевые индикаторы: доля показывается длиной дуги, а число — в центре. Полоса
+     здесь читалась бы хуже: у четырёх карточек подряд глаз сравнивает круги. */
+  #hlHost .hl-gauges{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px}
+  #hlHost .hl-gauge{display:flex;align-items:center;gap:14px;border:1px solid var(--line);border-radius:12px;
+    background:var(--card);padding:13px 15px}
+  #hlHost .hl-ring{width:64px;height:64px;flex:0 0 auto}
+  #hlHost .hl-ring .track{fill:none;stroke:var(--card2);stroke-width:7}
+  #hlHost .hl-ring .arc{fill:none;stroke-width:7;stroke-linecap:round;stroke:var(--blue);
+    transform:rotate(-90deg);transform-origin:50% 50%}
+  #hlHost .hl-ring.ok .arc{stroke:var(--green)}
+  #hlHost .hl-ring.warn .arc{stroke:var(--amber)}
+  #hlHost .hl-ring.down .arc{stroke:var(--coral)}
+  #hlHost .hl-ring .val{fill:var(--ink);font-size:15px;font-weight:600;text-anchor:middle;
+    font-family:var(--mono)}
+  #hlHost .hl-gauge-main{min-width:0}
+  #hlHost .hl-gauge-l{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+  #hlHost .hl-gauge-v{font-size:15px;font-weight:600;margin-top:2px;overflow-wrap:anywhere}
+  #hlHost .hl-gauge-s{font-size:11.5px;color:var(--dim);margin-top:2px;overflow-wrap:anywhere}
+
+  /* Общие части графиков */
+  #hlHost .hl-chart{width:100%;height:auto;display:block;overflow:visible}
+  #hlHost .hl-chart .grid{stroke:var(--line);stroke-width:1}
+  #hlHost .hl-chart .axis{fill:var(--faint);font-size:9.5px;font-family:var(--mono)}
+  #hlHost .hl-chart .axis.mid{font-size:9px}
+  #hlHost .hl-chart .b-ok{fill:var(--green)}
+  #hlHost .hl-chart .b-err{fill:var(--coral)}
+  #hlHost .hl-chart .b-queued{fill:var(--blue);opacity:.55}
+  #hlHost .hl-chart .b-plain{fill:var(--blue);opacity:.8}
+  #hlHost .hl-chart .b-zero{fill:var(--line)}
+  #hlHost .hl-chart .hover{fill:transparent}
+  #hlHost .hl-chart .hover:hover{fill:var(--blue);opacity:.10}
+  #hlHost .hl-chart .line{fill:none;stroke:var(--blue);stroke-width:2;stroke-linejoin:round}
+  #hlHost .hl-chart .area{fill:url(#hlFade);opacity:.85}
+  #hlHost .hl-chart .dot{fill:var(--blue)}
+  #hlHost .hl-chart .today{stroke:var(--amber);stroke-width:1;stroke-dasharray:3 3}
+  #hlHost .hl-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:11.5px;color:var(--dim)}
+  #hlHost .hl-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;
+    vertical-align:baseline}
+  #hlHost .hl-legend .ok{background:var(--green)}
+  #hlHost .hl-legend .err{background:var(--coral)}
+  #hlHost .hl-legend .queued{background:var(--blue);opacity:.55}
+
+  /* Донат: доли каналов. Подписи рядом списком — на самом кольце они не помещаются. */
+  #hlHost .hl-donut{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  #hlHost .hl-donut svg{width:132px;height:132px;flex:0 0 auto}
+  #hlHost .hl-donut .seg{fill:none;stroke-width:16;transform:rotate(-90deg);transform-origin:50% 50%}
+  #hlHost .hl-donut .c0{stroke:var(--green)} #hlHost .hl-donut .c1{stroke:var(--blue)}
+  #hlHost .hl-donut .c2{stroke:var(--amber)} #hlHost .hl-donut .c3{stroke:var(--coral)}
+  #hlHost .hl-donut .c4{stroke:var(--faint)}
+  #hlHost .hl-donut .mid{fill:var(--ink);font-size:19px;font-weight:600;text-anchor:middle;font-family:var(--mono)}
+  #hlHost .hl-donut .midsub{fill:var(--faint);font-size:8px;text-anchor:middle;text-transform:uppercase;
+    letter-spacing:.08em}
+  #hlHost .hl-keys{display:grid;gap:6px;min-width:150px;flex:1}
+  #hlHost .hl-key{display:flex;align-items:center;gap:8px;font-size:12.5px}
+  #hlHost .hl-key i{width:9px;height:9px;border-radius:2px;flex:0 0 auto}
+  #hlHost .hl-key .k0{background:var(--green)} #hlHost .hl-key .k1{background:var(--blue)}
+  #hlHost .hl-key .k2{background:var(--amber)} #hlHost .hl-key .k3{background:var(--coral)}
+  #hlHost .hl-key .k4{background:var(--faint)}
+  #hlHost .hl-key b{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600}
+  #hlHost .hl-key span{color:var(--dim);font-size:11.5px}
+
+  /* Горизонтальные полосы: место в базе, кто и над чем работал. Полоса лежит под
+     текстом фоном строки — так сравниваются длины, а подписи остаются читаемыми. */
+  #hlHost .hl-rows{display:grid;gap:4px}
+  #hlHost .hl-row{position:relative;display:flex;align-items:center;gap:10px;padding:6px 9px;
+    border-radius:7px;font-size:12.5px;overflow:hidden}
+  #hlHost .hl-row .bar{position:absolute;left:0;top:0;bottom:0;background:var(--blue);opacity:.16;
+    border-radius:7px}
+  #hlHost .hl-row .nm{position:relative;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #hlHost .hl-row .vv{position:relative;margin-left:auto;font-variant-numeric:tabular-nums;color:var(--dim);
+    white-space:nowrap}
+  #hlHost .hl-row .vv b{color:var(--ink);font-weight:600}
+
+  /* Свежесть: плитки «сколько прошло». Возраст красится порогами, чтобы вчерашняя
+     доставка бросалась в глаза без чтения цифр. */
+  #hlHost .hl-fresh{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:10px;margin-top:12px}
+  #hlHost .hl-fresh-i{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:11px 13px;
+    border-left:3px solid var(--faint)}
+  #hlHost .hl-fresh-i.ok{border-left-color:var(--green)}
+  #hlHost .hl-fresh-i.warn{border-left-color:var(--amber)}
+  #hlHost .hl-fresh-i.old{border-left-color:var(--coral)}
+  #hlHost .hl-fresh-t{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
+  #hlHost .hl-fresh-v{font-size:15px;font-weight:600;margin-top:3px}
+  #hlHost .hl-fresh-s{font-size:11.5px;color:var(--dim);margin-top:2px;font-family:var(--mono)}
+  #hlHost .hl-fresh-h{font-size:11px;color:var(--faint);margin-top:3px}
+
+  /* Полоса объёма прямо в строке таблицы данных: числа сравниваются глазом плохо,
+     длина — хорошо. */
+  #hlHost .hl-tbl .hl-inbar{position:relative;height:5px;border-radius:3px;background:var(--card2);
+    margin-top:5px;overflow:hidden}
+  #hlHost .hl-tbl .hl-inbar i{position:absolute;left:0;top:0;bottom:0;background:var(--blue);opacity:.7;
+    border-radius:3px}
+  /* На узком экране таблица прокручивается внутри себя. Без этого правая колонка
+     с размером просто обрезалась: страница по горизонтали не едет. */
+  #hlHost .hl-tables{overflow-x:auto}
+
+  /* вкладки раздела «Выкатки» */
+  .dp-tabs{display:flex;gap:8px;margin:18px 0 0;border-bottom:1px solid var(--line)}
+  .dp-tabs .dp-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--dim);
+    padding:8px 4px;margin-bottom:-1px;font-size:13.5px;cursor:pointer}
+  .dp-tabs .dp-tab:hover{color:var(--ink)}
+  .dp-tabs .dp-tab.on{color:var(--ink);border-bottom-color:var(--blue);font-weight:600}
+
+  /* перенос настроек */
+  .sp-items{display:grid;gap:8px;margin-top:14px}
+  .sp-item{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border:1px solid var(--line);
+    border-radius:9px;background:var(--card);cursor:pointer}
+  .sp-item:hover{border-color:var(--blue)}
+  .sp-item input{margin-top:3px;flex:0 0 auto}
+  .sp-item-main{flex:1;min-width:0}
+  .sp-item-title{display:block;font-size:13.5px;font-weight:600}
+  .sp-item-about{display:block;font-size:12px;color:var(--dim);margin-top:2px}
+  .sp-item-count{flex:0 0 auto;font-size:12px;color:var(--faint);padding-top:2px}
+
+  /* Изменения контура. Сводка сверху — то, что переносится; таблица под ней читается
+     глазами и потому плотная, с моноширинным временем для ровной колонки. */
+  .ch-groups{display:grid;gap:8px;margin-top:12px}
+  .ch-group{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border:1px solid var(--line);
+    border-radius:9px;background:var(--card);cursor:pointer}
+  .ch-group:hover{border-color:var(--blue)}
+  .ch-group input{margin-top:3px;flex:0 0 auto}
+  .ch-g-main{flex:1;min-width:0}
+  .ch-g-title{display:block;font-size:13.5px;font-weight:600}
+  .ch-g-sub{display:block;font-size:12px;color:var(--dim);margin-top:2px}
+  .ch-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+  .ch-tbl th{text-align:left;font-weight:600;color:var(--faint);font-size:11px;text-transform:uppercase;
+    letter-spacing:.04em;padding:6px 10px;border-bottom:1px solid var(--line)}
+  .ch-tbl td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  .ch-tbl tr:hover td{background:var(--card)}
+  .ch-failed td{color:var(--coral)}
+  .ch-err{font-size:11px;color:var(--coral)}
+  .ch-note{color:var(--faint);font-size:11.5px;margin-top:10px}
+
+  /* Обработчик выкатов: строка состояния под кнопкой «Обновить». */
+  .dp-runner{margin:10px 0 2px;font-size:12px;color:var(--dim);display:flex;flex-wrap:wrap;
+    align-items:center;gap:8px}
+  .dp-runner.off{color:var(--faint)}
+  .dp-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+  .dp-dot.ok{background:var(--green,#30a46c)}
+  .dp-dot.off{background:var(--faint)}
+  .dp-run-err{flex-basis:100%;white-space:pre-wrap;color:var(--coral);font-size:11.5px;
+    max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .dp-runner-off{font-size:12px;color:var(--faint)}
+
+  /* Страница обработчика выкатов. */
+  .rn-state{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--card)}
+  .rn-state.ok{border-color:color-mix(in srgb, var(--green,#30a46c) 45%, var(--line))}
+  .rn-state.down{border-color:color-mix(in srgb, var(--coral) 45%, var(--line))}
+  .rn-state.warn{border-color:color-mix(in srgb, var(--amber,#e2a336) 45%, var(--line))}
+  .rn-head{display:flex;align-items:center;font-size:14px;margin-bottom:12px}
+  .rn-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+  .rn-fact-l{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint)}
+  .rn-fact-v{font-size:14px;margin-top:3px}
+  .rn-fact-s{font-size:11.5px;color:var(--dim);margin-top:2px}
+  .rn-warn{margin-top:12px;font-size:12.5px;color:var(--coral);line-height:1.5}
+  .rn-warn.soft{color:var(--dim)}
+  .rn-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+  .rn-tbl th{text-align:left;font-weight:600;color:var(--faint);font-size:11px;text-transform:uppercase;
+    letter-spacing:.04em;padding:6px 10px;border-bottom:1px solid var(--line)}
+  .rn-tbl td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  .rn-st{font-size:11.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+  .rn-st.done{color:var(--green,#30a46c)}
+  .rn-st.failed{color:var(--coral)}
+  .rn-st.running{color:var(--blue)}
+  .rn-st.queued{color:var(--dim)}
+  .rn-st.cancelled{color:var(--faint)}
+  .rn-dur,.rn-mig{font-size:11px;color:var(--faint);margin-left:6px}
+  .rn-out td{padding-top:0}
+  .rn-output{white-space:pre-wrap;font-size:11.5px;color:var(--dim);max-height:220px;overflow:auto;
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg)}
+  .rn-help{font-size:12.5px;color:var(--dim);line-height:1.6}
+  .rn-help pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+    overflow:auto;font-size:11.5px}
+
+  /* Пары значений Jira: строка «наше → их», плюс строка добавления снизу. Список
+     допустимых значений показан прямо в заголовке поля — иначе пришлось бы держать
+     его в другой вкладке и сверять по памяти. */
+  .jv-field{border:1px solid var(--line);border-radius:9px;padding:12px 14px;margin-bottom:10px;background:var(--card)}
+  .jv-head{font-size:13px;font-weight:600;margin-bottom:8px}
+  .jv-head .mono{color:var(--faint);font-weight:400;font-size:11.5px;margin-left:6px}
+  .jv-allowed{display:block;font-weight:400;font-size:11.5px;color:var(--dim);margin-top:3px}
+  .jv-row{display:flex;gap:8px;align-items:center;margin-top:6px}
+  .jv-row .jv-our{max-width:220px}
+  .jv-row .jv-jira{max-width:240px}
+  .jv-arrow{color:var(--faint)}
+  .jv-new{opacity:.85}
+  .sp-preview{margin-top:14px}
+  .sp-preview .sp-from{font-size:13px;margin-bottom:10px}
+  .sp-preview .sp-warn{background:var(--amber-bg);color:var(--amber);border-radius:9px;
+    padding:9px 12px;font-size:12.5px;margin-bottom:10px}
+  .sp-tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .sp-tbl th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);color:var(--dim);
+    font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .sp-tbl td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .sp-tbl .num{font-variant-numeric:tabular-nums;text-align:right;width:1%;white-space:nowrap}
+  .sp-tbl .sp-note{color:var(--faint);font-size:12px}
+  #spSnaps .btn{padding:3px 10px;font-size:11.5px}
+
+  /* ---- Карта интеграций ---- */
+  #igHost .ig-svg{width:100%;height:auto;display:block}
+  /* Один набор цветов на всю карту: узел, стрелка и карточка одного потока обязаны
+     совпадать, иначе схема и список под ней спорят друг с другом. */
+  #igHost .ig-node rect{fill:var(--card2);stroke:var(--line);stroke-width:1.5}
+  #igHost .ig-node.center rect{fill:var(--blue-bg);stroke:rgba(80,195,255,.45)}
+  #igHost .ig-node[data-pane]{cursor:pointer}
+  #igHost .ig-node[data-pane]:hover rect{stroke:var(--blue)}
+  #igHost .ig-node-title{fill:var(--ink);font-size:13px;font-weight:600}
+  #igHost .ig-node-sub{fill:var(--dim);font-size:10.5px;font-family:var(--mono)}
+  #igHost .ig-node-st{fill:var(--faint);font-size:10.5px}
+  #igHost .ig-dot{fill:var(--faint)}
+  #igHost .ig-node.ok .ig-dot{fill:var(--green)}
+  #igHost .ig-node.warn .ig-dot{fill:var(--amber)}
+  #igHost .ig-node.down .ig-dot{fill:var(--coral)}
+  #igHost .ig-line{fill:none;stroke:var(--line);stroke-width:2}
+  #igHost .ig-line.ok{stroke:var(--green)}
+  #igHost .ig-line.warn{stroke:var(--amber)}
+  #igHost .ig-line.down{stroke:var(--coral)}
+  /* Выключенный поток — пунктиром: видно, что связь есть, но по ней сейчас не льют. */
+  #igHost .ig-line.off{stroke:var(--faint);stroke-dasharray:6 5}
+  #igHost .ig-arrow{fill:var(--line)}
+  #igHost .ig-arrow.ok{fill:var(--green)}
+  #igHost .ig-arrow.warn{fill:var(--amber)}
+  #igHost .ig-arrow.down{fill:var(--coral)}
+  #igHost .ig-arrow.off{fill:var(--faint)}
+  #igHost .ig-line-label{fill:var(--ink);font-size:11.5px;font-weight:600}
+  #igHost .ig-line-sub{fill:var(--faint);font-size:10px;font-family:var(--mono)}
+  #igHost .ig-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-top:18px}
+  #igHost .ig-card{border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:var(--card)}
+  #igHost .ig-card-head{display:flex;align-items:center;gap:7px;font-weight:600;font-size:13px}
+  #igHost .ig-card-st{margin-left:auto;font-size:11px;color:var(--faint);font-weight:400;white-space:nowrap}
+  #igHost .ig-dot-s{width:8px;height:8px;border-radius:3px;background:var(--faint);flex:0 0 auto}
+  #igHost .ig-card.ok .ig-dot-s{background:var(--green)}
+  #igHost .ig-card.warn .ig-dot-s{background:var(--amber)}
+  #igHost .ig-card.down .ig-dot-s{background:var(--coral)}
+  #igHost .ig-card-path{color:var(--dim);font-size:11px;margin-top:5px}
+  #igHost .ig-card-about{color:var(--dim);font-size:12px;margin-top:7px}
+  #igHost .ig-card-detail{color:var(--ink);font-size:12px;margin-top:6px}
+  #igHost .ig-card-proc{color:var(--faint);font-size:11px;margin-top:6px}
+  #igHost .ig-go{margin-top:10px;padding:3px 10px;font-size:11.5px}
+  /* ---- Бэклог ---- */
+  #bkTabs .bk-tab{border:1px solid var(--line);background:var(--card2);color:var(--dim);
+    border-radius:20px;padding:5px 13px;font-size:12.5px;cursor:pointer}
+  #bkTabs .bk-tab:hover{color:var(--ink)}
+  #bkTabs .bk-tab.on{background:var(--blue-bg);border-color:rgba(80,195,255,.35);color:var(--ink)}
+  #bkTabs .bk-tab .n{color:var(--faint);font-family:var(--mono);font-size:11px;margin-left:4px}
+  #bkList .bk-item{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;
+    background:var(--card)}
+  /* Закрытые задачи глушим, но не прячем: список читают и чтобы вспомнить, что уже сделали. */
+  #bkList .bk-item.muted{opacity:.6}
+  #bkList .bk-row{display:flex;align-items:center;gap:10px}
+  #bkList .bk-main{flex:1;min-width:0}
+  #bkList .bk-title{font-weight:600;font-size:13.5px;overflow-wrap:anywhere}
+  #bkList .bk-sub{color:var(--faint);font-size:11.5px;margin-top:2px;overflow-wrap:anywhere}
+  #bkList .bk-desc{color:var(--dim);font-size:12.5px;margin:8px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+  #bkList .bk-pri{font-size:10.5px;padding:2px 8px;border-radius:9px;white-space:nowrap;
+    background:var(--card2);color:var(--dim)}
+  #bkList .bk-pri.high{background:var(--coral-bg);color:var(--coral)}
+  #bkList .bk-pri.low{color:var(--faint)}
+  #bkList .bk-st{width:auto;min-width:120px;flex:0 0 auto}
+  #bkList .bk-editor{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+  #bkList .bk-meta{color:var(--faint);font-size:11.5px}
+  /* ---- Планировщик Quartz (cron.js) ----
+     Поля в столбик: их шесть, и половина — длинные строки (адрес, путь проверки),
+     которым тесно в двух колонках. Рядом ставим только job_group и приоритет: они
+     короткие и читаются парой. */
+  .cron-card{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--card);
+    max-width:720px;display:flex;flex-direction:column;gap:14px}
+  .cron-row{display:flex;flex-direction:column;gap:5px}
+  .cron-row label{font-size:11.5px;color:var(--faint)}
+  .cron-row input,.cron-row select{background:var(--bg2);color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:8px 10px;font-size:13.5px;width:100%;box-sizing:border-box;
+    color-scheme:light dark}
+  .cron-row input:focus,.cron-row select:focus{outline:none;border-color:var(--blue);
+    box-shadow:0 0 0 3px rgba(80,195,255,.16)}
+  .cron-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .cron-hint{font-size:11.5px;color:var(--faint);line-height:1.45}
+  .cron-chk{display:flex;flex-direction:column;gap:4px;font-size:13px;cursor:pointer}
+  .cron-chk input{width:16px;height:16px;accent-color:var(--blue);margin-right:7px}
+  .cron-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    border-top:1px solid var(--line);padding-top:14px}
+  .cron-msg{font-size:12.5px;color:var(--dim)}
+  .cron-btn{background:var(--card2);color:var(--dim);border:1px solid var(--line);border-radius:8px;
+    padding:7px 14px;font-size:13px;cursor:pointer;font-family:var(--sans)}
+  .cron-btn:hover{color:var(--ink);border-color:rgba(80,195,255,.4)}
+  .cron-btn.primary{background:var(--blue-bg);color:var(--blue);border-color:rgba(80,195,255,.4)}
+  .cron-btn.del{background:none;border:0;color:var(--coral);padding:0;font-size:11.5px;
+    text-decoration:underline;cursor:pointer}
+  /* Итог последней проверки — не «сообщение», а состояние: оно живёт между заходами и
+     должно читаться, даже когда человек ничего сейчас не нажимал. */
+  .cron-last{font-size:12px;color:var(--faint);border-top:1px solid var(--line);padding-top:12px}
+  .cron-last.bad{color:var(--coral)}
+  .cron-err{font-family:var(--mono);font-size:11.5px;margin-top:5px;word-break:break-word}
+
+  /* ---- Справочники значений (refs.js) ----
+     Экран из двух уровней: карточки таблиц, потом одна таблица во всю ширину. Строку
+     кладём в грид, число колонок задаёт refs.js по описанию с сервера — фиксированной
+     сетки тут быть не может, у справочников разное число полей. */
+  .refs-host{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+  .refs-one{display:block}
+  .refs-card{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--card)}
+  .refs-card.link{cursor:pointer}
+  .refs-card.link:hover{border-color:rgba(80,195,255,.45);background:var(--card2)}
+  .refs-card h2{font-size:15px;margin:0 0 4px}
+  .refs-hint{font-size:12px;color:var(--faint);line-height:1.45;margin-bottom:10px}
+  .refs-tbl{font-family:var(--mono);font-size:11.5px;color:var(--blue)}
+  .refs-meta{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--faint);
+    border-top:1px solid var(--line);padding-top:8px}
+  .refs-cols{font-family:var(--mono)}
+
+  .refs-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+  .refs-head h2{font-size:17px;margin:0}
+
+  /* Таблица справочника шире обычной панели: у «Процессов каналов» пять колонок, и в
+     общие 1060px они влезают только в притык. Форма при этом остаётся формой — ширину
+     ограничиваем, а не отдаём монитору целиком. */
+  #pane-refs{max-width:min(1600px,100%)}
+
+  /* Одна сетка на форму добавления и на строку списка: поле «Порядок» должно стоять
+     ровно над своей колонкой, иначе список читается как набор несвязанных полей.
+     Число колонок приходит переменной --cols из refs.js. */
+  .refs-add,.refs-row{display:grid;gap:8px 10px;align-items:center;
+    grid-template-columns:repeat(var(--cols,2),minmax(0,1fr)) auto}
+  .refs-add{margin:10px 0 6px}
+  .refs-row{padding:6px 2px;border-bottom:1px solid var(--line)}
+  .refs-cell{min-width:0}
+  .refs-cell::before{content:attr(data-label);display:none;font-size:10px;color:var(--faint);
+    letter-spacing:.06em;text-transform:uppercase;margin-bottom:3px}
+  .refs-inp{width:100%;min-width:0;box-sizing:border-box;background:var(--bg2);color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px;
+    font-family:var(--mono);color-scheme:light dark}
+  .refs-inp:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(80,195,255,.16)}
+  .refs-msg{font-size:12px;color:var(--dim);min-height:16px;margin-bottom:6px}
+
+  /* Список прокручивается внутри себя, но по высоте экрана, а не по фиксированным
+     520px: на большом мониторе полтора десятка строк в окошке посреди пустой страницы
+     выглядели как ошибка вёрстки. Шапка и форма добавления при этом остаются на месте. */
+  .refs-list{max-height:calc(100vh - 330px);min-height:240px;overflow-y:auto;
+    border-top:1px solid var(--line)}
+  .refs-row.header{color:var(--faint);font-size:11px;letter-spacing:.06em;
+    text-transform:uppercase;padding-bottom:6px}
+  /* Выключенное значение приглушено, но читается: оно существует, просто не предлагается */
+  .refs-row.off .refs-val{color:var(--faint);text-decoration:line-through}
+  .refs-val{font-family:var(--mono);font-size:12.5px;word-break:break-all}
+
+  /* Колонки действий фиксированной ширины: у занятой строки вместо «Удалить» стоит
+     счётчик шаблонов, и на flex-раскладке из-за него разъезжался весь ряд кнопок. */
+  .refs-acts{display:grid;grid-template-columns:70px 86px 78px;gap:6px;align-items:center;
+    justify-content:end}
+  .refs-acts .refs-btn{width:100%;padding:4px 4px;text-align:center}
+  .refs-used,.refs-lock{font-size:11px;color:var(--faint);text-align:center;white-space:nowrap}
+  .refs-btn{background:var(--card2);color:var(--dim);border:1px solid var(--line);border-radius:7px;
+    padding:4px 9px;font-size:12px;cursor:pointer;white-space:nowrap;font-family:var(--sans)}
+  .refs-btn:hover{color:var(--ink);border-color:rgba(80,195,255,.4)}
+  .refs-btn.primary{background:var(--blue-bg);color:var(--blue);border-color:rgba(80,195,255,.4)}
+  .refs-btn.del:hover{color:var(--coral);border-color:rgba(255,107,138,.5)}
+  .refs-empty{padding:10px 2px;font-size:12.5px;color:var(--faint)}
+
+  /* Узкий экран: строка складывается в столбик, шапка убирается, подпись колонки
+     переезжает к самому значению. Горизонтальная прокрутка таблицы здесь хуже —
+     кнопки действий уехали бы за правый край и их пришлось бы искать. */
+  @media (max-width:900px){
+    .refs-add,.refs-row{grid-template-columns:1fr}
+    .refs-row.header{display:none}
+    .refs-cell::before{display:block}
+    .refs-row{padding:10px 2px;gap:6px}
+    .refs-acts{justify-content:start;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}
+    .refs-list{max-height:none}
+  }
   #dbxHost .dbx-schema{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden}
   #dbxHost .dbx-head{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;background:var(--card2)}
   #dbxHost .dbx-head:hover{background:var(--card)}
@@ -1615,9 +4254,31 @@ window.CRM = window.CRM || (function(){
     padding:6px 8px;border-bottom:1px solid var(--line)}
   #dbxHost .dbx-tbl td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
   #dbxHost .dbx-tbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  #dbxHost .dbx-tbl .act{text-align:right;width:1%;white-space:nowrap}
+  /* Кнопка удаления приглушена, пока на строку не навели: раздел про структуру, и ряд
+     красных кнопок вдоль таблицы читался бы как предупреждение, которого тут нет. */
+  #dbxHost .dbx-del{background:transparent;color:var(--coral);border:1px solid var(--line);
+    border-radius:7px;padding:2px 9px;font-size:11.5px;cursor:pointer;opacity:.55}
+  #dbxHost .dbx-del:hover{opacity:1;border-color:var(--coral)}
+  #dbxHost .dbx-head .dbx-del{margin-left:auto}
   #dbxHost .dbx-empty{color:var(--faint);padding:18px 4px;font-size:13px}
   #dbxHost .dbx-empty.small{padding:8px 4px;font-size:12.5px}
 </style>
-<script src="db-explorer.js?v=2"></script>
+<script src="db-explorer.js?v=3"></script>
+<script src="refs.js?v=3"></script>
+<!-- «Бэклог»: задачи на доработку панели, раздел только для админов -->
+<script src="backlog.js?v=2"></script>
+<!-- «Карта интеграций»: схема внешних связей панели с живым состоянием -->
+<script src="integrations.js?v=1"></script>
+<!-- «Состояние системы»: таблицы, переливы, очередь, подключения, версия -->
+<script src="health.js?v=1"></script>
+<!-- «Выкатки»: версии контуров, разница между ними и команда на выкат -->
+<script src="deploy.js?v=3"></script>
+<!-- Перенос настроек между контурами — вкладка «Настройки» того же раздела -->
+<script src="settings-pack.js?v=1"></script>
+<script src="changes.js?v=1"></script>
+<script src="runner.js?v=1"></script>
+<script src="cron.js?v=2"></script>
+<script>window.openPane = openPane;</script>
 </body>
 </html>

@@ -110,7 +110,20 @@
   .date-pick .dv{font-family:var(--mono);font-size:12px;color:var(--ink)}
   td.c-d.editable:hover .date-pick .cal-ico{color:var(--ink)}
   td.c-d .cell-in{min-width:140px}
-  .multi{display:block;white-space:pre-wrap;max-width:230px}
+  /* Название задачи — то, ради чего строку читают глазами. Даём ей ширину сразу за
+     датой: в узкой колонке заголовок обрежется на втором слове и перестанет работать. */
+  td.c-title{min-width:190px}
+  td.c-title .cell-in{min-width:210px}
+  td.c-title .multi{-webkit-line-clamp:3;max-width:240px;font-weight:500}
+  /* Длинный текст в ячейке. Три правила про три разные беды:
+     line-clamp — строка таблицы не растёт на десять строк из-за одного комментария
+       (полный текст в подсказке, а по клику открывается редактор с ним же);
+     overflow-wrap:anywhere — адрес или слово без пробелов не распирает колонку;
+     max-width — колонка не съедает соседние, у которых свои данные. */
+  .multi{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:5;overflow:hidden;
+    white-space:pre-wrap;overflow-wrap:anywhere;max-width:260px;line-height:1.45}
+  .multi a.ext{color:var(--blue);text-decoration:none;border-bottom:1px dotted rgba(80,195,255,.55)}
+  .multi a.ext:hover{border-bottom-style:solid}
   .src-name{font-family:var(--mono);font-size:11.5px;word-break:break-all}
   .src-name.bad{color:var(--coral)}
   .need{color:var(--faint);font-size:11.5px;font-style:italic}
@@ -142,6 +155,19 @@
   .ms-base{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;min-width:230px}
   .ms-base .ms-own{grid-column:1 / -1;margin-top:4px}
   /* поле с кнопкой пополнения справочника (партнёр) */
+  /* Список партнёров — свой (combobox.js), а не нативный datalist: тот рисует браузер,
+     и страница до него не дотягивается ни шрифтом, ни отступами — в тёмной панели он
+     выходил пунктами в высоту строки текста страницы.
+     Таблица прокручивается внутри .tbl-wrap с overflow:auto, поэтому список ограничен
+     по высоте: длинному всё равно негде развернуться, он окажется за краем прокрутки. */
+  .combo{position:relative}
+  .combo-pop{position:absolute;top:100%;left:0;min-width:100%;max-height:196px;overflow-y:auto;
+    display:none;z-index:60;margin-top:3px;padding:4px;border-radius:9px;background:var(--bg2);
+    border:1px solid var(--line);box-shadow:0 14px 40px rgba(0,0,0,.45)}
+  .combo-pop.open{display:block}
+  .combo-item{padding:5px 9px;border-radius:6px;font-size:12.5px;line-height:1.35;
+    white-space:nowrap;cursor:pointer;color:var(--ink)}
+  .combo-item:hover,.combo-item.active{background:var(--card2)}
   .combo-add{display:flex;align-items:center;gap:6px;min-width:150px}
   .combo-add .cell-in{flex:1;min-width:0}
   .combo-add .dict-add{flex:0 0 26px;height:26px;border-radius:7px;cursor:pointer;
@@ -182,6 +208,12 @@
     box-sizing:border-box}
   .row-del:hover{color:var(--coral);border-color:rgba(255,107,138,.45);filter:none}
   a.jira{color:var(--blue);font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+  /* Кнопка заведения задачи стоит в ячейке вместо прочерка, поэтому она подчёркнуто
+     негромкая: строку читают ради плана, а не ради кнопки. */
+  .jira-new{font:inherit;font-size:11.5px;line-height:1;padding:4px 8px;white-space:nowrap;
+    background:transparent;border:1px solid var(--line);border-radius:6px;color:var(--dim);cursor:pointer}
+  .jira-new:hover:not(:disabled){border-color:var(--blue);color:var(--blue)}
+  .jira-new:disabled{opacity:.6;cursor:default}
   .note{color:var(--faint);font-size:12px;margin-top:12px;line-height:1.55}
   .note b{color:var(--dim)}
   /* ---- Брейкпоинты.

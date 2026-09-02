@@ -103,6 +103,19 @@ public class UnifiedTemplateService {
         if (localCode == prodCode) return;
         ChannelTable ct = channelTable(channel);
         if (ct == null || !ct.prodAssignsCode()) return;
+        /* Код от прода уже занят другим нашим шаблоном. Переименовать нельзя — упрёмся
+           в UNIQUE (channel, code). Раньше это исключение прилетало из глубины JDBC и
+           роняло доставку целиком; теперь говорим прямо, что произошло, а доставка уже
+           зафиксирована и переотправки не будет. */
+        Number busy = (Number) em.createNativeQuery(
+                        "SELECT count(*) FROM template.d_template WHERE channel = :ch AND code = :c")
+                .setParameter("ch", channel)
+                .setParameter("c", prodCode)
+                .getSingleResult();
+        if (busy != null && busy.intValue() > 0) {
+            throw new IllegalStateException("код " + prodCode + " в канале " + channel
+                    + " уже занят другим шаблоном — локальный код " + localCode + " оставлен как есть");
+        }
         em.createNativeQuery("UPDATE template.d_template SET code = :n, timestamp_upd = now()" +
                         " WHERE channel = :ch AND code = :o")
                 .setParameter("n", prodCode)

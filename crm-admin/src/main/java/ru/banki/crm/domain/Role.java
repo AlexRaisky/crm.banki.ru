@@ -40,6 +40,12 @@ public class Role {
     @Column(name = "is_system", nullable = false)
     private boolean system;
 
+    /** Роль активна. Неактивная остаётся в справочнике, но входить её носители не могут
+     *  и новым учёткам она не назначается — это замена удалению, которое было доступно
+     *  только для роли без единого носителя. */
+    @Column(name = "is_active", nullable = false)
+    private boolean active = true;
+
     @Column(name = "sort_order", nullable = false)
     private int sortOrder = 100;
 

@@ -11,11 +11,10 @@
    storage — то есть заведённая в Scheme Builder сущность появляется
    в панели без перезагрузки страницы.
 
-   ДОСТУП. Раздел и все его подразделы помечены adminOnly: их видит
-   только роль ADMIN. Для выдачи доступа другим ролям заведён реестр
-   crmpanel:entityAccess = { <entity>: [роли…] }; новая сущность
-   попадает туда с пустым списком, то есть по умолчанию доступа нет
-   ни у кого, кроме администраторов (см. entAllowed).
+   ДОСТУП. Выдаётся в матрице прав, как у остальных страниц панели:
+   секция ent:<сущность> открывает одну сущность, зонтичная entities —
+   сразу все (см. entAllowed). Админ видит всё. По умолчанию не выдано
+   ничего: новая сущность появляется в матрице пустой строкой.
 
    ДАННЫЕ. Записи лежат в crmpanel:entityData = { <entity>: [записи…] };
    стартовый набор (по три записи на сущность с разными вариантами
@@ -28,7 +27,6 @@ var ENT_FILE      = "settings/schema/crm-schema.json";
 var ENT_DRAFT_KEY = "crmpanel:schemaDraft";
 var ENT_DATA_KEY  = "crmpanel:entityData";
 var ENT_SEED_KEY  = "crmpanel:entityDataSeed";
-var ENT_ACL_KEY   = "crmpanel:entityAccess";
 var ENT_SEED_VER  = 1;
 
 var ENT_MODEL = { entities: [], relations: [] };
@@ -41,8 +39,10 @@ var ENT_WANT = (function(){
 })();
 /* mode — список записей или карточка одной записи; tab — вкладка карточки;
    q / fv / sort — состояние списка (поиск, значения фильтров, сортировка по сущностям) */
-var ENT_CUR = { id:null, rec:null, edit:null, closed:{},
-                mode:"list", tab:"details", q:"", fv:{}, sort:{}, gear:false };
+/* id — открытая ТАБЛИЦА, schema — сущность, которой она принадлежит.
+   mode: tables (список таблиц сущности) → list (записи таблицы) → card (запись). */
+var ENT_CUR = { id:null, schema:null, rec:null, edit:null, closed:{},
+                mode:"tables", tab:"details", q:"", fv:{}, sort:{}, gear:false };
 
 var ENT_REL_UI = ["lookup","multilookup","related_list"];
 
@@ -57,7 +57,8 @@ function entEn(){ return typeof UI_LANG !== "undefined" && UI_LANG === "en"; }
 var ENT_PLURAL = {
   field:  { en:["field","fields"],       ru:["поле","поля","полей"] },
   record: { en:["record","records"],     ru:["запись","записи","записей"] },
-  rel:    { en:["relation","relations"], ru:["связь","связи","связей"] }
+  rel:    { en:["relation","relations"], ru:["связь","связи","связей"] },
+  table:  { en:["table","tables"],       ru:["таблица","таблицы","таблиц"] }
 };
 function entPlural(n, kind){
   var f = ENT_PLURAL[kind];
@@ -79,37 +80,110 @@ function entStore(){ entWrite(ENT_DATA_KEY, ENT_DATA); }
 function entRows(id){ return ENT_DATA[id] || (ENT_DATA[id] = []); }
 
 /* ---------- доступ ----------
-   Админ видит всё. Остальным роль должна быть явно выдана в реестре
-   crmpanel:entityAccess — по умолчанию он пустой, то есть доступа нет.
+   Админ видит всё. Остальным сущность выдаётся в матрице прав — секцией ent:<сущность>
+   («Управление доступом» в настройках, группа «Сущности»). Зонтичная секция entities
+   открывает сразу все: у кого она есть, у того раздел работает как прежде.
+
+   Клиентский реестр crmpanel:entityAccess, который раздавал доступ ролям из консоли
+   браузера, снят: он жил в localStorage, до сервера не доходил, у каждого браузера был
+   свой — и молча сужал доступ там, где матрица его выдавала.
+
    Пока бэкенда нет (/api/me недоступен на GitHub Pages), раздел работает
    в демо-режиме — так же ведёт себя applyNavAcl в api.js. */
-function entAcl(){ return entRead(ENT_ACL_KEY, {}) || {}; }
-function entAclSeed(){
-  var acl = entAcl(), changed = false;
-  ENT_MODEL.entities.forEach(function(e){
-    if (!Array.isArray(acl[e.id])) { acl[e.id] = []; changed = true; }
-  });
-  if (changed) entWrite(ENT_ACL_KEY, acl);
+/* Схема, которой принадлежит строка модели. Правило общее со Scheme Builder:
+   поле schema, а у одноуровневых записей (заведённых до разделения) — сам id. */
+function entSchemaOf(e){ return (e && e.schema) || (e && e.id) || ""; }
+
+/* Строка модели представляет СУЩНОСТЬ, а не просто одну из её таблиц?
+   <p>
+   Модель двухуровневая: entities[] — это таблицы, а сущность это их схема. Раздел
+   же показывает сущности, поэтому от каждой схемы берём ровно одну строку — ту,
+   что схему и представляет: её имя совпадает с именем схемы. Без этого вторая
+   таблица схемы становилась отдельным подразделом наравне с «Клиентами»: так
+   пробная record_type.test и превратилась в раздел панели.
+   <p>
+   Если таблицы с именем схемы нет вовсе, представителем становится первая по
+   порядку — иначе схема пропала бы из раздела целиком. */
+function entSchemaHead(schemaId){
+  var first = null;
+  for (var i = 0; i < ENT_MODEL.entities.length; i++){
+    var x = ENT_MODEL.entities[i];
+    if (entSchemaOf(x) !== schemaId) continue;
+    if (x.id === schemaId) return x;
+    if (!first) first = x;
+  }
+  return first;
 }
+function entIsSchemaHead(e){ return entSchemaHead(entSchemaOf(e)) === e; }
+/* Сущность служебная, если служебна её главная таблица. */
+function entSchemaTechnical(schemaId){
+  var h = entSchemaHead(schemaId);
+  return !!(h && h.technical);
+}
+
+/* Таблицы сущности — то, что показывает экран между карточкой сущности и данными.
+   Технические не показываем и здесь: флаг ровно об этом и говорит. */
+/* Показывать ли служебные таблицы. Решение живёт в браузере у каждого своё:
+   это взгляд на данные, а не свойство схемы, и навязывать его коллеге незачем. */
+var ENT_TECH_KEY = "crmpanel:entityShowTech";
+function entShowTech(){ return entRead(ENT_TECH_KEY, false) === true; }
+function entTechSet(on){
+  entWrite(ENT_TECH_KEY, !!on);
+  /* Видимость сущностей меняется вместе с этим переключателем — значит и меню:
+     сущность, у которой служебные все таблицы, то появляется, то исчезает. */
+  entSyncNav();
+  entRenderOverview();
+  if (ENT_CUR.schema) entRender();
+}
+
+function entTables(schemaId){
+  var tech = entShowTech();
+  return ENT_MODEL.entities.filter(function(x){
+    return entSchemaOf(x) === schemaId && (tech || !x.technical);
+  });
+}
+
+/* Связующие таблицы many-to-many. В entities[] их нет и быть не должно: они
+   рождаются из связи, а не заводятся руками, — но в базе они есть, и без них
+   экран таблиц врал бы. Правило повторяет планировщик (DdlPlanner): имя берётся
+   из through, иначе <таблица слева>_<таблица справа>_link, а лежит таблица в
+   схеме ЛЕВОЙ сущности — «посередине» в Postgres не бывает.
+   Записи в них не показываем: это пары идентификаторов, и смотреть их надо со
+   стороны той сущности, чью связь они хранят. */
+function entLinkTables(schemaId){
+  var out = [];
+  (ENT_MODEL.relations || []).forEach(function(r){
+    if (r.relation_type !== "many_to_many") return;
+    var fe = entEntity(r.from_entity), te = entEntity(r.to_entity);
+    if (!fe || !te || entSchemaOf(fe) !== schemaId) return;
+    out.push({
+      table: r.through || ((fe.table || fe.id) + "_" + (te.table || te.id) + "_link"),
+      from: fe, to: te
+    });
+  });
+  return out;
+}
+
 function entAllowed(e){
-  /* техническая сущность (флаг ставится в настройках) в панели не показывается
-     вообще: это служебный справочник, работать с ним нужно в схеме, а не здесь */
-  if (e.technical) return false;
+  if (!entIsSchemaHead(e)) return false;
+  /* Служебная сущность в раздел не попадает — если только не включён переключатель
+     «Выводить технические». Судим по её главной таблице: именно она даёт карточке
+     имя и описание, её человек и видит. Рабочая таблица внутри служебной сущности
+     не делает сущность рабочей — до неё добираются тем же переключателем. */
+  if (!entShowTech() && entSchemaTechnical(entSchemaOf(e))) return false;
+  /* Показывать нечего — незачем и карточка: экран таблиц открылся бы пустым. */
+  if (!entTables(entSchemaOf(e)).length && !entLinkTables(entSchemaOf(e)).length) return false;
   /* сущность с готовым серверным экраном («Шаблоны и сегменты») гейтится обычным
      RBAC по своей секции — applyNavAcl сделает это по aclSection, реестр не при чём */
   if (e.source) return true;
   var me = window.CRM_ME;
   if (!me) return true;                       /* демо-режим без бэкенда */
   if (me.isAdmin) return true;
-  var roles = entAcl()[e.id];
-  return Array.isArray(roles) && roles.indexOf(me.role) >= 0;
-}
-/* точка выдачи доступа не-админам: entAccessSet('client', ['MARKETER']) */
-function entAccessSet(entityId, roles){
-  var acl = entAcl();
-  acl[entityId] = Array.isArray(roles) ? roles : [];
-  entWrite(ENT_ACL_KEY, acl);
-  entSyncNav();
+  var sec = me.sections || [];
+  /* Зонтик «Сущности» открывает все; секция сущности — только её. Сузить доступ =
+     снять зонтик и отметить нужные строки в группе «Сущности». */
+  if (sec.indexOf("entities") >= 0) return true;
+  return sec.indexOf("ent:" + entSchemaOf(e)) >= 0;
 }
 
 /* ---------- схема ---------- */
@@ -131,7 +205,9 @@ function entLoadSchema(){
      Черновик при удачном ответе НЕ накладываем: он остался от прежней схемы работы,
      и наложение воскресило бы устаревшее поверх актуального.
 
-     Раздел админский (adminOnly в NAV), а /api/schema под ADMIN — права совпадают. */
+     Права: GET /api/schema открыт секции entities, а не только настроечным. Иначе
+     роль, которой выдали «Сущности», получала 403, модель оставалась пустой, у группы
+     не появлялось подразделов — и раздел исчезал из меню без единого сообщения. */
   return fetch("/api/schema", { credentials:"same-origin" })
     .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
     .then(function(m){
@@ -671,6 +747,9 @@ function entListHtml(e){
     '<div class="ent-lv-acts">' +
       '<input class="ent-lv-search" id="entSearch" placeholder="' + entT("Поиск в списке…") + '" value="' + entEsc(ENT_CUR.q || "") + '">' +
       '<button type="button" class="ent-btn" data-lv-reset="1">' + entT("Сбросить фильтры") + "</button>" +
+      '<button type="button" class="ent-btn" data-export="1" title="' +
+        entT("Выгрузить то, что видно в таблице: те же колонки, тот же фильтр и порядок") +
+        '">↓ ' + entT("Экспорт") + "</button>" +
       '<button type="button" class="ent-btn accent" data-new="1">＋ ' + entT("Новая запись") + "</button>" +
       '<span class="ent-gear-wrap"><button type="button" class="ent-gear" data-gear="1" title="' +
         entT("Настройка полей и фильтров") + '">' + ENT_GEAR_ICO + "</button>" + entGearHtml(e) + "</span>" +
@@ -706,6 +785,43 @@ function entListHtml(e){
           entEsc(f.label || f.name) + (on ? '<span class="ar">' + (s.dir > 0 ? "▲" : "▼") + "</span>" : "") + "</th>";
       }).join("") +
     "</tr></thead><tbody>" + body + "</tbody></table></div>";
+}
+
+/* ---------- выгрузка списка ----------
+
+   Выгружаем ровно то, что человек видит: настроенные шестерёнкой колонки, текущий
+   фильтр, текущий порядок сортировки. Выгрузить «всё как в базе» было бы честнее
+   формально и бесполезнее на деле: список для того и настраивают, чтобы получить
+   нужный срез, и таблица в файле должна совпадать с таблицей на экране.
+
+   Значения берём тем же entPlain, что рисует ячейки, — иначе в файле окажутся
+   внутренние коды там, где на экране стоят подписи справочников. */
+function entCsvCell(v){
+  var s = v == null ? "" : String(v);
+  /* Кавычки, точки с запятой и переносы ломают строку CSV, поэтому поле берём в
+     кавычки, а внутренние кавычки удваиваем — так велит RFC 4180. */
+  return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function entExportCsv(e){
+  var cols = entCols(e), rows = entListRows(e);
+  var lines = [cols.map(function(f){ return entCsvCell(f.label || f.name); }).join(";")];
+  rows.forEach(function(r){
+    lines.push(cols.map(function(f){ return entCsvCell(entPlain(e, f, r)); }).join(";"));
+  });
+  /* Разделитель — точка с запятой, а не запятая: Excel с русской локалью читает
+     запятую как десятичный знак и складывает всю строку в одну ячейку.
+     BOM в начале — по той же причине: без него кириллица открывается кракозябрами. */
+  var blob = new Blob(["\ufeff" + lines.join("\r\n")],
+      { type: "text/csv;charset=utf-8" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (e.table || e.id) + "-" + entStamp().slice(0, 10) + ".csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+  entToast(entT("Выгружено строк: ") + rows.length);
 }
 
 /* ============================================================
@@ -855,7 +971,11 @@ function entCardHtml(e, r){
 function entHeroHtml(e){
   var rows = (ENT_DATA[e.id] || []).length;
   var rels = ENT_MODEL.relations.filter(function(x){ return x.from_entity === e.id || x.to_entity === e.id; }).length;
-  return '<header class="ent-hero">' +
+  /* Крошка наверх: таблица открыта изнутри сущности, и вернуться к её списку
+     таблиц должно быть можно, не уходя в меню. */
+  var up = '<button type="button" class="ent-up" data-tables="1">← ' +
+           entEsc(entT("Таблицы сущности")) + "</button>";
+  return '<header class="ent-hero">' + up +
     '<div class="eyebrow">CRM · ' + entT("Данные") + " · " + entEsc(e.table || e.id) + "</div>" +
     "<h1>" + entEsc(e.plural_label || e.label) + "</h1>" +
     '<p class="sub">' + entEsc(e.description || entT("Список записей сущности: колонки и фильтры настраиваются шестерёнкой, запись открывается по клику.")) + "</p>" +
@@ -865,9 +985,70 @@ function entHeroHtml(e){
       "<span>" + entT("доступ") + ": ADMIN</span></div></header>";
 }
 
+/* Экран между сущностью и данными: её таблицы. Сущность — это схема, и таблиц
+   в ней может быть несколько; раньше вторая вылезала отдельным подразделом, а
+   первая подменяла собой всю сущность. Экран показываем всегда, даже когда
+   таблица одна: иначе путь до данных зависел бы от состава схемы, и человек не
+   знал бы заранее, куда попадёт по клику. */
+function entTablesHtml(schemaId){
+  var head = entSchemaHead(schemaId), tables = entTables(schemaId);
+  var links = entLinkTables(schemaId);
+  var title = head ? (head.plural_label || head.label || schemaId) : schemaId;
+  var html = '<header class="ent-hero">' +
+    '<div class="eyebrow">CRM · ' + entT("Сущность") + " · " + entEsc(schemaId) + "</div>" +
+    "<h1>" + entEsc(title) + "</h1>" +
+    '<p class="sub">' + entT("Таблицы сущности. Выберите таблицу, чтобы открыть её записи.") + "</p>" +
+    '<div class="meta"><span>' + entPlural(tables.length + links.length, "table") + "</span>" +
+      "<span>" + entT("доступ") + ": ADMIN</span></div>" +
+    /* тот же переключатель, что и на обзорной: служебную таблицу чаще ищут уже
+       внутри сущности, и возвращаться за ней на верхний экран незачем */
+    '<div class="ent-techbar"><button type="button" class="ent-btn' + (entShowTech() ? " on" : "") +
+      '" data-tech="1">' + (entShowTech() ? "☑ " : "☐ ") + entT("Выводить технические") +
+      "</button></div></header>";
+  if (!tables.length && !links.length){
+    return html + '<div class="ent-empty">' +
+      entT("У сущности нет таблиц. Заведите их в Scheme Builder (настроечная админка).") + "</div>";
+  }
+  html += '<div class="ov-grid">' + tables.map(function(x){
+    var rows = (ENT_DATA[x.id] || []).length;
+    return '<div class="ov-card' + (x.technical ? " ent-techtbl" : "") + '" data-tbl="' + entEsc(x.id) + '">' +
+      '<div class="ov-ico">' + (ICONS.table || ICONS.doc) + "</div>" +
+      "<h3>" + entEsc(x.label || x.id) +
+        (x.technical ? ' <span class="ent-tech-tag">' + entT("служебная") + "</span>" : "") + "</h3>" +
+      '<div class="ov-meta">' + entEsc(x.table || x.id) + " · " +
+        entPlural(x.fields.length, "field") + " · " + entPlural(rows, "record") + "</div>" +
+      "<p>" + entEsc(x.description || entT("Список записей и карточка: поля по смысловым блокам, переходы по связям.")) + "</p>" +
+      '<span class="ov-go">' + entT("Открыть →") + "</span></div>";
+  }).join("") + links.map(function(l){
+    return '<div class="ov-card ent-linktbl">' +
+      '<div class="ov-ico">' + (ICONS.link || ICONS.table || ICONS.doc) + "</div>" +
+      "<h3>" + entEsc(l.table) + "</h3>" +
+      '<div class="ov-meta">' + entT("связующая таблица") + " · 2 " + entT("колонки") + "</div>" +
+      "<p>" + entT("Хранит пары «многие ко многим»") + ": " +
+        entEsc(l.from.label || l.from.id) + " ↔ " + entEsc(l.to.label || l.to.id) + ". " +
+        entT("Заводится связью в Scheme Builder; записи видны со стороны самих сущностей.") + "</p></div>";
+  }).join("") + "</div>";
+  return html;
+}
+
 function entRender(){
   var host = document.getElementById("entHost");
   if (!host) return;
+  if (ENT_CUR.mode === "tables" || !ENT_CUR.id){
+    host.innerHTML = entTablesHtml(ENT_CUR.schema);
+    host.querySelectorAll("[data-tech]").forEach(function(b){
+      b.onclick = function(){ entTechSet(!entShowTech()); };
+    });
+    host.querySelectorAll("[data-tbl]").forEach(function(card){
+      card.onclick = function(){
+        ENT_CUR.id = card.dataset.tbl; ENT_CUR.mode = "list";
+        ENT_CUR.rec = null; ENT_CUR.q = ""; ENT_CUR.edit = null;
+        entRender();
+        var v = document.getElementById("view-entity"); if (v) v.scrollTop = 0;
+      };
+    });
+    return;
+  }
   var e = entEntity(ENT_CUR.id);
   if (!e){
     host.innerHTML = '<div class="ent-empty">' + entT("Сущность не найдена в схеме. Проверьте Scheme Builder в настроечной админке.") + "</div>";
@@ -907,6 +1088,7 @@ function entToast(msg){
 
 /* ---------- обработчики ---------- */
 function entWire(host, e, r){
+  host.querySelectorAll("[data-tables]").forEach(function(b){ b.onclick = entBackToTables; });
   /* --- список --- */
   host.querySelectorAll("tr[data-open]").forEach(function(tr){
     tr.onclick = function(){
@@ -988,6 +1170,9 @@ function entWire(host, e, r){
     el.onclick = function(){ ENT_CUR.tab = el.dataset.tab; ENT_CUR.edit = null; entRender(); };
   });
   host.querySelectorAll("[data-new]").forEach(function(el){ el.onclick = function(){ entNewRecord(e); }; });
+  host.querySelectorAll("[data-export]").forEach(function(el){
+    el.onclick = function(){ entExportCsv(e); };
+  });
   host.querySelectorAll("[data-del]").forEach(function(el){ el.onclick = function(){ entDeleteRecord(e, r); }; });
   host.querySelectorAll(".ent-sec-title").forEach(function(el){
     el.onclick = function(){
@@ -1280,19 +1465,33 @@ function entDeleteConfirmed(e, r){
   entToast(entT("Запись удалена"));
 }
 /* переход по связи: открыть другую сущность на нужной записи */
+/* Переход по связи ведёт в КОНКРЕТНУЮ таблицу, а подраздел в меню заведён на
+   сущность — поэтому открываем подраздел её схемы, а таблицу выставляем сами,
+   минуя промежуточный экран: человек шёл к записи, а не выбирать таблицу. */
 function entGo(entityId, recId){
-  if (!entEntity(entityId)) return;
-  if (typeof openSection === "function") openSection("entities", "ent-" + entityId);
+  var e = entEntity(entityId);
+  if (!e) return;
+  var schema = entSchemaOf(e), head = entSchemaHead(schema);
+  if (typeof openSection === "function") openSection("entities", "ent-" + (head ? head.id : entityId));
+  ENT_CUR.schema = schema; ENT_CUR.id = entityId;
   ENT_CUR.rec = recId; ENT_CUR.edit = null; ENT_CUR.mode = "card"; ENT_CUR.tab = "details";
   entRender();
   var v = document.getElementById("view-entity"); if (v) v.scrollTop = 0;
 }
-/* вызывается из openSection при открытии подраздела */
-function entOpen(entityId){
-  /* другая сущность — начинаем со списка и со своим поиском */
-  if (ENT_CUR.id !== entityId){ ENT_CUR.rec = null; ENT_CUR.mode = "list"; ENT_CUR.q = ""; }
-  ENT_CUR.id = entityId; ENT_CUR.edit = null; ENT_CUR.gear = false;
+/* вызывается из openSection при открытии подраздела: id подраздела — сущность,
+   и начинаем всегда с её таблиц */
+function entOpen(headId){
+  var head = entEntity(headId);
+  ENT_CUR.schema = head ? entSchemaOf(head) : headId;
+  ENT_CUR.id = null; ENT_CUR.rec = null; ENT_CUR.mode = "tables";
+  ENT_CUR.q = ""; ENT_CUR.edit = null; ENT_CUR.gear = false;
   entRender();
+}
+/* возврат с записей к таблицам сущности */
+function entBackToTables(){
+  ENT_CUR.id = null; ENT_CUR.rec = null; ENT_CUR.mode = "tables"; ENT_CUR.edit = null;
+  entRender();
+  var v = document.getElementById("view-entity"); if (v) v.scrollTop = 0;
 }
 /* клик мимо панели шестерёнки — закрываем её */
 document.addEventListener("mousedown", function(ev){
@@ -1306,6 +1505,18 @@ document.addEventListener("mousedown", function(ev){
 function entRenderOverview(){
   var grid = document.getElementById("entOvGrid");
   if (!grid) return;
+  /* Заведение сущности живёт в Scheme Builder — туда и ведём. Форму не повторяем:
+     правила именования, проверка занятых имён и запись в модель уже описаны там,
+     и вторая копия рано или поздно разошлась бы с первой. */
+  var add = document.getElementById("entAddEntity");
+  if (add) add.onclick = function(){ location.href = "settings/#scheme:new"; };
+  var btn = document.getElementById("entTechToggle");
+  if (btn){
+    var on = entShowTech();
+    btn.textContent = (on ? "☑ " : "☐ ") + entT("Выводить технические");
+    btn.classList.toggle("on", on);
+    btn.onclick = function(){ entTechSet(!entShowTech()); };
+  }
   var items = ENT_MODEL.entities.filter(entAllowed);
   if (!items.length){
     grid.innerHTML = '<div class="ent-empty">' +
@@ -1314,11 +1525,15 @@ function entRenderOverview(){
   }
   grid.innerHTML = items.map(function(e){
     var rows = (ENT_DATA[e.id] || []).length;
-    var api = e.source === "templates";
-    return '<div class="ov-card" data-nav-ref="ent-' + entEsc(e.id) + '"' +
-      (api ? ' data-acl-section="templates"' : ' data-no-acl="1"') + ' data-ent="' + entEsc(e.id) + '">' +
+    var sv = entSourceView(e);
+    var api = !!sv;
+    var tech = entSchemaTechnical(entSchemaOf(e));
+    return '<div class="ov-card' + (tech ? " ent-techtbl" : "") + '" data-nav-ref="ent-' + entEsc(e.id) + '"' +
+      (api ? ' data-acl-section="' + entEsc(sv.aclSection) + '"' : ' data-no-acl="1"') +
+      ' data-ent="' + entEsc(e.id) + '">' +
       '<div class="ov-ico">' + (api ? (ICONS.list || ICONS.doc) : (ICONS.table || ICONS.doc)) + "</div>" +
-      "<h3>" + entEsc(e.plural_label || e.label) + "</h3>" +
+      "<h3>" + entEsc(e.plural_label || e.label) +
+        (tech ? ' <span class="ent-tech-tag">' + entT("служебная") + "</span>" : "") + "</h3>" +
       '<div class="ov-meta">' + entEsc(e.table || e.id) + " · " + entPlural(e.fields.length, "field") +
         (api ? " · " + entT("данные из API") : " · " + entPlural(rows, "record")) + "</div>" +
       "<p>" + entEsc(e.description || entT("Список записей и карточка: поля по смысловым блокам, переходы по связям.")) + "</p>" +
@@ -1329,19 +1544,35 @@ function entRenderOverview(){
   });
 }
 
+/* Сущности, которые рисует не движок, а готовый экран раздела.
+
+   Признак — поле source в схеме. Данные у таких живут в базе приложения и в боевых
+   таблицах, а показывать их списком «как у всех» значило бы завести второй, неполный
+   способ смотреть на то же самое. Поэтому подраздел ведёт на существующий экран, а
+   доступ следует серверной секции: клиентский реестр прав тут ни при чём.
+
+   Карта, а не if-цепочка: следующий такой раздел добавляется строкой. */
+var ENT_SOURCE_VIEWS = {
+  templates: { view:"sec-admin", adminMode:"list", aclSection:"templates", icon:"list" },
+  events:    { view:"sec-event-list", aclSection:"ev-list", icon:"pulse" }
+};
+function entSourceView(e){ return (e && e.source) ? ENT_SOURCE_VIEWS[e.source] || null : null; }
+
 /* ---------- навигация: подраздел на каждую сущность ---------- */
 function entSyncNav(){
   var grp = (typeof NAV !== "undefined") && NAV.filter(function(n){ return n.id === "entities"; })[0];
   if (!grp) return;
   grp.children = ENT_MODEL.entities.filter(entAllowed).map(function(e){
     /* Сущность с source живёт не в браузере, а в БД приложения, и у неё есть свой
-       готовый экран. «Шаблоны и сегменты» (source:"templates") — это список шаблонов
-       из раздела «Управление коммуникациями»: подраздел ведёт на него, а доступ
-       следует серверной секции templates, а не клиентскому реестру. */
-    if (e.source === "templates") return {
-      id: "ent-" + e.id, label: e.plural_label || e.label, icon: "list",
-      view: "sec-admin", adminMode: "list", aclSection: "templates"
-    };
+       готовый экран: «Шаблоны и сегменты» — реестр шаблонов, «События» — список
+       событий. Подраздел ведёт туда, доступ следует серверной секции. */
+    var sv = entSourceView(e);
+    if (sv) {
+      var item = { id: "ent-" + e.id, label: e.plural_label || e.label,
+                   icon: sv.icon, view: sv.view, aclSection: sv.aclSection };
+      if (sv.adminMode) item.adminMode = sv.adminMode;
+      return item;
+    }
     return {
       id: "ent-" + e.id, label: e.plural_label || e.label, icon: "table",
       view: "view-entity", entity: e.id,
@@ -1353,8 +1584,8 @@ function entSyncNav(){
     };
   });
   /* Раздел прячем как админский, только если доступной сущности нет ни одной.
-     Иначе роль, которой доступ выдали явно (entAccessSet), видела бы карточку
-     на обзорной странице, но не сам пункт в сайдбаре. */
+     Иначе роль, которой сущность выдали в матрице, видела бы карточку на обзорной
+     странице, но не сам пункт в сайдбаре. */
   grp.adminOnly = !grp.children.length;
   if (typeof renderNav === "function") renderNav();
   entRenderOverview();
@@ -1512,7 +1743,6 @@ function entBoot(){
   return entLoadSchema().then(function(m){
     ENT_MODEL = { entities: (m && m.entities) || [], relations: (m && m.relations) || [] };
     ENT_DATA = entRead(ENT_DATA_KEY, {}) || {};
-    entAclSeed();
     entSeed();
     /* приводим зависимые поля в согласованное состояние: данные могли быть
        записаны до появления правила либо изменены в другой вкладке */
@@ -1530,7 +1760,7 @@ function entBoot(){
 }
 /* сущность завели/удалили в Scheme Builder (другая вкладка) — пересобираем подразделы */
 window.addEventListener("storage", function(ev){
-  if (ev.key !== ENT_DRAFT_KEY && ev.key !== ENT_ACL_KEY) return;
+  if (ev.key !== ENT_DRAFT_KEY) return;
   entBoot().then(function(){ if (ENT_CUR.id) entRender(); });
 });
 

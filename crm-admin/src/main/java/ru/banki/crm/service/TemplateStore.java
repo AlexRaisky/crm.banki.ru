@@ -59,6 +59,24 @@ public class TemplateStore {
      */
     public static final java.util.Set<String> PROD_TIMESTAMPS = java.util.Set.of("timestamp_cr", "timestamp_upd");
 
+    /**
+     * Колонка source прод-таблицы e-mail. Мы в неё НЕ ПИШЕМ ВООБЩЕ.
+     * <p>
+     * Раньше при переливе туда уезжал плейсхолдер {@code {{linkSourceCRM}}} — считалось,
+     * что ссылки в письме собираются через него. Это неверно: поле заполняет не панель,
+     * и наша запись затирала то, что там должно быть. Теперь колонка просто не попадает
+     * в payload: на INSERT сработает DEFAULT прод-таблицы, на UPDATE значение останется
+     * нетронутым (список колонок и там, и там строится по ключам payload).
+     * <p>
+     * Плейсхолдер как таковой никуда не делся — он живёт в ссылках внутри письма, их
+     * собирает «Конструктор ссылок» (onelink.js, getSourceValue). Это другое место и
+     * другая история; путать их и было ошибкой.
+     * <p>
+     * Имя кампании к этой колонке отношения не имеет: оно уезжает в source_type
+     * (см. CORE_TO_PROD).
+     */
+    static final String EMAIL_SOURCE_COL = "source";
+
     private static final Map<String, String> CORE_TO_PROD = new LinkedHashMap<>(Map.ofEntries(
             Map.entry("communication_name", "communication_name"),
             Map.entry("campaign_name", "source_type"),
@@ -192,6 +210,39 @@ public class TemplateStore {
         return d;
     }
 
+    /**
+     * Код шаблона канала с таким же source (колонка campaign_name) — или null.
+     * <p>
+     * Сравниваем без учёта регистра и краевых пробелов: source собирается из полей формы,
+     * и «Email_promo_…» с «email_promo_…» — это одна и та же коммуникация, заведённая
+     * дважды, а не две разные.
+     */
+    public String findBySource(String channel, String source) {
+        String want = nz(source).trim();
+        if (want.isEmpty()) return null;
+        List<Long> r = jdbc.queryForList(
+                "SELECT code FROM template.d_template" +
+                " WHERE channel = ? AND lower(btrim(campaign_name)) = lower(?)" +
+                " ORDER BY code LIMIT 1",
+                Long.class, channel, want);
+        return r.isEmpty() ? null : String.valueOf(r.get(0));
+    }
+
+    /**
+     * Код письма с таким же letteros_id — или null. Ключ лежит в channel_props, своей
+     * колонки у него нет.
+     */
+    public String findByLetterosId(String channel, String letterosId) {
+        String want = nz(letterosId).trim();
+        if (want.isEmpty()) return null;
+        List<Long> r = jdbc.queryForList(
+                "SELECT code FROM template.d_template" +
+                " WHERE channel = ? AND btrim(coalesce(channel_props->>'letteros_id', '')) = ?" +
+                " ORDER BY code LIMIT 1",
+                Long.class, channel, want);
+        return r.isEmpty() ? null : String.valueOf(r.get(0));
+    }
+
     public boolean exists(String channel, String code) {
         Long n = jdbc.queryForObject(
                 "SELECT count(*) FROM template.d_template WHERE channel = ? AND code = ?",
@@ -225,6 +276,12 @@ public class TemplateStore {
         // Метки времени прода наружу не отправляем: их проставляет сам прод (см. ProdDbService).
         // Иначе записали бы туда устаревшее значение и сломали отслеживание изменений.
         PROD_TIMESTAMPS.forEach(out::remove);
+        /* E-mail: колонку source в прод не отправляем совсем. В channel_props она у нас
+           есть (карточка показывает там имя кампании), и без этой строки уехала бы в прод
+           вместе с остальными props — а писать в неё панель не должна. Убранный ключ = не
+           перечисленная колонка: на вставке отработает DEFAULT прод-таблицы, на правке
+           значение останется как было. */
+        if ("email".equals(channel)) out.remove(EMAIL_SOURCE_COL);
         List<String> emptyKeys = new ArrayList<>();
         out.fieldNames().forEachRemaining(k -> { if (out.get(k).isNull()) emptyKeys.add(k); });
         emptyKeys.forEach(out::remove);
@@ -344,6 +401,16 @@ public class TemplateStore {
             if (PROD_TIMESTAMPS.contains(k)) return;   // метки — бухгалтерия прода, у себя не храним
             props.set(k, prod.get(k));
         });
+        /* Обратный ход. Колонка source у писем — не наша: панель туда не пишет, а что
+           лежит там у прода (пусто, плейсхолдер от прежних синков, значение от смежной
+           системы) — не имеет отношения к карточке. Карточка показывает
+           channel_props.source как имя кампании, поэтому берём его из source_type,
+           куда оно и уезжает. Раньше подмена срабатывала только на точное совпадение с
+           плейсхолдером, и любое другое значение прода приезжало в поле «имя кампании»
+           как есть. */
+        if ("email".equals(channel)) {
+            props.put(EMAIL_SOURCE_COL, nz(text(prod, "source_type")));
+        }
         List<String> products = new ArrayList<>();
         JsonNode pt = prod.get("product_type");
         if (pt != null && pt.isArray()) pt.forEach(n -> products.add(n.asText()));

@@ -18,7 +18,14 @@
 <!-- Drawflow: интерактивная блок-схема цепочек (вендорен локально — без зависимости от CDN) -->
 <link rel="stylesheet" href="drawflow.min.css">
 <script src="drawflow.min.js"></script>
-<script src="journeys.js" defer></script>
+<!-- Без defer: оболочка (boot.js) — обычный скрипт в конце body и выполняется РАНЬШЕ
+     любого отложенного. Восстанавливая последний открытый раздел, она проверяет
+     typeof initJourneysSection === "function" — у отложенного скрипта функции ещё нет,
+     проверка молча не срабатывает, и раздел остаётся мёртвым до первого нажатия. -->
+<script src="journeys.js?v=33"></script>
+<!-- Данные примера оффлайн-процесса: большой кусок SQL, вынесен из journeys.js.
+     Читается только по нажатию кнопки, поэтому порядок подключения не важен. -->
+<script src="js/journeys-offline-example.js?v=3"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -29,10 +36,13 @@
 <link rel="stylesheet" href="css/section-deviations.css">
 <link rel="stylesheet" href="css/section-onelink.css">
 <link rel="stylesheet" href="css/section-srcbuilder.css">
-<link rel="stylesheet" href="css/section-promo.css">
+<link rel="stylesheet" href="css/section-promo.css?v=3">
 <link rel="stylesheet" href="css/section-abtests.css">
 <link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-entities.css">
+<link rel="stylesheet" href="css/registry.css?v=6">
+<link rel="stylesheet" href="css/section-events.css?v=13">
+<link rel="stylesheet" href="css/section-comm-analytics.css?v=2">
 <link rel="stylesheet" href="css/section-admin.css">
 </head>
 <body>
@@ -233,6 +243,14 @@
     <section class="view ov-view" id="view-entities-overview">
       <div class="ov-head"><h1 data-i18n-html="h1_entities_ov">Сущности <span class="grad">CRM</span></h1></div>
       <div class="ov-sub" data-i18n="Данные CRM по схеме из Scheme Builder. Каждая заведённая сущность становится подразделом: выберите её здесь или в меню слева.">Данные CRM по схеме из Scheme Builder. Каждая заведённая сущность становится подразделом: выберите её здесь или в меню слева.</div>
+      <!-- Переключатель служебных: по умолчанию их не видно, но иногда нужно —
+           заглянуть в справочник или найти сущность, у которой служебные все таблицы. -->
+      <div class="ent-techbar">
+        <!-- Заведение ведёт в Scheme Builder: сущность описывается там, и вторая
+             такая же форма здесь означала бы два места с правилами именования. -->
+        <button type="button" class="ent-btn accent" id="entAddEntity" data-i18n="+ Сущность">+ Сущность</button>
+        <button type="button" class="ent-btn" id="entTechToggle"></button>
+      </div>
       <div class="ov-grid" id="entOvGrid"></div>
       <div class="ov-sub" style="margin-top:20px" data-i18n="Раздел доступен только администраторам. Сущности и их поля настраиваются в Scheme Builder (настроечная админка).">Раздел доступен только администраторам. Сущности и их поля настраиваются в Scheme Builder (настроечная админка).</div>
     </section>
@@ -252,36 +270,38 @@
     <section class="view ov-view" id="view-reports-overview">
       <div class="ov-head"><h1 data-i18n-html="h1_reports_ov">Отчёты <span class="grad">Tableau</span></h1></div>
       <div class="ov-sub" data-i18n="Отчёты компании, встраиваемые из Tableau. Выберите отчёт или воспользуйтесь меню слева.">Отчёты компании, встраиваемые из Tableau. Выберите отчёт или воспользуйтесь меню слева.</div>
-      <!-- data-acl-section="reports" у всех четырёх карточек: rep-* следуют праву на
-           секцию reports (единое право на весь раздел отчётов). applyNavAcl прячет
-           карточку, если у пользователя нет секции reports. В сайдбаре у этих же
-           пунктов стоит aclSection:"reports". -->
+      <!-- Своего data-acl-section у карточек нет. С миграции V29 зонтичной секции
+           reports не существует: право выдаётся на каждый отчёт отдельно (rep-planfact,
+           rep-matrix, …), см. Sections.java. Без aclSection applyNavAcl берёт
+           data-nav-ref — то есть ровно id секции этого отчёта. Пока здесь стояло
+           aclSection="reports", такой секции не было ни у кого, включая админа, и
+           карточки пропадали у всех. То же и у мониторинга ниже. -->
       <div class="ov-grid">
-        <div class="ov-card" data-nav-ref="rep-planfact" data-acl-section="reports" onclick="openSection('reports','rep-planfact')">
+        <div class="ov-card" data-nav-ref="rep-planfact" onclick="openSection('reports','rep-planfact')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-6M21 20H3"/></svg></div>
           <h3>Plan-Fact</h3>
           <p data-i18n="Общий финансовый отчёт компании: план и факт по ключевым показателям.">Общий финансовый отчёт компании: план и факт по ключевым показателям.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" data-nav-ref="rep-matrix" data-acl-section="reports" onclick="openSection('reports','rep-matrix')">
+        <div class="ov-card" data-nav-ref="rep-matrix" onclick="openSection('reports','rep-matrix')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
           <h3>CRM Matrix</h3>
           <p data-i18n="Основной отчёт команды CRM: каналы, кампании и показатели в одном разрезе.">Основной отчёт команды CRM: каналы, кампании и показатели в одном разрезе.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" data-nav-ref="rep-leadgen" data-acl-section="reports" onclick="openSection('reports','rep-leadgen')">
+        <div class="ov-card" data-nav-ref="rep-leadgen" onclick="openSection('reports','rep-leadgen')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
           <h3>CRM Leadgen</h3>
           <p data-i18n="Детализация лидогенерации: что именно покупают с каждой кампании.">Детализация лидогенерации: что именно покупают с каждой кампании.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" data-nav-ref="rep-smscheck" data-acl-section="reports" onclick="openSection('reports','rep-smscheck')">
+        <div class="ov-card" data-nav-ref="rep-smscheck" onclick="openSection('reports','rep-smscheck')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></div>
           <h3>ЧЕК СМС траффик</h3>
           <p data-i18n="Помесячная выгрузка Excel по трафику: отправки, клики, выдачи, выручка и юнит-экономика по источникам и дням.">Помесячная выгрузка Excel по трафику: отправки, клики, выдачи, выручка и юнит-экономика по источникам и дням.</p>
           <span class="ov-go" data-i18n="Открыть →">Открыть →</span>
         </div>
-        <div class="ov-card" data-nav-ref="rep-demo" data-acl-section="reports" onclick="openSection('reports','rep-demo')">
+        <div class="ov-card" data-nav-ref="rep-demo" onclick="openSection('reports','rep-demo')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-4M12 17V8M16 17v-6"/></svg></div>
           <h3 data-i18n="Пример визуализации отчёта">Пример визуализации отчёта</h3>
           <p data-i18n="Демо-макет окна Tableau на плейсхолдер-данных: как отчёт выглядит внутри панели.">Демо-макет окна Tableau на плейсхолдер-данных: как отчёт выглядит внутри панели.</p>
@@ -352,17 +372,29 @@
 
       <div class="rp-toolbar">
         <div class="f"><label data-i18n="Месяц">Месяц</label>
-          <input type="month" id="scMonth"></div>
+          <input type="month" id="scMonth" onchange="scOnFilterChange()"></div>
         <div class="f"><label data-i18n="Канал">Канал</label>
-          <select id="scChannel">
+          <select id="scChannel" onchange="scOnFilterChange()">
             <option value="sms">SMS</option>
             <option value="push">Push</option>
             <option value="email">Email</option>
           </select></div>
+        <!-- Продукты подтягиваются из данных за выбранный месяц: список зависит от того,
+             что реально было в этом периоде, поэтому он не зашит в разметку. -->
+        <!-- Выбор продукта отчёт не запускает: считает только «Обновить». Иначе
+             тяжёлый запрос к DWH уходил бы на каждое движение в списке. -->
+        <div class="f"><label data-i18n="Продукт">Продукт</label>
+          <select id="scProduct">
+            <option value="" data-i18n="— выберите продукт —">— выберите продукт —</option>
+          </select></div>
         <span class="spacer"></span>
+        <button class="btn" id="scShow" onclick="scShowDaily()" data-i18n="Обновить">Обновить</button>
         <button class="btn accent" id="scDownload" onclick="scDownload()" data-i18n="⭳ Скачать Excel">⭳ Скачать Excel</button>
       </div>
 
+      <!-- Ход выгрузки — отдельной строкой: раньше он писался в область отчёта и стирал
+           таблицу, ради которой человек сюда и пришёл. -->
+      <div class="rp-embed-wait" id="scStatus" style="display:none"></div>
       <div class="rp-embed" id="scArea"></div>
     </section>
 
@@ -447,11 +479,422 @@
     </section>
 
     <!-- ===== Обзор раздела «Мониторинг» ===== -->
+    <!-- ===== События → обзор группы ===== -->
+    <!-- Обзорная страница «События» удалена вместе с группой в сайдбаре: события стали
+         сущностью и открываются подразделом «Сущности» → «События». Три карточки вели на
+         три разных экрана заведения — теперь род события спрашивает окно, а список один. -->
+
+    <!-- ===== Дашборд → Аналитика коммуникаций =====
+         Витрины sandbox.t_comm_* в Greenplum: их считает отдельный SQL-скрипт, экран
+         только показывает. Рисует js/comm-analytics.js. -->
+    <section class="view" id="sec-comm-analytics">
+      <div class="eyebrow">CRM · Analytics · Communications</div>
+      <h1>Аналитика <span class="grad">коммуникаций</span></h1>
+      <p class="sub">Нагрузка на человека, переспам, качество разметки и дубли — по витринам <code>sandbox.t_comm_*</code> в Greenplum. Витрины считает отдельный SQL-скрипт; панель их только читает и ничего не пересчитывает. Источник — то же подключение, что у отчёта «ЧЕК СМС траффик».</p>
+      <!-- Подключение выбирается здесь же, а не в чужом разделе: витрины могут стоять
+           не там, где витрина отчёта, и «источник задаётся в Отчётах» было допущением. -->
+      <div class="ca-head">
+        <label class="ca-conn" for="caConn">Источник</label>
+        <select id="caConn"></select>
+        <button type="button" class="ca-btn" id="caReload">Перечитать витрины</button>
+        <span class="ca-foot" id="caFoot"></span>
+      </div>
+      <div class="ca-foot" id="caConnNote"></div>
+      <div id="caHost"></div>
+    </section>
+
+    <!-- ===== События → Онлайн-событие ===== -->
+    <section class="view" id="sec-event-online">
+      <div class="eyebrow">CRM · Events · Online</div>
+      <h1>Онлайн-<span class="grad">событие</span></h1>
+      <p class="sub">Событие приходит из внешней системы. Заводится сразу в двух слоях: в нашей модели (<code>flow.d_event</code> и обвязка) и в таблицах, которые читают боевые движки (<code>tracker.t_event_comm</code>, маппинги шаблона и метода отправки).</p>
+
+      <!-- Обёртка нужна, чтобы форму можно было целиком перенести в окно заведения:
+           окно не копирует разметку, а забирает эти узлы к себе и возвращает обратно
+           при закрытии. Копия означала бы два одинаковых id на странице и два набора
+           обработчиков — правится одно, отправляется другое. -->
+      <div id="evoForm">
+      <div class="ev-step">
+        <div class="t">Шаг 1</div>
+        <div class="ev-fields">
+          <div class="ev-f"><label for="evoName">Введите event_name</label><input type="text" id="evoName" autocomplete="off"></div>
+          <div class="ev-f"><label for="evoSource">Введите source</label><input type="text" id="evoSource" autocomplete="off"></div>
+        </div>
+      </div>
+
+      <div class="ev-step">
+        <div class="t">Шаг 2</div>
+        <div class="ev-fields">
+          <div class="ev-f"><label for="evoChannel">Выберите notify_channel</label><select id="evoChannel"></select></div>
+          <div class="ev-f"><label for="evoDefKey">Выберите definition_key</label><select id="evoDefKey"></select></div>
+          <div class="ev-f"><label for="evoPrefix">Выберите business_key_prefix</label><select id="evoPrefix"></select></div>
+          <div class="ev-f"><label for="evoTemplate">Введите template_id</label><input type="number" id="evoTemplate" value="0" min="0" step="1">
+            <span class="hint">Код шаблона в проде. Связь в нашей модели ставится, если такой шаблон у нас есть.</span></div>
+          <div class="ev-f"><label for="evoSystem">Выберите систему</label><select id="evoSystem"></select></div>
+        </div>
+        <div class="ev-checks">
+          <label class="ev-chk"><input type="checkbox" id="evoActive"> Is active</label>
+          <label class="ev-chk"><input type="checkbox" id="evoBatch" disabled> Is batch
+            <span class="hint">у онлайн-события не применяется</span></label>
+        </div>
+      </div>
+
+      <div class="ev-step">
+        <div class="t">Шаг 3</div>
+        <div class="ev-fields">
+          <div class="ev-f"><label for="evoComm">Выберите id_comm_creation</label><select id="evoComm"></select>
+            <span class="hint">Готовый набор параметров доставки (<code>tracker.d_comm_creation</code>). Форма его выбирает, а не создаёт.</span></div>
+        </div>
+      </div>
+
+      <div class="ev-foot">
+        <button class="ev-btn" id="evoSubmit" type="button">Запустить коммуникацию</button>
+        <button class="ev-btn ghost" id="evoReset" type="button">Отмена</button>
+        <span class="ev-msg" id="evoMsg"></span>
+      </div>
+      <div id="evoResult"></div>
+      </div><!-- /#evoForm -->
+
+      <!-- ===== Цепочка онлайн-события =====
+           Рисуется по commapi.events_chain в crmdb — то есть по тому, что реально
+           исполняется, а не по нашей модели. Только чтение: второй способ менять
+           цепочку означал бы два источника истины. -->
+      <div class="ev-chain" id="evChain">
+        <h2>Цепочка</h2>
+        <p class="sub">Что происходит после прихода события: сколько ждём, каким шаблоном отвечаем
+          и какое событие обрывает шаг или весь поток. Читается из <code>commapi.events_chain</code>.</p>
+        <div class="row" style="gap:10px;align-items:center;margin:14px 0">
+          <select id="evChainPick" class="ev-pick"></select>
+          <button class="ev-btn ghost" id="evChainReload" type="button">Обновить</button>
+          <span class="ev-msg" id="evChainMsg"></span>
+        </div>
+        <div id="evChainBody"></div>
+      </div>
+    </section>
+
+    <!-- ===== События → Событие по расписанию =====
+         Мастер из пяти экранов. Одностраничная версия повторяла Appsmith: девять полей,
+         кронтаб строкой и блоки SQL — всё сразу, и человек, заводящий событие впервые,
+         не понимал, что из этого во что превращается. Экраны идут в том порядке, в
+         каком строится сама выборка. Последний — отладочный: показывает тело запроса,
+         никуда его не отправляя. -->
+    <section class="view" id="sec-event-offline">
+      <div class="eyebrow">CRM · Events · Schedule</div>
+      <h1>Событие <span class="grad">по расписанию</span></h1>
+      <p class="sub">Планировщик выполняет SQL-шаги по расписанию и порождает коммуникацию. Заводится в нашей модели (<code>flow.d_event</code>, расписание и шаги) и в прод-таблицах (<code>scheduler.t_get_event</code>, <code>t_launch_settings</code>, <code>t_execution_steps</code>, маппинги).</p>
+
+      <!-- Метод отправки выбирается ДО всего остального: от него зависят пары
+           definition_key/business_key_prefix и то, спрашиваем ли is_batch. Менять его
+           посреди заполнения можно — сбрасываются только эти два поля. -->
+      <!-- То же, что у онлайн-формы: узлы переезжают в окно заведения целиком. -->
+      <div id="evfWizard">
+      <div class="wz-mode" id="evfMode">
+        <button type="button" class="wz-mode-btn on" data-method="batch">Массовый метод</button>
+        <button type="button" class="wz-mode-btn" data-method="single">Единичный метод</button>
+      </div>
+      <p class="wz-note" id="evfModeNote"></p>
+
+      <div class="wz-tabs" id="evfTabs">
+        <button type="button" class="wz-tab on" data-wz="1"><b>1</b> Настройки</button>
+        <button type="button" class="wz-tab" data-wz="2"><b>2</b> Шаги отбора</button>
+        <button type="button" class="wz-tab" data-wz="3"><b>3</b> Дни и шаблоны</button>
+        <button type="button" class="wz-tab" data-wz="4"><b>4</b> Итоговый скрипт</button>
+        <button type="button" class="wz-tab" data-wz="5"><b>5</b> Отправка</button>
+      </div>
+
+      <!-- ---------- 1. Настройки ---------- -->
+      <div class="wz-pane" id="evfPane1">
+        <div class="ev-step">
+          <div class="t">Событие</div>
+          <div class="ev-fields">
+            <div class="ev-f"><label for="evfName">Введите event_name</label><input type="text" id="evfName" autocomplete="off">
+              <span class="hint">Уходит и в event_name, и в selection — это одно и то же значение. selection связывает три прод-таблицы между собой: внешних ключей там нет, только совпадение строки.</span></div>
+            <div class="ev-f"><label for="evfSource">Введите source</label><input type="text" id="evfSource" autocomplete="off"></div>
+            <div class="ev-f"><label for="evfChannel">Выберите notify_channel</label><select id="evfChannel"></select></div>
+            <div class="ev-f"><label for="evfDefKey">Выберите definition_key</label><select id="evfDefKey"></select></div>
+            <div class="ev-f"><label for="evfPrefix">Выберите business_key_prefix</label><select id="evfPrefix"></select>
+              <span class="hint">Ключ и префикс подставляются по выбранному каналу — в справочнике они лежат одной строкой. Поменять можно, но пара должна совпадать целиком.</span></div>
+            <div class="ev-f"><label for="evfSystem">Выберите систему</label><select id="evfSystem"></select></div>
+            <div class="ev-f"><label for="evfDatabase">Выберите database</label><select id="evfDatabase"></select></div>
+            <div class="ev-f"><label for="evfDateStart">date_start</label><input type="datetime-local" id="evfDateStart" step="1" disabled>
+              <span class="hint">Не редактируется: в <code>t_launch_settings.time_start</code> проставляется момент сохранения.</span></div>
+          </div>
+          <div class="ev-checks">
+            <label class="ev-chk"><input type="checkbox" id="evfActive"> Is active</label>
+            <!-- Только показывает состояние: значение задаёт переключатель метода. Поле
+                 оставлено видимым и в единичном методе — is_batch уходит в прод-таблицы, и
+                 человек должен видеть, с каким значением, а не догадываться по названию. -->
+            <label class="ev-chk fixed" id="evfBatchBox"><input type="checkbox" id="evfBatch" checked disabled> Is batch
+              <span class="hint" id="evfBatchHint"></span></label>
+            <label class="ev-chk"><input type="checkbox" id="evfChain"> Is chain
+              <span class="hint">маппинг шаблона уйдёт в d_template_mapping_mass</span></label>
+            <!-- Только у массового метода: у единичного итоговый скрипт и есть вся
+                 выборка, пропускать там нечего. Прячется переключателем метода. -->
+            <label class="ev-chk" id="evfPromoBox"><input type="checkbox" id="evfPromo"> Is promo
+              <span class="hint">итоговый скрипт не составляется: в шаги уедут только запросы
+                с экрана «Шаги отбора»</span></label>
+          </div>
+        </div>
+
+        <!-- Расписание словами. Выражение шестипольное (Quartz: секунды минуты часы
+             день-месяца месяц день-недели) — «45 32 10 * * ?» руками пишут с ошибкой
+             чаще, чем без. Собираем его тут же и показываем рядом. -->
+        <div class="ev-step">
+          <div class="t">Расписание</div>
+          <div class="ev-fields">
+            <div class="ev-f"><label for="evfTime">Время запуска</label><input type="time" id="evfTime" step="1" value="09:00:00">
+              <span class="hint">часы:минуты:секунды</span></div>
+            <div class="ev-f"><label for="evfFreq">Как часто</label><select id="evfFreq">
+                <option value="daily">каждый день</option>
+                <option value="everyNDays">каждые N дней</option>
+                <option value="weekdays">по будням (пн–пт)</option>
+                <option value="dow">по выбранным дням недели</option>
+                <option value="monthly">раз в месяц, определённого числа</option>
+                <option value="everyNHours">каждые N часов</option>
+                <option value="everyNMinutes">каждые N минут</option>
+              </select></div>
+            <!-- Подпись и верхняя граница зависят от выбранной частоты: 31 день бывает,
+                 31 час — нет. Обе проставляет renderCron. -->
+            <div class="ev-f" id="evfEveryBox"><label for="evfEvery" id="evfEveryLab">Повторять каждые</label>
+              <input type="number" id="evfEvery" value="2" min="1" max="31" step="1"></div>
+            <div class="ev-f" id="evfDomBox"><label for="evfDom">Число месяца</label>
+              <input type="number" id="evfDom" value="1" min="1" max="31" step="1"></div>
+          </div>
+          <div class="ev-checks" id="evfDowBox">
+            <label class="ev-chk"><input type="checkbox" data-dow="MON"> пн</label>
+            <label class="ev-chk"><input type="checkbox" data-dow="TUE"> вт</label>
+            <label class="ev-chk"><input type="checkbox" data-dow="WED"> ср</label>
+            <label class="ev-chk"><input type="checkbox" data-dow="THU"> чт</label>
+            <label class="ev-chk"><input type="checkbox" data-dow="FRI"> пт</label>
+            <label class="ev-chk"><input type="checkbox" data-dow="SAT"> сб</label>
+            <label class="ev-chk"><input type="checkbox" data-dow="SUN"> вс</label>
+          </div>
+          <div class="ev-fields" style="margin-top:14px">
+            <div class="ev-f wide"><label for="evfCrontab">Выражение расписания</label>
+              <input type="text" id="evfCrontab" autocomplete="off" spellcheck="false" readonly>
+              <span class="hint" id="evfCronWords"></span>
+              <label class="ev-chk" style="margin-top:4px"><input type="checkbox" id="evfCronManual"> вписать выражение вручную
+                <span class="hint">если нужного расписания нет в списке</span></label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- 2. Шаги отбора ---------- -->
+      <div class="wz-pane" id="evfPane2" hidden>
+        <div class="ev-step">
+          <div class="t">Шаги отбора общей базы</div>
+          <p class="wz-note" id="evfStepsNote">Выполняются планировщиком по порядку и готовят общую базу — тех, кто вообще попадает в рассылку. Результат движку отдают не они, а итоговый скрипт с четвёртого экрана: он уйдёт последним шагом и вернёт готовую выборку.</p>
+          <div class="ev-fields">
+            <div class="ev-f"><label for="evfStepCount">Количество шагов</label><input type="number" id="evfStepCount" value="1" min="1" max="20" step="1"></div>
+          </div>
+          <div id="evfSteps"></div>
+        </div>
+        <div class="ev-step" id="evfFinalBox">
+          <div class="t">Итоговая таблица</div>
+          <div class="ev-fields">
+            <div class="ev-f wide"><label for="evfFinalTable">Куда шаги складывают отобранную базу</label>
+              <input type="text" id="evfFinalTable" placeholder="mrk_sandbox.my_funnel_base" autocomplete="off" spellcheck="false">
+              <span class="hint">Схема и имя целиком. Из неё читает итоговый скрипт — без неё его не собрать.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- 3. Дни и шаблоны ---------- -->
+      <!-- Экран показывает одно из двух — решает флаг is_chain с первого экрана.
+           Цепочка это набор пар «день — шаблон», одиночная отправка — один шаблон, и
+           спрашивать у неё дни значило бы предлагать заполнить то, что никуда не уедет:
+           маппинг у них разный (d_template_mapping против d_template_mapping_mass). -->
+      <div class="wz-pane" id="evfPane3" hidden>
+        <div class="ev-step">
+          <div class="t" id="evfTplTitle">Шаблон</div>
+          <p class="wz-note" id="evfTplNote"></p>
+
+          <!-- одиночная отправка: один шаблон, дней нет -->
+          <div id="evfSingleBox">
+            <div class="ev-fields">
+              <div class="ev-f"><label for="evfTplCode">Код шаблона</label>
+                <input type="text" id="evfTplCode" autocomplete="off" spellcheck="false" placeholder="например 100501">
+                <span class="hint">Из прод-справочника шаблонов. Канал не спрашиваем: он выбран на первом экране в <code>notify_channel</code>.</span></div>
+            </div>
+          </div>
+
+          <!-- Флаг про событие целиком, а не про режим: стоит снаружи обеих половин,
+               потому что сервисное событие бывает и одиночным, и цепочкой. -->
+          <div class="ev-checks">
+            <label class="ev-chk"><input type="checkbox" id="evfService"> Сервисное событие
+              <span class="hint">Итоговый скрипт уйдёт с <code>returns_result_set = false</code>:
+                движок не ждёт от него выборки. Снят — последний шаг возвращает результат,
+                как у обычной рассылки.</span></label>
+          </div>
+
+          <!-- цепочка: пары «день — шаблон» -->
+          <div id="evfChainBox" hidden>
+            <div class="ev-fields">
+              <div class="ev-f"><label for="evfDayCol">Колонка с днём в итоговой таблице</label>
+                <input type="text" id="evfDayCol" value="day_num" autocomplete="off" spellcheck="false">
+                <span class="hint">По ней раскладывается <code>CASE</code> в итоговом скрипте.</span></div>
+            </div>
+            <div id="evfTemplates"></div>
+            <div class="ev-edit-row"><button type="button" class="ev-mini" onclick="evfTplAdd()">+ строка</button>
+              <span class="ev-edit-msg">день — значение в колонке; код — из прод-справочника шаблонов</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- 4. Итоговый скрипт ---------- -->
+      <div class="wz-pane" id="evfPane4" hidden>
+        <div class="ev-step">
+          <div class="t">Итоговый скрипт</div>
+          <p class="wz-note">Собран из итоговой таблицы и пар «день — шаблон». Уйдёт последним шагом события, и именно его результат читает движок. Править можно: пересобрать заново — кнопкой под полем.</p>
+          <div class="ev-fields">
+            <div class="ev-f wide"><label for="evfScript">SQL</label><textarea id="evfScript" spellcheck="false" style="min-height:230px"></textarea></div>
+          </div>
+          <div class="ev-edit-row"><button type="button" class="ev-mini" id="evfScriptGen">собрать заново</button>
+            <span class="ev-edit-msg" id="evfScriptMsg"></span></div>
+        </div>
+      </div>
+
+      <!-- ---------- 5. Отправка (отладка) ---------- -->
+      <div class="wz-pane" id="evfPane5" hidden>
+        <div class="ev-step">
+          <div class="t">Что уйдёт на сервер</div>
+          <p class="wz-note">По кнопке «Запустить коммуникацию» открывается окно с планом записи — какие колонки каких таблиц получат какие значения. Событие заводит кнопка <b>в этом окне</b>; пока оно не нажато, на сервер не уходит ничего. Тело запроса показывается здесь целиком. План посчитан по форме: это ожидание, а не ответ базы — что получилось на самом деле, покажет ответ сервера под кнопками.</p>
+          <div class="ev-fields">
+            <div class="ev-f wide"><label>POST /api/events/offline</label>
+              <pre class="wz-json" id="evfPayload">Нажмите «Запустить коммуникацию» — здесь появится тело запроса.</pre></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ev-foot">
+        <button class="ev-btn ghost" id="evfBack" type="button">Назад</button>
+        <button class="ev-btn" id="evfNext" type="button">Далее</button>
+        <button class="ev-btn" id="evfSubmit" type="button" hidden>Запустить коммуникацию</button>
+        <button class="ev-btn ghost" id="evfReset" type="button">Отмена</button>
+        <span class="ev-msg" id="evfMsg"></span>
+      </div>
+      <div id="evfResult"></div>
+      </div><!-- /#evfWizard -->
+
+      <!-- План записи. Живёт внутри секции: стили событий изолированы @scope по
+           #sec-event-offline, снаружи оформление до окна не дотянется. -->
+      <div class="ev-modal" id="evfPlanModal">
+        <div class="ev-modal-card" role="dialog" aria-modal="true" aria-labelledby="evfPlanTitle">
+          <div class="ev-modal-head">
+            <h3 id="evfPlanTitle">Куда что запишется</h3>
+            <span class="ev-modal-sub" id="evfPlanSum"></span>
+            <button type="button" class="ev-modal-x" id="evfPlanClose" title="Закрыть">✕</button>
+          </div>
+          <div class="ev-modal-body" id="evfPlanBody"></div>
+          <!-- Событие заводит кнопка ЗДЕСЬ, а не та, что открыла окно. Восемь с лишним
+               строк в боевых таблицах, откат — руками в psql; окно с планом и есть то
+               место, где человек видит, на что соглашается. -->
+          <div class="ev-modal-foot">
+            <span class="ev-modal-note" id="evfPlanNote">Проверьте план: это ожидание по форме, а не ответ базы.</span>
+            <button class="ev-btn ghost" id="evfPlanOk" type="button">Отмена</button>
+            <button class="ev-btn" id="evfPlanGo" type="button">Завести событие</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== События → Список событий ===== -->
+    <!-- ===== Окно заведения события =====
+         Живёт в секции списка намеренно: стили событий изолированы @scope по трём
+         секциям сразу (#sec-event-online, #sec-event-offline, #sec-event-list), и окно
+         снаружи осталось бы без оформления.
+
+         Форму окно не дублирует, а забирает: при открытии переносит к себе #evoForm или
+         #evfWizard, при закрытии возвращает на место. Поэтому обработчики, значения
+         полей и весь код форм остаются теми же — окно меняет только место показа. -->
+    <section class="view" id="sec-event-list">
+      <div class="ev-modal ev-modal-wide" id="evWizModal">
+        <div class="ev-modal-card" role="dialog" aria-modal="true" aria-labelledby="evWizTitle">
+          <div class="ev-modal-head">
+            <h3 id="evWizTitle">Новое событие</h3>
+            <span class="ev-modal-sub" id="evWizSub">Выберите, какое событие заводим</span>
+            <button type="button" class="ev-modal-x" id="evWizClose" title="Закрыть">✕</button>
+          </div>
+          <div class="ev-modal-body" id="evWizBody">
+            <!-- Шаг 0. Дальше ветвится сама выбранная форма: у события по расписанию
+                 внутри свой переключатель массового и единичного метода. -->
+            <div class="ev-pick-kind" id="evWizPick">
+              <button type="button" class="ev-kind" data-kind="online">
+                <span class="ev-kind-t">Онлайн-событие</span>
+                <span class="ev-kind-d">Приходит из внешней системы. Расписания нет: событие
+                  случилось — коммуникация ушла.</span>
+                <span class="ev-kind-tbl">tracker.t_event_comm · маппинг шаблона · метод отправки</span>
+              </button>
+              <button type="button" class="ev-kind" data-kind="offline">
+                <span class="ev-kind-t">Событие по расписанию</span>
+                <span class="ev-kind-d">Планировщик выполняет SQL-шаги по кронтабу и порождает
+                  рассылку. Дальше выбирается массовый или единичный метод.</span>
+                <span class="ev-kind-tbl">scheduler.t_get_event · шаги выборки · маппинги</span>
+              </button>
+            </div>
+          </div>
+          <div class="ev-modal-foot">
+            <span class="ev-modal-note" id="evWizNote"></span>
+            <button class="ev-btn ghost" id="evWizBack" type="button" hidden>К выбору типа</button>
+          </div>
+        </div>
+      </div>
+      <div class="eyebrow">CRM · Events · Catalog</div>
+      <h1>Список <span class="grad">событий</span></h1>
+      <p class="sub">Всё, что заведено в нашей модели: и созданное формой, и затянутое из crmdb. Поиск, фильтры и подсчёт идут на сервере — событий тысячи, и целиком в браузер они не грузятся. Клик по строке раскрывает карточку с расписанием, шагами выборки и связями с боевой базой.</p>
+
+      <!-- Шапка реестра — та же, что у «Шаблонов и сегментов» (стили в css/registry.css).
+           Отличие одно: здесь реестр занимает раздел целиком, без карточки-обёртки, —
+           он тут единственное содержимое, и вторая рамка съедала бы место даром. -->
+      <div class="sf-head">
+        <div class="sf-obj">
+          <span class="sf-obj-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          </span>
+          <div>
+            <div class="sf-obj-kind">События коммуникаций</div>
+            <div class="sf-obj-title">Все события <span class="sf-caret">▾</span></div>
+          </div>
+        </div>
+        <div class="sf-actions">
+          <input type="text" id="evlQ" class="sf-search" placeholder="Поиск в списке…" autocomplete="off">
+          <button class="sf-btn" id="evlApply" type="button">Показать</button>
+          <button class="sf-btn" id="evlReset" type="button">Сбросить фильтры</button>
+          <button class="sf-btn" id="evlExport" type="button" title="Выгрузить то, что видно в таблице: те же колонки и тот же фильтр">↓ Экспорт</button>
+          <button class="sf-btn primary" id="evlNew" type="button">＋ Завести событие</button>
+        </div>
+      </div>
+
+      <div class="filters-row">
+        <div class="field"><label for="evlKind">Род</label>
+          <select id="evlKind"><option value="">любой</option><option value="income">онлайновое</option><option value="time">по расписанию</option></select></div>
+        <div class="field"><label for="evlChannel">Канал</label>
+          <select id="evlChannel"><option value="">любой</option></select></div>
+        <div class="field"><label for="evlActive">Активность</label>
+          <select id="evlActive"><option value="">любая</option><option value="true">только активные</option><option value="false">только выключенные</option></select></div>
+        <div class="field"><label for="evlExported">В боевой базе</label>
+          <select id="evlExported"><option value="">неважно</option><option value="true">переливали</option><option value="false">не переливали</option></select></div>
+      </div>
+
+      <div class="sf-count"><span class="ev-msg" id="evlMsg"></span></div>
+      <div id="evlBox"></div>
+      <!-- Карточка события. Не под строкой списка, а вместо него: читают её целиком, а
+           раскрытая внутри таблицы она отрезалась колонками по бокам и терялась при
+           первом же обновлении списка. Разметку рисует renderEventCard. -->
+      <div id="evCardHost" hidden></div>
+      <div class="ev-foot" id="evlPager" style="display:none" data-list-part="1">
+        <button class="ev-btn ghost" id="evlPrev" type="button">← Назад</button>
+        <span class="ev-msg" id="evlPage"></span>
+        <button class="ev-btn ghost" id="evlNext" type="button">Вперёд →</button>
+      </div>
+    </section>
+
     <section class="view ov-view" id="view-mon-overview">
       <div class="ov-head"><h1 data-i18n-html="h1_mon">Мониторинг <span class="grad">процессов CRM</span></h1></div>
       <div class="ov-sub" data-i18n="Контроль работоспособности кампаний и интеграций. Выберите подраздел.">Контроль работоспособности кампаний и интеграций. Выберите подраздел.</div>
       <div class="ov-grid">
-        <div class="ov-card" data-nav-ref="mon-campaigns" data-acl-section="monitoring" onclick="openSection('monitoring','mon-campaigns')">
+        <div class="ov-card" data-nav-ref="mon-campaigns" onclick="openSection('monitoring','mon-campaigns')">
           <div class="ov-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
           <h3 data-i18n="Базовая работа кампаний">Базовая работа кампаний</h3>
           <p data-i18n="Отбор базы, поступление событий, отправки, доставки и дублирование коммуникаций.">Отбор базы, поступление событий, отправки, доставки и дублирование коммуникаций.</p>
@@ -972,6 +1415,10 @@
       <thead>
         <tr>
           <th data-i18n="Дата">Дата</th>
+          <!-- Название задачи словами: первое, что видно в строке, и оно же уезжает
+               заголовком в Jira. Не путать с «Названием коммуникации» — то техническое. -->
+          <th data-i18n="Название">Название</th>
+          <th data-i18n="Заказчик">Заказчик</th>
           <th data-i18n="Продукт">Продукт</th>
           <th data-i18n="Партнёр">Партнёр</th>
           <th data-i18n="База">База</th>
@@ -980,6 +1427,8 @@
           <th data-i18n="Тотал">Тотал</th>
           <th data-i18n="Уникальное имя">Уникальное имя</th>
           <th data-i18n="Название коммуникации">Название коммуникации</th>
+          <th data-i18n="Ссылка">Ссылка</th>
+          <th data-i18n="Описание">Описание</th>
           <th data-i18n="Задача">Задача</th>
           <th data-i18n="Ответственный">Ответственный</th>
           <th data-i18n="Статус">Статус</th>
@@ -1123,7 +1572,14 @@
       <!-- PROMO -->
       <div class="field" data-req="partner" id="sbWrapPartner" style="display:none">
         <label for="sbPartner"><span data-i18n="Партнёр / General / Digest">Партнёр / General / Digest</span> <span class="req">*</span></label>
-        <input id="sbPartner" type="text" placeholder="General / tinkoff">
+        <!-- input + datalist, а не select: General и Digest в справочнике не значатся,
+             да и новый партнёр появляется раньше, чем его успевают завести. Кнопка «+»
+             кладёт вписанное в справочник, чтобы в следующий раз он был в подсказке. -->
+        <div class="combo-add">
+          <input id="sbPartner" type="text" list="sbPartnerList" placeholder="General / tinkoff" autocomplete="off">
+          <datalist id="sbPartnerList"></datalist>
+          <button type="button" class="dict-add" id="sbPartnerAdd" title="Добавить партнёра в справочник">+</button>
+        </div>
       </div>
       <div class="field" data-req="uniqP" id="sbWrapUniqP" style="display:none">
         <label for="sbUniqP"><span data-i18n="Уникальное название">Уникальное название</span> <span class="req">*</span></label>
@@ -1263,6 +1719,7 @@
         <div class="flags-row">
             <div class="field checkbox"><input type="checkbox" class="cb-night_send"><label>Night Send</label></div>
             <div class="field checkbox"><input type="checkbox" class="cb-cross" onchange="updateComnameFromCheckboxes(this)"><label>Cross</label></div>
+            <div class="field checkbox"><input type="checkbox" class="cb-autopromo" onchange="updateComnameFromCheckboxes(this)"><label>Is Autopromo</label></div>
         </div>
     </div>
 </div>
@@ -1356,6 +1813,7 @@
         <div class="flags-row">
             <div class="field checkbox"><input type="checkbox" class="cb-night_send"><label>Night Send</label></div>
             <div class="field checkbox"><input type="checkbox" class="cb-cross" onchange="updateComnameFromCheckboxes(this)"><label>Cross</label></div>
+            <div class="field checkbox"><input type="checkbox" class="cb-autopromo" onchange="updateComnameFromCheckboxes(this)"><label>Is Autopromo</label></div>
         </div>
     </div>
 </div>
@@ -1454,6 +1912,7 @@
         <div class="flags-row">
             <div class="field checkbox"><input type="checkbox" class="cb-night_send"><label>Night Send</label></div>
             <div class="field checkbox"><input type="checkbox" class="cb-cross" onchange="updateComnameFromCheckboxes(this)"><label>Cross</label></div>
+            <div class="field checkbox"><input type="checkbox" class="cb-autopromo" onchange="updateComnameFromCheckboxes(this)"><label>Is Autopromo</label></div>
         </div>
     </div>
 </div>
@@ -1607,6 +2066,7 @@
     </div></div>
     <div class="flags-group"><div class="flags-group-label">Настроечные</div><div class="flags-row">
         <div class="field checkbox"><input type="checkbox" class="cb-cross" onchange="updateComnameFromCheckboxes(this)"><label>Cross</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-autopromo" onchange="updateComnameFromCheckboxes(this)"><label>Is Autopromo</label></div>
     </div></div>
 </div>
 </div>
@@ -1650,6 +2110,7 @@
     </div></div>
     <div class="flags-group"><div class="flags-group-label">Настроечные</div><div class="flags-row">
         <div class="field checkbox"><input type="checkbox" class="cb-cross" onchange="updateComnameFromCheckboxes(this)"><label>Cross</label></div>
+        <div class="field checkbox"><input type="checkbox" class="cb-autopromo" onchange="updateComnameFromCheckboxes(this)"><label>Is Autopromo</label></div>
     </div></div>
 </div>
 </div>
@@ -1713,6 +2174,8 @@
     <div class="sf-actions">
       <input id="listSearch" class="sf-search" placeholder="Поиск в списке…" data-i18n-ph="Поиск в списке…" oninput="applyFilters()">
       <button type="button" class="sf-btn" onclick="resetFilters()" data-i18n="Сбросить фильтры">Сбросить фильтры</button>
+      <button type="button" class="sf-btn" id="listExport" onclick="exportTemplateList()" title="Выгрузить то, что видно в таблице: те же колонки, тот же фильтр и порядок">↓ <span data-i18n="Экспорт">Экспорт</span></button>
+      <button type="button" class="sf-btn primary" id="listNew" onclick="newTemplate()">＋ <span data-i18n="Новый шаблон">Новый шаблон</span></button>
       <div class="sf-settings">
         <button type="button" class="sf-gear" id="listGear" title="Настройка полей и фильтров" onclick="toggleListPanel(event)">
           <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
@@ -2136,19 +2599,53 @@
       <div class="jr-toolbar">
         <select id="jrSelect" title="Выбор цепочки"></select>
         <input id="jrName" placeholder="Название цепочки" data-i18n-ph="Название цепочки" title="Название цепочки">
-        <select id="jrKind" title="Тип цепочки: online — от входящего события, offline — по расписанию (ретеншен)" onchange="jrKindChanged()">
-          <option value="online">online</option>
-          <option value="offline">offline</option>
-        </select>
-        <select id="jrContinues" title="Продолжением какой online-цепочки является (метка)" style="display:none">
-          <option value="">— продолжение (метка) —</option>
-        </select>
+        <!-- Тип цепочки выбирается при заведении, в модалке «Новая»: онлайн и оффлайн —
+             развилка в начале, а не настройка готовой схемы. Здесь только показываем,
+             какая цепочка открыта. -->
+        <span id="jrKindLabel" class="jr-hint">online · от события</span>
         <span class="jr-sep"></span>
         <button type="button" class="jr-btn jr-new"     onclick="jrNew()"><span data-i18n="Новая">Новая</span></button>
+        <!-- Готовая цепочка на холст: посмотреть, как складываются блоки. Ничего
+             не сохраняет и никуда не пишет — это черновик, как «Новая». -->
+        <button type="button" class="jr-btn" onclick="jrExample()"><span data-i18n="Пример: онлайн">Пример: онлайн</span></button>
+        <!-- Второй пример: настоящий оффлайн-процесс (воронка МФО), разложенный по
+             шагам. Стрелки — зависимости по таблицам, а не порядок ORDER_NUM. -->
+        <button type="button" class="jr-btn" onclick="jrExampleOffline()"><span data-i18n="Пример: оффлайн">Пример: оффлайн</span></button>
         <button type="button" class="jr-btn jr-save"    onclick="jrSave()"><span data-i18n="Сохранить">Сохранить</span></button>
         <button type="button" class="jr-btn jr-preview" onclick="jrPreview()"><span data-i18n="Предпросмотр">Предпросмотр</span></button>
+        <!-- Заведение цепочки в commapi.events_chain: строка на шаг. Отдельно от
+             «Сохранить» намеренно — то пишет нашу схему, это боевую таблицу crmdb. -->
+        <button type="button" class="jr-btn" onclick="jrChainCreate()"><span data-i18n="Завести цепочку">Завести цепочку</span></button>
         <button type="button" class="jr-btn jr-delete"  onclick="jrDelete()"><span data-i18n="Удалить">Удалить</span></button>
-        <span id="jrHint" class="jr-hint">Двойной клик по блоку — настройки. Ctrl+клик / Shift+рамка — выделить несколько (двигаются вместе, Delete удаляет). Клик по связи — кнопка удаления, двойной клик — точка излома.</span>
+        <span class="jr-sep"></span>
+        <!-- Цепочка, которая реально лежит в commapi.events_chain: только показать.
+             Правку существующих не делаем — по этим строкам движок ведёт людей. -->
+        <select id="jrChainPick" title="Событие из tracker.t_event_comm, у которого заведена цепочка">
+          <option value="">— цепочка события —</option>
+        </select>
+        <button type="button" class="jr-btn" onclick="jrChainOpen()"><span data-i18n="Показать">Показать</span></button>
+        <button type="button" class="jr-btn" onclick="jrFit()" title="Уместить всю схему на экран"><span data-i18n="Уместить">Уместить</span></button>
+        <!-- Масштаб: колесо мыши наводится на нужное место, кнопки — когда мыши под
+             рукой нет. Процент кликабельный — возвращает 100%. -->
+        <span class="jr-zoom">
+          <button type="button" onclick="jrZoomOut()" title="Отдалить (колесо мыши вниз)">−</button>
+          <button type="button" id="jrZoomPct" onclick="jrZoom100()" title="Показать в натуральную величину">100%</button>
+          <button type="button" onclick="jrZoomIn()" title="Приблизить (колесо мыши вверх)">+</button>
+        </span>
+        <span id="jrHint" class="jr-hint">Двойной клик по блоку — настройки. Рамкой по пустому месту или Ctrl+кликом — выделить несколько (двигаются вместе, Delete удаляет). Блок на рамке группировки едет вместе с ней. Shift+протянуть — двигать холст. Клик по связи — кнопка удаления, двойной клик — точка излома.</span>
+      </div>
+      <!-- События, обрывающие весь поток. Над холстом, а не на нём: на холсте они
+           ездят и мельчают вместе со схемой, а читают их постоянно. Свёрнуты в
+           выпадающий список — десять имён в строку занимали всю ширину раздела
+           ради того, что смотрят изредка. Наполняет journeys.js из условия в
+           блоке Income event. -->
+      <div id="jrExitBar" class="jr-exit-bar" style="display:none">
+        <button type="button" id="jrExitBtn" class="jr-exit-btn" onclick="jrExitToggle()">
+          <b>Отменяют цепочку</b>
+          <span id="jrExitCount" class="jr-exit-count"></span>
+          <span class="jr-exit-caret">▾</span>
+        </button>
+        <div id="jrExitPop" class="jr-exit-pop" style="display:none"></div>
       </div>
       <!-- Наконечник стрелки для связей Drawflow (marker-end в CSS) -->
       <svg width="0" height="0" style="position:absolute">
@@ -2168,6 +2665,11 @@
           <div class="jr-tb-group" data-i18n="Действия">Действия</div>
           <button type="button" class="jr-tb-item tb-comm"    onclick="jrAddNode('comm')">Communication Alert</button>
           <button type="button" class="jr-tb-item tb-subflow" onclick="jrAddNode('subflow')">Subflow</button>
+          <!-- Отдельной группы «Цепочка» больше нет: задержку задаёт Pause, условие —
+               Decision, и оба живут в «Логике». Свои блоки под то же самое означали бы
+               два способа сказать одно, а в таблицу уезжает всё равно одна колонка.
+               Условие выхода кнопкой не ставится вовсе — оно действует всё время и
+               лежит полем в блоке Income event. -->
           <div class="jr-tb-group" data-i18n="Логика">Логика</div>
           <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('assignment')">Assignment</button>
           <button type="button" class="jr-tb-item tb-logic" onclick="jrAddNode('decision')">Decision</button>
@@ -2178,6 +2680,10 @@
           <button type="button" class="jr-tb-item tb-data" onclick="jrAddNode('updateRecords')">Update Records</button>
           <button type="button" class="jr-tb-item tb-data" onclick="jrAddNode('getRecords')">Get Records</button>
           <button type="button" class="jr-tb-item tb-data" onclick="jrAddNode('deleteRecords')">Delete Records</button>
+          <!-- Примечание: карточка без входов и выходов. Не участник потока, а подпись
+               к нему, поэтому ставится и на пустой холст — до того, как заведена цепочка. -->
+          <div class="jr-tb-group" data-i18n="Разное">Разное</div>
+          <button type="button" class="jr-tb-item tb-note" onclick="jrAddNode('noteCard')">Примечание</button>
         </div>
         <div id="jrCanvas">
           <!-- меню «стрелка в никуда»: выбрать ноду, она создастся в точке обрыва и подключится -->
@@ -2228,6 +2734,60 @@
           </div>
         </div>
       </div>
+
+      <!-- Модалка заведения цепочки. Спрашиваем то, что задаётся один раз и на весь
+           поток: стартовое событие, название, систему и отменяющее событие. Пустой
+           холст тут не годится — шаг существует только внутри цепочки. -->
+      <div id="jrNewChain" class="jr-modal" style="display:none">
+        <div class="jr-modal-card">
+          <div class="jr-modal-head">
+            <b data-i18n="Новая цепочка">Новая цепочка</b>
+            <button type="button" class="jr-modal-close" onclick="jrNewClose()">✕</button>
+          </div>
+          <div class="jr-modal-body">
+            <div class="jre-field">
+              <label data-i18n="Тип цепочки">Тип цепочки</label>
+              <!-- карточки строит journeys.js: выбранная помечается галкой -->
+              <div id="jrNewTypes" class="jr-cards"></div>
+              <!-- Значение читают collectJourney и renderJourney — селект остаётся,
+                   но им управляют карточки выше, а не человек напрямую. -->
+              <select id="jrKind" style="display:none" onchange="jrKindChanged()">
+                <option value="online">online</option>
+                <option value="offline">offline</option>
+              </select>
+            </div>
+            <div class="jre-field jr-only-online">
+              <label data-i18n="Стартовое событие">Стартовое событие — из tracker.t_event_comm</label>
+              <select id="jrNewEvent" onchange="jrNewSelect(this.value)"></select>
+              <div id="jrNewList" class="jr-hint"></div>
+            </div>
+            <div class="jre-field">
+              <label data-i18n="Название цепочки">Название цепочки</label>
+              <input id="jrNewName" placeholder="как будет называться в панели">
+            </div>
+            <div class="jre-field">
+              <label data-i18n="Система">Система</label>
+              <input id="jrNewSystem" placeholder="подставится из события">
+            </div>
+            <div class="jre-field jr-only-online">
+              <label data-i18n="Отменяющее событие">Отменяющее событие — SQL, одно на всю цепочку</label>
+              <textarea id="jrNewExit" placeholder='{"SELECT 1 FROM tracker.t_event t3 WHERE t3.event_name IN (...) AND t3.user_id = :userId AND t3.timestamp_cr >= current_date"}'></textarea>
+              <span class="jr-hint">Обрывает весь поток, а не отдельный шаг, и задаётся один раз — потом лежит в блоке Income event. Пусто — цепочку не оборвёт ничто.</span>
+            </div>
+            <div class="jre-field jr-only-offline" style="display:none">
+              <label data-i18n="Продолжение цепочки">Продолжение online-цепочки (метка)</label>
+              <select id="jrContinues" title="Продолжением какой online-цепочки является (метка)">
+                <option value="">— продолжение (метка) —</option>
+              </select>
+              <span class="jr-hint">Оффлайн стартует по крону: расписание и SQL-выборку задают в блоке Time event на холсте.</span>
+            </div>
+          </div>
+          <div class="jr-modal-foot">
+            <span class="jr-hint">Шаги добавляются потом, на холсте: Pause, Decision и Communication Alert.</span>
+            <button type="button" class="jr-btn jr-save" onclick="jrNewCreate()"><span data-i18n="Создать">Создать</span></button>
+          </div>
+        </div>
+      </div>
     </section>
 
   </main>
@@ -2239,10 +2799,10 @@
      скрипты, они делят общую глобальную область видимости, как раньше делили
      её инлайн-блоки на этих же местах. Менять порядок нельзя: boot.js в конце
      стартует приложение, когда всё уже объявлено. -->
-<script src="js/shell.js"></script>
+<script src="js/shell.js?v=2"></script>
 
 <script src="js/srcbuilder.js"></script>
-<script src="js/promo.js"></script>
+<script src="js/promo.js?v=5"></script>
 <script src="js/abtests.js"></script>
 <script src="js/reports.js"></script>
 <script src="js/smscheck.js"></script>
@@ -2254,7 +2814,10 @@
 <!-- метка версии: у скриптов панели её не было, и правки залипали в кеше браузера
      до жёсткого обновления — в настроечной админке эту метку добавили по той же причине -->
 <script src="js/entity-layout.js?v=2"></script>
-<script src="js/entities.js?v=2"></script>
+<script src="js/entities.js?v=4"></script>
+<script src="js/events.js?v=41"></script>
+<script src="js/comm-analytics.js?v=4"></script>
+<script src="js/event-chain.js?v=2"></script>
 
 <!-- ===== Скрипты разделов (перенесены со страниц как есть) ===== -->
 <!-- фиксированный попап подсказок полей (showFieldHelp): не обрезается краями карточек -->
@@ -2267,7 +2830,7 @@
 <script src="js/onelink.js"></script>
 <script src="js/wizard-forms.js"></script>
 <script src="js/template-details.js"></script>
-<script src="js/template-list.js"></script>
+<script src="js/template-list.js?v=4"></script>
 <script src="js/dashboard.js"></script>
 <script src="js/boot.js"></script>
 </body>

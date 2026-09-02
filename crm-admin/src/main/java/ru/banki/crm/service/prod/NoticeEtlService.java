@@ -45,6 +45,7 @@ public class NoticeEtlService {
     private final ProdDbService prod;
     private final TemplateStore store;
     private final JdbcTemplate jdbc;
+    private final ProcessControlService control;
 
     @Value("${app.etl.enabled:false}")
     private boolean enabled;
@@ -62,22 +63,24 @@ public class NoticeEtlService {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile Map<String, Object> lastRun = new LinkedHashMap<>();
 
-    public NoticeEtlService(ProdDbService prod, TemplateStore store, JdbcTemplate jdbc) {
+    public NoticeEtlService(ProdDbService prod, TemplateStore store, JdbcTemplate jdbc,
+                            ProcessControlService control) {
         this.prod = prod;
         this.store = store;
         this.jdbc = jdbc;
+        this.control = control;
     }
 
     // ------------------------------------------------------------------ расписание
     @Scheduled(fixedDelayString = "${app.etl.interval-ms:300000}", initialDelayString = "${app.etl.initial-delay-ms:60000}")
     public void tickIncremental() {
-        if (!enabled) return;
+        if (!enabled || !control.canStart(ProcessControlService.ETL_NOTICE)) return;
         try { run(false); } catch (Exception e) { log.warn("ETL инкремент: {}", e.toString()); }
     }
 
     @Scheduled(cron = "${app.etl.full-cron:0 0 22 * * *}")
     public void tickFull() {
-        if (!enabled) return;
+        if (!enabled || !control.canStart(ProcessControlService.ETL_NOTICE)) return;
         try { run(true); } catch (Exception e) { log.warn("ETL полный прогон: {}", e.toString()); }
     }
 
@@ -105,6 +108,14 @@ public class NoticeEtlService {
             res.put("skipped", "Прод-приёмник не настроен");
             return res;
         }
+        /* Свойство app.etl.enabled — верхняя граница («разрешён ли ETL на этой среде»),
+           выключатель в «Процессах переливов» — оперативный рычаг внутри неё. Проверяем
+           именно рычаг: свойство уже проверено в планировщике, а ручную кнопку он
+           закрывать не должен. */
+        if (!control.canStart(ProcessControlService.ETL_NOTICE)) {
+            res.put("skipped", "Процесс остановлен: «Переливы» → «Процессы переливов»");
+            return res;
+        }
         if (!running.compareAndSet(false, true)) {
             res.put("skipped", "Прогон уже идёт");
             return res;
@@ -120,6 +131,15 @@ public class NoticeEtlService {
 
         try {
             for (String ch : CHANNELS) {
+                /* Безопасная граница остановки — между каналами. Внутри канала идёт
+                   чтение прода потоком со сдвигом водяного знака в конце: оборвать его
+                   посередине значит либо потерять знак, либо поставить его на неполные
+                   данные. Дочитываем канал и выходим. */
+                if (control.stopRequested(ProcessControlService.ETL_NOTICE)) {
+                    res.put("stopped", "Остановлен по запросу; каналы после " + ch + " не читались");
+                    log.info("ETL: остановлен по запросу перед каналом {}", ch);
+                    break;
+                }
                 Timestamp since = full ? null : sinceFor(ch);
                 Set<Long> seen = new HashSet<>();
                 int[] cnt = { 0, 0 };   // [0] применено, [1] пропущено из-за очереди
@@ -155,6 +175,9 @@ public class NoticeEtlService {
             res.put("tookMs", System.currentTimeMillis() - t0);
             res.put("finishedAt", Instant.now().toString());
             lastRun = res;
+            control.noteRun(ProcessControlService.ETL_NOTICE,
+                    (full ? "полный" : "инкремент") + ": применено " + applied
+                    + (res.containsKey("stopped") ? ", остановлен по запросу" : ""));
             log.info("ETL {}: применено {}, пропущено (в очереди) {}, за {} мс",
                     full ? "полный" : "инкремент", applied, skippedQueued, System.currentTimeMillis() - t0);
             return res;

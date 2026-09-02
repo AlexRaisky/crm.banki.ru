@@ -1,6 +1,9 @@
 package ru.banki.crm.service.schema;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,8 +23,10 @@ import java.util.Set;
  * <p>
  * Три правила, вокруг которых всё построено:
  * <ol>
- *   <li><b>Только аддитивное.</b> Ни DROP, ни RENAME, ни смены типа — их тут нет
- *       физически, а не «запрещены флагом». Потерять данные этой ручкой нельзя.</li>
+ *   <li><b>Применение модели — только аддитивное.</b> Ни RENAME, ни смены типа: их тут нет
+ *       физически, а не «запрещены флагом». Удаление вынесено в отдельные ручки
+ *       (колонка, таблица, схема), каждая со своим подтверждением, — случайно потерять
+ *       данные, нажимая «Применить», нельзя.</li>
  *   <li><b>Только своё.</b> Трогаем схему, если она либо ещё не существует, либо
  *       числится за билдером в app.schema_owned. Чужую схему <b>обходим стороной</b>:
  *       такое уже есть и создано не нами, значит применяться не будет — ни сама схема,
@@ -49,12 +54,14 @@ public class SchemaDdlService {
     private EntityManager em;
 
     private final TransactionTemplate tx;
+    private final ru.banki.crm.service.SchemaModelService models;
 
     @Value("${app.env.name:prod}")
     private String envName;
 
-    public SchemaDdlService(TransactionTemplate tx) {
+    public SchemaDdlService(TransactionTemplate tx, ru.banki.crm.service.SchemaModelService models) {
         this.tx = tx;
+        this.models = models;
     }
 
     // ------------------------------------------------------------ ПРЕДПРОСМОТР
@@ -69,13 +76,13 @@ public class SchemaDdlService {
         Snapshot snap = tx.execute(s -> new Snapshot(skips(plan.schemas()), existing()));
         List<Skip> skips = snap == null ? List.of() : snap.skips();
         Set<String> have = snap == null ? Set.of() : snap.have();
-        Set<String> off = names(skips);
+        Map<String, Skip> off = guard(skips);
 
         List<Map<String, Object>> stmts = new ArrayList<>();
         List<String> freshSql = new ArrayList<>();
         int already = 0;
         for (DdlPlanner.Stmt st : plan.statements()) {
-            boolean skip = touchesSkipped(st, off);
+            boolean skip = blocked(st, off, have);
             boolean exists = !skip && alreadyThere(st, have);
             if (exists) already++;
             Map<String, Object> m = new LinkedHashMap<>();
@@ -95,7 +102,8 @@ public class SchemaDdlService {
         out.put("schemas", plan.schemas());
         out.put("problems", plan.problems());
         out.put("skipped", skips.stream()
-                .map(s -> Map.of("schema", s.schema(), "reason", s.reason())).toList());
+                .map(s -> Map.of("schema", s.schema(), "reason", s.reason(),
+                                 "newTablesOk", s.newTablesOk())).toList());
         out.put("applicable", freshSql.size());
         out.put("already", already);
         out.put("canApply", !freshSql.isEmpty());
@@ -107,6 +115,46 @@ public class SchemaDdlService {
 
     /** Слепок базы на один заход: что трогать нельзя и что уже создано. */
     private record Snapshot(List<Skip> skips, Set<String> have) {}
+
+    /**
+     * Насколько база отстала от модели — коротко и по сущностям.
+     * <p>
+     * Тот же расчёт, что и у предпросмотра, но свёрнутый до чисел: сколько объектов
+     * нарисовано и не создано, в каких схемах. Нужен в двух местах сразу — в конструкторе,
+     * чтобы расхождение было видно рядом с сущностью, и в «Выкатках», где структуру
+     * везут с контура на контур. Раньше ответ на этот вопрос добывался запросом в psql:
+     * модель показывала поле, база о нём не знала, и заметить это можно было только
+     * случайно.
+     * <p>
+     * Пропущенное охраной (защищённые схемы) в расхождения не считаем: это не отставание,
+     * а запрет — «применить» его всё равно не сможет.
+     */
+    public Map<String, Object> drift(JsonNode model) {
+        Map<String, Object> pv = preview(model);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> stmts = (List<Map<String, Object>>) pv.get("statements");
+
+        List<Map<String, Object>> missing = new ArrayList<>();
+        Map<String, Integer> bySchema = new LinkedHashMap<>();
+        for (Map<String, Object> st : stmts) {
+            if (Boolean.TRUE.equals(st.get("skip")) || Boolean.TRUE.equals(st.get("exists"))) {
+                continue;
+            }
+            missing.add(st);
+            String schema = String.valueOf(st.getOrDefault("schema", ""));
+            bySchema.merge(schema, 1, Integer::sum);
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("missing", missing.size());
+        out.put("items", missing.size() > 200 ? missing.subList(0, 200) : missing);
+        out.put("bySchema", bySchema);
+        out.put("already", pv.get("already"));
+        out.put("skipped", pv.get("skipped"));
+        out.put("problems", pv.get("problems"));
+        out.put("sql", pv.get("sql"));
+        return out;
+    }
 
     // ------------------------------------------------------------- ПРИМЕНЕНИЕ
 
@@ -128,7 +176,7 @@ public class SchemaDdlService {
                    от всего сразу выглядел бы как поломка. Пропуск идёт в журнал: молча
                    не сделать то, что человек видел в предпросмотре, нельзя. */
                 List<Skip> skips = skips(plan.schemas());
-                Set<String> off = names(skips);
+                Map<String, Skip> off = guard(skips);
                 for (Skip s : skips) {
                     audit("SKIP", s.schema(), null, null, "SKIPPED", s.reason(),
                             System.currentTimeMillis() - started);
@@ -138,7 +186,7 @@ public class SchemaDdlService {
                    найти в нём настоящее изменение стало бы нельзя. */
                 Set<String> have = existing();
                 List<DdlPlanner.Stmt> run = plan.statements().stream()
-                        .filter(st -> !touchesSkipped(st, off) && !alreadyThere(st, have)).toList();
+                        .filter(st -> !blocked(st, off, have) && !alreadyThere(st, have)).toList();
                 if (run.isEmpty()) throw new GuardViolation(
                         "Нечего применять: всё, что можно создать, в базе уже есть");
 
@@ -168,10 +216,10 @@ public class SchemaDdlService {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("applied", done);
                 m.put("schemas", new ArrayList<>(touchedSchemas));
-                long blocked = plan.statements().stream().filter(st -> touchesSkipped(st, off)).count();
-                m.put("skipped", blocked);
-                m.put("already", plan.statements().size() - run.size() - blocked);
-                m.put("skippedSchemas", new ArrayList<>(off));
+                long guarded = plan.statements().stream().filter(st -> blocked(st, off, have)).count();
+                m.put("skipped", guarded);
+                m.put("already", plan.statements().size() - run.size() - guarded);
+                m.put("skippedSchemas", new ArrayList<>(off.keySet()));
                 return m;
             });
             return res;
@@ -187,8 +235,17 @@ public class SchemaDdlService {
 
     // ----------------------------------------------------------------- ОХРАНА
 
-    /** Схема, которую применение обойдёт, и почему. */
-    public record Skip(String schema, String reason) {}
+    /**
+     * Схема под охраной: что именно ей запрещено и почему.
+     * <p>
+     * {@code newTablesOk} различает два случая, которые раньше были свалены в один.
+     * Схема из стоп-листа (app.schema_reserved) — наша, просто её существующие
+     * таблицы трогать нельзя: это боевые справочники, и колонка, доехавшая туда
+     * по недосмотру, ломает синхронизацию с продом. Заводить в ней НОВЫЕ таблицы
+     * при этом можно и нужно. Чужая же схема — та, что существует и за билдером
+     * не числится, — закрыта целиком: в ней и создавать нечего, мы её не ведём.
+     */
+    public record Skip(String schema, String reason, boolean newTablesOk) {}
 
     /**
      * Какие из этих схем трогать нельзя. Пусто — путь свободен весь.
@@ -200,37 +257,53 @@ public class SchemaDdlService {
         List<Skip> out = new ArrayList<>();
         for (String s : schemas) {
             if (!DdlPlanner.valid(s)) {
-                out.add(new Skip(s, "недопустимое имя схемы"));
+                out.add(new Skip(s, "недопустимое имя схемы", false));
                 continue;
             }
             String reserved = reservedReason(s);
             if (reserved != null) {
-                out.add(new Skip(s, "защищена и билдеру недоступна"
-                        + (reserved.isBlank() ? "" : " (" + reserved + ")")));
+                out.add(new Skip(s, "существующие таблицы защищены, новые создавать можно"
+                        + (reserved.isBlank() ? "" : " (" + reserved + ")"), true));
                 continue;
             }
             if (existsInDb(s) && !isOwned(s)) {
-                out.add(new Skip(s, "уже есть в базе и заведена не билдером"));
+                out.add(new Skip(s, "уже есть в базе и заведена не билдером", false));
             }
         }
         return out;
     }
 
-    private static Set<String> names(List<Skip> skips) {
-        Set<String> out = new LinkedHashSet<>();
-        if (skips != null) for (Skip s : skips) out.add(s.schema());
+    private static Map<String, Skip> guard(List<Skip> skips) {
+        Map<String, Skip> out = new LinkedHashMap<>();
+        if (skips != null) for (Skip s : skips) out.put(s.schema(), s);
         return out;
     }
 
     /**
-     * Инструкция задевает недоступную схему? Считаем по всем её схемам, а не только по
-     * целевой: внешний ключ живёт в нашей таблице, но ссылается в чужую — и повесил бы
-     * на неё constraint. Такое тоже мимо.
+     * Инструкцию выполнять нельзя?
+     * <p>
+     * Чужая схема закрыта целиком, и считаем по всем схемам инструкции, а не только по
+     * целевой: внешний ключ живёт в нашей таблице, но вешает constraint на ту, куда
+     * ссылается — такое тоже мимо.
+     * <p>
+     * Схема из стоп-листа устроена мягче: закрыты её СУЩЕСТВУЮЩИЕ таблицы, а не она сама.
+     * Новую таблицу в ней завести можно, вместе с её колонками и ключами — ничего чужого
+     * это не трогает. А вот колонка в уже существующую не пройдёт: там боевые справочники,
+     * и лишнее поле ломает синхронизацию с продом. Ссылаться на такую таблицу извне
+     * разрешаем: внешний ключ создаётся на СВОЕЙ таблице и структуру защищённой не меняет.
+     * Саму схему не создаём — она и так есть.
      */
-    private static boolean touchesSkipped(DdlPlanner.Stmt st, Set<String> off) {
-        if (off.isEmpty()) return false;
-        for (String r : st.refs()) if (off.contains(r)) return true;
-        return off.contains(st.schema());
+    private static boolean blocked(DdlPlanner.Stmt st, Map<String, Skip> guard, Set<String> have) {
+        if (guard.isEmpty()) return false;
+        for (String r : st.refs()) {
+            Skip s = guard.get(r);
+            if (s != null && !s.newTablesOk()) return true;
+        }
+        Skip own = guard.get(st.schema());
+        if (own == null) return false;
+        if (!own.newTablesOk()) return true;
+        if ("CREATE_SCHEMA".equals(st.kind())) return true;
+        return st.table() != null && have.contains("T:" + st.schema() + "." + st.table());
     }
 
     // -------------------------------------------------------- ЧТО УЖЕ ЕСТЬ В БАЗЕ
@@ -358,7 +431,12 @@ public class SchemaDdlService {
     public Map<String, Object> dropCandidates(JsonNode model) {
         Model want = modelTables(model);
         return tx.execute(s -> {
-            Set<String> off = names(skips(want.schemas()));
+            /* Мимо только схемы, закрытые целиком. Схему из стоп-листа не исключаем:
+               кандидатами и так становятся лишь таблицы из app.schema_owned, то есть
+               заведённые самим билдером, — а их он вправе и править. Боевые справочники
+               в реестр не попадали никогда и сюда не придут. */
+            Set<String> off = new LinkedHashSet<>();
+            for (Skip g : skips(want.schemas())) if (!g.newTablesOk()) off.add(g.schema());
             List<Map<String, Object>> out = new ArrayList<>();
             for (String key : ownedTables()) {
                 Set<String> cols = want.tables().get(key);
@@ -506,6 +584,299 @@ public class SchemaDdlService {
             auditSeparately("DROP", "ERROR", why, System.currentTimeMillis() - started);
             throw new DdlFailure(why, e);
         }
+    }
+
+    // ------------------------------------------------- ВЗЯТЬ ПОД УПРАВЛЕНИЕ
+
+    /**
+     * Взять существующие таблицы схемы под управление билдера.
+     * <p>
+     * Реестр app.schema_owned — это ответ на вопрос «чьё», и раздаётся он не молча: до
+     * сих пор запись появлялась только когда билдер создавал объект сам. Но в схеме, где
+     * он работает, часть таблиц приходит миграциями, и делать вид, что их нет, — значит
+     * показывать человеку неполную картину. Поэтому берём под управление явным действием:
+     * админ видит список, выбирает таблицы, и это уходит в журнал.
+     * <p>
+     * Защита та же: схемы из стоп-листа не трогаем ни при каких условиях.
+     */
+    public Map<String, Object> adopt(String schema, List<String> tables) {
+        long started = System.currentTimeMillis();
+        try {
+            return tx.execute(status -> {
+                if (!DdlPlanner.valid(schema)) {
+                    throw new GuardViolation("Недопустимое имя схемы: «" + schema + "»");
+                }
+                String reserved = reservedReason(schema);
+                if (reserved != null) throw new GuardViolation("Схема " + schema + " защищена: " + reserved);
+                if (tables == null || tables.isEmpty()) throw new GuardViolation("Не выбрано ни одной таблицы");
+
+                List<String> taken = new ArrayList<>();
+                for (String t : tables) {
+                    if (!DdlPlanner.valid(t)) throw new GuardViolation("Недопустимое имя таблицы: «" + t + "»");
+                    Object reg = em.createNativeQuery("SELECT to_regclass(:t)")
+                            .setParameter("t", schema + "." + t).getSingleResult();
+                    if (reg == null) throw new GuardViolation("Таблицы " + schema + "." + t + " нет в базе");
+                    own(schema, null);       // схема тоже наша: иначе правки в ней обойдёт охрана
+                    own(schema, t);
+                    taken.add(t);
+                }
+                audit("ADOPT", schema, String.join(", ", taken), null, "OK", null,
+                        System.currentTimeMillis() - started);
+
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("schema", schema);
+                m.put("adopted", taken);
+                return m;
+            });
+        } catch (GuardViolation g) {
+            auditSeparately("ADOPT", "REJECTED", g.getMessage(), System.currentTimeMillis() - started);
+            throw g;
+        } catch (RuntimeException e) {
+            String why = message(e);
+            auditSeparately("ADOPT", "ERROR", why, System.currentTimeMillis() - started);
+            throw e instanceof DdlFailure ? e : new DdlFailure(why, e);
+        }
+    }
+
+    // ------------------------------------------------- УДАЛЕНИЕ ТАБЛИЦ И СХЕМ
+
+    /** Кто ссылается на таблицу извне: чужой внешний ключ, который снимется вместе с ней. */
+    public record TableRef(String constraint, String schema, String table, String columns) {}
+
+    /**
+     * Что нужно знать до удаления: сколько в таблице строк и кто на неё ссылается.
+     * <p>
+     * Отдельной ручкой, а не «удалим и посмотрим»: число строк — единственное, что
+     * отличает пустую заготовку от таблицы с данными, и увидеть его человек должен
+     * ДО нажатия, а не в отчёте об удалении.
+     */
+    public Map<String, Object> tableInfo(String schema, String table) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("schema", schema);
+        m.put("table", table);
+        String why = undroppable(schema, table);
+        m.put("droppable", why == null);
+        m.put("reason", why);
+        m.put("rows", why == null ? rowCount(schema, table) : null);
+        m.put("refs", why == null ? inboundRefs(schema, table) : List.of());
+        return m;
+    }
+
+    /**
+     * Удалить таблицу вместе с её сущностью в модели.
+     * <p>
+     * Охрана та же, что у остальных разрушительных действий, плюс одно правило сверх неё:
+     * непустую таблицу удаляем, только если в запросе принесли ровно то число строк, которое
+     * человек видел в диалоге. Разошлось — значит за это время в таблицу писали, и удаляют
+     * уже не тот объект, про который спрашивали.
+     * <p>
+     * Сущность вычищаем из модели в той же транзакции. Иначе следующее «Применить» создало
+     * бы таблицу заново, и удаление выглядело бы как поломка билдера.
+     */
+    public Map<String, Object> dropTable(String schema, String table, boolean cascade, Long confirmRows) {
+        long started = System.currentTimeMillis();
+        try {
+            return tx.execute(status -> {
+                String why = undroppable(schema, table);
+                if (why != null) throw new GuardViolation(why);
+
+                long rows = rowCount(schema, table);
+                if (rows > 0 && confirmRows == null) {
+                    throw new GuardViolation("В таблице " + schema + "." + table + " строк: " + rows
+                            + ". Удаление их уничтожит — подтвердите его отдельно.");
+                }
+                if (rows > 0 && confirmRows != rows) {
+                    throw new GuardViolation("В таблице " + schema + "." + table + " сейчас строк: " + rows
+                            + ", а подтверждали " + confirmRows + ". Данные изменились — откройте диалог заново.");
+                }
+
+                List<TableRef> refs = inboundRefs(schema, table);
+                if (!refs.isEmpty() && !cascade) {
+                    List<String> names = new ArrayList<>();
+                    for (TableRef r : refs) names.add(r.schema() + "." + r.table() + " (" + r.columns() + ")");
+                    throw new GuardViolation("На таблицу ссылаются: " + String.join(", ", names)
+                            + ". Удаление снимет эти связи — подтвердите отдельно.");
+                }
+
+                String sql = "DROP TABLE " + schema + "." + table + (cascade ? " CASCADE" : "") + ";";
+                try {
+                    em.createNativeQuery(sql).executeUpdate();
+                } catch (RuntimeException e) {
+                    throw new DdlFailure("DROP TABLE " + schema + "." + table + ": " + message(e), e);
+                }
+                em.createNativeQuery("DELETE FROM app.schema_owned WHERE schema_name = :s"
+                                + " AND table_name = :t AND env = :e")
+                        .setParameter("s", schema).setParameter("t", table).setParameter("e", envName)
+                        .executeUpdate();
+                int entities = removeFromModel(schema, table);
+                audit("DROP_TABLE", schema, table, sql, "OK", null, System.currentTimeMillis() - started);
+
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("dropped", schema + "." + table);
+                m.put("rows", rows);
+                m.put("links", refs.size());
+                m.put("entities", entities);
+                return m;
+            });
+        } catch (GuardViolation g) {
+            auditSeparately("DROP_TABLE", "REJECTED", g.getMessage(), System.currentTimeMillis() - started);
+            throw g;
+        } catch (RuntimeException e) {
+            String why = message(e);
+            auditSeparately("DROP_TABLE", "ERROR", why, System.currentTimeMillis() - started);
+            throw e instanceof DdlFailure ? e : new DdlFailure(why, e);
+        }
+    }
+
+    /**
+     * Удалить схему. Только пустую и только свою: RESTRICT здесь не перестраховка, а
+     * единственная разумная семантика — CASCADE снёс бы вместе со схемой всё, что в ней
+     * успели завести, включая то, чего билдер не создавал.
+     */
+    public Map<String, Object> dropSchema(String schema) {
+        long started = System.currentTimeMillis();
+        try {
+            return tx.execute(status -> {
+                if (!DdlPlanner.valid(schema)) {
+                    throw new GuardViolation("Недопустимое имя схемы: «" + schema + "»");
+                }
+                String reserved = reservedReason(schema);
+                if (reserved != null) throw new GuardViolation("Схема " + schema + " защищена: " + reserved);
+                if (!isOwned(schema)) {
+                    throw new GuardViolation("Схема " + schema + " заведена не билдером — удалять её отсюда нельзя");
+                }
+                long objects = ((Number) em.createNativeQuery(
+                                "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+                                + " WHERE n.nspname = :s AND c.relkind IN ('r','p','v','m','S','f')")
+                        .setParameter("s", schema).getSingleResult()).longValue();
+                if (objects > 0) {
+                    throw new GuardViolation("В схеме " + schema + " ещё есть объекты (" + objects
+                            + ") — сначала удалите таблицы.");
+                }
+
+                String sql = "DROP SCHEMA " + schema + " RESTRICT;";
+                try {
+                    em.createNativeQuery(sql).executeUpdate();
+                } catch (RuntimeException e) {
+                    throw new DdlFailure("DROP SCHEMA " + schema + ": " + message(e), e);
+                }
+                em.createNativeQuery("DELETE FROM app.schema_owned WHERE schema_name = :s AND env = :e")
+                        .setParameter("s", schema).setParameter("e", envName)
+                        .executeUpdate();
+                audit("DROP_SCHEMA", schema, null, sql, "OK", null, System.currentTimeMillis() - started);
+
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("dropped", schema);
+                return m;
+            });
+        } catch (GuardViolation g) {
+            auditSeparately("DROP_SCHEMA", "REJECTED", g.getMessage(), System.currentTimeMillis() - started);
+            throw g;
+        } catch (RuntimeException e) {
+            String why = message(e);
+            auditSeparately("DROP_SCHEMA", "ERROR", why, System.currentTimeMillis() - started);
+            throw e instanceof DdlFailure ? e : new DdlFailure(why, e);
+        }
+    }
+
+    /** Причина, по которой таблицу трогать нельзя, либо null, если можно. */
+    private String undroppable(String schema, String table) {
+        if (!DdlPlanner.valid(schema) || !DdlPlanner.valid(table)) {
+            return "Недопустимое имя: " + schema + "." + table;
+        }
+        String reserved = reservedReason(schema);
+        if (reserved != null) return "Схема " + schema + " защищена: " + reserved;
+        if (!isOwnedTable(schema, table)) {
+            return "Таблица " + schema + "." + table + " заведена не билдером — удалять её отсюда нельзя";
+        }
+        Object reg = em.createNativeQuery("SELECT to_regclass(:t)")
+                .setParameter("t", schema + "." + table).getSingleResult();
+        if (reg == null) return "Таблицы " + schema + "." + table + " нет в базе";
+        return null;
+    }
+
+    private boolean isOwnedTable(String schema, String table) {
+        Number n = (Number) em.createNativeQuery(
+                        "SELECT count(*) FROM app.schema_owned"
+                        + " WHERE schema_name = :s AND table_name = :t AND env = :e")
+                .setParameter("s", schema).setParameter("t", table).setParameter("e", envName)
+                .getSingleResult();
+        return n.intValue() > 0;
+    }
+
+    /** Точный count(*): решение принимают по нему, оценка планировщика тут не годится. */
+    private long rowCount(String schema, String table) {
+        Number n = (Number) em.createNativeQuery("SELECT count(*) FROM " + schema + "." + table)
+                .getSingleResult();
+        return n.longValue();
+    }
+
+    /** Внешние ключи ИЗ других таблиц в эту: их снимет только CASCADE. */
+    @SuppressWarnings("unchecked")
+    private List<TableRef> inboundRefs(String schema, String table) {
+        List<Object[]> rows = em.createNativeQuery(
+                        "SELECT c.conname, n.nspname, t.relname,"
+                        + "       (SELECT string_agg(a.attname, ', ') FROM unnest(c.conkey) k"
+                        + "          JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k)"
+                        + "  FROM pg_constraint c"
+                        + "  JOIN pg_class t ON t.oid = c.conrelid"
+                        + "  JOIN pg_namespace n ON n.oid = t.relnamespace"
+                        + "  JOIN pg_class rt ON rt.oid = c.confrelid"
+                        + "  JOIN pg_namespace rn ON rn.oid = rt.relnamespace"
+                        + " WHERE c.contype = 'f' AND rn.nspname = :s AND rt.relname = :t"
+                        + "   AND t.oid <> rt.oid")
+                .setParameter("s", schema).setParameter("t", table).getResultList();
+        List<TableRef> out = new ArrayList<>();
+        for (Object[] r : rows) {
+            out.add(new TableRef(String.valueOf(r[0]), String.valueOf(r[1]),
+                    String.valueOf(r[2]), r[3] == null ? "" : String.valueOf(r[3])));
+        }
+        return out;
+    }
+
+    /**
+     * Убрать сущность этой таблицы из модели вместе со связями, в которых она участвует.
+     * Возвращает число убранных сущностей: обычно одна, но модель этого не гарантирует.
+     */
+    private int removeFromModel(String schema, String table) {
+        JsonNode stored = models.storedAsNode();
+        JsonNode entities = stored == null ? null : stored.get("entities");
+        if (entities == null || !entities.isArray()) return 0;
+
+        ObjectNode root = (ObjectNode) stored.deepCopy();
+        ArrayNode keep = JsonNodeFactory.instance.arrayNode();
+        Set<String> gone = new LinkedHashSet<>();
+        for (JsonNode e : entities) {
+            if (schema.equals(DdlPlanner.schemaOf(e)) && table.equals(DdlPlanner.tableOf(e))) {
+                gone.add(e.path("id").asText(""));
+                continue;
+            }
+            keep.add(e);
+        }
+        if (gone.isEmpty()) return 0;
+        root.set("entities", keep);
+
+        JsonNode relations = root.get("relations");
+        if (relations != null && relations.isArray()) {
+            ArrayNode keepRels = JsonNodeFactory.instance.arrayNode();
+            for (JsonNode r : relations) {
+                if (gone.contains(r.path("from_entity").asText(""))
+                        || gone.contains(r.path("to_entity").asText(""))) continue;
+                keepRels.add(r);
+            }
+            root.set("relations", keepRels);
+        }
+
+        ArrayNode changes = JsonNodeFactory.instance.arrayNode();
+        for (String id : gone) {
+            ObjectNode c = JsonNodeFactory.instance.objectNode();
+            c.put("op", "delete");
+            c.put("target", "entity");
+            c.put("id", id);
+            changes.add(c);
+        }
+        models.save(root, changes);
+        return gone.size();
     }
 
     /** Модель в виде «схема.таблица → колонки». Схемы нужны отдельно: по ним считается охрана. */

@@ -53,7 +53,28 @@ const DB_TYPES = ["bigserial","serial","bigint","integer","smallint","numeric(15
   "real","double precision","money","boolean","uuid","varchar(32)","varchar(60)","varchar(128)","varchar(255)",
   "char(1)","text","jsonb","json","date","time","timestamp","timestamptz","inet","relation"];
 const REL_UI = ["lookup","multilookup","related_list"];
-const REL_TYPES = ["one_to_one","many_to_one","one_to_many","many_to_many"];
+/* Типы связи, которые предлагаем заводить. Раньше их было четыре, включая
+   many_to_many — он требует связующей таблицы и отдельного обращения с DDL, и в модели
+   этой панели пользы от него меньше, чем путаницы. Оставили две понятные формы.
+   Уже заведённые связи других типов не ломаем: их значение подставляется в список
+   отдельным пунктом (см. relTypeOpts) — иначе открытие старой связи молча меняло бы ей
+   тип на первый из списка. */
+const REL_TYPES = ["one_to_one","one_to_many"];
+const REL_TYPE_LABEL = {
+  one_to_one:  "один к одному",
+  one_to_many: "один ко многим",
+  many_to_one: "многие к одному",
+  many_to_many:"многие ко многим"
+};
+
+/* Правило ON DELETE уходит в DDL как есть, поэтому переводим только подпись: значение
+   остаётся ключевым словом SQL. */
+const ON_DELETE_LABEL = {
+  RESTRICT:   "запретить удаление, пока есть связанные",
+  CASCADE:    "удалить связанные вместе с родителем",
+  "SET NULL": "обнулить ссылку у связанных",
+  "NO ACTION":"проверить в конце транзакции"
+};
 const ON_DELETE = ["RESTRICT","CASCADE","SET NULL","NO ACTION"];
 const uiMeta = v => UI_TYPES.find(x => x.v === v) || UI_TYPES[0];
 
@@ -213,6 +234,9 @@ const relationById = id => model.relations.find(r => r.id === id);
    ============================================================ */
 /* Схема таблицы; пусто (старая модель) — таблица сама себе схема. */
 function schemaOf(e){ return (e && e.schema) || (e && e.id) || ""; }
+/* Имя таблицы в базе. Правило то же, что у schemaOf и у планировщика DDL на сервере
+   (DdlPlanner.tableOf): не задано — берём системное имя. */
+function tableOf(e){ return (e && e.table) || (e && e.id) || ""; }
 
 /* Все схемы: описанные явно плюс те, что упомянуты таблицами. */
 function allSchemas(){
@@ -422,12 +446,31 @@ function schemaXY(s){
 /* Настройки вида — в localStorage, а не в модели: модель общая для всех,
    а «что мне показывать на холсте» дело каждого. */
 const SB_VIEW_KEY = "crmpanel:schemeView";
-const SB_VIEW_DEF = { external:true, internal:false, columns:true, types:true };
+const SB_VIEW_DEF = { external:true, internal:false, columns:true, types:true,
+  /* Свёрнутость боковых панелей — тоже вид: у каждого своя привычка, и переживать
+     перезагрузку она должна вместе с остальными настройками холста. */
+  foldList:false, foldInspect:false };
 let sbView = (function(){
   try { return Object.assign({}, SB_VIEW_DEF, JSON.parse(localStorage.getItem(SB_VIEW_KEY)) || {}); }
   catch(e){ return Object.assign({}, SB_VIEW_DEF); }
 })();
 function saveView(){ try { localStorage.setItem(SB_VIEW_KEY, JSON.stringify(sbView)); } catch(e){} }
+
+function applyFold(){
+  const shell = $("#sbShell");
+  if (!shell) return;
+  shell.classList.toggle("no-list", !!sbView.foldList);
+  shell.classList.toggle("no-inspect", !!sbView.foldInspect);
+}
+
+function setFold(key, on){
+  sbView[key] = on;
+  saveView();
+  applyFold();
+  /* Холст изменил ширину — узлы и связи считаются от неё, поэтому пересчитываем.
+     Без этого стрелки остаются на старых местах, пока не тронешь блок. */
+  relayout();
+}
 
 function renderNodes(){
   const host = $("#sbNodes");
@@ -468,6 +511,7 @@ function renderNodes(){
         <div><div class="sb-node-title">${esc(s.label || s.id)}</div>
           <div class="sb-node-sub mono">${esc(s.id)} · ${tables.length} ${T("табл.")} · ${cols}</div></div>
         <button class="sb-node-add" title="${T("Добавить таблицу")}">+</button>
+        <button class="sb-node-del" title="${T("Удалить блок")}">×</button>
       </div>
       <div class="sb-node-body">${plates || `<div class="sb-plate-empty">${T("нет таблиц")}</div>`}</div>
     </div>`;
@@ -492,6 +536,7 @@ function renderNodes(){
       state.drag = { id: sid, dx: p.x - xy.x, dy: p.y - xy.y }; ev.preventDefault();
     };
     n.querySelector(".sb-node-add").onclick = ev => { ev.stopPropagation(); openEntityModal(sid); };
+    n.querySelector(".sb-node-del").onclick = ev => { ev.stopPropagation(); deleteSchemaBlock(sid); };
     $$(".sb-plate-add", n).forEach(b => b.onclick = ev => {
       ev.stopPropagation(); state.schema = sid; state.entity = b.dataset.e; openFieldModal();
     });
@@ -602,8 +647,14 @@ function renderCrumbs(){
     if (f) parts.push(`<span class="sb-crumb-sep">›</span>` +
       `<span class="sb-crumb on">${esc(f.name)}</span>`);
   }
+  /* Кнопку сворачивания рисуем здесь же: контейнер вкладок переписывается целиком при
+     каждом переходе по уровням, и статичная кнопка из разметки исчезала после первого
+     же клика по сущности. */
+  parts.push(`<button type="button" class="sb-fold" id="sbFoldInspect" title="${T("Свернуть панель")}">›</button>`);
   bar.innerHTML = parts.join("");
   bar.className = "sb-crumbs";
+  const fold = $("#sbFoldInspect");
+  if (fold) fold.onclick = () => setFold("foldInspect", true);
   $$("#sbTabs .sb-crumb[data-go]").forEach(b => b.onclick = () => {
     if (b.dataset.go === "schema"){ state.entity = null; state.field = null; }
     if (b.dataset.go === "table"){ state.field = null; }
@@ -630,6 +681,209 @@ function renderInspector(){
     T("Выберите сущность слева или создайте новую.")}</div></div>`;
 }
 
+/* ============================================================
+   Что есть в базе помимо модели.
+
+   Модель — это намерение, база — факт, и расходятся они всегда: часть таблиц
+   приходит миграциями, часть заводили руками. Карточка схемы показывает и такие
+   таблицы, иначе человек видит «1 таблица» там, где их три, и считает это поломкой.
+
+   Затянуть такую таблицу в модель — отдельное действие: сервер записывает её за
+   билдером (app.schema_owned) и отдаёт колонки, из которых мы собираем сущность.
+   ============================================================ */
+let dbTree = null;          /* ответ GET /api/schema/db */
+let dbTreeBusy = false;
+
+function loadDbTables(){
+  if (dbTreeBusy) return Promise.resolve(dbTree);
+  dbTreeBusy = true;
+  return fetch("/api/schema/db", { credentials:"same-origin" })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { dbTree = j || []; dbTreeBusy = false; return dbTree; })
+    .catch(() => { dbTree = []; dbTreeBusy = false; return dbTree; });
+}
+
+/* Таблицы схемы, которых нет в модели. Сравниваем по имени таблицы, а не по id
+   сущности: id — наш внутренний ключ, в базе его нет. */
+function orphanTables(schemaId){
+  if (!Array.isArray(dbTree)) return [];
+  const s = dbTree.find(x => x.name === schemaId);
+  if (!s || !Array.isArray(s.tables)) return [];
+  const known = new Set(model.entities.filter(e => schemaOf(e) === schemaId).map(e => e.table || e.id));
+  return s.tables.filter(t => !known.has(t.name));
+}
+
+/* format_type отдаёт тип так, как его пишет Postgres; в модели типы записаны короче
+   и ровно теми именами, которые понимает планировщик DDL. */
+function normDbType(t, identity){
+  let s = String(t || "").toLowerCase().trim();
+  s = s.replace(/^character varying/, "varchar")
+       .replace(/^character(?=\(|$)/, "char")
+       .replace(/^timestamp with time zone/, "timestamptz")
+       .replace(/^timestamp without time zone/, "timestamp")
+       .replace(/^time with time zone/, "timetz")
+       .replace(/^time without time zone/, "time")
+       .replace(/^int4$/, "integer")
+       .replace(/^int8$/, "bigint")
+       .replace(/^int2$/, "smallint")
+       .replace(/^bool$/, "boolean");
+  /* identity и nextval — это «автономер»: в модели он живёт как serial-тип, и при
+     создании такой же таблицы в другом контуре получится то же самое поведение. */
+  if (identity) {
+    if (s === "bigint") return "bigserial";
+    if (s === "integer") return "serial";
+  }
+  return s;
+}
+
+function entityFromDbTable(schemaId, table, cols, comment){
+  const n = model.entities.length;
+  return {
+    id: freeEntityId(slug(table), schemaId),
+    label: comment || table,
+    plural_label: "",
+    table: table,
+    schema: schemaId,
+    description: comment || "",
+    title_field: "",
+    x: 40 + (n % 3) * 330,
+    y: 40 + Math.floor(n / 3) * 300,
+    technical: false,
+    fields: (cols || []).map(c => {
+      const db = normDbType(c.dbType, c.identity);
+      return {
+        name: c.name,
+        label: c.comment || c.name,
+        db_type: db,
+        ui_type: dbToUi(db),
+        required: !c.nullable,
+        /* Ключ и автономер правит база, а не форма. */
+        read_only: !!(c.primaryKey || c.identity),
+        description: "",
+        target_entity: "",
+        relation_kind: "",
+        /* У автономера в default лежит nextval(...) — в модели это шум. */
+        default_value: c.identity ? "" : (c.defaultValue || ""),
+        options: []
+      };
+    })
+  };
+}
+
+/* Затянуть таблицы базы в модель. Список приходит с сервера обратно: он решает,
+   что именно взял под управление, и молча расширить его подделанным телом нельзя. */
+function adoptTables(schemaId, tables){
+  if (!tables.length) return;
+  toast(T("Читаем структуру таблиц…"));
+  fetch("/api/schema/db/adopt", {
+    method: "POST", credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ schema: schemaId, tables: tables })
+  }).then(r => r.ok ? r.json() : r.text().then(t => {
+      let m = ""; try { m = JSON.parse(t).message || ""; } catch(e){}
+      throw new Error(m || ("HTTP " + r.status));
+    }))
+    .then(res => {
+      const cols = (res && res.columns) || {};
+      const src = Array.isArray(dbTree) ? (dbTree.find(x => x.name === schemaId) || {}) : {};
+      const byName = {};
+      (src.tables || []).forEach(t => { byName[t.name] = t; });
+      const added = (res.adopted || []).map(t =>
+        entityFromDbTable(schemaId, t, cols[t], (byName[t] || {}).comment));
+      added.forEach(e => model.entities.push(e));
+      ensureSchema(schemaId);
+      commit("create", "entity", added.map(e => e.id).join(", "), null);
+      toast(T("Добавлено в модель") + ": " + added.length);
+      dbTree = null;
+      loadDbTables().then(() => renderInspector());
+    })
+    .catch(e => toast((e && e.message) || T("Не удалось добавить таблицы")));
+}
+
+/* Обратная сторона: нарисовано в модели, но в базе не создано.
+   Раньше об этом не говорил никто: конструктор показывал поле, база о нём не знала, и
+   заметить расхождение можно было только случайно — или запросом в psql, как это и
+   вышло с event_name_unique_part. Считает сервер (тот же расчёт, что у предпросмотра),
+   мы лишь показываем свою схему и даём применить. */
+let driftData = null, driftBusy = false;
+
+function loadDrift(){
+  if (driftBusy) return Promise.resolve(driftData);
+  driftBusy = true;
+  return fetch("/api/schema/ddl/drift", { credentials:"same-origin", headers:{ Accept:"application/json" } })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { driftData = j || { missing:0, bySchema:{} }; driftBusy = false; return driftData; })
+    .catch(() => { driftData = { missing:0, bySchema:{} }; driftBusy = false; return driftData; });
+}
+
+function driftHtml(schemaId){
+  if (driftData === null){ loadDrift().then(() => renderInspector()); return ""; }
+  const n = (driftData.bySchema || {})[schemaId] || 0;
+  if (!n) return "";
+  const items = (driftData.items || []).filter(x => x.schema === schemaId);
+  return `<div class="sb-sub-head">${T("Есть в модели, но не в базе")} <span class="n">${n}</span>
+      <button class="btn tiny accent" id="sbS_applyDrift">${T("Применить к базе")}</button></div>
+    ${items.slice(0, 20).map(x => `<div class="sb-item sb-drift">
+        <span class="dot"></span>
+        <span class="lbl">${esc(x.name || x.table || x.kind)}<i class="sb-ent-sub mono">${esc(x.kind)}${x.table ? " · " + esc(x.table) : ""}</i></span>
+      </div>`).join("")}
+    ${items.length > 20 ? `<div class="sb-empty">${T("и ещё")} ${items.length - 20}</div>` : ""}`;
+}
+
+/* Блок «есть в базе, но не в модели». Пока структура базы не прочитана, блока нет,
+   но чтение запускается — и карточка перерисуется сама, когда ответ придёт. */
+function orphansHtml(schemaId){
+  if (dbTree === null){ loadDbTables().then(() => renderInspector()); return ""; }
+  const list = orphanTables(schemaId);
+  if (!list.length) return "";
+  return `<div class="sb-sub-head">${T("Есть в базе, но не в модели")} <span class="n">${list.length}</span>
+      <button class="btn tiny" id="sbS_adoptAll">${T("Добавить все")}</button></div>
+    ${list.map(t => `<div class="sb-item sb-orphan">
+        <span class="dot"></span>
+        <span class="lbl">${esc(t.name)}<i class="sb-ent-sub mono">${esc(schemaId)}.${esc(t.name)}</i></span>
+        <span class="cnt">${t.columns}</span>
+        <button class="btn tiny" data-adopt="${esc(t.name)}">${T("В модель")}</button></div>`).join("")}`;
+}
+
+/**
+ * Удалить блок (схему) целиком: сам блок, его таблицы и связи, в которых они участвуют.
+ *
+ * Только из модели. В базе таблицы остаются — конструктор рисует намерение, а сносить
+ * данные заодно с картинкой нельзя; для этого есть «Схемы и таблицы», где удаление
+ * спрашивает про число строк. Об этом и говорим прямо в подтверждении, иначе человек
+ * решит, что таблицы уже удалены.
+ */
+function deleteSchemaBlock(schemaId){
+  const s = (model.schemas || []).find(x => x.id === schemaId);
+  const tables = model.entities.filter(e => schemaOf(e) === schemaId);
+  const ids = tables.map(e => e.id);
+  const rels = (model.relations || []).filter(r =>
+    ids.indexOf(r.from_entity) >= 0 || ids.indexOf(r.to_entity) >= 0);
+  const name = (s && (s.label || s.id)) || schemaId;
+
+  let msg = T("Удалить блок") + " «" + name + "»?";
+  if (tables.length){
+    msg += "\n\n" + T("Из модели исчезнут таблицы") + ": " + tables.map(e => e.table || e.id).join(", ");
+    if (rels.length) msg += "\n" + T("и связи") + ": " + rels.length;
+  }
+  msg += "\n\n" + T("В базе они останутся — удалить их можно в разделе «Схемы и таблицы».");
+  if (!confirm(msg)) return;
+
+  model.entities = model.entities.filter(e => schemaOf(e) !== schemaId);
+  model.relations = (model.relations || []).filter(r =>
+    ids.indexOf(r.from_entity) < 0 && ids.indexOf(r.to_entity) < 0);
+  model.schemas = (model.schemas || []).filter(x => x.id !== schemaId);
+  /* Пометка удаления: без неё наложение черновика на файл (EntityLayout.mergeDraft)
+     вернуло бы таблицы обратно при следующей загрузке. */
+  if (!Array.isArray(model.deleted)) model.deleted = [];
+  ids.forEach(id => { if (model.deleted.indexOf(id) < 0) model.deleted.push(id); });
+
+  if (state.schema === schemaId) state.schema = null;
+  if (ids.indexOf(state.entity) >= 0){ state.entity = null; state.field = null; }
+  commit("delete", "schema", schemaId, null);
+  toast(T("Блок удалён"));
+}
+
 /* ---------- уровень 1: сущность и её таблицы ---------- */
 function renderSchemaForm(out){
   const s = ensureSchema(state.schema);
@@ -644,6 +898,7 @@ function renderSchemaForm(out){
     <div class="sb-acts">
       <button class="btn accent" id="sbS_save">${T("Сохранить")}</button>
       <button class="btn" id="sbS_addTable">+ ${T("Таблица")}</button>
+      <button class="btn ghost-danger" id="sbS_del">${T("Удалить блок")}</button>
     </div>
     <div class="sb-sub-head">${T("Таблицы")} <span class="n">${tables.length}</span></div>
     ${tables.length ? tables.map(e => `<div class="sb-item sb-tbl" data-e="${esc(e.id)}">
@@ -651,6 +906,8 @@ function renderSchemaForm(out){
         <span class="lbl">${esc(e.label || e.id)}<i class="sb-ent-sub mono">${esc(s.id)}.${esc(e.table || e.id)}</i></span>
         <span class="cnt">${e.fields.length}</span></div>`).join("")
       : `<div class="sb-empty">${T("В сущности пока нет таблиц")}</div>`}
+    ${orphansHtml(s.id)}
+    ${driftHtml(s.id)}
   </div>`;
   $("#sbS_save").onclick = () => {
     const id = slug($("#sbS_id").value);
@@ -665,8 +922,20 @@ function renderSchemaForm(out){
     commit("update", "schema", id, s); toast(T("Сущность сохранена"));
   };
   $("#sbS_addTable").onclick = () => openEntityModal(s.id);
+  $("#sbS_del").onclick = () => deleteSchemaBlock(s.id);
   $$("#sbInspector .sb-tbl").forEach(x => x.onclick = () => {
     state.entity = x.dataset.e; state.field = null; setTab("entity"); render();
+  });
+  const adoptAll = $("#sbS_adoptAll");
+  if (adoptAll) adoptAll.onclick = () => adoptTables(s.id, orphanTables(s.id).map(t => t.name));
+  /* Кнопка ведёт в общий предпросмотр применения: он показывает ВЕСЬ план, а не только
+     эту схему. Так честнее — DDL всё равно выполняется целиком, и прятать остальное
+     значило бы обещать точечную правку, которой не будет. */
+  const applyDrift = $("#sbS_applyDrift");
+  if (applyDrift) applyDrift.onclick = () => { driftData = null; applyToDb(); };
+  $$("#sbInspector [data-adopt]").forEach(b => b.onclick = ev => {
+    ev.stopPropagation();
+    adoptTables(s.id, [b.dataset.adopt]);
   });
 }
 
@@ -726,7 +995,18 @@ function renderEntityForm(out){
   $("#sbE_save").onclick = () => {
     const old = e.id, id = slug($("#sbE_id").value);
     if (!id) return toast(T("Нужно системное имя"));
+    /* Здесь запрет остаётся: правка чужого системного имени переклеила бы на эту
+       таблицу связи соседней. Создание — другое дело, там имя подбирается само. */
     if (id !== old && entityById(id)) return toast(T("Такое системное имя уже есть"));
+    const newSchema = slug($("#sbE_schema").value) || id;
+    const newTable = slug($("#sbE_table").value) || id;
+    /* Правило базы: в одной схеме двух таблиц с одним именем не бывает. Раньше правка
+       спокойно делала дубль, и падало это уже на «Применить к базе». */
+    const clash = model.entities.find(x => x !== e && schemaOf(x) === newSchema && tableOf(x) === newTable);
+    if (clash) {
+      return toast(T("В схеме") + " " + newSchema + " " + T("уже есть таблица") + " " + newTable +
+        " (" + T("сущность") + " " + clash.id + ")");
+    }
     e.id = id; e.table = slug($("#sbE_table").value) || id;
     /* Схема: пусто — таблица становится сама себе схемой (прежнее поведение).
        Имени нет в списке — заводим схему на лету, отдельной кнопки для этого не нужно. */
@@ -757,6 +1037,16 @@ function renderEntityForm(out){
   };
 }
 
+/* Тип БД выбирается из списка — как и UI-тип: набор конечный, а опечатка в нём
+   доезжает до DDL. Но у поля, поднятого из существующей таблицы, тип может быть
+   любым (varchar(64), numeric(12,4)) — такой ставим первой строкой, иначе select
+   молча подменил бы его первым значением списка. */
+function dbTypeOptions(cur){
+  const v = String(cur || "");
+  const opts = DB_TYPES.includes(v) ? DB_TYPES : [v].concat(DB_TYPES);
+  return opts.map(t => `<option value="${esc(t)}"${t === v ? " selected" : ""}>${t ? esc(t) : "—"}</option>`).join("");
+}
+
 /* --- поле: форма + живой предпросмотр + подсказки --- */
 function fieldFormHtml(f, isNew){
   return `<div class="sb-form">
@@ -765,8 +1055,8 @@ function fieldFormHtml(f, isNew){
       <div class="sb-fg"><label>${T("Название")}</label><input id="sbF_label" value="${esc(f.label||"")}"></div>
     </div>
     <div class="sb-grid2">
-      <div class="sb-fg"><label>${T("Тип в БД")}</label><input class="mono" id="sbF_db" list="sbDbTypes" value="${esc(f.db_type||"")}">
-        <datalist id="sbDbTypes">${DB_TYPES.map(t => `<option>${t}</option>`).join("")}</datalist></div>
+      <div class="sb-fg"><label>${T("Тип в БД")}</label><select class="mono" id="sbF_db">
+        ${dbTypeOptions(f.db_type)}</select></div>
       <div class="sb-fg"><label>${T("UI-тип (как показывается)")}</label><select id="sbF_ui">
         ${UI_TYPES.map(t => `<option value="${t.v}" ${f.ui_type===t.v?"selected":""}>${esc(T(t.label))}</option>`).join("")}</select></div>
     </div>
@@ -786,17 +1076,31 @@ function fieldFormHtml(f, isNew){
     <div class="sb-acts">
       <button class="btn accent" id="sbF_save">${isNew ? T("Добавить") : T("Сохранить")}</button>
       ${isNew ? `<button class="btn" id="sbF_cancel">${T("Отмена")}</button>`
-              : `<button class="btn" id="sbF_up">↑</button><button class="btn" id="sbF_down">↓</button>
+              : `<button class="btn" id="sbF_add">+ ${T("Колонка")}</button>
+                 <button class="btn" id="sbF_up">↑</button><button class="btn" id="sbF_down">↓</button>
                  <button class="btn ghost-danger" id="sbF_del">${T("Удалить")}</button>`}
     </div></div>`;
 }
+/* Форма поля живёт в ДВУХ местах: модалка «новое поле» и инспектор справа. Разметка
+   у них общая (fieldFormHtml), значит и id одинаковые — sbF_name, sbF_desc и прочие.
+   Пока обе формы в документе, document.querySelector отдаёт первую по разметке, а это
+   инспектор (он объявлен выше модалки). Из-за этого «Добавить» в модалке читал поля
+   ВЫБРАННОГО поля, а не того, что набрали: имя совпадало с существующим, срабатывала
+   проверка «поле с таким именем уже есть», и колонка не создавалась. Перезагрузка
+   страницы сбрасывала выбор — и следующее создание проходило. Отсюда и «глючит, надо
+   обновлять после каждого».
+   fieldRoot — та форма, с которой работаем сейчас. Ставится ровно в двух точках:
+   openFieldModal (модалка) и renderFieldForm (инспектор). */
+let fieldRoot = null;
+function fq(sel){ return (fieldRoot || document).querySelector(sel); }
+
 function readFieldForm(){
-  return { name: slug($("#sbF_name").value), label: $("#sbF_label").value || $("#sbF_name").value,
-    db_type: $("#sbF_db").value, ui_type: $("#sbF_ui").value,
-    required: $("#sbF_req").checked, read_only: $("#sbF_ro").checked,
-    description: $("#sbF_desc").value, target_entity: $("#sbF_target").value,
-    relation_kind: $("#sbF_rel").value, default_value: $("#sbF_default").value,
-    options: $("#sbF_options").value.split(",").map(x => x.trim()).filter(Boolean) };
+  return { name: slug(fq("#sbF_name").value), label: fq("#sbF_label").value || fq("#sbF_name").value,
+    db_type: fq("#sbF_db").value, ui_type: fq("#sbF_ui").value,
+    required: fq("#sbF_req").checked, read_only: fq("#sbF_ro").checked,
+    description: fq("#sbF_desc").value, target_entity: fq("#sbF_target").value,
+    relation_kind: fq("#sbF_rel").value, default_value: fq("#sbF_default").value,
+    options: fq("#sbF_options").value.split(",").map(x => x.trim()).filter(Boolean) };
 }
 function fieldPreviewHtml(f){
   const ro = f.read_only ? "disabled" : "", dv = esc(f.default_value ?? "");
@@ -839,22 +1143,22 @@ function fieldHintHtml(f){
   return parts.length ? `<div class="sb-hint ${parts.some(p => p.startsWith("⚠")) ? "bad" : ""}">${parts.join("<br>")}</div>` : "";
 }
 function refreshFieldAux(){
-  if (!$("#sbF_preview")) return;
+  if (!fq("#sbF_preview")) return;
   const f = readFieldForm();
-  $("#sbF_preview").innerHTML = fieldPreviewHtml(f);
-  $("#sbF_hint").innerHTML = fieldHintHtml(f);
-  const a = $("#sbF_applyUi");
-  if (a) a.onclick = ev => { ev.preventDefault(); $("#sbF_ui").value = dbToUi($("#sbF_db").value); refreshFieldAux(); };
+  fq("#sbF_preview").innerHTML = fieldPreviewHtml(f);
+  fq("#sbF_hint").innerHTML = fieldHintHtml(f);
+  const a = fq("#sbF_applyUi");
+  if (a) a.onclick = ev => { ev.preventDefault(); fq("#sbF_ui").value = dbToUi(fq("#sbF_db").value); refreshFieldAux(); };
 }
 /* isNew: у нового поля тип БД следует за UI-типом, пока его не правили руками.
    У существующего поля тип БД не трогаем автоматически — это данные в проде,
    для смены есть явная ссылка «применить» в подсказке. */
 function wireFieldAux(isNew){
-  ["sbF_name","sbF_label","sbF_default","sbF_options","sbF_desc"].forEach(id => { const el = $("#"+id); if (el) el.oninput = refreshFieldAux; });
-  ["sbF_target","sbF_rel","sbF_req","sbF_ro"].forEach(id => { const el = $("#"+id); if (el) el.onchange = refreshFieldAux; });
-  const db = $("#sbF_db");
-  if (db) db.oninput = () => { db.dataset.touched = "1"; refreshFieldAux(); };
-  const ui = $("#sbF_ui");
+  ["sbF_name","sbF_label","sbF_default","sbF_options","sbF_desc"].forEach(id => { const el = fq("#"+id); if (el) el.oninput = refreshFieldAux; });
+  ["sbF_target","sbF_rel","sbF_req","sbF_ro"].forEach(id => { const el = fq("#"+id); if (el) el.onchange = refreshFieldAux; });
+  const db = fq("#sbF_db");
+  if (db) db.onchange = () => { db.dataset.touched = "1"; refreshFieldAux(); };
+  const ui = fq("#sbF_ui");
   if (ui) ui.onchange = () => {
     if (db && (isNew ? !db.dataset.touched : !db.value.trim())) db.value = uiMeta(ui.value).db;
     refreshFieldAux();
@@ -865,17 +1169,22 @@ function renderFieldForm(out){
   const e = entityById(state.entity), f = e && e.fields[state.field];
   if (!f){ out.innerHTML = `<div class="sb-form"><div class="sb-empty">${T("Выберите поле внутри таблицы на схеме.")}</div></div>`; return; }
   out.innerHTML = fieldFormHtml(f, false);
+  fieldRoot = out;
   wireFieldAux();
-  $("#sbF_save").onclick = () => {
+  fq("#sbF_save").onclick = () => {
     const v = readFieldForm();
     if (!v.name) return toast(T("Нужно системное имя"));
     if (e.fields.some((x, j) => j !== state.field && x.name === v.name)) return toast(T("Поле с таким именем уже есть"));
     Object.assign(f, v);
     commit("update", "field", `${e.id}.${v.name}`, v); toast(T("Поле сохранено"));
   };
-  $("#sbF_up").onclick = () => moveField(e, state.field, -1);
-  $("#sbF_down").onclick = () => moveField(e, state.field, 1);
-  $("#sbF_del").onclick = () => {
+  /* Колонки заводят пачками, а после создания панель показывает созданное поле —
+     и кнопка «+ Колонка» с формы таблицы пропадала из виду. Дублируем её здесь. */
+  const add = fq("#sbF_add");
+  if (add) add.onclick = openFieldModal;
+  fq("#sbF_up").onclick = () => moveField(e, state.field, -1);
+  fq("#sbF_down").onclick = () => moveField(e, state.field, 1);
+  fq("#sbF_del").onclick = () => {
     if (!confirm(T("Удалить поле?"))) return;
     const name = f.name;
     e.fields.splice(state.field, 1);
@@ -907,7 +1216,28 @@ function renderRelationForm(out){
   };
 }
 function relationFormHtml(r, isNew){
-  const entOpts = (sel) => model.entities.map(e => `<option value="${esc(e.id)}" ${sel===e.id?"selected":""}>${esc(e.label)}</option>`).join("");
+  /* Список таблиц для связи.
+     Раньше здесь стоял голый e.label — и таблица без метки давала ПУСТОЙ пункт: выбрать
+     её было нельзя просто потому, что не видно, что выбираешь. Метки нет у всего, что
+     принято из базы кнопкой «В модель», а это как раз соседние таблицы одной сущности,
+     между которыми связь и нужна.
+     Группируем по сущностям и дописываем схема.таблица: две «Ссылки» из разных сущностей
+     иначе неразличимы. */
+  const entOpts = (sel) => {
+    const bySchema = new Map();
+    model.entities.forEach(e => {
+      const s = schemaOf(e);
+      if (!bySchema.has(s)) bySchema.set(s, []);
+      bySchema.get(s).push(e);
+    });
+    return Array.from(bySchema.entries()).map(([sid, list]) => {
+      const sc = model.schemas.filter(x => x.id === sid)[0];
+      const opts = list.map(e =>
+        `<option value="${esc(e.id)}" ${sel===e.id?"selected":""}>` +
+        `${esc(e.label || e.table || e.id)} · ${esc(sid)}.${esc(e.table || e.id)}</option>`).join("");
+      return `<optgroup label="${esc((sc && sc.label) || sid)}">${opts}</optgroup>`;
+    }).join("");
+  };
   return `<div class="sb-form">
     <div class="sb-grid2">
       <div class="sb-fg"><label>${T("Из таблицы")}</label><select id="sbR_fromE">${entOpts(r.from_entity)}</select></div>
@@ -919,12 +1249,14 @@ function relationFormHtml(r, isNew){
     </div>
     <div class="sb-grid2">
       <div class="sb-fg"><label>${T("Тип связи")}</label><select class="mono" id="sbR_type">
-        ${REL_TYPES.map(x => `<option ${r.relation_type===x?"selected":""}>${x}</option>`).join("")}</select></div>
-      <div class="sb-fg"><label>ON DELETE</label><select class="mono" id="sbR_del_rule">
-        ${ON_DELETE.map(x => `<option ${r.on_delete===x?"selected":""}>${x}</option>`).join("")}</select></div>
+        ${relTypeOpts(r.relation_type)}</select></div>
+      <div class="sb-fg"><label>${T("Что делать при удалении родителя")}</label><select id="sbR_del_rule">
+        ${ON_DELETE.map(x => `<option value="${esc(x)}" ${r.on_delete===x?"selected":""}>${esc(x)} — ${T(ON_DELETE_LABEL[x] || x)}</option>`).join("")}</select>
+        <i class="sb-hint" id="sbR_del_hint"></i></div>
     </div>
     <label class="sb-check"><input type="checkbox" id="sbR_null" ${r.nullable?"checked":""}> ${T("FK может быть NULL")}</label>
-    <div class="sb-fg"><label>${T("Связующая таблица (для many-to-many)")}</label><input class="mono" id="sbR_through" value="${esc(r.through||"")}"></div>
+    <div class="sb-fg" id="sbR_throughBox"><label>${T("Связующая таблица")}</label><input class="mono" id="sbR_through" value="${esc(r.through||"")}">
+      <i class="sb-hint">${T("Нужна только связям «многие ко многим» — их больше не заводят, поле осталось для уже существующих.")}</i></div>
     <div class="sb-fg"><label>${T("Описание")}</label><textarea id="sbR_desc">${esc(r.description||"")}</textarea></div>
     <div class="sb-acts">
       <button class="btn accent" id="sbR_save">${isNew ? T("Добавить") : T("Сохранить")}</button>
@@ -936,8 +1268,45 @@ function fillRelationFields(r){
   $("#sbR_fromF").innerHTML = ((fe && fe.fields) || []).map(f => `<option ${r.from_field===f.name?"selected":""}>${esc(f.name)}</option>`).join("");
   $("#sbR_toF").innerHTML = ((te && te.fields) || []).map(f => `<option ${r.to_field===f.name?"selected":""}>${esc(f.name)}</option>`).join("");
 }
+/* Список типов связи: две рабочие формы плюс, если у связи стоит что-то другое, её
+   собственное значение отдельным пунктом. Молча подменять тип при открытии старой связи
+   нельзя — это правка, которую никто не заказывал. */
+function relTypeOpts(cur){
+  const list = REL_TYPES.slice();
+  if (cur && list.indexOf(cur) < 0) list.push(cur);
+  return list.map(x => `<option value="${esc(x)}" ${cur===x?"selected":""}>` +
+    `${esc(T(REL_TYPE_LABEL[x] || x))} · ${esc(x)}` +
+    (REL_TYPES.indexOf(x) < 0 ? " · " + T("устаревший") : "") + "</option>").join("");
+}
+
+/* Пояснение под ON DELETE своими словами: правило выбирают раз в жизни, а последствия у
+   CASCADE такие, что «каскад» в подписи мало что объясняет. */
+const ON_DELETE_HINT = {
+  RESTRICT:   "Родителя не дадут удалить, пока на него ссылаются. Безопасный вариант по умолчанию.",
+  CASCADE:    "Вместе с родителем удалятся все связанные строки. Осторожно: удаление одной записи может унести многие.",
+  "SET NULL": "Связанные строки останутся, ссылка станет пустой. Требует, чтобы FK допускал NULL.",
+  "NO ACTION":"То же, что RESTRICT, но проверка откладывается до конца транзакции."
+};
+
+/* Связующая таблица имеет смысл только у many_to_many. Новых таких связей не заводят,
+   поэтому поле показываем лишь там, где оно уже используется. */
+function relThroughVis(){
+  const box = $("#sbR_throughBox"), sel = $("#sbR_type");
+  if (box && sel) box.style.display = sel.value === "many_to_many" ? "" : "none";
+}
+
+function relDeleteHint(){
+  const el = $("#sbR_del_hint"), sel = $("#sbR_del_rule");
+  if (!el || !sel) return;
+  el.textContent = T(ON_DELETE_HINT[sel.value] || "");
+}
+
 function wireRelationForm(r){
   fillRelationFields(r);
+  relDeleteHint();
+  relThroughVis();
+  $("#sbR_del_rule").onchange = relDeleteHint;
+  $("#sbR_type").onchange = relThroughVis;
   $("#sbR_fromE").onchange = () => fillRelationFields(r);
   $("#sbR_toE").onchange = () => fillRelationFields(r);
 }
@@ -978,6 +1347,7 @@ function entitiesOfSchema(schema){
 }
 
 async function applyToDb(){
+  driftData = null;   /* план меняет базу — старая сводка расхождений больше не верна */
   openModal(`<h3>${T("Применить к базе")}</h3>
     <div class="sb-modal-note">${T("Считаем, что нужно сделать в базе…")}</div>`);
   let plan, dropPlan;
@@ -1010,8 +1380,12 @@ async function applyToDb(){
     ? `<div class="sb-modal-note ${cls}">${list.map(x => "• " + esc(x)).join("<br>")}</div>` : "";
   /* Пропуск — не ошибка: такое в базе уже есть, и мы его не трогаем. Говорим об этом
      обычным текстом, а не красным, иначе выглядит как поломка. */
+  /* Охрана бывает двух родов, и путать их нельзя: чужая схема закрыта целиком,
+     а схема из стоп-листа лишь бережёт свои существующие таблицы — новые в ней
+     заводятся как обычно. Пишем это словами, иначе «пропущено: 56» читается как
+     «сюда нельзя вообще», и человек не пробует. */
   const skipNote = skipped.length ? `<div class="sb-modal-note">
-      ${T("Уже есть в базе — создаваться не будет")}:<br>
+      ${T("Схемы под охраной")}:<br>
       ${skipped.map(s => { const ents = entitiesOfSchema(s.schema);
         return "• <b>" + esc(s.schema) + "</b> — " + esc(s.reason)
           + (ents.length ? " · " + T("сущность") + " «" + esc(ents.join("», «")) + "»" : ""); })
@@ -1139,7 +1513,7 @@ function renderDropBlock(dp){
 
   box.innerHTML = `<h3 class="sb-drop-h">${T("Удалить из базы")}</h3>
     <div class="sb-modal-note">${T("В базе есть колонки, которых больше нет в модели")}: <b>${list.length}</b>.
-      ${T("Ищем только по таблицам, заведённым билдером. Таблицы и схемы целиком не удаляются — только колонки.")}</div>
+      ${T("Ищем только по таблицам, заведённым билдером. Здесь удаляются колонки; таблицу или пустую схему целиком — в разделе «Схемы и таблицы».")}</div>
     <div class="sb-drop">${rows}</div>
     <div class="sb-acts" id="sbDropActs">
       <button class="btn danger" id="sbDrop_go">${T("Удалить выбранное")}</button></div>
@@ -1249,54 +1623,157 @@ function openViewModal(){
   $("#sbView_close").onclick = closeModal;
 }
 
+/* Сообщение об отказе внутри модалки: рядом с кнопкой, по которой человек только что
+   нажал. Тост в углу для этого не годится — он и мелкий, и на другом краю экрана.
+   Возвращает false, чтобы обработчик мог написать `return modalErr(...)`. */
+function modalErr(id, msg){
+  const el = $("#" + id);
+  if (el){ el.textContent = msg; el.classList.add("on"); el.classList.remove("note"); }
+  toast(msg);   /* тост оставляем: кто-то смотрит именно туда */
+  return false;
+}
+
+/** Допустимый идентификатор Postgres — то же правило, что у планировщика DDL. */
+function validIdent(s){ return /^[a-z_][a-z0-9_]{0,62}$/.test(String(s || "")); }
+
+/* Свободное системное имя.
+   <p>
+   Два разных правила, которые легко перепутать — и мы их перепутали.
+   <p>
+   В БАЗЕ имя таблицы — это schema.table, и уникальным оно обязано быть только внутри
+   схемы: product.product_type и client.product_type прекрасно уживаются.
+   <p>
+   В МОДЕЛИ системное имя (id) — внутренний ключ: на него ссылаются связи
+   (from_entity/to_entity), выбор в инспекторе и планировщик DDL, который складывает
+   сущности в карту по id. Два одинаковых id развалили бы эти ссылки молча: связь ушла
+   бы к «первой попавшейся» таблице.
+   <p>
+   Поэтому занятое системное имя больше не повод отказывать. Внутренний ключ получает
+   префикс схемы, а таблица создаётся ровно под тем именем, которое попросили. */
+function freeEntityId(id, schema){
+  if (!id || !entityById(id)) return id;
+  const withSchema = slug(schema + "_" + id);
+  if (withSchema && !entityById(withSchema)) return withSchema;
+  for (let i = 2; i < 100; i++){
+    const c = withSchema + "_" + i;
+    if (!entityById(c)) return c;
+  }
+  return withSchema + "_" + model.entities.length;
+}
+
+/* Пояснение (не отказ) в модалке: что панель сделала не так, как набрали. */
+function modalNote(id, msg){
+  const el = $("#" + id);
+  if (el){ el.textContent = msg; el.classList.add("on", "note"); }
+}
+
 function openModal(html){
   const m = $("#sbModal");
   $("#sbModalCard").innerHTML = html;
   m.classList.add("open");
 }
-function closeModal(){ $("#sbModal").classList.remove("open"); }
+/* Разметку модалки вычищаем, а не только прячем: иначе её поля остаются в документе
+   и продолжают перехватывать чтение по id у формы в инспекторе. */
+function closeModal(){
+  $("#sbModal").classList.remove("open");
+  const card = $("#sbModalCard");
+  if (card) card.innerHTML = "";
+  if (fieldRoot === card) fieldRoot = null;
+}
 
 /* Новая СУЩНОСТЬ: заводим схему и сразу таблицу с тем же именем.
    Пустая сущность бесполезна — в базе схема без таблиц ничего не значит,
    и заставлять человека делать второй шаг незачем. */
 function openSchemaModal(){
+  /* Схема и таблица — отдельными полями. По умолчанию оба повторяют системное имя:
+     в большинстве случаев так и надо, и лишних движений это не требует. Но когда
+     имена должны разойтись (схема mail, таблица providers), задать их можно сразу,
+     а не заводить сущность и переименовывать её следом в карточке. */
   openModal(`<h3>${T("Новая сущность")}</h3><div class="sb-form" style="padding:0">
     <div class="sb-grid2">
       <div class="sb-fg"><label>${T("Название")}</label><input id="sbNS_label" placeholder="${T("Например, Пользователь")}"></div>
       <div class="sb-fg"><label>${T("Системное имя")}</label><input class="mono" id="sbNS_id" placeholder="user"></div>
     </div>
+    <div class="sb-grid2">
+      <div class="sb-fg"><label>${T("Схема")}</label><input class="mono" id="sbNS_schema" list="sbNSSchemaList" placeholder="user">
+        <datalist id="sbNSSchemaList">${allSchemas().map(s =>
+          `<option value="${esc(s.id)}">${esc(s.label || s.id)}</option>`).join("")}</datalist></div>
+      <div class="sb-fg"><label>${T("Таблица")}</label><input class="mono" id="sbNS_table" placeholder="user"></div>
+    </div>
     <div class="sb-fg"><label>${T("Описание")}</label><textarea id="sbNS_desc"></textarea></div>
     <div class="sb-modal-note" id="sbNS_hint"></div>
+    <div class="sb-modal-err" id="sbNS_err"></div>
     <div class="sb-acts"><button class="btn accent" id="sbNS_create">${T("Создать")}</button>
       <button class="btn" id="sbNS_cancel">${T("Отмена")}</button></div></div>`);
-  const hint = () => {
+  /* Что реально уедет в базу: схема и таблица по отдельности, каждая со своим полем
+     либо, если поле не трогали, с подставленным системным именем. */
+  const parts = () => {
     const id = slug($("#sbNS_id").value || $("#sbNS_label").value) || "user";
-    $("#sbNS_hint").innerHTML = T("В базе получится") + " <b class=\"mono\">" + esc(id) + "." + esc(id) + "</b>";
+    return { id,
+      schema: slug($("#sbNS_schema").value) || id,
+      table:  slug($("#sbNS_table").value)  || id };
   };
+  const hint = () => {
+    const p = parts();
+    const known = (model.schemas || []).some(x => x.id === p.schema);
+    $("#sbNS_hint").innerHTML = T("В базе получится") +
+      " <b class=\"mono\">" + esc(p.schema) + "." + esc(p.table) + "</b>" +
+      (known ? " · " + T("схема уже есть — таблица добавится в неё") : "");
+  };
+  /* Правка названия тянет за собой все три системных поля, пока их не трогали руками:
+     иначе пришлось бы вписывать одно и то же трижды. */
   $("#sbNS_label").oninput = () => {
-    if (!$("#sbNS_id").dataset.edited) $("#sbNS_id").value = slug($("#sbNS_label").value);
+    const s = slug($("#sbNS_label").value);
+    if (!$("#sbNS_id").dataset.edited)     $("#sbNS_id").value = s;
+    if (!$("#sbNS_schema").dataset.edited) $("#sbNS_schema").value = s;
+    if (!$("#sbNS_table").dataset.edited)  $("#sbNS_table").value = s;
     hint();
   };
-  $("#sbNS_id").oninput = () => { $("#sbNS_id").dataset.edited = "1"; hint(); };
+  $("#sbNS_id").oninput = () => {
+    $("#sbNS_id").dataset.edited = "1";
+    const s = slug($("#sbNS_id").value);
+    if (!$("#sbNS_schema").dataset.edited) $("#sbNS_schema").value = s;
+    if (!$("#sbNS_table").dataset.edited)  $("#sbNS_table").value = s;
+    hint();
+  };
+  $("#sbNS_schema").oninput = () => { $("#sbNS_schema").dataset.edited = "1"; hint(); };
+  $("#sbNS_table").oninput  = () => { $("#sbNS_table").dataset.edited  = "1"; hint(); };
   hint();
   $("#sbNS_cancel").onclick = closeModal;
   $("#sbNS_create").onclick = () => {
-    const id = slug($("#sbNS_id").value || $("#sbNS_label").value);
-    if (!id) return toast(T("Введите название"));
-    if ((model.schemas || []).some(x => x.id === id)) return toast(T("Такое системное имя уже есть"));
-    if (entityById(id)) return toast(T("Такое системное имя уже есть"));
+    const p = parts();
+    if (!$("#sbNS_id").value && !$("#sbNS_label").value) {
+      return modalErr("sbNS_err", T("Введите название или системное имя"));
+    }
+    const twinS = model.entities.find(x => schemaOf(x) === p.schema && tableOf(x) === p.table);
+    if (twinS) {
+      return modalErr("sbNS_err", T("В схеме") + " " + p.schema + " " + T("уже есть таблица") + " " +
+        p.table + " (" + T("сущность") + " " + twinS.id + ")");
+    }
+    if (!validIdent(p.schema)) return modalErr("sbNS_err", T("Недопустимое имя схемы") + ": " + p.schema);
+    if (!validIdent(p.table)) return modalErr("sbNS_err", T("Недопустимое имя таблицы") + ": " + p.table);
+    /* Системное имя внутри модели должно быть уникальным (на него ссылаются связи),
+       но занятость — не повод отказывать: в базе имя всё равно schema.table. */
+    const id = freeEntityId(p.id, p.schema);
+    if (id !== p.id) {
+      modalNote("sbNS_err", T("Системное имя") + " «" + p.id + "» " + T("уже занято другой таблицей — ") +
+        T("внутри модели эта будет") + " «" + id + "». " + T("В базе создастся") + " " + p.schema + "." + p.table);
+    }
+    /* Схему, которой ещё нет, заводим; существующую переиспользуем — это и есть
+       «добавить таблицу в имеющуюся сущность», отдельной кнопки для того не нужно. */
     const label = $("#sbNS_label").value || id;
-    const sch = ensureSchema(id);
-    sch.label = label; sch.description = $("#sbNS_desc").value;
+    const sch = ensureSchema(p.schema);
+    if (!sch.label || sch.label === sch.id) sch.label = label;
+    if (!sch.description) sch.description = $("#sbNS_desc").value;
     const n = model.entities.length;
-    const e = { id, schema: id, table: id, label, plural_label: label,
+    const e = { id, schema: p.schema, table: p.table, label, plural_label: label,
       description: "", title_field: "",
       fields: [{ name:"id", label:"ID", db_type:"bigserial", ui_type:"number", required:true, read_only:true,
         description: T("Первичный ключ"), target_entity:"", relation_kind:"", default_value:"", options:[] }],
       x: 40 + (n % 3) * 330, y: 40 + Math.floor(n / 3) * 300 };
     model.entities.push(e);
-    state.schema = id; state.entity = e.id; state.field = null;
-    closeModal(); commit("create", "schema", id, sch); toast(T("Сущность создана"));
+    state.schema = p.schema; state.entity = e.id; state.field = null;
+    closeModal(); commit("create", "schema", p.schema, sch); toast(T("Сущность создана"));
   };
 }
 
@@ -1315,6 +1792,7 @@ function openEntityModal(preset){
           `<option value="${esc(x.id)}">${esc(x.label || x.id)}</option>`).join("")}</datalist></div>
     </div>
     <div class="sb-fg"><label>${T("Описание")}</label><textarea id="sbNE_desc"></textarea></div>
+    <div class="sb-modal-err" id="sbNE_err"></div>
     <div class="sb-acts"><button class="btn accent" id="sbNE_create">${T("Создать")}</button>
       <button class="btn" id="sbNE_cancel">${T("Отмена")}</button></div></div>`);
   $("#sbNE_label").oninput = () => {
@@ -1325,10 +1803,29 @@ function openEntityModal(preset){
   $("#sbNE_id").oninput = () => $("#sbNE_id").dataset.edited = "1";
   $("#sbNE_cancel").onclick = closeModal;
   $("#sbNE_create").onclick = () => {
-    const id = slug($("#sbNE_id").value || $("#sbNE_label").value);
-    if (!id) return toast(T("Введите название"));
-    if (entityById(id)) return toast(T("Такое системное имя уже есть"));
-    ensureSchema(slug($("#sbNE_schema").value) || id);
+    const asked = slug($("#sbNE_id").value || $("#sbNE_label").value);
+    const schema = slug($("#sbNE_schema").value) || asked;
+    const table = slug($("#sbNE_table").value) || asked;
+    /* Отказ показываем В МОДАЛКЕ, а не только тостом в углу. Тост живёт две секунды
+       и висит у противоположного края экрана — человек, который смотрит на кнопку,
+       его не видит, и нажатие выглядит как «ничего не произошло». */
+    if (!asked) return modalErr("sbNE_err", T("Введите название или системное имя"));
+    /* Единственный настоящий запрет — правило базы: в одной схеме двух таблиц с одним
+       именем не бывает. Занятость системного имени запретом НЕ является: оно внутреннее
+       (см. freeEntityId). */
+    const twin = model.entities.find(x => schemaOf(x) === schema && tableOf(x) === table);
+    if (twin) {
+      return modalErr("sbNE_err", T("В схеме") + " " + schema + " " + T("уже есть таблица") + " " +
+        table + " (" + T("сущность") + " " + twin.id + ")");
+    }
+    if (!validIdent(schema)) return modalErr("sbNE_err", T("Недопустимое имя схемы") + ": " + schema);
+    if (!validIdent(table)) return modalErr("sbNE_err", T("Недопустимое имя таблицы") + ": " + table);
+    const id = freeEntityId(asked, schema);
+    if (id !== asked) {
+      modalNote("sbNE_err", T("Системное имя") + " «" + asked + "» " + T("уже занято другой таблицей — ") +
+        T("внутри модели эта будет") + " «" + id + "». " + T("В базе создастся") + " " + schema + "." + table);
+    }
+    ensureSchema(schema);
     const n = model.entities.length;
     const e = { id, label: $("#sbNE_label").value || id, plural_label: $("#sbNE_label").value || id,
       table: slug($("#sbNE_table").value) || id, schema: slug($("#sbNE_schema").value) || id,
@@ -1351,9 +1848,15 @@ function openEntityModal(preset){
 function openFieldModal(){
   const e = entityById(state.entity);
   if (!e) return toast(T("Сначала выберите таблицу"));
+  /* Снимаем выбор поля ДО открытия модалки: пока в инспекторе открыта форма поля,
+     в документе живут две формы с одинаковыми id. Плюс так видно, куда добавляем —
+     инспектор показывает саму таблицу. */
+  state.field = null;
+  renderInspector();
   const f = { name:"", label:"", db_type:"varchar(255)", ui_type:"text", required:false, read_only:false,
     description:"", target_entity:"", relation_kind:"", default_value:"", options:[] };
   openModal(`<h3>${T("Новое поле")} · ${esc(e.label)}</h3>` + fieldFormHtml(f, true));
+  fieldRoot = $("#sbModalCard");
   wireFieldAux(true);
   $("#sbF_cancel").onclick = closeModal;
   $("#sbF_save").onclick = () => {
@@ -1361,6 +1864,10 @@ function openFieldModal(){
     if (!v.name) return toast(T("Нужно системное имя"));
     if (e.fields.some(x => x.name === v.name)) return toast(T("Поле с таким именем уже есть"));
     e.fields.push(v);
+    /* Раскрываем таблицу на холсте: узел показывает первые MAX_ROWS полей, а новое
+       становится последним — оно оказывалось за «Показать ещё N полей», и создание
+       выглядело как «ничего не произошло». */
+    state.expanded[e.id] = true;
     state.field = e.fields.length - 1; setTab("field");
     closeModal(); commit("create", "field", `${e.id}.${v.name}`, v); toast(T("Поле добавлено"));
   };
@@ -1369,7 +1876,7 @@ function openRelationModal(){
   if (model.entities.length < 2) return toast(T("Нужно хотя бы две таблицы"));
   const a = model.entities[0], b = model.entities[1];
   const r = { id:"rel_" + Date.now(), from_entity:a.id, from_field:(a.fields[0]||{}).name || "",
-    to_entity:b.id, to_field:"id", relation_type:"many_to_one", nullable:true,
+    to_entity:b.id, to_field:"id", relation_type:"one_to_many", nullable:true,
     on_delete:"RESTRICT", through:"", description:"" };
   openModal(`<h3>${T("Новая связь")}</h3>` + relationFormHtml(r, true));
   wireRelationForm(r);
@@ -1378,7 +1885,20 @@ function openRelationModal(){
     Object.assign(r, readRelationForm());
     model.relations.push(r);
     state.relation = r.id; setTab("relation");
-    closeModal(); commit("create", "relation", r.id, r); toast(T("Связь добавлена"));
+    closeModal(); commit("create", "relation", r.id, r);
+    /* Связи внутри одной сущности по умолчанию скрыты, чтобы не засорять холст. Но
+       скрыть только что созданное — значит показать человеку, что ничего не произошло:
+       включаем показ и говорим об этом. */
+    const fe = entityById(r.from_entity), te = entityById(r.to_entity);
+    const inner = fe && te && schemaOf(fe) === schemaOf(te);
+    if (inner && !sbView.internal){
+      sbView.internal = true;
+      saveView();
+      render();
+      toast(T("Связь добавлена. Показ связей внутри сущности включён — иначе её не видно на холсте."));
+    } else {
+      toast(T("Связь добавлена"));
+    }
   };
 }
 
@@ -1486,10 +2006,21 @@ function layoutShell(){
   shell.style.height = h + "px";
 }
 let resizeTimer = null;
+/* Схему уже удалось вписать в видимую область (у канваса был ненулевой размер). */
+let fitted = false;
 function relayout(){
   if (!booted) return;
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { layoutShell(); fit(); }, 120);
+  resizeTimer = setTimeout(() => {
+    layoutShell();
+    /* fit() здесь только догоняющий — на случай, когда раздел открыли, пока канвас
+       был нулевой ширины и вписывать было некуда. Дальше вид принадлежит человеку:
+       он подвинул сущность, отъехал панорамой, приблизил нужный угол. Раньше fit()
+       звался на каждое изменение размеров, а тулбар меняет их сам — значок
+       «Сохранено» появляется после каждой правки, — и схема прыгала на вписанный
+       вид дважды за перетаскивание: когда значок зажёгся и когда погас. */
+    if (!fitted) fit();
+  }, 120);
 }
 window.addEventListener("resize", relayout);
 /* Наблюдаем и за самим контейнером: высота шапки с тулбаром меняется не только
@@ -1542,6 +2073,7 @@ function fit(){
   /* центрируем содержимое в видимой области */
   state.tx = (c.width - (maxX - minX) * state.scale) / 2 - minX * state.scale;
   state.ty = Math.max(m, (c.height - (maxY - minY) * state.scale) / 2) - minY * state.scale;
+  fitted = true;
   transform();
 }
 
@@ -1553,6 +2085,15 @@ async function boot(){
   const canvas = $("#sbCanvas");
   if (!canvas) return;
   booted = true;
+
+  /* Сворачивание боковых панелей. Свёрнутая колонка уходит из сетки, и её место
+     достаётся холсту — ради этого всё и делается. Вернуть её можно язычком у края
+     холста: другой кнопки для этого нет, а искать её в тулбаре среди девяти прочих
+     человек не станет. */
+  applyFold();
+  $("#sbFoldList").onclick = () => setFold("foldList", true);
+  $("#sbShowList").onclick = () => setFold("foldList", false);
+  $("#sbShowInspect").onclick = () => setFold("foldInspect", false);
 
   /* тулбар */
   $("#sbAddEntity").onclick = openSchemaModal;
@@ -1574,7 +2115,18 @@ async function boot(){
   $("#sbZin").onclick = () => { state.scale = Math.min(2, state.scale * 1.15); transform(); };
   $("#sbZout").onclick = () => { state.scale = Math.max(.25, state.scale / 1.15); transform(); };
   $("#sbZreset").onclick = () => { state.scale = 1; state.tx = 20; state.ty = 20; transform(); };
-  $("#sbModal").onclick = ev => { if (ev.target.id === "sbModal") closeModal(); };
+  /* Клик мимо карточки закрывает окно — но только если он там же и начался.
+     Выделение текста в поле часто заканчивается за пределами формы: mouseup
+     приходит на подложку, click всплывает до общего предка (это сам #sbModal),
+     условие срабатывало, и окно закрывалось прямо во время выделения — вместе
+     со всем набранным. Запоминаем, где нажали, и по одному лишь отпусканию
+     не закрываем. */
+  let downOnBackdrop = false;
+  $("#sbModal").onmousedown = ev => { downOnBackdrop = ev.target.id === "sbModal"; };
+  $("#sbModal").onclick = ev => {
+    if (ev.target.id === "sbModal" && downOnBackdrop) closeModal();
+    downOnBackdrop = false;
+  };
 
   /* панорама и зум канваса */
   canvas.onmousedown = ev => {
@@ -1628,6 +2180,9 @@ async function boot(){
 }
 async function load(){
   try {
+    /* Структуру базы перечитываем вместе с моделью: её могли поменять мимо билдера —
+       выкатом миграции или удалением таблицы в «Схемах и таблицах». */
+    dbTree = null;
     model = await SchemaStore.load();
     model.entities.forEach((e, i) => {   /* координаты могли не сохраниться — раскладываем */
       if (typeof e.x !== "number") e.x = 40 + (i % 3) * 330;
@@ -1664,5 +2219,13 @@ function adopt(m){
   if (state.entity && !entityById(state.entity)) state.entity = null;
   render();
 }
-window.SchemeBuilder = { open: openSection, render, adopt, store: SchemaStore, API_CONTRACT, UI_TYPES };
+/* Заведение сущности снаружи: раздел «Сущности» в панели ведёт сюда своей кнопкой.
+   Форму не дублируем — открываем эту же, иначе правила именования и проверки
+   разъехались бы по двум местам. Ждём boot(): в окне есть список существующих
+   схем, и до загрузки модели он был бы пуст. */
+async function newEntity(){
+  await openSection();
+  openSchemaModal();
+}
+window.SchemeBuilder = { open: openSection, newEntity, render, adopt, store: SchemaStore, API_CONTRACT, UI_TYPES };
 })();

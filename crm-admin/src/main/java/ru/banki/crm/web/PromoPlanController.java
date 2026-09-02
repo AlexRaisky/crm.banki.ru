@@ -60,6 +60,23 @@ public class PromoPlanController {
     }
 
     /**
+     * Завести задачу в Jira по строке плана: {source, productCode}.
+     * <p>
+     * Право то же, что на правку строки: задача заводится по плану и тут же прописывает
+     * в него свой ключ, так что это правка плана, а не отдельная привилегия.
+     */
+    @PostMapping("/{id}/jira")
+    public Map<String, Object> createJiraTask(@PathVariable long id,
+                                              @RequestBody(required = false) Map<String, Object> body) {
+        access.requireCapability(Capability.EDIT, Sections.PROMO);
+        Object src = body == null ? null : body.get("source");
+        Object code = body == null ? null : body.get("productCode");
+        return service.createJiraTask(id,
+                src == null ? "" : String.valueOf(src),
+                code == null ? "" : String.valueOf(code));
+    }
+
+    /**
      * Кого можно назначить ответственным — имена пользователей панели.
      * <p>
      * Лежит здесь, а не в админской ручке пользователей: список нужен всем, кто ведёт
@@ -70,5 +87,15 @@ public class PromoPlanController {
     public List<String> owners() {
         access.requireAnySection(Sections.PROMO);
         return service.ownerCandidates();
+    }
+
+    /**
+     * Кого можно поставить заказчиком — направления из chain.chain и gorizontal.gorizontal.
+     * В задаче Jira это поле обязательное, поэтому список нужен всем, кто ведёт план.
+     */
+    @GetMapping("/customers")
+    public List<String> customers() {
+        access.requireAnySection(Sections.PROMO);
+        return service.customerCandidates();
     }
 }

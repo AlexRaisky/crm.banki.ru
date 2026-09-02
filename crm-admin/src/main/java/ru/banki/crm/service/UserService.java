@@ -109,8 +109,15 @@ public class UserService {
         if (roleId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Не указана роль");
         }
-        return roles.findById(roleId)
+        Role role = roles.findById(roleId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Некорректная роль"));
+        /* Неактивная роль не пускает своих носителей в панель, поэтому назначать её —
+           значит завести учётку, которая сразу не работает. Отказываем внятно. */
+        if (!role.isActive()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Роль «" + role.getName() + "» отключена — назначить её нельзя. Включите роль или выберите другую.");
+        }
+        return role;
     }
 
     private long countAdmins() {
@@ -141,15 +148,25 @@ public class UserService {
     }
 
     /**
-     * Учётку супер-админа через панель не меняем вовсе; учётку с админ-ролью —
-     * только супер-админ. Отказ всегда с одинаковым текстом.
+     * Учётку супер-админа правит только другой супер-админ и только не свою: ради этого
+     * супер-админов и держат двоих — чтобы уходящему было кому закрыть вход. Свою запись
+     * через панель не трогаем: это единственная защита от того, чтобы последний супер-админ
+     * одним нажатием отключил сам себя. Учётку с обычной админ-ролью правит супер-админ.
+     * Отказ всегда с одинаковым текстом.
      */
     private void requireCanManage(AppUser u) {
         boolean superAdminTarget = u.getRole().isSuperAdmin();
         boolean adminTarget = u.getRole().isAdminLevel();
-        if (superAdminTarget || (adminTarget && !currentIsSuperAdmin())) {
+        boolean allowed = superAdminTarget
+                ? currentIsSuperAdmin() && !isCurrentUser(u)
+                : !adminTarget || currentIsSuperAdmin();
+        if (!allowed) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, NO_RIGHTS);
         }
+    }
+
+    private boolean isCurrentUser(AppUser u) {
+        return u.getEmail() != null && u.getEmail().equalsIgnoreCase(ru.banki.crm.security.CurrentUser.email());
     }
 
     /** Корпоративный домен по умолчанию: пустой APP_EMAIL_DOMAIN не отключает проверку. */
@@ -173,8 +190,9 @@ public class UserService {
         boolean mask = superTarget;   // супер-роль везде показываем как обычного «Админ», даже самому супер-админу
         String roleName = mask ? coverRoleName() : u.getRole().getName();
         Long roleId = mask ? null : u.getRole().getId();
-        boolean manageable = !superTarget
-                && (!u.getRole().isAdminLevel() || currentIsSuperAdmin());
+        boolean manageable = superTarget
+                ? currentIsSuperAdmin() && !isCurrentUser(u)
+                : (!u.getRole().isAdminLevel() || currentIsSuperAdmin());
         return new UserView(u.getId(), u.getEmail(), u.getDisplayName(),
                 roleName, roleId, u.isEnabled(), manageable);
     }

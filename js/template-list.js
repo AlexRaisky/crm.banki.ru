@@ -361,6 +361,100 @@ function fetchListPage(reset) {
     return p;
 }
 
+/* ---------- заведение и выгрузка ----------
+
+   Кнопки стоят в шапке реестра, рядом с фильтрами: заводить и выгружать хотят оттуда,
+   где смотрят список, а не из соседнего раздела. */
+
+/* Новый шаблон — тот же мастер коммуникаций, что и в своём пункте меню. Отдельной формы
+   заведения не делаем: две формы под одно действие разошлись бы на первой же правке. */
+function newTemplate() {
+    if (typeof openSection === "function") openSection("comms", "admin");
+    else if (typeof setAdminMode === "function") setAdminMode("wizard");
+}
+
+/* Выгрузка всего, что подходит под фильтр, — а не тех строк, что успели подгрузиться.
+
+   Список тянется порциями по мере прокрутки, и в ALL_TEMPLATES лежит ровно то, до чего
+   человек долистал. Для файла этого мало: фильтр выставлен, значит нужен весь его
+   результат. Идём на сервер теми же условиями и той же сортировкой, кусками по 500,
+   пока не кончится. Потолок — от файла, который никто не откроет. */
+var TPL_EXPORT_CHUNK = 500, TPL_EXPORT_MAX = 20000;
+
+function exportTemplateList() {
+    var cols = listVisibleCols();
+    var btn = document.getElementById("listExport");
+    var stats = document.getElementById("listStats");
+    if (btn) btn.disabled = true;
+    if (stats) stats.textContent = sfdT("Собираем выгрузку…");
+
+    var f = collectListFilters();
+    var params = {};
+    Object.keys(f).forEach(function (k) {
+        var v = f[k];
+        if (Array.isArray(v)) { if (v.length) params[k] = v; }
+        else if (v) params[k] = v;
+    });
+    params.sort = LIST_SORT.col;
+    params.dir = LIST_SORT.dir === 1 ? "asc" : "desc";
+    params.limit = TPL_EXPORT_CHUNK;
+
+    var all = [];
+    function step(offset) {
+        var q = Object.assign({}, params);
+        if (offset > 0) q.offset = offset;
+        return CRM.listTemplates(q).then(function (items) {
+            var got = (items || []).map(CRM.apiItemToList);
+            all = all.concat(got);
+            if (stats) stats.textContent = sfdT("Собираем выгрузку… ") + all.length;
+            if (got.length === TPL_EXPORT_CHUNK && all.length < TPL_EXPORT_MAX) {
+                return step(offset + TPL_EXPORT_CHUNK);
+            }
+        });
+    }
+
+    step(0).then(function () {
+        writeTemplateCsv(cols, all);
+        if (stats) {
+            stats.textContent = all.length >= TPL_EXPORT_MAX
+                ? sfdT("Выгружено строк: ") + all.length + sfdT(" — это потолок выгрузки, сузьте фильтр")
+                : sfdT("Выгружено строк: ") + all.length;
+        }
+    }).catch(function () {
+        if (stats) stats.textContent = sfdT("Не удалось собрать выгрузку");
+    }).then(function () {
+        if (btn) btn.disabled = false;
+    });
+}
+
+function writeTemplateCsv(cols, rows) {
+    var cell = function (v) {
+        var s = v == null ? "" : String(v);
+        /* Кавычки, точки с запятой и переносы ломают строку CSV: берём в кавычки,
+           внутренние кавычки удваиваем (RFC 4180). */
+        return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    var head = cols.map(function (c) { return cell(sfdT(c.label)); }).join(";");
+    var body = rows.map(function (r) {
+        return cols.map(function (c) {
+            var v = r[c.k];
+            /* Галки в файле должны читаться как на экране, а не как true/false. */
+            return cell(typeof v === "boolean" ? (v ? "да" : "нет") : v);
+        }).join(";");
+    });
+    /* Разделитель — точка с запятой, в начале BOM: Excel с русской локалью иначе читает
+       запятую как десятичный знак, а без BOM показывает кириллицу кракозябрами. */
+    var blob = new Blob(["\ufeff" + [head].concat(body).join("\r\n")],
+        { type: "text/csv;charset=utf-8" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "templates-" + new Date().toISOString().slice(0, 10) + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+}
+
 /* Наполнение мультифильтров: канал — фиксированный справочник каналов,
    продукт/точка/триггер — реальные значения из базы (facets). */
 function populateFilterFacets() {
@@ -662,11 +756,21 @@ function viewFromList(templateId) {
         });
 }
 
-/* Отрисовка выбранного шаблона во вкладке «Просмотр настроек» (SF Details). */
+/* Отрисовка выбранного шаблона карточкой (SF Details).
+
+   Карточка живёт в той же секции, что и реестр: #sec-admin переключается в режим view.
+   Раньше здесь открывался отдельный пункт «Просмотр настроек», и после его удаления
+   openSection по несуществующему пункту уводил на обзор группы «Управление
+   коммуникациями» — вместо карточки человек попадал на список разделов. */
 function showTemplateInViewer(templateId, data) {
     if (!data) return;
-    // Открываем подраздел «Просмотр настроек» через оболочку (режим view в #sec-admin)
-    if (typeof openSection === 'function') openSection('comms', 'viewer');
+    /* Если карточку открыли не из реестра (секция не на экране) — сначала откроем
+       раздел со списком, иначе переключать режим было бы нечему. */
+    var host = document.getElementById('sec-admin');
+    if ((!host || host.offsetParent === null) && typeof openSection === 'function') {
+        openSection('entities', 'ent-template');
+    }
+    if (typeof setAdminMode === 'function') setAdminMode('view');
     const templateSelect = document.getElementById('templateSelect');
     if (templateSelect) {
         templateSelect.value = templateId;

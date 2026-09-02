@@ -68,7 +68,13 @@ public class SchemaInspectService {
                         "SELECT n.nspname, c.relname," +
                         "       obj_description(c.oid, 'pg_class')," +
                         "       (SELECT count(*) FROM pg_attribute a" +
-                        "         WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped)" +
+                        "         WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped)," +
+                        // Заведена ли таблица билдером на этом контуре: от этого зависит,
+                        // покажет ли обозреватель кнопку удаления. Право даёт запись в
+                        // реестре, а не факт наличия таблицы в базе (см. app.schema_owned).
+                        "       (SELECT count(*) FROM app.schema_owned o" +
+                        "         WHERE o.schema_name = n.nspname AND o.table_name = c.relname" +
+                        "           AND o.env = :env)" +
                         // Числа строк здесь нет намеренно: точный count(*) по каждой таблице
                         // превратил бы открытие раздела в полное сканирование базы, а оценка
                         // планировщика (reltuples) врёт тем сильнее, чем дольше не было
@@ -77,6 +83,7 @@ public class SchemaInspectService {
                         " WHERE c.relkind IN ('r','p')" +
                         "   AND n.nspname NOT LIKE 'pg\\_%' AND n.nspname <> 'information_schema'" +
                         " ORDER BY n.nspname, c.relname")
+                .setParameter("env", envName)
                 .getResultList();
 
         Map<String, List<Map<String, Object>>> bySchema = new LinkedHashMap<>();
@@ -86,6 +93,7 @@ public class SchemaInspectService {
             t.put("name", table);
             t.put("comment", pick(str(r[2]), descrOf(descr, schema, table)));
             t.put("columns", num(r[3]));
+            t.put("owned", num(r[4]) > 0);   // создана билдером — её можно удалить отсюда
             bySchema.computeIfAbsent(schema, k -> new ArrayList<>()).add(t);
         }
 
@@ -101,6 +109,57 @@ public class SchemaInspectService {
             s.put("tables", tables);
             s.put("tableCount", tables.size());
             out.add(s);
+        }
+        return out;
+    }
+
+    /**
+     * Колонки таблиц схемы — чтобы конструктор мог завести по ним сущности.
+     * <p>
+     * Тип берём через {@code format_type}, а не из information_schema: он отдаёт то, что
+     * человек и написал бы в DDL — {@code character varying(255)}, {@code numeric(15,2)}, —
+     * тогда как information_schema разносит это по трём колонкам, и собирать их обратно
+     * значит повторять работу Postgres с шансом ошибиться.
+     *
+     * @param tables имена таблиц; пустой список — вся схема
+     */
+    @Transactional(readOnly = true)
+    public Map<String, List<Map<String, Object>>> columns(String schema, List<String> tables) {
+        List<String> want = tables == null ? List.of() : tables;
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery(
+                        "SELECT c.relname, a.attname," +
+                        "       format_type(a.atttypid, a.atttypmod)," +
+                        "       NOT a.attnotnull," +
+                        "       pg_get_expr(d.adbin, d.adrelid)," +
+                        "       EXISTS (SELECT 1 FROM pg_index ix" +
+                        "                WHERE ix.indrelid = c.oid AND ix.indisprimary" +
+                        "                  AND a.attnum = ANY (ix.indkey))," +
+                        "       col_description(c.oid, a.attnum)," +
+                        "       a.attidentity <> ''" +
+                        "  FROM pg_class c" +
+                        "  JOIN pg_namespace n ON n.oid = c.relnamespace" +
+                        "  JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped" +
+                        "  LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum" +
+                        " WHERE n.nspname = :s AND c.relkind IN ('r','p')" +
+                        "   AND (:all = TRUE OR c.relname IN (:tables))" +
+                        " ORDER BY c.relname, a.attnum")
+                .setParameter("s", schema)
+                .setParameter("all", want.isEmpty())
+                .setParameter("tables", want.isEmpty() ? List.of("") : want)
+                .getResultList();
+
+        Map<String, List<Map<String, Object>>> out = new LinkedHashMap<>();
+        for (Object[] r : rows) {
+            Map<String, Object> col = new LinkedHashMap<>();
+            col.put("name", str(r[1]));
+            col.put("dbType", str(r[2]));
+            col.put("nullable", Boolean.TRUE.equals(r[3]));
+            col.put("defaultValue", str(r[4]));
+            col.put("primaryKey", Boolean.TRUE.equals(r[5]));
+            col.put("comment", str(r[6]));
+            col.put("identity", Boolean.TRUE.equals(r[7]));
+            out.computeIfAbsent(str(r[0]), k -> new ArrayList<>()).add(col);
         }
         return out;
     }
