@@ -1657,7 +1657,19 @@
         (g.note ? '<p class="ev-plan-gn">' + esc(g.note) + '</p>' : '') +
         g.tables.map(planTableHtml).join("") + '</div>';
     }).join("");
-    el("evfPlanModal").classList.add("open");
+    /* Окно плана лежит в секции мастера, а мастер к этому моменту мог переехать в окно
+       заведения — секция при этом скрыта целиком, и подтверждение показывалось внутри
+       невидимого предка: кнопка нажата, ничего не происходит.
+
+       Переносим окно туда, где сейчас форма: соседом окна заведения. Тогда оно и видно,
+       и лежит в DOM позже — значит рисуется поверх, без гонки z-index. Стили при этом не
+       теряются: они объявлены сразу на три секции событий, и список одна из них. */
+    var plan = el("evfPlanModal");
+    var wiz = el("evWizModal");
+    if (wiz && wiz.classList.contains("open") && plan.parentNode !== wiz.parentNode) {
+      wiz.parentNode.appendChild(plan);
+    }
+    plan.classList.add("open");
     el("evfPlanClose").focus();
   }
 
