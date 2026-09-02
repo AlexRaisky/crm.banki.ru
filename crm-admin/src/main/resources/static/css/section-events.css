@@ -312,16 +312,37 @@
   .ev-code .c-str{color:var(--green)}
   .ev-code .c-num{color:var(--amber)}
   .ev-code .c-cmt{color:var(--faint);font-style:italic}
-  /* ---------- шаблоны связанным объектом ----------
-     Один в один блок связанных объектов из карточки клиента (.ent-rl в
-     section-entities.css): одна рамка на весь список, строки друг под другом,
-     справа код записи, внизу путь связи. Своего заголовка у рамки нет —
-     его роль здесь играет заголовок секции «Шаблоны». */
-  .ev-rel{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  /* ---------- раскладка карточки: детали + колонка связанных объектов ----------
+     Как в карточке клиента: шапка записи во всю ширину, ниже две колонки —
+     сама карточка и блоки связанных объектов справа. Ширина колонки в долях,
+     чтобы на широком экране она не разъезжалась. */
+  .ev-head-card{margin-bottom:14px}
+  .ev-head-card .sfd-head{border-bottom:none}
+  .ev-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,26%);gap:16px;align-items:start}
+  .ev-body.no-rail{grid-template-columns:minmax(0,1fr)}
+  .ev-main{min-width:0}
+  /* Липкая колонка: карточка события длинная, и связанные объекты не должны
+     уезжать из виду при прокрутке. */
+  .ev-rail{min-width:0;display:flex;flex-direction:column;gap:12px;position:sticky;top:0;
+    max-height:calc(100dvh - 120px);overflow:auto}
+
+  /* ---------- блок связанных объектов (шаблоны) ----------
+     Один в один «Контактные данные» в карточке клиента: своя рамка и шапка
+     с иконкой и счётчиком, строки друг под другом, внизу путь связи. */
+  .ev-rl{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .ev-rl-head{display:flex;align-items:center;gap:9px;padding:11px 14px;background:var(--card2);
+    border-bottom:1px solid var(--line)}
+  .ev-rl-head .ico{width:24px;height:24px;flex:0 0 auto;border-radius:7px;background:var(--blue-bg);
+    color:var(--blue);display:flex;align-items:center;justify-content:center}
+  .ev-rl-head .ico svg{width:13px;height:13px}
+  .ev-rl-head b{font-size:13.5px;font-weight:640;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ev-rl-head .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--faint);
+    background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1px 8px}
+  .ev-rl-head .ev-mini{margin-left:0}
+  .ev-rl-empty{padding:16px 14px;font-size:12.5px;color:var(--faint)}
   .ev-rel-item{position:relative;padding:10px 60px 10px 14px;cursor:pointer}
-  /* Разделитель — между строками, а не под каждой: иначе последняя строка и подвал
-     давали бы двойную линию. :last-of-type тут не годится — он считает по тегу, а
-     подвал такой же div. */
+  /* Разделитель — между строками, а не под каждой: под последней он сложился бы
+     с верхней границей подвала в двойную линию. */
   .ev-rel-item + .ev-rel-item{border-top:1px solid var(--line)}
   .ev-rel-item:hover{background:var(--card2)}
   .ev-rel-item .t{font-size:13px;font-weight:600;color:var(--blue);
@@ -334,9 +355,25 @@
   .ev-rel-item.off{cursor:default}
   .ev-rel-item.off:hover{background:none}
   .ev-rel-item.off .t{color:var(--dim);text-decoration:none}
-  .ev-rel-foot{padding:8px 14px;border-top:1px solid var(--line);font-family:var(--mono);
+  /* Правка шаблонов рисуется в тело этого блока, а колонка узкая: строка редактора
+     из пяти полей в неё не влезает. В колонке раскладываем поля друг под другом —
+     форма та же, просто в один столбец. */
+  .ev-rl-body .ev-edit{padding:12px 14px}
+  .ev-rl-body .ev-edit-tpl{grid-template-columns:minmax(0,1fr) auto;gap:6px}
+  .ev-rl-body .ev-edit-tpl .ev-edit-name{grid-column:1 / -1}
+  .ev-rl-body .ev-edit-row{flex-wrap:wrap}
+  .ev-rl-body h4{margin:12px 14px 0;font-size:13px}
+  .ev-rl-foot{padding:8px 14px;border-top:1px solid var(--line);font-family:var(--mono);
     font-size:10.5px;color:var(--faint);background:var(--bg2)}
 
+
+  /* Ниже 1080px на две колонки ширины не хватает ни деталям, ни блокам:
+     колонка уходит под карточку и раскладывается в ряд. */
+  @media (max-width:1080px){
+    .ev-body,.ev-body.no-rail{grid-template-columns:minmax(0,1fr)}
+    .ev-rail{position:static;max-height:none;overflow:visible;
+      display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  }
 
   @media (max-width:640px){
     .ev-modal{padding:0}
