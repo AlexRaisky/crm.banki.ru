@@ -2388,7 +2388,10 @@
 
   var CRON_ACTS = {
     register: { label: "Зарегистрировать", ask: null },
-    update:   { label: "Обновить расписание",
+    /* Кнопка осталась запасным ходом: правка кронтаба отправляет расписание сама, но
+       чужой сервис бывает недоступен — тогда правка сохранена, а задание нет, и добить
+       её нужно чем-то видимым. */
+    update:   { label: "Отправить расписание заново",
                 ask: "Планировщик пересоздаёт задание: на время правки оно остановится.\nПродолжить?" },
     stop:     { label: "Остановить", ask: "Остановить задание? Рассылка перестанет уходить по расписанию." },
     start:    { label: "Запустить",
@@ -2404,10 +2407,9 @@
   function renderCronBlock(id, c) {
     var box = cronBox(id);
     if (!box) return;
-    var head = "<h4>Планировщик</h4>";
     if (!c.enabled) {
-      box.innerHTML = head + '<div style="color:var(--faint)">Интеграция выключена.' +
-        " Включается в «Настройки» → «Планировщик (Quartz)».</div>";
+      box.innerHTML = '<span style="color:var(--faint)">Интеграция выключена.' +
+        " Включается в «Настройки» → «Планировщик (Quartz)».</span>";
       return;
     }
     var may = canEditEvent();
@@ -2416,24 +2418,32 @@
         ' onclick="evCron(' + id + ",'" + act + "')\">" + CRON_ACTS[act].label + "</button>";
     }
     if (!c.registered) {
-      box.innerHTML = head +
-        '<div style="color:var(--faint);margin-bottom:8px">Задание не заведено: Quartz про это' +
-        " событие не знает, по расписанию оно не сработает.</div>" +
+      box.innerHTML =
+        '<span style="color:var(--faint)">Задание не заведено: Quartz про это событие не' +
+        " знает, по расписанию оно не сработает.</span>" +
         '<div class="ev-edit-row">' + btn("register") + "</div>" +
         '<div class="ev-edit-msg" id="evCronMsg-' + id + '"></div>';
       return;
     }
-    box.innerHTML = head + dlist([
-      ["id задания", c.cronEventId],
-      ["состояние", c.lastStatus || "неизвестно"],
-      ["последнее действие", c.lastAction],
-      ["кто", c.lastActor],
-      ["когда", c.syncedAt]
-    ]) +
+    /* Поля — той же сеткой, что и остальная карточка: блок стоял списком определений и
+       выбивался из неё единственный на всю страницу. */
+    box.innerHTML =
+      '<div class="sfd-grid" style="padding:0">' +
+        row("id задания", c.cronEventId, null,
+            "номер в боевой базе: им же адресуются запуск, остановка и обновление") +
+        row("Состояние", c.lastStatus || "неизвестно") +
+        row("Последнее действие", c.lastAction) +
+        row("Кто", c.lastActor) +
+        row("Когда", String(c.syncedAt || "").slice(0, 19).replace("T", " ")) +
+      "</div>" +
       (c.lastError ? '<div class="ev-warn">' + esc(c.lastError) + "</div>" : "") +
-      '<div class="ev-edit-row" style="margin-top:8px">' +
+      '<div class="ev-edit-row" style="margin-top:10px">' +
         btn("start") + btn("stop") + btn("update") + "</div>" +
-      '<div class="ev-edit-msg" id="evCronMsg-' + id + '"></div>';
+      '<div class="ev-edit-msg" id="evCronMsg-' + id + '">' +
+        "Запуск и остановка идут в планировщик его же ручками (start и stop) по номеру" +
+        " задания выше. Расписание обновлять отдельно не нужно: правка кронтаба в блоке" +
+        " «Расписание» отправляет его сама." +
+      "</div>";
   }
 
   function loadCron(id) {

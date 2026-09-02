@@ -245,6 +245,8 @@
   .sf-btn.primary{background:var(--grad);border-color:transparent;color:#06202B}
   .sf-btn.primary:hover{color:#06202B;filter:brightness(1.05)}
   .sf-btn:disabled{cursor:not-allowed;opacity:.5}
+  /* Пояснение под кнопками планировщика — подпись, а не ошибка: цвет спокойный. */
+  #evCardHost .ev-edit-msg{color:var(--faint);font-size:12px;line-height:1.5;margin-top:8px}
   /* Форма внутри окна уже имеет свои отступы — снимаем внешние, чтобы не было полей
      в поле. Верхний заголовок секции в окно не переезжает: он остался в разделе. */
   .ev-modal-body>#evoForm,.ev-modal-body>#evfWizard{gap:18px}
