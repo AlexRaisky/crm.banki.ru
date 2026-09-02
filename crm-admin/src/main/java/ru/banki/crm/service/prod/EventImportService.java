@@ -216,6 +216,51 @@ public class EventImportService {
         return out;
     }
 
+    /**
+     * Достроить обвязку событиям, у которых строка слоя B есть, а расписания, шагов,
+     * шаблонов или задания планировщика нет.
+     * <p>
+     * Нужно для тех, кого привязали прежними прогонами — до того, как привязка стала
+     * достраивать обвязку. Разово это чинит накопившееся, дальше проход почти всегда
+     * пустой: условие отбирает ровно неполные события.
+     * <p>
+     * Порция ограничена: у события до десятка запросов на добор, и чинить пять тысяч
+     * за один прогон значит держать транзакцию столько же. Остальное доберут следующие
+     * прогоны — их и так делают до тех пор, пока сервер говорит «есть ещё».
+     */
+    private int backfillExisting() {
+        List<Map<String, Object>> broken = jdbc.queryForList(
+                "SELECT m.our_id::bigint AS event_id, m.prod_table, m.prod_id::bigint AS our_row" +
+                "  FROM flow.t_materialization m" +
+                " WHERE m.our_entity = 'flow.d_event'" +
+                "   AND m.prod_table IN ('scheduler.t_get_event', 'tracker.t_event_comm')" +
+                "   AND (NOT EXISTS (SELECT 1 FROM flow.d_event_template t" +
+                "                     WHERE t.event_id = m.our_id::bigint)" +
+                "     OR (m.prod_table = 'scheduler.t_get_event'" +
+                "         AND NOT EXISTS (SELECT 1 FROM flow.d_event_step s" +
+                "                          WHERE s.event_id = m.our_id::bigint)))" +
+                " ORDER BY m.our_id::bigint DESC LIMIT 200");
+        int done = 0;
+        for (Map<String, Object> r : broken) {
+            Long evId = num(r.get("event_id")), rowId = num(r.get("our_row"));
+            if (evId == null || rowId == null) {
+                continue;   /* строка журнала без номеров — чинить нечего */
+            }
+            try {
+                backfill(evId, str(r, "prod_table"), rowId);
+                done++;
+            } catch (Exception e) {
+                /* Одно событие с битой ссылкой не должно останавливать добор остальных. */
+                log.info("event-import: событию {} обвязку достроить не вышло: {}",
+                        r.get("event_id"), rootMessage(e));
+            }
+        }
+        if (done > 0) {
+            log.info("event-import: достроена обвязка у {} событий", done);
+        }
+        return done;
+    }
+
     /** Счётчик из уже собранной сводки: null, если по этой таблице была ошибка. */
     private static Long countOf(Map<String, Object> tables, String table) {
         Object row = tables.get(table);
@@ -314,6 +359,7 @@ public class EventImportService {
 
         Map<String, Object> online = buildOnlineEvents();
         Map<String, Object> offline = buildOfflineEvents();
+        int repaired = backfillExisting();
         int built = intOf(online.get("built")) + intOf(offline.get("built"));
         int adopted = intOf(online.get("adopted")) + intOf(offline.get("adopted"));
         int eventErrors = intOf(online.get("failed")) + intOf(offline.get("failed"));
@@ -332,6 +378,10 @@ public class EventImportService {
            из них не появилось, но и «затянуто ноль» про них сказать нельзя: работа
            сделана, и без этой цифры она выглядела бы как ничего. */
         out.put("eventsAdopted", adopted);
+        /* События, которым достроили недостающую обвязку. Отдельной цифрой: новых
+           событий не появилось, но карточки, которые были пустыми, перестали такими
+           быть — и это стоит увидеть, а не гадать, изменилось ли что-нибудь. */
+        out.put("eventsRepaired", repaired);
         out.put("eventErrors", concat(online.get("errors"), offline.get("errors")));
         out.put("pending", pendingTotal);
         /* Отложенные строки — тоже повод для следующего прогона: их зависимости приехали
@@ -725,9 +775,85 @@ public class EventImportService {
             return false;
         }
         link(eventId, table, ourId);
+        backfill(eventId, table, ourId);
         log.info("event-import: строка {}#{} привязана к уже заведённому событию {}",
                 table, ourId, eventId);
         return true;
+    }
+
+    /**
+     * Достроить обвязку события, которой у него нет.
+     * <p>
+     * Привязать строку мало: карточка события показывает расписание, шаги выборки,
+     * шаблоны и задание планировщика, а всё это лежит в отдельных таблицах нашей модели.
+     * У «усыновлённого» события их не было — оно заводилось формой (и тогда обвязка
+     * своя) либо доставалось из прода другим проходом, после которого осталось только
+     * имя. На экране это выглядело как «Шаги (0), Шаблоны (0), задание не заведено» —
+     * при том, что в проде всё на месте.
+     * <p>
+     * Достраиваем только пустое. Повторная вставка маппингов удвоила бы шаблоны, а
+     * повторная вставка шагов упёрлась бы в UNIQUE (event_id, order_num).
+     */
+    private void backfill(long eventId, String table, Long ourId) {
+        if ("scheduler.t_get_event".equals(table)) {
+            if (!empty(eventId, "flow.d_event_step") && !empty(eventId, "flow.d_event_schedule")) {
+                return;
+            }
+            List<Map<String, Object>> ge = jdbc.queryForList(
+                    "SELECT selection, event_name, system FROM scheduler.t_get_event WHERE id = ?", ourId);
+            if (ge.isEmpty()) {
+                return;
+            }
+            attachSchedule(eventId, nz(str(ge.get(0), "selection"), str(ge.get(0), "event_name")));
+            if (empty(eventId, "flow.d_event_template")) {
+                attachMappings(eventId, str(ge.get(0), "event_name"), str(ge.get(0), "system"));
+            }
+        } else if ("tracker.t_event_comm".equals(table)) {
+            List<Map<String, Object>> ec = jdbc.queryForList(
+                    "SELECT event_name, system FROM tracker.t_event_comm WHERE id = ?", ourId);
+            if (!ec.isEmpty() && empty(eventId, "flow.d_event_template")) {
+                attachMappings(eventId, str(ec.get(0), "event_name"), str(ec.get(0), "system"));
+            }
+        }
+        linkCron(eventId);
+    }
+
+    /** В таблице нет ни одной строки этого события. */
+    private boolean empty(long eventId, String table) {
+        Integer n = jdbc.queryForObject(
+                "SELECT count(*) FROM " + table + " WHERE event_id = ?", Integer.class, eventId);
+        return n == null || n == 0;
+    }
+
+    /**
+     * Задание планировщика для события, пришедшего из прода.
+     * <p>
+     * Панель считает, что задания нет, если о нём нет записи в {@code flow.t_event_cron},
+     * — и предлагает «Зарегистрировать» событие, у которого расписание в проде давно
+     * стоит. Второе задание на то же событие ничем хорошим не кончится.
+     * <p>
+     * Id задания и есть id строки {@code scheduler.t_launch_settings}: планировщик её сам
+     * создаёт и её же номер возвращает при регистрации. Значит для затянутых событий он
+     * известен — лежит в журнале связей.
+     */
+    private void linkCron(long eventId) {
+        Integer has = jdbc.queryForObject(
+                "SELECT count(*) FROM flow.t_event_cron WHERE event_id = ?", Integer.class, eventId);
+        if (has != null && has > 0) {
+            return;
+        }
+        List<Long> ids = jdbc.queryForList(
+                "SELECT prod_id FROM flow.t_event_link" +
+                " WHERE event_id = ? AND our_table = 'scheduler.t_launch_settings'" +
+                " ORDER BY id LIMIT 1", Long.class, eventId);
+        if (ids.isEmpty()) {
+            return;
+        }
+        jdbc.update("INSERT INTO flow.t_event_cron" +
+                        " (event_id, cron_event_id, last_status, last_action, last_actor)" +
+                        " VALUES (?, ?, NULL, 'import', ?) ON CONFLICT (event_id) DO NOTHING",
+                eventId, ids.get(0), CurrentUser.email());
+        log.info("event-import: событию {} проставлено задание планировщика {}", eventId, ids.get(0));
     }
 
     /** Отметка «эта строка нашего слоя B принадлежит этому событию» — как у материализации. */
