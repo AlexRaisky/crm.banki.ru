@@ -2357,18 +2357,24 @@
     var head = '<div class="sfd-sec"><div class="sfd-sec-title">Шаблоны' +
       (may ? ' <button type="button" class="ev-mini" onclick="evEditTemplates(' + esc(id) + ')">Править</button>' : "") +
       "</div>";
+    /* Вид — как у связанных объектов в карточке клиента: одна рамка на весь список,
+       строки друг под другом, справа код записи, внизу путь связи. Своего заголовка
+       у рамки нет: его роль играет заголовок секции, второй был бы повтором. */
     var body = tpl.length
-      ? '<div class="ev-rel">' + tpl.map(function (x) {
-          var known = !!x.code;
-          var sub = (x.step_no == null ? "одиночный" : "шаг " + esc(x.step_no)) +
-            (known ? " · " + esc(x.channel) + ":" + esc(x.code) : "");
-          return '<div class="ev-rel-item' + (known ? "" : " off") + '"' +
-            (known ? ' data-tpl="' + esc(x.channel) + ":" + esc(x.code) + '"' : "") + ">" +
-            '<div class="t">' + esc(x.communication_name || (known ? x.code : "шаблона нет у нас")) + "</div>" +
-            '<div class="s">' + sub + "</div>" +
-            (known ? '<span class="go">Открыть →</span>' : '<span class="go none">не найден</span>') +
-          "</div>";
-        }).join("") + "</div>"
+      ? '<div class="ev-rel">' +
+          tpl.map(function (x) {
+            var known = !!x.code;
+            var sub = (x.step_no == null ? "одиночный" : "шаг " + esc(x.step_no)) +
+              (known ? " · " + esc(x.channel) : "");
+            return '<div class="ev-rel-item' + (known ? "" : " off") + '"' +
+              (known ? ' data-tpl="' + esc(x.channel) + ":" + esc(x.code) + '"' : "") + ">" +
+              '<div class="t">' + esc(x.communication_name || (known ? x.code : "шаблона нет у нас")) + "</div>" +
+              '<div class="s">' + sub + "</div>" +
+              '<div class="n">' + (known ? "#" + esc(x.code) : "—") + "</div>" +
+            "</div>";
+          }).join("") +
+          '<div class="ev-rel-foot">flow.d_event_template.event_id → flow.d_event.id</div>' +
+        "</div>"
       : '<span style="color:var(--faint)">нет</span>';
     return head + '<div class="sfd-chain" id="evEditTpl-' + esc(id) + '">' + body + "</div></div>";
   }
