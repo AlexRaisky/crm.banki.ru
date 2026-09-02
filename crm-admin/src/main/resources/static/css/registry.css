@@ -93,7 +93,10 @@
       font-size:13px;font-weight:640;color:var(--ink);cursor:pointer;user-select:none}
   .sfd-sec-title::before{content:"▾";color:var(--blue);font-size:11px;transition:transform .15s}
   .sfd-sec.closed .sfd-sec-title::before{transform:rotate(-90deg)}
-  .sfd-sec.closed .sfd-grid{display:none}
+  /* Свернуть надо всё содержимое секции, а не только сетку полей: у «Шагов»,
+     «Шаблонов», «Планировщика» и «Связей» внутри не поля, а таблицы и кнопки — и
+     стрелка складывалась, а содержимое оставалось на экране. */
+  .sfd-sec.closed .sfd-grid,.sfd-sec.closed .sfd-chain{display:none}
   .sfd-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:38px;padding:4px 18px 10px}
   .sfd-row{padding:9px 0;border-bottom:1px solid var(--line);min-width:0}
   .sfd-row .l{font-size:11.5px;color:var(--label);margin-bottom:3px}

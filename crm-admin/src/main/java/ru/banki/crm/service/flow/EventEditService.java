@@ -7,8 +7,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import ru.banki.crm.service.AdminLogService;
+import ru.banki.crm.service.cron.CronService;
 
 import java.util.ArrayList;
+import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,10 +40,12 @@ public class EventEditService {
 
     private final JdbcTemplate jdbc;
     private final AdminLogService adminLog;
+    private final CronService cron;
 
-    public EventEditService(JdbcTemplate jdbc, AdminLogService adminLog) {
+    public EventEditService(JdbcTemplate jdbc, AdminLogService adminLog, CronService cron) {
         this.jdbc = jdbc;
         this.adminLog = adminLog;
+        this.cron = cron;
     }
 
     /** Событие есть? */
@@ -112,8 +116,56 @@ public class EventEditService {
         out.put("value", val);
         out.put("exported", exported(eventId));
         out.put("eventName", ev.get("event_name"));
+        out.putAll(pushToScheduler(eventId, field));
         return out;
     }
+
+    /**
+     * Довезти правку до планировщика: {@code PATCH /api/v1/event/{id}} с ЕГО id задания.
+     * <p>
+     * Расписание исполняет не наша строка, а задание Quartz, и правка кронтаба или
+     * активности, оставшаяся только у нас, не меняет ровно ничего: событие продолжает
+     * ходить по-старому, а панель показывает новое. Поэтому поля, из которых собран
+     * запрос к планировщику, после сохранения отправляются ему же.
+     * <p>
+     * Не падаем вместе с ним: наша правка уже сохранена и откату не подлежит — чужой
+     * сервис может быть выключен, недоступен или не знать про это событие. Тогда
+     * возвращаем предупреждение, в котором сказано, что делать: обновить задание руками
+     * кнопкой в карточке.
+     *
+     * @return {@code cron} — что вышло; пусто, если задания нет и обновлять нечего
+     */
+    private Map<String, Object> pushToScheduler(long eventId, String field) {
+        if (!CRON_FIELDS.contains(field)) {
+            return Map.of();
+        }
+        Long cronId = cron.registeredId(eventId);
+        if (cronId == null) {
+            /* Задания нет — событие в планировщике не заведено, и обновлять нечего.
+               Это не ошибка: онлайн-события заданий не имеют вовсе. */
+            return Map.of();
+        }
+        try {
+            cron.update(eventId);
+            return Map.of("cron", "Задание " + cronId + " обновлено в планировщике");
+        } catch (RuntimeException e) {
+            String why = e instanceof ResponseStatusException rse && rse.getReason() != null
+                    ? rse.getReason() : String.valueOf(e.getMessage());
+            return Map.of("cronWarning",
+                    "Сохранено у нас, но задание " + cronId + " в планировщике не обновилось: "
+                    + why + ". Обновите его кнопкой в блоке «Планировщик».");
+        }
+    }
+
+    /**
+     * Поля, из которых собран запрос к планировщику.
+     * <p>
+     * Ровно те, что уходят в теле {@code PATCH /api/v1/event/{id}}: расписание, база
+     * выборки, метод отправки и активность. Остальное (source, описание, система) на
+     * задание не влияет, и дёргать ради него чужой сервис незачем.
+     */
+    private static final Set<String> CRON_FIELDS =
+            Set.of("crontab", "database", "is_batch", "is_active");
 
     /** Поле карточки: куда пишем и как приводим значение. */
     private record Editable(String column, boolean schedule, String type) {
