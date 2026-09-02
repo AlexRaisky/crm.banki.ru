@@ -97,6 +97,31 @@ public class EventListService {
         return out;
     }
 
+    /**
+     * События, которые ходят по этому шаблону, — обратная сторона связи
+     * flow.d_event_template: у события в карточке видно его шаблоны, здесь у шаблона
+     * видно его события.
+     * <p>
+     * Шаблон адресуется парой канал+код, а не id: карточка шаблона знает именно её,
+     * своего внутреннего id она не показывает и не хранит.
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> byTemplate(String channel, String code) {
+        if (channel == null || channel.isBlank() || code == null || code.isBlank()) {
+            return List.of();
+        }
+        return jdbc.queryForList(
+                "SELECT e.id, e.event_name, e.kind, e.is_active, et.step_no," +
+                "       (SELECT d.notify_channel FROM flow.d_event_delivery d" +
+                "         WHERE d.event_id = e.id ORDER BY d.id LIMIT 1) AS notify_channel" +
+                "  FROM flow.d_event_template et" +
+                "  JOIN template.d_template t ON t.id = et.template_id" +
+                "  JOIN flow.d_event e ON e.id = et.event_id" +
+                " WHERE t.channel = ? AND t.code = ?" +
+                " ORDER BY e.id",
+                channel, code);
+    }
+
     /** Полная карточка одного события: обвязка целиком, включая шаги выборки. */
     @Transactional(readOnly = true)
     public Map<String, Object> one(long id) {

@@ -2095,6 +2095,15 @@
      шаблоны, связи с продом, — а раскрытая внутри таблицы она была зажата колонками и
      пропадала при первом же обновлении списка. Возврат — кнопкой «К списку», как в
      карточке шаблона. */
+  /* Открыть карточку события извне раздела — из блока «События» в карточке шаблона.
+     Сначала открываем сам раздел: пока секция скрыта, карточке некуда рисоваться, а
+     список за ней всё равно нужен для кнопки «К списку». */
+  window.openEventCard = function (id) {
+    if (typeof openSection === "function") openSection("entities", "ent-event");
+    if (!inited.list && typeof initList === "function") initList();
+    toggleCard(id);
+  };
+
   function toggleCard(id) {
     showListPart(false);
     var host = el("evCardHost");

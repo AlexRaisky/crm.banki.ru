@@ -236,6 +236,18 @@ public class EventController {
         return catalog.list(new EventListService.Filter(q, kind, channel, active, exported), limit, offset);
     }
 
+    /**
+     * События, которые ходят по шаблону, — для блока связанных объектов в карточке
+     * шаблона. Секция та же, что у списка событий: показываем события, значит и право
+     * спрашиваем на события, а не на шаблоны.
+     */
+    @GetMapping("/by-template")
+    public List<Map<String, Object>> byTemplate(@RequestParam String channel,
+                                                @RequestParam String code) {
+        access.requireAnySection(Sections.EV_LIST);
+        return catalog.byTemplate(channel, code);
+    }
+
     /** Значения фильтров — только те, что реально встречаются в заведённых событиях. */
     @GetMapping("/list/facets")
     public Map<String, Object> listFacets() {
