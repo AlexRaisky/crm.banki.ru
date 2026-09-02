@@ -2141,12 +2141,14 @@
     var head = '<div class="sfd-top">' +
         '<button type="button" class="sf-btn" data-ev-back="1">← К списку событий</button>' +
       "</div>" +
-      '<div class="sfd"><div class="sfd-head">' +
+      /* Шапка записи — отдельной карточкой во всю ширину, над колонками: у клиента
+         сделано так же, и колонка связанных объектов начинается уже под ней. */
+      '<div class="sfd ev-head-card"><div class="sfd-head">' +
         '<span class="sfd-ch">' + (time ? "ПО РАСПИСАНИЮ" : "ОНЛАЙН") + "</span>" +
         "<b>" + esc(e.id) + " — " + esc(e.event_name || "") + "</b>" +
         '<span class="sfd-status ' + (e.is_active ? "on" : "off") + '">' +
           (e.is_active ? "АКТИВНО" : "ВЫКЛЮЧЕНО") + "</span>" +
-      "</div>";
+      "</div></div>";
 
     var body = sec("Событие", [
       row("Имя события", e.event_name, null, "имя же уходит в selection: по нему в проде связаны три таблицы, поэтому здесь оно только показывается"),
@@ -2191,10 +2193,17 @@
       body += stepsSec(d.steps || [], e.id, may);
     }
 
-    body += tplSec(d.templates || [], e.id, may);
     body += linksSec(d.links || []);
 
-    return head + body + "</div>";
+    /* Связанные объекты стоят КОЛОНКОЙ СБОКУ, а не секцией внутри карточки — так же,
+       как «Контактные данные» у клиента. Внутри карточки блок читался как ещё одно
+       поле события, хотя это отдельные записи, в которые проваливаются. */
+    var rail = tplRail(d.templates || [], e.id, may);
+    return head +
+      '<div class="ev-body' + (rail ? "" : " no-rail") + '">' +
+        '<div class="ev-main"><div class="sfd">' + body + "</div></div>" +
+        (rail ? '<aside class="ev-rail">' + rail + "</aside>" : "") +
+      "</div>";
   }
 
   /** Секция карточки: заголовок и поля в две колонки. */
@@ -2353,30 +2362,37 @@
   /* Шаблоны — связанным объектом, как в карточке клиента: не таблица «что записано», а
      список записей, в которые можно провалиться. Событие подвязано к шаблонам, и первый
      вопрос к блоку — «покажи их», а не «покажи их идентификаторы». */
-  function tplSec(tpl, id, may) {
-    var head = '<div class="sfd-sec"><div class="sfd-sec-title">Шаблоны' +
-      (may ? ' <button type="button" class="ev-mini" onclick="evEditTemplates(' + esc(id) + ')">Править</button>' : "") +
-      "</div>";
+  /* Блок связанных объектов для колонки справа: своя рамка, своя шапка с иконкой и
+     счётчиком — один в один «Контактные данные» в карточке клиента. Секцией карточки
+     он больше не является, поэтому и не сворачивается: у клиента так же. */
+  var RL_ICO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/>' +
+    '<path d="M3 9.5h18M9 9.5V20"/></svg>';
+  function tplRail(tpl, id, may) {
+    var head = '<section class="ev-rl"><header class="ev-rl-head">' +
+      '<span class="ico">' + RL_ICO + "</span><b>Шаблоны</b>" +
+      '<span class="cnt">' + tpl.length + "</span>" +
+      (may ? '<button type="button" class="ev-mini" onclick="evEditTemplates(' + esc(id) + ')">Править</button>' : "") +
+      "</header>";
     /* Вид — как у связанных объектов в карточке клиента: одна рамка на весь список,
        строки друг под другом, справа код записи, внизу путь связи. Своего заголовка
        у рамки нет: его роль играет заголовок секции, второй был бы повтором. */
     var body = tpl.length
-      ? '<div class="ev-rel">' +
-          tpl.map(function (x) {
-            var known = !!x.code;
-            var sub = (x.step_no == null ? "одиночный" : "шаг " + esc(x.step_no)) +
-              (known ? " · " + esc(x.channel) : "");
-            return '<div class="ev-rel-item' + (known ? "" : " off") + '"' +
-              (known ? ' data-tpl="' + esc(x.channel) + ":" + esc(x.code) + '"' : "") + ">" +
-              '<div class="t">' + esc(x.communication_name || (known ? x.code : "шаблона нет у нас")) + "</div>" +
-              '<div class="s">' + sub + "</div>" +
-              '<div class="n">' + (known ? "#" + esc(x.code) : "—") + "</div>" +
-            "</div>";
-          }).join("") +
-          '<div class="ev-rel-foot">flow.d_event_template.event_id → flow.d_event.id</div>' +
-        "</div>"
-      : '<span style="color:var(--faint)">нет</span>';
-    return head + '<div class="sfd-chain" id="evEditTpl-' + esc(id) + '">' + body + "</div></div>";
+      ? tpl.map(function (x) {
+          var known = !!x.code;
+          var sub = (x.step_no == null ? "одиночный" : "шаг " + esc(x.step_no)) +
+            (known ? " · " + esc(x.channel) : "");
+          return '<div class="ev-rel-item' + (known ? "" : " off") + '"' +
+            (known ? ' data-tpl="' + esc(x.channel) + ":" + esc(x.code) + '"' : "") + ">" +
+            '<div class="t">' + esc(x.communication_name || (known ? x.code : "шаблона нет у нас")) + "</div>" +
+            '<div class="s">' + sub + "</div>" +
+            '<div class="n">' + (known ? "#" + esc(x.code) : "—") + "</div>" +
+          "</div>";
+        }).join("")
+      : '<div class="ev-rl-empty">шаблонов нет</div>';
+    /* id остаётся на теле блока: правка шаблонов перерисовывает именно его. */
+    return head + '<div class="ev-rl-body" id="evEditTpl-' + esc(id) + '">' + body + "</div>" +
+      '<div class="ev-rl-foot">flow.d_event_template.event_id → flow.d_event.id</div></section>';
   }
 
   function linksSec(links) {
@@ -2538,6 +2554,10 @@
 
   /* Перерисовка после правки шагов или шаблонов — тем же путём, что и открытие:
      карточка одна, и второй способ её собрать разошёлся бы с первым. */
+  /* Наружу — потому что на неё ссылается инлайновый onclick кнопки «Отмена» в правке
+     шагов и шаблонов. Без экспорта та кнопка молча падала с ReferenceError: из режима
+     правки нельзя было выйти иначе как перезагрузкой карточки. */
+  window.evReloadCard = function (id) { evReloadCard(id); };
   function evReloadCard(id) {
     var host = el("evCardHost");
     if (!host || host.hidden) return;
