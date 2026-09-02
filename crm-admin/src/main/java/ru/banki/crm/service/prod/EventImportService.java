@@ -641,8 +641,17 @@ public class EventImportService {
         if (selection == null || selection.isBlank()) {
             return;
         }
+        /* Строк расписания на одно событие бывает несколько: планировщик заводит новую
+           при каждой регистрации, и после пары переливов их накапливается три-четыре с
+           одним и тем же selection. Шаги привязаны к ОДНОЙ из них — берём ту, у которой
+           они есть, и только если таких нет, самую свежую. Прежний «первый по id» с
+           равной вероятностью выбирал пустую, и событие оставалось без шагов при живых
+           шагах в соседней строке. */
         List<Map<String, Object>> found = jdbc.queryForList(
-                "SELECT * FROM scheduler.t_launch_settings WHERE selection = ? ORDER BY id LIMIT 1",
+                "SELECT ls.* FROM scheduler.t_launch_settings ls" +
+                " WHERE ls.selection = ?" +
+                " ORDER BY (SELECT count(*) FROM scheduler.t_execution_steps st" +
+                "            WHERE st.t_launch_settings_id = ls.id) DESC, ls.id DESC LIMIT 1",
                 selection);
         if (found.isEmpty()) {
             return;
@@ -861,10 +870,19 @@ public class EventImportService {
         if (ourId == null) {
             return;
         }
+        /* Только если такой отметки ещё нет. Уникальности на тройке в таблице не стоит
+           (её ведут и материализация цепочек, и импорт), а вставка «в лоб» плодила
+           дубли: добор обвязки повторяется каждый прогон, пока событие неполное, и
+           каждый раз дописывал ту же строку. В карточке это выглядело как несколько
+           одинаковых связей на одну запись. */
         jdbc.update("INSERT INTO flow.t_materialization" +
                         " (our_entity, our_id, prod_table, prod_id, materialized_by)" +
-                        " VALUES ('flow.d_event', ?, ?, ?, ?)",
-                String.valueOf(eventId), ourTable, String.valueOf(ourId), CurrentUser.email());
+                        " SELECT 'flow.d_event', ?, ?, ?, ?" +
+                        " WHERE NOT EXISTS (SELECT 1 FROM flow.t_materialization" +
+                        "   WHERE our_entity = 'flow.d_event' AND our_id = ?" +
+                        "     AND prod_table = ? AND prod_id = ?)",
+                String.valueOf(eventId), ourTable, String.valueOf(ourId), CurrentUser.email(),
+                String.valueOf(eventId), ourTable, String.valueOf(ourId));
         // событие в журнале соответствий известно только здесь: при копировании его ещё нет
         jdbc.update("UPDATE flow.t_event_link SET event_id = ?" +
                         " WHERE our_table = ? AND our_id = ? AND event_id IS NULL",
