@@ -89,7 +89,9 @@
   .sfd-head .sfd-actions{margin-left:auto}
   .sfd-sec{border-bottom:1px solid var(--line)}
   .sfd-sec:last-child{border-bottom:none}
-  .sfd-sec-title{display:flex;align-items:center;gap:8px;padding:11px 18px;background:rgba(13,24,38,.45);
+  /* Фон шапки блока — переменной темы, а не фиксированным тёмным цветом: на светлой
+     теме rgba(13,24,38,.45) ложился поверх белой карточки тяжёлой серой полосой. */
+  .sfd-sec-title{display:flex;align-items:center;gap:8px;padding:11px 18px;background:var(--card2);
       font-size:13px;font-weight:640;color:var(--ink);cursor:pointer;user-select:none}
   .sfd-sec-title::before{content:"▾";color:var(--blue);font-size:11px;transition:transform .15s}
   .sfd-sec.closed .sfd-sec-title::before{transform:rotate(-90deg)}
@@ -97,6 +99,11 @@
      «Шаблонов», «Планировщика» и «Связей» внутри не поля, а таблицы и кнопки — и
      стрелка складывалась, а содержимое оставалось на экране. */
   .sfd-sec.closed .sfd-grid,.sfd-sec.closed .sfd-chain{display:none}
+  /* Отступы содержимого — как у сетки полей: без них «Шаги», «Шаблоны» и «Связи»
+     прижимались к краю карточки, и блоки со списками выбивались из блоков с полями.
+     В #sec-admin то же правило приходит из section-admin.css; здесь оно нужно потому,
+     что карточка события живёт в #sec-event-list, куда те стили не дотягиваются. */
+  .sfd-chain{padding:12px 18px 16px;display:flex;flex-direction:column;gap:12px}
   .sfd-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:38px;padding:4px 18px 10px}
   .sfd-row{padding:9px 0;border-bottom:1px solid var(--line);min-width:0}
   .sfd-row .l{font-size:11.5px;color:var(--label);margin-bottom:3px}

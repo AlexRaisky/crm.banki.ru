@@ -102,7 +102,7 @@
   .ev-msg.warn{color:var(--amber,#e2a336)}
 
   /* что создалось: таблица слоя B */
-  .ev-rows{margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .ev-rows{border:1px solid var(--line);border-radius:12px;overflow:hidden}
   .ev-rows table{border-collapse:collapse;width:100%;font-size:12.5px}
   .ev-rows th,.ev-rows td{border-bottom:1px solid var(--line);padding:8px 12px;text-align:left}
   .ev-rows th{color:var(--faint);font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
@@ -284,6 +284,53 @@
      Оба приглушены, но по-разному — иначе «колонки не будет» читается как значение. */
   .ev-plan-t tr.k-auto td.v{color:var(--faint);font-family:var(--mono);font-size:11.5px}
   .ev-plan-t tr.k-skip td.v{color:var(--faint);font-style:italic}
+  /* ---------- расшифровка кронтаба ---------- */
+  /* Не пояснение к полю, а прочитанное выражение — то, ради чего в поле и смотрят.
+     Ошибка разбора красная: показывать её тем же цветом, что и рабочее расписание,
+     значит прятать поломку. */
+  .sfd-row .l.ev-cron-words{color:var(--green);font-weight:600;font-size:12px}
+  .sfd-row .l.ev-cron-bad{color:var(--coral);font-weight:600;font-size:12px}
+
+  /* ---------- кодовое окно шага выборки ---------- */
+  /* Расстояние между шагами задаёт gap у .sfd-chain — свой margin его бы удвоил. */
+  .ev-step-view{min-width:0}
+  .ev-code{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:7px;
+    background:var(--bg2,rgba(127,127,127,.06))}
+  .ev-code-bar{display:flex;align-items:center;gap:8px;padding:6px 10px;
+    border-bottom:1px solid var(--line);background:var(--card2)}
+  .ev-code-lang{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint)}
+  .ev-code-sel{margin-left:auto;background:var(--card);border:1px solid var(--line);border-radius:7px;
+    color:var(--ink);font-family:var(--sans);font-size:12px;padding:3px 8px;outline:none;cursor:pointer}
+  .ev-code-sel:focus{border-color:rgba(80,195,255,.5)}
+  .ev-code pre{margin:0;padding:11px 12px;overflow-x:auto;background:none;
+    font-family:var(--mono);font-size:12px;line-height:1.55;white-space:pre}
+  .ev-code code{font-family:inherit}
+  /* Служебные слова, строки, числа и комментарии — четырьмя цветами палитры панели,
+     а не радугой: код в карточке читают, а не пишут. */
+  .ev-code .c-kw{color:var(--blue);font-weight:600}
+  .ev-code .c-str{color:var(--green)}
+  .ev-code .c-num{color:var(--amber)}
+  .ev-code .c-cmt{color:var(--faint);font-style:italic}
+
+  /* ---------- шаблоны связанным объектом ---------- */
+  .ev-rel{display:flex;flex-direction:column;gap:8px}
+  .ev-rel-item{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--card2);
+    padding:10px 92px 10px 13px;cursor:pointer;transition:border-color .15s,transform .15s}
+  .ev-rel-item:hover{border-color:rgba(80,195,255,.45);transform:translateY(-1px)}
+  .ev-rel-item .t{font-size:13px;font-weight:600;color:var(--blue);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ev-rel-item:hover .t{text-decoration:underline}
+  .ev-rel-item .s{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:3px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ev-rel-item .go{position:absolute;right:12px;top:50%;transform:translateY(-50%);
+    font-size:12px;font-weight:600;color:var(--blue)}
+  /* Шаблон, которого у нас нет, кликабельным не притворяется. */
+  .ev-rel-item.off{cursor:default;border-style:dashed}
+  .ev-rel-item.off:hover{border-color:var(--line);transform:none}
+  .ev-rel-item.off .t{color:var(--dim);text-decoration:none}
+  .ev-rel-item .go.none{color:var(--faint);font-weight:400}
+
 
   @media (max-width:640px){
     .ev-modal{padding:0}

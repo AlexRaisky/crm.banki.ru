@@ -2104,9 +2104,6 @@
       evCard = d;
       host.innerHTML = renderEventCard(d);
       wireEventCard(id);
-      /* Состояние задания спрашиваем отдельным запросом, а не вместе с карточкой: он
-         ходит в чужой сервис, и карточка не должна ждать его или падать вместе с ним. */
-      loadCron(id);
     }).catch(function (e) {
       host.innerHTML = '<div class="sfd"><div class="sfd-head"><b style="color:var(--red,#e5484d)">' +
         esc((e && e.message) || "Не удалось загрузить карточку") + "</b></div></div>";
@@ -2171,8 +2168,13 @@
     ]);
 
     if (time) {
+      /* Расшифровка кронтаба — зелёным: это не пояснение к полю, а прочитанное
+         выражение, ради которого в поле и смотрят. Разобрать не удалось —
+         красным: молча показывать ошибку тем же цветом, что и расписание, нельзя. */
+      var cronBad = !!s.crontab && !validateCron(s.crontab).ok;
       body += sec("Расписание", [
-        row("Кронтаб", s.crontab, may && "crontab", cronWords(s.crontab)),
+        row("Кронтаб", s.crontab, may && "crontab", cronWords(s.crontab),
+            cronBad ? "ev-cron-bad" : "ev-cron-words"),
         row("База выборки", s.database, may && "database"),
         flagRow("Массовая отправка", s.is_batch, may && "is_batch"),
         row("Попыток", s.max_retry_attempts),
@@ -2182,12 +2184,10 @@
         row("Прошлый прогон", st.last_result),
         row("Следующий запуск", st.date_next)
       ]);
-      /* Планировщик — про то, знает ли Quartz об этом событии, а не про то, что мы
-         записали в расписание. Эти две вещи расходятся, и ровно из-за этого заведённое
-         панелью событие могло не сработать ни разу. */
-      body += '<div class="sfd-sec"><div class="sfd-sec-title">Планировщик</div>' +
-        '<div class="sfd-chain" id="evCron-' + esc(e.id) + '">' +
-        '<span style="color:var(--faint)">читаю…</span></div></div>';
+      /* Блок «Планировщик» убран по требованию: состояние задания и так видно в
+         «Расписании» (Крон, Фаза, Прошлый прогон, Следующий запуск). Вместе с блоком
+         ушли кнопки регистрации, запуска и остановки задания — если они понадобятся,
+         возвращать их надо осознанно и в отдельное место. */
       body += stepsSec(d.steps || [], e.id, may);
     }
 
@@ -2209,13 +2209,15 @@
    *
    * @param field имя поля для правки; пусто — поле только показывается
    * @param note  подпись под значением: чем поле является и почему его нельзя трогать
+   * @param noteCls класс подписи: по умолчанию она серая пояснительная, но у кронтаба
+   *        это расшифровка выражения — её выделяем, чтобы читать расписание, а не разбирать
    */
-  function row(label, value, field, note) {
+  function row(label, value, field, note, noteCls) {
     var empty = value === null || value === undefined || value === "";
     return '<div class="sfd-row"' + (field ? ' data-field="' + esc(field) + '"' : "") + ">" +
       '<div class="l">' + esc(label) + "</div>" +
       '<div class="v' + (empty ? " empty" : "") + '">' + (empty ? "—" : esc(value)) + "</div>" +
-      (note ? '<div class="l" style="margin-top:4px">' + esc(note) + "</div>" : "") +
+      (note ? '<div class="l ' + (noteCls || "") + '" style="margin-top:4px">' + esc(note) + "</div>" : "") +
       (field ? penHtml() : "") + "</div>";
   }
 
@@ -2241,41 +2243,146 @@
     return v.loose ? "" : (describeCron(v.parts) || "");
   }
 
+  /* ---------------------------------------------------------- ПОДСВЕТКА КОДА
+
+     Шаг выборки — это скрипт, и читать его сплошным текстом тяжело. Подсветка своя,
+     без внешней библиотеки: панель работает и без интернета, а тянуть highlight.js
+     ради пяти правил незачем.
+
+     Разбор идёт одним проходом по чередованию «строка | комментарий | число | слово»:
+     если сначала красить ключевые слова, а потом строки, то SELECT внутри кавычек
+     тоже станет ключевым словом. */
+  var EV_LANGS = [
+    { v: "sql", label: "SQL" },
+    { v: "plpgsql", label: "PL/pgSQL" },
+    { v: "python", label: "Python" },
+    { v: "json", label: "JSON" },
+    { v: "none", label: "Без подсветки" }
+  ];
+  var EV_KW = {
+    sql: ("select from where union all as join left right inner outer on group by order having limit offset " +
+      "insert into values update set delete distinct case when then else end and or not null is in exists " +
+      "between like ilike with cast coalesce count sum min max avg now current_date current_timestamp " +
+      "interval asc desc over partition").split(" "),
+    plpgsql: ("declare begin end if elsif else then loop while for foreach return returns language function " +
+      "perform execute raise notice exception when others rollback commit into strict record cursor open fetch close " +
+      "select from where insert update delete values and or not null").split(" "),
+    python: ("def class return if elif else for while in not and or import from as with try except finally raise " +
+      "lambda yield pass break continue global nonlocal assert del is none true false self print len range").split(" "),
+    json: ["true", "false", "null"]
+  };
+  /* Язык по умолчанию — по самому тексту: у шагов почти всегда SQL, но JSON и питон
+     среди них встречаются, и заставлять переключать вручную каждый раз незачем. */
+  function evGuessLang(code) {
+    var t = String(code || "").trim();
+    if (!t) return "sql";
+    if (/^[\[{]/.test(t) && /[}\]]$/.test(t)) return "json";
+    if (/^\s*(import |from \w+ import |def )/m.test(t)) return "python";
+    if (/\b(declare|begin)\b[\s\S]*\bend\b/i.test(t) && /\$\$|;\s*$/.test(t)) return "plpgsql";
+    return "sql";
+  }
+  var EV_LANG_KEY = "crmpanel:evStepLang";
+  function evLangGet(key) {
+    try {
+      var m = JSON.parse(localStorage.getItem(EV_LANG_KEY) || "{}");
+      return m && m[key];
+    } catch (err) { return null; }
+  }
+  function evLangSet(key, lang) {
+    try {
+      var m = JSON.parse(localStorage.getItem(EV_LANG_KEY) || "{}");
+      m[key] = lang;
+      localStorage.setItem(EV_LANG_KEY, JSON.stringify(m));
+    } catch (err) { /* приватный режим — выбор просто не запомнится */ }
+  }
+  function evHighlight(code, lang) {
+    var src = String(code || "");
+    if (lang === "none" || !EV_KW[lang]) return esc(src);
+    var kw = {};
+    EV_KW[lang].forEach(function (w) { kw[w] = 1; });
+    var lineCmt = lang === "python" ? "#" : "--";
+    var re = new RegExp(
+      "('(?:''|\\\\.|[^'])*')" +                         // 1 строка в одинарных
+      '|("(?:\\\\.|[^"])*")' +                            // 2 строка в двойных
+      "|(" + (lineCmt === "#" ? "#" : "--") + "[^\\n]*)" +  // 3 однострочный комментарий
+      "|(/\\*[\\s\\S]*?\\*/)" +                           // 4 блочный комментарий
+      "|(\\b\\d+(?:\\.\\d+)?\\b)" +                       // 5 число
+      "|([A-Za-z_][A-Za-z_0-9]*)",                        // 6 слово
+      "g");
+    var out = "", last = 0, m;
+    while ((m = re.exec(src)) !== null) {
+      out += esc(src.slice(last, m.index));
+      last = m.index + m[0].length;
+      if (m[1] || m[2]) out += '<span class="c-str">' + esc(m[0]) + "</span>";
+      else if (m[3] || m[4]) out += '<span class="c-cmt">' + esc(m[0]) + "</span>";
+      else if (m[5]) out += '<span class="c-num">' + esc(m[0]) + "</span>";
+      else if (kw[m[6].toLowerCase()]) out += '<span class="c-kw">' + esc(m[0]) + "</span>";
+      else out += esc(m[0]);
+    }
+    return out + esc(src.slice(last));
+  }
+  /** Кодовое окно: выбор языка в шапке, подсвеченный текст под ней. */
+  function evCodeBox(key, code, lang) {
+    return '<div class="ev-code" data-code-key="' + esc(key) + '">' +
+      '<div class="ev-code-bar"><span class="ev-code-lang">Язык</span>' +
+        '<select class="ev-code-sel" data-code-lang="' + esc(key) + '">' +
+          EV_LANGS.map(function (l) {
+            return '<option value="' + l.v + '"' + (l.v === lang ? " selected" : "") + ">" + esc(l.label) + "</option>";
+          }).join("") +
+        "</select></div>" +
+      "<pre><code>" + evHighlight(code, lang) + "</code></pre></div>";
+  }
+
   function stepsSec(steps, id, may) {
-    var head = '<div class="sfd-sec"><div class="sfd-sec-title">Шаги выборки (' + steps.length + ")" +
+    /* Счётчик из заголовка убран: он повторял то, что видно ниже, и мешал заголовку
+       читаться как заголовок — у «Событие» и «Доставка» его нет. */
+    var head = '<div class="sfd-sec"><div class="sfd-sec-title">Шаги выборки' +
       (may ? ' <button type="button" class="ev-mini" onclick="evEditSteps(' + esc(id) + ')">Править</button>' : "") +
       "</div>";
     var body = steps.length ? steps.map(function (x) {
-      return '<div style="margin-bottom:8px"><b>' + esc(x.order_num) + ". " + esc(x.process_name || "") + "</b>" +
+      var key = id + ":" + x.order_num;
+      var lang = evLangGet(key) || evGuessLang(x.sql_text);
+      return '<div class="ev-step-view"><b>' + esc(x.order_num) + ". " + esc(x.process_name || "") + "</b>" +
         (x.returns_result_set ? " · возвращает результат" : "") +
         (x.is_active ? "" : " · выключен") +
-        "<pre>" + esc(x.sql_text || "") + "</pre></div>";
+        evCodeBox(key, x.sql_text || "", lang) + "</div>";
     }).join("") : '<span style="color:var(--faint)">нет</span>';
     return head + '<div class="sfd-chain" id="evEditSteps-' + esc(id) + '">' + body + "</div></div>";
   }
 
+  /* Шаблоны — связанным объектом, как в карточке клиента: не таблица «что записано», а
+     список записей, в которые можно провалиться. Событие подвязано к шаблонам, и первый
+     вопрос к блоку — «покажи их», а не «покажи их идентификаторы». */
   function tplSec(tpl, id, may) {
-    var head = '<div class="sfd-sec"><div class="sfd-sec-title">Шаблоны (' + tpl.length + ")" +
+    var head = '<div class="sfd-sec"><div class="sfd-sec-title">Шаблоны' +
       (may ? ' <button type="button" class="ev-mini" onclick="evEditTemplates(' + esc(id) + ')">Править</button>' : "") +
       "</div>";
     var body = tpl.length
-      ? '<div class="ev-rows"><table><tbody>' + tpl.map(function (x) {
-          return "<tr><td>" + (x.step_no == null ? "одиночный" : "шаг " + esc(x.step_no)) + "</td>" +
-            "<td>" + (x.code ? esc(x.channel) + ":" + esc(x.code) : "не найден у нас") + "</td>" +
-            "<td>" + esc(x.communication_name || "") + "</td></tr>";
-        }).join("") + "</tbody></table></div>"
+      ? '<div class="ev-rel">' + tpl.map(function (x) {
+          var known = !!x.code;
+          var sub = (x.step_no == null ? "одиночный" : "шаг " + esc(x.step_no)) +
+            (known ? " · " + esc(x.channel) + ":" + esc(x.code) : "");
+          return '<div class="ev-rel-item' + (known ? "" : " off") + '"' +
+            (known ? ' data-tpl="' + esc(x.channel) + ":" + esc(x.code) + '"' : "") + ">" +
+            '<div class="t">' + esc(x.communication_name || (known ? x.code : "шаблона нет у нас")) + "</div>" +
+            '<div class="s">' + sub + "</div>" +
+            (known ? '<span class="go">Открыть →</span>' : '<span class="go none">не найден</span>') +
+          "</div>";
+        }).join("") + "</div>"
       : '<span style="color:var(--faint)">нет</span>';
     return head + '<div class="sfd-chain" id="evEditTpl-' + esc(id) + '">' + body + "</div></div>";
   }
 
   function linksSec(links) {
     if (!links.length) return "";
-    return '<div class="sfd-sec"><div class="sfd-sec-title">Связи с crmdb (' + links.length + ")</div>" +
+    /* «Наш id» убран: это внутренний ключ нашей таблицы, по нему ничего не ищут и никуда
+       не переходят — в блоке важно, что за таблица, что ей соответствует в crmdb и в
+       какую сторону ехало. */
+    return '<div class="sfd-sec"><div class="sfd-sec-title">Связи с CRMDB</div>' +
       '<div class="sfd-chain"><div class="ev-rows"><table><thead><tr><th>Таблица</th>' +
-      "<th>наш id</th><th>id в crmdb</th><th>Направление</th></tr></thead><tbody>" +
+      "<th>id в crmdb</th><th>Направление</th></tr></thead><tbody>" +
       links.map(function (x) {
-        return '<tr><td class="tbl">' + esc(x.our_table) + "</td><td>" + esc(x.our_id) +
-          "</td><td>" + esc(x.prod_id) + "</td><td>" +
+        return '<tr><td class="tbl">' + esc(x.our_table) + "</td><td>" + esc(x.prod_id) + "</td><td>" +
           (x.direction === "IMPORT" ? "затянуто из crmdb" : "отправлено в crmdb") + "</td></tr>";
       }).join("") + "</tbody></table></div></div></div>";
   }
@@ -2295,6 +2402,35 @@
     });
     host.querySelectorAll(".sfd-row[data-field] .sfd-pen").forEach(function (pen) {
       pen.onclick = function () { editField(id, pen.closest(".sfd-row")); };
+    });
+    wireCodeBoxes(host);
+    wireTplLinks(host);
+  }
+
+  /* Смена языка перекрашивает только своё окно: перерисовывать карточку целиком ради
+     выбора в списке — потерять раскрытые секции и место прокрутки. */
+  function wireCodeBoxes(host) {
+    host.querySelectorAll("[data-code-lang]").forEach(function (sel) {
+      /* Клик по списку не должен складывать секцию: он всплывает до заголовка. */
+      sel.onclick = function (e) { e.stopPropagation(); };
+      sel.onchange = function () {
+        var box = sel.closest(".ev-code");
+        if (!box) return;
+        var code = box.querySelector("code");
+        if (!code) return;
+        evLangSet(sel.dataset.codeLang, sel.value);
+        code.innerHTML = evHighlight(code.textContent, sel.value);
+      };
+    });
+  }
+
+  /* Переход в шаблон — той же ручкой, что и из реестра шаблонов: она сама откроет
+     нужный раздел и подставит карточку, дублировать эту логику здесь незачем. */
+  function wireTplLinks(host) {
+    host.querySelectorAll(".ev-rel-item[data-tpl]").forEach(function (it) {
+      it.onclick = function () {
+        if (typeof window.viewFromList === "function") window.viewFromList(it.dataset.tpl);
+      };
     });
   }
 
@@ -2386,111 +2522,13 @@
     return can("edit", "ev-offline") || can("edit", "ev-online");
   }
 
-  /** Карточка перерисовывается целиком — то же, что делает повторный клик по строке. */
-  /* ============================================================ ПЛАНИРОВЩИК (Quartz)
+  /* Блок «Планировщик» и его четыре действия (регистрация, запуск, остановка,
+     отправка расписания) убраны из карточки по требованию. Ручки /api/cron/event/*
+     на бэкенде остались: если действия понадобятся снова, поднимать их надо осознанно
+     и вместе с решением, где им жить, — история правки лежит в git.
+     Смотреть состояние задания сейчас можно в полях «Крон», «Фаза», «Прошлый прогон»
+     и «Следующий запуск» блока «Расписание». */
 
-     Событие по расписанию исполняет не наша строка в расписании, а задание Quartz. Их
-     связывает id, который выдаёт планировщик при регистрации; без него события можно
-     только заводить и никогда — останавливать.
-
-     Четыре действия и ни одного автоматического. Регистрация создаёт задание
-     ОСТАНОВЛЕННЫМ, каким бы активным ни было событие у нас: между «зарегистрировано» и
-     «человек проверил» проходит время, а Quartz тикает по расписанию и ждать не станет.
-     Запуск — отдельная кнопка, и это единственный момент, когда рассылка может уйти. */
-
-  var CRON_ACTS = {
-    register: { label: "Зарегистрировать", ask: null },
-    /* Кнопка осталась запасным ходом: правка кронтаба отправляет расписание сама, но
-       чужой сервис бывает недоступен — тогда правка сохранена, а задание нет, и добить
-       её нужно чем-то видимым. */
-    update:   { label: "Отправить расписание заново",
-                ask: "Планировщик пересоздаёт задание: на время правки оно остановится.\nПродолжить?" },
-    stop:     { label: "Остановить", ask: "Остановить задание? Рассылка перестанет уходить по расписанию." },
-    start:    { label: "Запустить",
-                ask: "Запустить задание? С этого момента рассылка пойдёт по расписанию." }
-  };
-
-  function cronBox(id) { return el("evCron-" + id); }
-
-  /* Имя с суффиксом Block намеренно: рядом, в мастере расписания, живёт renderCron()
-     без аргументов — сборщик кронтаба. Объявления функций поднимаются, побеждает
-     последнее, и одноимённый отрисовщик молча подменил сборщик: поле «Выражение
-     расписания» перестало заполняться, а ошибки не было ни одной. */
-  function renderCronBlock(id, c) {
-    var box = cronBox(id);
-    if (!box) return;
-    if (!c.enabled) {
-      box.innerHTML = '<span style="color:var(--faint)">Интеграция выключена.' +
-        " Включается в «Настройки» → «Планировщик (Quartz)».</span>";
-      return;
-    }
-    var may = canEditEvent();
-    function btn(act) {
-      return '<button type="button" class="ev-mini"' + (may ? "" : " disabled") +
-        ' onclick="evCron(' + id + ",'" + act + "')\">" + CRON_ACTS[act].label + "</button>";
-    }
-    if (!c.registered) {
-      box.innerHTML =
-        '<span style="color:var(--faint)">Задание не заведено: Quartz про это событие не' +
-        " знает, по расписанию оно не сработает.</span>" +
-        '<div class="ev-edit-row">' + btn("register") + "</div>" +
-        '<div class="ev-edit-msg" id="evCronMsg-' + id + '"></div>';
-      return;
-    }
-    /* Поля — той же сеткой, что и остальная карточка: блок стоял списком определений и
-       выбивался из неё единственный на всю страницу. */
-    box.innerHTML =
-      '<div class="sfd-grid" style="padding:0">' +
-        row("id задания", c.cronEventId, null,
-            "номер в боевой базе: им же адресуются запуск, остановка и обновление") +
-        row("Состояние", c.lastStatus || "неизвестно") +
-        row("Последнее действие", c.lastAction) +
-        row("Кто", c.lastActor) +
-        row("Когда", String(c.syncedAt || "").slice(0, 19).replace("T", " ")) +
-      "</div>" +
-      (c.lastError ? '<div class="ev-warn">' + esc(c.lastError) + "</div>" : "") +
-      '<div class="ev-edit-row" style="margin-top:10px">' +
-        btn("start") + btn("stop") + btn("update") + "</div>" +
-      '<div class="ev-edit-msg" id="evCronMsg-' + id + '">' +
-        "Запуск и остановка идут в планировщик его же ручками (start и stop) по номеру" +
-        " задания выше. Расписание обновлять отдельно не нужно: правка кронтаба в блоке" +
-        " «Расписание» отправляет его сама." +
-      "</div>";
-  }
-
-  function loadCron(id) {
-    if (!cronBox(id)) return;
-    fetch("/api/cron/event/" + id, { credentials: "same-origin", headers: { Accept: "application/json" } })
-      .then(function (r) { return r.ok ? r.json() : { enabled: false }; })
-      .then(function (c) { renderCronBlock(id, c); })
-      /* Раздел событий не должен падать из-за того, что планировщик не настроен:
-         блок просто скажет, что интеграции нет. */
-      .catch(function () { renderCronBlock(id, { enabled: false }); });
-  }
-
-  window.evCron = function (id, act) {
-    var a = CRON_ACTS[act];
-    if (!a || (a.ask && !confirm(a.ask))) return;
-    var msg = el("evCronMsg-" + id);
-    if (msg) { msg.textContent = "Отправляю…"; msg.style.color = "var(--dim)"; }
-    fetch("/api/cron/event/" + id + "/" + act, {
-      method: "POST", credentials: "same-origin", headers: { Accept: "application/json" }
-    }).then(function (r) {
-      return r.text().then(function (t) {
-        var j = null;
-        try { j = t ? JSON.parse(t) : null; } catch (e) { /* не json — покажем как есть */ }
-        if (!r.ok) throw new Error((j && j.message) || t || ("HTTP " + r.status));
-        return j;
-      });
-    }).then(function (res) {
-      renderCronBlock(id, res);
-      var m = el("evCronMsg-" + id);
-      if (m) { m.textContent = res.message || "Готово"; m.style.color = "var(--green)"; }
-    }).catch(function (e) {
-      var m = el("evCronMsg-" + id);
-      if (m) { m.textContent = e.message; m.style.color = "var(--coral)"; }
-    });
-  };
 
   /* Перерисовка после правки шагов или шаблонов — тем же путём, что и открытие:
      карточка одна, и второй способ её собрать разошёлся бы с первым. */
