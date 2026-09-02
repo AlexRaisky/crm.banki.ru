@@ -36,7 +36,7 @@
 <link rel="stylesheet" href="css/section-deviations.css">
 <link rel="stylesheet" href="css/section-onelink.css">
 <link rel="stylesheet" href="css/section-srcbuilder.css">
-<link rel="stylesheet" href="css/section-promo.css?v=3">
+<link rel="stylesheet" href="css/section-promo.css?v=4">
 <link rel="stylesheet" href="css/section-abtests.css">
 <link rel="stylesheet" href="css/section-reports.css">
 <link rel="stylesheet" href="css/section-entities.css">
@@ -1377,6 +1377,27 @@
 
     <!-- ===== Планирование промо ===== -->
     <section class="view" id="sec-promo">
+      <!-- Окно заведения задачи. Живёт в секции промо: её стили изолированы @scope, и
+           снаружи оформление до окна не дотянулось бы.
+
+           Задача в трекере — след, который остаётся у всей команды: её видят, на неё
+           ссылаются, её нельзя «отменить кнопкой». Поэтому между нажатием и созданием
+           стоит окно, где написано, что именно уедет. -->
+      <div class="pm-modal" id="pmJiraModal">
+        <div class="pm-modal-card" role="dialog" aria-modal="true" aria-labelledby="pmJiraTitle">
+          <div class="pm-modal-head">
+            <h3 id="pmJiraTitle">Задача в Jira</h3>
+            <span class="pm-modal-sub" id="pmJiraSum"></span>
+            <button type="button" class="pm-modal-x" id="pmJiraClose" title="Закрыть">✕</button>
+          </div>
+          <div class="pm-modal-body" id="pmJiraBody"></div>
+          <div class="pm-modal-foot">
+            <span class="pm-modal-note" id="pmJiraNote"></span>
+            <button class="btn" id="pmJiraCancel" type="button">Отмена</button>
+            <button class="btn primary" id="pmJiraGo" type="button">Завести задачу</button>
+          </div>
+        </div>
+      </div>
   <h1 data-i18n-html="h1_promo">Планирование <span class="grad">промо</span></h1>
   <div class="sub" data-i18n="Календарь промо-коммуникаций: даты вынесены в строки-разделители, «+» в конце такой строки добавляет запись на эту дату. Ячейки редактируются по клику, правка подтверждается ✓ (или кликом мимо ячейки).">Календарь промо-коммуникаций: даты вынесены в строки-разделители, «+» в конце такой строки добавляет запись на эту дату. Ячейки редактируются по клику, правка подтверждается ✓ (или кликом мимо ячейки).</div>
 
@@ -2802,7 +2823,7 @@
 <script src="js/shell.js?v=2"></script>
 
 <script src="js/srcbuilder.js"></script>
-<script src="js/promo.js?v=5"></script>
+<script src="js/promo.js?v=6"></script>
 <script src="js/abtests.js"></script>
 <script src="js/reports.js"></script>
 <script src="js/smscheck.js"></script>

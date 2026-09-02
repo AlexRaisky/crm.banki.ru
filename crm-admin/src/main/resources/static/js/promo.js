@@ -350,30 +350,129 @@ function promoCreateJira(i){
     alert(pmT('По этой строке уже есть задача') + ' ' + r.task);
     return;
   }
-  var nm = promoBuildName(r);
-  if (!nm.ok){
-    /* Без source задача заведётся, но останется без главного поля — а дозаполнять его
-       потом руками ровно то, ради чего кнопку и делали. Поэтому не молчим. */
-    if (!confirm(pmT('Не хватает данных для source: ') + nm.miss.join(', ') +
-                 '.\n' + pmT('Завести задачу без поля Source?'))) return;
-  }
-  var btn = document.querySelector('.jira-new[onclick*="(' + i + ')"]');
-  if (btn){ btn.disabled = true; btn.textContent = pmT('Заводим…'); }
   /* Тип продукта в Jira выбирают кодом — General, Debitcards, — а в плане он назван
      по-русски: «Общие», «Дебетовые карты». Код лежит в том же справочнике, из которого
      собирается source, поэтому шлём его отсюда, а не заставляем сервер искать заново. */
-  promoReq('POST', '/' + r.id + '/jira', {
-    source: nm.ok ? nm.value : '',
-    productCode: promoProdCode(r.product)
+  var nm = promoBuildName(r);
+  PM_JIRA = { row: r, source: nm.ok ? nm.value : '', miss: nm.ok ? [] : nm.miss,
+              productCode: promoProdCode(r.product) };
+  pmJiraOpen();
+}
+
+/* ---------- окно заведения задачи ----------
+
+   Задача в трекере — след, который остаётся у всей команды: её видят, на неё ссылаются,
+   отменить кнопкой её нельзя. Поэтому между нажатием и созданием стоит окно, где
+   показано, что именно уедет: заголовок и все поля. Раньше вместо него был confirm с
+   одной строкой про source — и то лишь когда source не собрался.
+
+   Заголовок и поля считает сервер той же сборкой, что и заведение: превью, посчитанное
+   отдельно, разошлось бы с настоящим запросом на первой же правке формулы. */
+var PM_JIRA = null;
+
+function pmJiraOpen(){
+  var m = document.getElementById('pmJiraModal');
+  if (!m || !PM_JIRA) return;
+  pmJiraWire();
+  document.getElementById('pmJiraSum').textContent = '';
+  document.getElementById('pmJiraNote').textContent = '';
+  document.getElementById('pmJiraGo').disabled = true;
+  document.getElementById('pmJiraBody').innerHTML =
+    '<div class="pm-jira-wait">' + pmT('Собираем задачу…') + '</div>';
+  m.classList.add('open');
+
+  var q = '?source=' + encodeURIComponent(PM_JIRA.source) +
+          '&productCode=' + encodeURIComponent(PM_JIRA.productCode);
+  promoReq('GET', '/' + PM_JIRA.row.id + '/jira/preview' + q)
+    .then(function(d){ pmJiraRender(d); })
+    .catch(function(e){
+      document.getElementById('pmJiraBody').innerHTML =
+        '<div class="pm-jira-err">' + pmEsc((e && e.message) || pmT('Не удалось собрать задачу')) + '</div>';
+    });
+}
+
+/* Подписи полей — те же, что в самой Jira: человек сверяет окно с карточкой задачи. */
+var PM_JIRA_LABELS = {
+  channel: 'Канал', customer: 'Заказчик', product: 'Тип продукта', kind: 'Вид рассылки',
+  name: 'Название рассылки', sendDate: 'Дата отправки', meaning: 'Бизнес-смысл',
+  link: 'Ссылка', content: 'Контент', segment: 'Сегмент', analyst: 'Ответственный аналитик',
+  source: 'Source', summary: 'Заголовок задачи (задан руками)'
+};
+
+function pmJiraRender(d){
+  d = d || {};
+  var f = d.fields || {};
+  var rows = Object.keys(PM_JIRA_LABELS).map(function(k){
+    var v = f[k];
+    var empty = v === null || v === undefined || String(v).trim() === '';
+    if (empty && k === 'summary') return '';
+    return '<div class="pm-jira-row"><div class="l">' + pmEsc(PM_JIRA_LABELS[k]) + '</div>' +
+      '<div class="v' + (empty ? ' empty' : '') + '">' + (empty ? '—' : pmEsc(v)) + '</div></div>';
+  }).join('');
+
+  document.getElementById('pmJiraSum').textContent = d.summary || '';
+  document.getElementById('pmJiraBody').innerHTML =
+    '<div class="pm-jira-title"><div class="l">' + pmT('Заголовок задачи') + '</div>' +
+      '<div class="v">' + pmEsc(d.summary || '') + '</div></div>' +
+    '<div class="pm-jira-grid">' + rows + '</div>';
+
+  /* Про пустой source говорим здесь, а не отдельным окном поверх окна: без него задача
+     заведётся, но останется без главного поля — а дозаполнять его руками ровно то,
+     ради чего кнопку и делали. */
+  var note = document.getElementById('pmJiraNote');
+  if (PM_JIRA.miss.length){
+    note.textContent = pmT('Не хватает данных для source: ') + PM_JIRA.miss.join(', ') +
+      '. ' + pmT('Задача заведётся без него.');
+    note.classList.add('warn');
+  } else {
+    note.textContent = pmT('Проверьте поля: после создания задача останется в трекере.');
+    note.classList.remove('warn');
+  }
+  document.getElementById('pmJiraGo').disabled = false;
+}
+
+function pmJiraClose(){
+  var m = document.getElementById('pmJiraModal');
+  if (m) m.classList.remove('open');
+  PM_JIRA = null;
+}
+
+function pmJiraWire(){
+  if (pmJiraWire.done) return;
+  pmJiraWire.done = true;
+  var m = document.getElementById('pmJiraModal');
+  document.getElementById('pmJiraClose').onclick = pmJiraClose;
+  document.getElementById('pmJiraCancel').onclick = pmJiraClose;
+  document.getElementById('pmJiraGo').onclick = pmJiraSend;
+  m.onclick = function(e){ if (e.target === m) pmJiraClose(); };
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape' && m.classList.contains('open')) pmJiraClose();
+  });
+}
+
+/* Заводит задачу сервер: у браузера нет ни адреса Jira, ни токена, и хорошо, что нет. */
+function pmJiraSend(){
+  if (!PM_JIRA) return;
+  var go = document.getElementById('pmJiraGo');
+  var note = document.getElementById('pmJiraNote');
+  go.disabled = true;
+  note.textContent = pmT('Заводим…');
+  note.classList.remove('warn');
+  promoReq('POST', '/' + PM_JIRA.row.id + '/jira', {
+    source: PM_JIRA.source,
+    productCode: PM_JIRA.productCode
   })
     .then(function(res){
+      pmJiraClose();
       if (res && res.warning) alert(res.warning);
       return promoLoad();
     })
     .catch(function(e){
-      if (btn){ btn.disabled = false; btn.textContent = pmT('Завести'); }
       if (e && e.status === 401) return;
-      alert(pmT('Не удалось завести задачу: ') + ((e && e.message) || e));
+      /* Окно не закрываем: ошибку читают рядом с полями, по которым её и объясняют. */
+      note.textContent = (e && e.message) || pmT('Не удалось завести задачу');
+      note.classList.add('warn');
+      go.disabled = false;
     });
 }
 

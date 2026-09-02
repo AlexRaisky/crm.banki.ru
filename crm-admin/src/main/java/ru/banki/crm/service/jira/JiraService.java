@@ -270,6 +270,18 @@ public class JiraService {
      * автоматически»), но через API он обязателен и никем не подставляется, поэтому
      * повторяем тот же порядок частей.
      */
+    /**
+     * Заголовок задачи по полям строки плана — тот же, что уйдёт при заведении.
+     * <p>
+     * Нужен окну подтверждения. Написание значений здесь наше: подстановку из value_map
+     * знает только createIssue, спросив у Jira её справочники. Разница видна редко — там,
+     * где у нас «email», а у них «E-mail», — и цена ей ноль: заголовок в окне для того,
+     * чтобы человек узнал свою задачу, а не сверял регистр букв.
+     */
+    public String summaryFor(Map<String, Object> data) {
+        return summary(data, Map.of());
+    }
+
     private static String summary(Map<String, Object> data, Map<String, String> shown) {
         String given = str(data.get("summary"));
         if (!given.isBlank()) {

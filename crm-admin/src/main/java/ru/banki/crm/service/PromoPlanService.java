@@ -97,6 +97,40 @@ public class PromoPlanService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "По этой строке уже заведена задача " + existing + ". Уберите ключ, если нужна новая.");
         }
+        Map<String, Object> data = jiraData(r, source, productCode);
+
+        Map<String, Object> res = jira.createIssue(data);
+        String key = String.valueOf(res.get("key"));
+        em.createNativeQuery("UPDATE app.promo_plan SET task_key = :k, timestamp_upd = now(),"
+                        + " updated_by = :u WHERE id = :id")
+                .setParameter("k", key)
+                .setParameter("u", CurrentUser.email())
+                .setParameter("id", id)
+                .executeUpdate();
+        writeLog(operationSnapshot(id), "JIRA");
+        return res;
+    }
+
+    /**
+     * Что уйдёт в Jira, без создания задачи.
+     * <p>
+     * Нужно окну подтверждения: человек видит заголовок и поля до того, как задача
+     * появится в трекере. Собираем тем же кодом, что и заведение, — превью, посчитанное
+     * отдельно, разошлось бы с настоящим запросом на первой же правке формулы.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> jiraPreview(long id, String source, String productCode) {
+        Object[] r = rowById(id);
+        Map<String, Object> data = jiraData(r, source, productCode);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("existingTask", str(r[8]));
+        out.put("summary", jira.summaryFor(data));
+        out.put("fields", data);
+        return out;
+    }
+
+    /** Поля задачи из строки плана. Общее для предпросмотра и заведения. */
+    private Map<String, Object> jiraData(Object[] r, String source, String productCode) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("channel", str(r[5]));
         data.put("customer", str(r[14]));
@@ -120,17 +154,7 @@ public class PromoPlanService {
            соберёт его из полей строки, как делал до появления этого поля. */
         data.put("summary", str(r[18]));
         data.put("reporterEmail", CurrentUser.email());
-
-        Map<String, Object> res = jira.createIssue(data);
-        String key = String.valueOf(res.get("key"));
-        em.createNativeQuery("UPDATE app.promo_plan SET task_key = :k, timestamp_upd = now(),"
-                        + " updated_by = :u WHERE id = :id")
-                .setParameter("k", key)
-                .setParameter("u", CurrentUser.email())
-                .setParameter("id", id)
-                .executeUpdate();
-        writeLog(operationSnapshot(id), "JIRA");
-        return res;
+        return data;
     }
 
     private Object[] rowById(long id) {

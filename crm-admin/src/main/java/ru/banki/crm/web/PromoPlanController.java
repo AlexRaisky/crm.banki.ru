@@ -58,6 +58,21 @@ public class PromoPlanController {
         access.requireCapability(Capability.DELETE, Sections.PROMO);
         service.delete(id);
     }
+    /**
+     * Что уйдёт в задачу: заголовок и поля. Ничего не создаёт.
+     * <p>
+     * Отдельной ручкой, а не «сухим прогоном» создания: заведение задачи необратимо, и
+     * подмешивать к нему режим «на самом деле нет» значит однажды перепутать их местами.
+     */
+    @GetMapping("/{id}/jira/preview")
+    public Map<String, Object> jiraPreview(@PathVariable long id,
+                                           @RequestParam(required = false) String source,
+                                           @RequestParam(required = false) String productCode) {
+        access.requireAnySection(Sections.PROMO);
+        return service.jiraPreview(id, source == null ? "" : source,
+                productCode == null ? "" : productCode);
+    }
+
 
     /**
      * Завести задачу в Jira по строке плана: {source, productCode}.
