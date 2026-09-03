@@ -1522,7 +1522,9 @@ function entRenderOverview(){
      правила именования, проверка занятых имён и запись в модель уже описаны там,
      и вторая копия рано или поздно разошлась бы с первой. */
   var add = document.getElementById("entAddEntity");
-  if (add) add.onclick = function(){ location.href = "settings/#scheme:new"; };
+  /* Адрес, а не хеш: у окна заведения теперь свой маршрут, и он разбирается
+     тогда, когда модули настроек уже подключены. */
+  if (add) add.onclick = function(){ location.href = (window.APP_BASE || "/") + "settings/scheme/new"; };
   var btn = document.getElementById("entTechToggle");
   if (btn){
     var on = entShowTech();

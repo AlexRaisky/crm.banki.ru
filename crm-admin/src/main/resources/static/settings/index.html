@@ -3,6 +3,34 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Базовый путь. У каждой панели настроек свой адрес (/settings/objects), а стили и
+     скрипты подключены относительными путями — без <base> браузер пошёл бы за
+     /settings/objects/scheme-builder.css. Скрипт обязан быть инлайновым и первым:
+     внешний файл сам тянется относительным путём и не загрузился бы. -->
+<script>
+(function(){
+  /* Возврат с 404.html (GitHub Pages): исходный адрес приходит в ?r=.
+     Восстанавливаем его до расчёта базы — дальше всё как при обычном заходе. */
+  var m = /[?&]r=([^&]*)/.exec(location.search);
+  if (m) {
+    try {
+      var rest = location.search.replace(/([?&])r=[^&]*&?/, "$1").replace(/[?&]$/, "");
+      history.replaceState(null, "", decodeURIComponent(m[1]) + (rest === "?" ? "" : rest) + location.hash);
+    } catch (e) { /* другой origin или запрет истории — остаёмся на корне настроек */ }
+  }
+  /* База — сама папка настроек: всё до сегмента settings включительно. Так адрес
+     считается одинаково и на боевом (/settings/), и на Pages (/crm.banki.ru/settings/). */
+  var segs = location.pathname.split("/"), base = null;
+  for (var i = 1; i < segs.length; i++){
+    if (segs[i] === "settings"){ base = segs.slice(0, i + 1).join("/") + "/"; break; }
+  }
+  if (base === null) base = location.pathname.replace(/[^/]*$/, "");
+  window.APP_BASE = base;
+  var b = document.createElement("base");
+  b.setAttribute("href", base);
+  document.head.appendChild(b);
+})();
+</script>
 <!-- Свой значок вкладки: без него браузер каждый раз просит /favicon.ico и получает 404 —
      мусор в консоли, из-за которого потом ищут несуществующую поломку. Значок инлайновый,
      отдельным файлом его класть незачем. -->
@@ -1686,19 +1714,10 @@ fetch("../api/me", { credentials: "same-origin", headers: { Accept: "application
   })
   .catch(function(){ /* нет бэкенда (демо-режим) — показываем всё, данные всё равно не придут */ });
 
-/* Глубокая ссылка: #scheme открывает раздел сразу, #scheme:new — ещё и окно
-   заведения сущности. Нужна кнопке «+ Сущность» в самой панели: она ведёт сюда,
-   а не заводит вторую такую же форму у себя. */
-(function(){
-  const h = (location.hash || "").replace(/^#/, "");
-  if (!h) return;
-  const [pane, action] = h.split(":");
-  if (!pane || !document.getElementById("pane-" + pane)) return;
-  openPane(pane);
-  if (pane === "scheme" && action === "new" && window.SchemeBuilder && SchemeBuilder.newEntity){
-    SchemeBuilder.newEntity();
-  }
-})();
+/* Глубокая ссылка разбирается маршрутизатором в конце документа — там уже
+   подключены модули панелей. Прежний разбор хеша стоял здесь и не работал:
+   до scheme-builder.js дело ещё не доходило, и открывать окно заведения было
+   нечем — кнопка «+ Сущность» из панели просто приводила на «Обзор». */
 
 /* ---------- обзор (страница с блоками главных разделов) ---------- */
 const overGrid = $("#overGrid");
@@ -1970,8 +1989,9 @@ $("#saveGeneral").onclick = () => {
   const langChanged = newLang !== LANG;
   store.set("lang", newLang);
   applyTheme();
-  /* после перезагрузки на новом языке возвращаемся в тот же раздел, а не в «Обзор» */
-  if (langChanged){ try { sessionStorage.setItem("crmpanel:settingsPane", curPane); } catch(e){} location.reload(); return; }
+  /* после перезагрузки на новом языке возвращаемся в тот же раздел, а не в «Обзор»:
+     он записан в адресе, поэтому достаточно перезагрузить страницу как есть */
+  if (langChanged){ location.reload(); return; }
   const n = $("#generalSaved"); n.classList.add("show"); setTimeout(() => n.classList.remove("show"), 2500);
 };
 
@@ -3675,17 +3695,8 @@ loadGeneral();
 renderSubOrder();
 translateStatic();
 document.title = LANG === "en" ? "CRM Team · Settings" : "CRM Team · Настройки";
-/* Вернуться в раздел, из которого меняли язык (после location.reload).
-   Ждём load: модули разделов (scheme-builder.js) подключены ниже по документу,
-   до их загрузки openPane не сможет инициализировать раздел. */
-window.addEventListener("load", () => {
-  try {
-    const back = sessionStorage.getItem("crmpanel:settingsPane");
-    if (!back) return;
-    sessionStorage.removeItem("crmpanel:settingsPane");
-    if (document.getElementById("pane-" + back)) openPane(back);
-  } catch(e){}
-});
+/* Раздел после смены языка возвращает адрес: перезагрузка идёт на тот же
+   /settings/<панель>, и восстанавливать его из sessionStorage больше не нужно. */
 </script>
 
 <!-- ===== Управление доступом: мини-CRM (нужные admin-методы) + рендер admin-users.js ===== -->
@@ -4280,5 +4291,63 @@ window.CRM = window.CRM || (function(){
 <script src="runner.js?v=1"></script>
 <script src="cron.js?v=2"></script>
 <script>window.openPane = openPane;</script>
+<!-- Маршрутизация. Подключается ПОСЛЕ строки выше: обёртка ставится на
+     window.openPane, а она здесь переприсваивается — иначе обёртку затрёт, и
+     адреса молча перестанут писаться. -->
+<script src="../js/router.js?v=2"></script>
+<script>
+if (window.Router) {
+  Router.configure({
+    wrap: "openPane",
+    /* Голый /settings — «Обзор», как голый адрес панели открывает Главную. */
+    home: function(){ return ["over"]; },
+    serializeTop: function(){ return [curPane]; },
+    key: function(){ return curPane; },
+
+    openTop: function(segs){
+      var id = segs[0] || "over";
+      /* Панели нет вовсе или она скрыта настройками контура — адрес соврал,
+         и маршрутизатор приведёт его к тому, что открылось. */
+      if (!document.getElementById("pane-" + id)) return { ok:false };
+      openPane(id);
+      return { ok:true, consumed:1 };
+    },
+
+    fallback: function(){ openPane("over"); },
+    setTitle: function(s){ if (s) document.title = "CRM Team · " + s; }
+  });
+
+  /* Заведение сущности — свой адрес /settings/scheme/new: на него ведёт кнопка
+     «+ Сущность» из панели. Раньше это был хеш #scheme:new, и он не работал —
+     разбор шёл раньше, чем подключался scheme-builder.js, поэтому окно
+     открывать было нечем. */
+  Router.register("scheme", {
+    serialize: function(){
+      return (window.SchemeBuilder && SchemeBuilder.isNewOpen && SchemeBuilder.isNewOpen()) ? ["new"] : [];
+    },
+    apply: function(rest){
+      var sb = window.SchemeBuilder;
+      if (!sb) return;
+      var open = sb.isNewOpen && sb.isNewOpen();
+      if (rest[0] === "new") return open ? undefined : sb.newEntity();
+      /* голый адрес панели — окно закрыто: это и делает «назад» из него */
+      if (open && sb.closeModal) sb.closeModal();
+    }
+  });
+
+  /* Старый формат ссылки (#scheme, #scheme:new) — переводим в адрес и
+     переписываем строку, не оставляя лишней записи в истории. */
+  (function(){
+    var h = (location.hash || "").replace(/^#/, "");
+    if (!h) return;
+    var parts = h.split(":");
+    if (!document.getElementById("pane-" + parts[0])) return;
+    var url = APP_BASE + parts.filter(Boolean).join("/");
+    try { history.replaceState(null, "", url); } catch(e){}
+  })();
+
+  Router.start();
+}
+</script>
 </body>
 </html>

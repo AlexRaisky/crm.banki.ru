@@ -1671,6 +1671,13 @@ function openModal(html){
   const m = $("#sbModal");
   $("#sbModalCard").innerHTML = html;
   m.classList.add("open");
+  /* окно заведения сущности видно в адресе (/settings/scheme/new) */
+  if (window.Router) Router.touch();
+}
+/** Открыто ли окно заведения сущности — по нему маршрутизатор строит адрес. */
+function isNewOpen(){
+  const m = $("#sbModal");
+  return !!(m && m.classList.contains("open") && document.getElementById("sbNS_id"));
 }
 /* Разметку модалки вычищаем, а не только прячем: иначе её поля остаются в документе
    и продолжают перехватывать чтение по id у формы в инспекторе. */
@@ -1679,6 +1686,7 @@ function closeModal(){
   const card = $("#sbModalCard");
   if (card) card.innerHTML = "";
   if (fieldRoot === card) fieldRoot = null;
+  if (window.Router) Router.touch();
 }
 
 /* Новая СУЩНОСТЬ: заводим схему и сразу таблицу с тем же именем.
@@ -2227,5 +2235,6 @@ async function newEntity(){
   await openSection();
   openSchemaModal();
 }
-window.SchemeBuilder = { open: openSection, newEntity, render, adopt, store: SchemaStore, API_CONTRACT, UI_TYPES };
+window.SchemeBuilder = { open: openSection, newEntity, isNewOpen, closeModal, render, adopt,
+                         store: SchemaStore, API_CONTRACT, UI_TYPES };
 })();
