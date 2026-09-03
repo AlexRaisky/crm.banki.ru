@@ -39,7 +39,7 @@ sequenceDiagram
     A->>S: GET /api/panel-settings/appSections (syncAppSections)
     S-->>A: конфиг «приложение → разделы» из БД
     A->>B: localStorage crmpanel:appSections + renderNav()
-    B->>B: boot.js: restore lastSection (после envReady)
+    B->>B: boot.js: Router.start() — экран из адреса (после envReady)
 ```
 
 - `CRM.meReady` (`api.js:322`) кладёт ответ в `CRM.me` и `window.CRM_ME`, ставит на `<body>` атрибут `data-role`.

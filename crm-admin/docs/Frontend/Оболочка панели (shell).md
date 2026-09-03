@@ -83,9 +83,9 @@ tags: [frontend, shell, navigation, i18n, theme]
 2. Проверки `appAllows(sid)` и `sectionAllowed(s)` — при отказе уводит на Главную.
 3. Разбор цели: у группы без `cid` — обзорная страница; недоступный ребёнок сбрасывается в обзор; у `uploads` цель считает `uploadChildren()`.
 4. Переключение `.view` / `.nav-item` и хуки живого приложения (`js/shell.js:897`): `monBack()` при входе в мониторинг, `setAdminMode(...)` для `#sec-admin`, `rpEmbedOpen(report)` для отчётов Tableau, `entOpen(entity)` и `entRenderOverview()` для сущностей, `scInit()` для «ЧЕК СМС траффик», `initJourneysSection()` для «Цепочек», отложенное лечение графиков в «Панели отклонений».
-5. `trackRecent`, `renderSectionHero`, `renderPageCrumb`, `document.title`, показ «Настроить главную» и запись `crmpanel:lastSection`.
+5. `trackRecent`, `renderSectionHero`, `renderPageCrumb`, `document.title` и показ «Настроить главную».
 
-Последний раздел восстанавливает `js/boot.js` — **только после ответа `/api/env`** (иначе разделы, ограниченные средой, открылись бы до того, как выяснится, что их быть не должно). Там же живёт миграция старого строкового формата `lastSection` в пару `{sid, cid}` — включая перенос `templates` в `entities/ent-template`.
+Раздел открывается по адресу, а не восстанавливается из `localStorage`: этим занимается маршрутизатор — см. [Маршрутизация (адреса экранов)](Маршрутизация%20(адреса%20экранов).md). Он ждёт ответа `/api/env`, иначе разделы, ограниченные средой, открылись бы до того, как выяснится, что их быть не должно. Ключа `crmpanel:lastSection` больше нет.
 
 ### Заголовок раздела
 
@@ -171,7 +171,7 @@ tags: [frontend, shell, navigation, i18n, theme]
 
 | Владелец | Ключи |
 |---|---|
-| Оболочка | `theme`, `lang`, `app`, `appSections`, `subOrder`, `sidebarCollapsed`, `lastSection`, `layout`, `tasks`, `recent`, `uploadedTools` |
+| Оболочка | `theme`, `lang`, `app`, `appSections`, `subOrder`, `sidebarCollapsed`, `layout`, `tasks`, `recent`, `uploadedTools` |
 | Список шаблонов | `listCols`, `listFilters`, `listColsAdded` |
 | Сущности | `schemaDraft`, `entityData`, `entityDataSeed`, `entityShowTech`, `entityListCols`, `entityListFilters` (доступ переехал в матрицу прав, ключа `entityAccess` больше нет) |
 | Scheme Builder | `schemeView` |

@@ -999,7 +999,9 @@ function openSection(sid, cid){
   renderPageCrumb(s, cid, target.label);
   document.title = "CRM Team · " + t(target.label || s.label);
   const ha = $("#homeActions"); if (ha) ha.style.display = sid === "home" ? "flex" : "none";
-  store.set("lastSection", { sid, cid });
+  /* Раздел больше не запоминается: где человек был, знает адрес — его пишет
+     маршрутизатор, он же открывает нужный экран при заходе по ссылке и после
+     перезагрузки. Ключ crmpanel:lastSection никем не читается и не пишется. */
 }
 
 /* ---------- Шапка описания раздела (как на странице OneLink Builder) ----------
@@ -1097,11 +1099,24 @@ function wizardSetChannel(ch){
 }
 
 /* ---------- мониторинг: заглушки статистики блоков ---------- */
+/* Слаги блоков мониторинга: в разметке блок назван по-русски, а адрес должен
+   пережить и перевод интерфейса, и правку подписи. */
+const MON_SLUGS = {
+  "selection":  "Работа отбора базы",
+  "events":     "Наличие поступления событий",
+  "sends":      "Наличие отправок коммуникаций",
+  "deliveries": "Наличие доставок",
+  "duplicates": "Дублирование отправок"
+};
+let monOpen = null;   /* открытый блок мониторинга — он же сегмент адреса */
+
 function monDetail(title){
   const home = document.getElementById("monCampaignsHome");
   const det = document.getElementById("monCampaignsDetail");
   home.style.display = "none";
   det.classList.add("open");
+  monOpen = title;
+  if (window.Router) Router.touch();
   const stubText = UI_LANG === "en"
     ? `Charts and control metrics for the "${escapeShellHtml(t(title))}" block will appear here: dynamics, thresholds and alerts.`
     : `Здесь появятся графики и контрольные метрики блока «${escapeShellHtml(title)}»: динамика, пороги и алерты.`;
@@ -1116,7 +1131,22 @@ function monBack(){
   const det = document.getElementById("monCampaignsDetail");
   if (home) home.style.display = "";
   if (det){ det.classList.remove("open"); det.innerHTML = ""; }
+  monOpen = null;
+  if (window.Router) Router.touch();
 }
+
+if (window.Router) Router.register("view-mon-campaigns", {
+  serialize: function(){
+    if (!monOpen) return [];
+    const slug = Object.keys(MON_SLUGS).filter(k => MON_SLUGS[k] === monOpen)[0];
+    return slug ? [slug] : [];
+  },
+  apply: function(rest){
+    const title = MON_SLUGS[rest[0]];
+    if (title) monDetail(title);
+    else if (monOpen) monBack();   /* голый адрес раздела — снова блоки */
+  }
+});
 
 /* =========================================================
    ЗАГРУЖЕННЫЕ ИНСТРУМЕНТЫ
