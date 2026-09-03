@@ -1032,6 +1032,12 @@ function entTablesHtml(schemaId){
 function entRender(){
   var host = document.getElementById("entHost");
   if (!host) return;
+  /* Экран сменился — привести к нему адрес. Отсюда, а не из каждого перехода:
+     таблица, запись и вкладка меняются в полутора десятках мест, и любое
+     забытое место означало бы адрес, не совпадающий с картинкой. Поиск,
+     фильтры и шестерёнка в адрес не входят — маршрутизатор просто не увидит
+     разницы и ничего не запишет. */
+  if (window.Router) Router.touch();
   if (ENT_CUR.mode === "tables" || !ENT_CUR.id){
     host.innerHTML = entTablesHtml(ENT_CUR.schema);
     host.querySelectorAll("[data-tech]").forEach(function(b){
@@ -1459,6 +1465,9 @@ function entDeleteRecord(e, r){
 function entDeleteConfirmed(e, r){
   ENT_DATA[e.id] = entRows(e.id).filter(function(x){ return String(x.id) !== String(r.id); });
   ENT_CUR.rec = null; ENT_CUR.edit = null; ENT_CUR.mode = "list";
+  /* Возврат к списку после удаления — не переход, а следствие: «назад» не
+     должно вести в карточку записи, которой больше нет. */
+  if (window.Router) Router.replaceNext();
   entStore(); entModalClose(); entRender();
   entToast(entT("Запись удалена"));
 }
@@ -1469,12 +1478,18 @@ function entDeleteConfirmed(e, r){
 function entGo(entityId, recId){
   var e = entEntity(entityId);
   if (!e) return;
-  var schema = entSchemaOf(e), head = entSchemaHead(schema);
-  if (typeof openSection === "function") openSection("entities", "ent-" + (head ? head.id : entityId));
-  ENT_CUR.schema = schema; ENT_CUR.id = entityId;
-  ENT_CUR.rec = recId; ENT_CUR.edit = null; ENT_CUR.mode = "card"; ENT_CUR.tab = "details";
-  entRender();
-  var v = document.getElementById("view-entity"); if (v) v.scrollTop = 0;
+  /* Один переход — одна запись в истории: без группировки в неё попадал бы и
+     промежуточный экран таблиц, и «назад» возвращал бы туда, а не в карточку,
+     из которой человек ушёл по связи. */
+  var step = function(){
+    var schema = entSchemaOf(e), head = entSchemaHead(schema);
+    if (typeof openSection === "function") openSection("entities", "ent-" + (head ? head.id : entityId));
+    ENT_CUR.schema = schema; ENT_CUR.id = entityId;
+    ENT_CUR.rec = recId; ENT_CUR.edit = null; ENT_CUR.mode = "card"; ENT_CUR.tab = "details";
+    entRender();
+    var v = document.getElementById("view-entity"); if (v) v.scrollTop = 0;
+  };
+  if (window.Router) Router.batch(step); else step();
 }
 /* вызывается из openSection при открытии подраздела: id подраздела — сущность,
    и начинаем всегда с её таблиц */
@@ -1765,7 +1780,63 @@ window.addEventListener("storage", function(ev){
   entBoot().then(function(){ if (ENT_CUR.id) entRender(); });
 });
 
-(function(){
-  var go = function(){ entBoot(); };
-  if (window.CRM && CRM.meReady) CRM.meReady.then(go, go); else go();
+/* Готовность раздела: схема приезжает после ответа /api/me, а адрес известен
+   сразу — маршрутизатор ждёт этот промис, прежде чем открывать запись. */
+var ENT_READY = (function(){
+  var go = function(){ return entBoot(); };
+  return (window.CRM && CRM.meReady) ? CRM.meReady.then(go, go) : go();
 })();
+
+/* ---------- маршрут внутри раздела ----------
+
+   Верхние два сегмента (/entities/<сущность>) разбирает оболочка, здесь —
+   только глубина: таблица, запись, вкладка. Сущность и таблица разные вещи:
+   у сущности бывает несколько таблиц, поэтому /entities/client/client/12 не
+   тавтология, а «сущность client → таблица client → запись 12». */
+function entRouteTail(){
+  if (!ENT_CUR.id || ENT_CUR.mode === "tables" || !entEntity(ENT_CUR.id)) return [];
+  var tail = [ENT_CUR.id];
+  if (ENT_CUR.mode === "card" && ENT_CUR.rec != null){
+    tail.push(String(ENT_CUR.rec));
+    /* «Детали» — вкладка по умолчанию, в адрес её не пишем: так ссылка на
+       карточку выглядит короче и остаётся прежней при возврате на неё. */
+    if (ENT_CUR.tab && ENT_CUR.tab !== "details") tail.push(ENT_CUR.tab);
+  }
+  return tail;
+}
+
+function entRouteApply(rest){
+  var e = entEntity(rest[0]);
+  /* Таблицы нет в схеме или она из другой сущности — открытым остаётся то, что
+     уже показано, а адрес маршрутизатор приведёт к факту сам. */
+  if (!e || (ENT_CUR.schema && entSchemaOf(e) !== ENT_CUR.schema)) return;
+
+  ENT_CUR.id = e.id; ENT_CUR.edit = null; ENT_CUR.gear = false;
+  var r = rest.length > 1 ? entRecById(e.id, rest[1]) : null;
+  if (r){
+    ENT_CUR.mode = "card"; ENT_CUR.rec = r.id;
+    var tabs = entCard(e).tabs;
+    var want = rest[2];
+    ENT_CUR.tab = (want && tabs.some(function(t){ return t.id === want; })) ? want : "details";
+  } else {
+    /* Записи нет — не пустая карточка, а список: человек хотя бы увидит, что
+       здесь есть, и ссылка честно исправится на список. */
+    ENT_CUR.mode = "list"; ENT_CUR.rec = null;
+  }
+  entRender();
+}
+
+if (window.Router) Router.register("view-entity", {
+  serialize: entRouteTail,
+  apply: entRouteApply,
+  ready: function(){ return ENT_READY; },
+  title: function(){
+    var e = entEntity(ENT_CUR.id);
+    if (!e) return null;
+    if (ENT_CUR.mode === "card"){
+      var r = entRecById(e.id, ENT_CUR.rec);
+      if (r) return entTitle(e, r);
+    }
+    return e.plural_label || e.label || e.id;
+  }
+});

@@ -77,18 +77,20 @@
   function sync() {
     if (!started || applying || depth || CFG.embedded) return;
 
+    var url = build(currentSegs());
+    if (url === location.pathname + location.search) { replaceOnce = false; return; }
+
     /* Циклы ловим бюджетом на кадр: applyNavAcl зовётся дважды, а openSection
        рекурсивна в своих защитах — без бюджета взаимный вызов молча съел бы
-       вкладку. Лучше предупреждение в консоли, чем зависший браузер. */
+       вкладку. Лучше предупреждение в консоли, чем зависший браузер.
+       Считаем только реальные записи: перерисовка списка при вводе в поиск
+       заходит сюда на каждый символ, но адрес при этом не меняется. */
     var now = Date.now();
     if (now - syncBudget.at > 60) { syncBudget.at = now; syncBudget.n = 0; }
     if (++syncBudget.n > 12) {
       if (typeof console !== "undefined") console.warn("Router: слишком много синхронизаций подряд, пропускаю");
       return;
     }
-
-    var url = build(currentSegs());
-    if (url === location.pathname + location.search) { replaceOnce = false; return; }
 
     var replace = replaceOnce;
     replaceOnce = false;
@@ -101,7 +103,23 @@
       return;
     }
     lastApplied = url;
+    setTitleFromProvider();
     if (CFG.persist) CFG.persist(url);
+  }
+
+  /**
+   * Заголовок вкладки для глубоких экранов.
+   *
+   * Раздел свой заголовок ставит сам, а вот запись — нет: она открывается
+   * внутри одного и того же экрана, и без этого во всех вкладках с карточками
+   * стояло бы одинаковое «Клиенты». Заодно так подписывается закладка.
+   */
+  function setTitleFromProvider() {
+    if (!CFG.setTitle) return;
+    var prov = PROV[CFG.key ? CFG.key() : ""];
+    if (!prov || !prov.title) return;
+    var s = prov.title();
+    if (s) CFG.setTitle(s);
   }
 
   /* ---------- применение адреса к модели ---------- */
@@ -137,7 +155,7 @@
       try { prov.apply(rest); }
       catch (e) { if (typeof console !== "undefined") console.warn("Router: не удалось открыть", rest, e); }
       finally { applying = false; }
-      if (CFG.setTitle && prov.title) CFG.setTitle(prov.title());
+      setTitleFromProvider();
       fixUrl();
     };
     if (ready && typeof ready.then === "function") ready.then(go, go); else go();
@@ -189,6 +207,20 @@
 
     /** «Состояние секции изменилось» — из точки перерисовки, push/replace решает движок. */
     touch: function () { sync(); },
+
+    /**
+     * Один переход, собранный из нескольких шагов, — одна запись в истории.
+     *
+     * Переход по связи из карточки в карточку сначала открывает подраздел
+     * другой сущности, и только потом выставляет запись. Без группировки в
+     * историю попадали обе остановки, и «назад» приводил на промежуточный
+     * экран вместо карточки, из которой человек ушёл.
+     */
+    batch: function (fn) {
+      depth++;
+      try { return fn(); }
+      finally { if (!--depth) sync(); }
+    },
 
     /** Следующая запись адреса не должна попасть в историю. */
     replaceNext: function () { replaceOnce = true; },

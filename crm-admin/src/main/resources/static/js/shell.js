@@ -1520,7 +1520,15 @@ if (window.Router) Router.configure({
     var seg = routeSegOf(cur.sid, cur.cid);
     return seg ? [cur.sid, seg] : [cur.sid];
   },
-  key: function(){ return cur.cid ? cur.sid + ":" + cur.cid : cur.sid; },
+  /* Провайдер глубины привязан к ЭКРАНУ, а не к пункту меню: у «Сущностей»
+     подразделов столько, сколько сущностей в схеме, но экран у них один и
+     разбирает свою глубину сам. А вот реестр шаблонов и список событий живут
+     в той же группе на других экранах — по пункту меню их было бы не
+     отличить. */
+  key: function(){
+    var v = document.querySelector(".view.active");
+    return (v && v.id) || (cur.cid ? cur.sid + ":" + cur.cid : cur.sid);
+  },
 
   openTop: function(segs){
     var sid = segs[0];
