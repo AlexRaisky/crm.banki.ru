@@ -768,6 +768,8 @@ function promoSetTab(tab){
   PROMO_TAB = tab === 'archive' ? 'archive' : 'active';
   PROMO_EDIT = null;
   promoRender();
+  /* вкладка стоит в адресе — ссылка на архив открывает архив */
+  if (window.Router) Router.touch();
 }
 function promoTabRows(){
   return PROMO_ROWS.map(function(r, i){ return { r: r, i: i }; })
@@ -1619,3 +1621,14 @@ promoFillPartnerList();
 promoRender();
 promoLoad();
 promoAutoRefresh();
+
+/* ---------- маршрут: /comms/promo и /comms/promo/archive ----------
+   Архив — не фильтр, а вторая половина раздела: в нём другие строки и другие
+   действия. Поэтому он в адресе, а поиск и фильтры — нет. */
+if (window.Router) Router.register("sec-promo", {
+  serialize: function(){ return PROMO_TAB === "archive" ? ["archive"] : []; },
+  apply: function(rest){
+    var tab = rest[0] === "archive" ? "archive" : "active";
+    if (tab !== PROMO_TAB) promoSetTab(tab);
+  }
+});

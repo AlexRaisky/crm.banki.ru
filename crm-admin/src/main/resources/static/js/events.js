@@ -1819,6 +1819,9 @@
     evWizPick();
     var m = el("evWizModal");
     if (m) m.classList.add("open");
+    /* Окно заведения — тоже экран: у него свой адрес, и системная кнопка
+       «назад» на телефоне закрывает окно, а не уводит из раздела. */
+    if (window.Router) Router.touch();
   }
 
   /** Вернуться к выбору рода: форму отдаём назад в её секцию. */
@@ -1852,6 +1855,7 @@
       ? "Приходит извне: расписания нет, шаги заполняются подряд"
       : "Мастер по шагам: настройки, выборка, шаблон, проверка";
     el("evWizNote").textContent = "";
+    if (window.Router) Router.touch();
   }
 
   /** Вернуть форму в её секцию — ровно на то место, откуда взяли. */
@@ -1870,7 +1874,45 @@
     evWiz.kind = null;
     if (el("evWizPick")) el("evWizPick").hidden = false;
     if (el("evWizBack")) el("evWizBack").hidden = true;
+    if (window.Router) Router.touch();
   }
+
+  /* ---------- маршрут раздела ----------
+       /entities/event            — список
+       /entities/event/new[/online|offline] — окно заведения
+       /entities/event/<id>       — карточка события
+     Идентификаторы событий числовые, поэтому «new» с ними не спорит. */
+  if (window.Router) Router.register("sec-event-list", {
+    serialize: function () {
+      var m = el("evWizModal");
+      if (m && m.classList.contains("open")) return evWiz.kind ? ["new", evWiz.kind] : ["new"];
+      return evCardId ? [String(evCardId)] : [];
+    },
+    apply: function (rest) {
+      if (!inited.list) initList();
+      /* Голый адрес раздела — чистый список: и окно заведения, и карточку,
+         открытые поверх него, надо убрать. Именно это делает «назад». */
+      if (!rest.length) {
+        var m = el("evWizModal");
+        if (m && m.classList.contains("open")) evWizClose();
+        if (evCardId) showListPart(true);
+        return;
+      }
+      if (rest[0] === "new") {
+        evWizOpen();
+        if (rest[1] === "online" || rest[1] === "offline") evWizUse(rest[1]);
+        return;
+      }
+      /* Промис наружу: карточка едет с сервера, и до ответа приводить адрес к
+         факту рано — иначе ссылка схлопнулась бы обратно в список. */
+      return toggleCard(rest[0]);
+    },
+    title: function () {
+      if (!evCardId) return null;
+      var b = document.querySelector("#evCardHost .ev-head-card .sfd-head b");
+      return b ? b.textContent.trim() : String(evCardId);
+    }
+  });
 
   // ============================================================ СПИСОК СОБЫТИЙ
 
@@ -2099,17 +2141,27 @@
      Сначала открываем сам раздел: пока секция скрыта, карточке некуда рисоваться, а
      список за ней всё равно нужен для кнопки «К списку». */
   window.openEventCard = function (id) {
-    if (typeof openSection === "function") openSection("entities", "ent-event");
-    if (!inited.list && typeof initList === "function") initList();
-    toggleCard(id);
+    /* Один переход, а не два: без группировки «назад» из карточки приводил бы на
+       список событий, через который человек проехал не глядя. */
+    var step = function () {
+      if (typeof openSection === "function") openSection("entities", "ent-event");
+      if (!inited.list && typeof initList === "function") initList();
+      return toggleCard(id);
+    };
+    return window.Router ? Router.batch(step) : step();
   };
+
+  /** Открытая карточка — она же сегмент адреса /entities/event/<id>. */
+  var evCardId = null;
 
   function toggleCard(id) {
     showListPart(false);
+    evCardId = id;
+    if (window.Router) Router.touch();
     var host = el("evCardHost");
     host.hidden = false;
     host.innerHTML = '<div class="sfd"><div class="sfd-head"><b>Загружаем…</b></div></div>';
-    evReq("GET", "/list/" + encodeURIComponent(id)).then(function (d) {
+    return evReq("GET", "/list/" + encodeURIComponent(id)).then(function (d) {
       evCard = d;
       host.innerHTML = renderEventCard(d);
       wireEventCard(id);
@@ -2133,6 +2185,8 @@
     if (!on) return;
     var host = el("evCardHost");
     if (host) { host.hidden = true; host.innerHTML = ""; }
+    evCardId = null;
+    if (window.Router) Router.touch();
   }
 
   /** Открытая карточка — для перерисовки после правки поля. */

@@ -1806,6 +1806,15 @@ function entRouteTail(){
 }
 
 function entRouteApply(rest){
+  /* Голый адрес сущности — её таблицы: «назад» из списка или карточки должно
+     сворачивать экран, а не оставлять открытым то, чего в адресе уже нет. */
+  if (!rest.length){
+    if (ENT_CUR.id || ENT_CUR.mode !== "tables"){
+      ENT_CUR.id = null; ENT_CUR.rec = null; ENT_CUR.edit = null; ENT_CUR.mode = "tables";
+      entRender();
+    }
+    return;
+  }
   var e = entEntity(rest[0]);
   /* Таблицы нет в схеме или она из другой сущности — открытым остаётся то, что
      уже показано, а адрес маршрутизатор приведёт к факту сам. */

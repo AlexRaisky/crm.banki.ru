@@ -842,6 +842,9 @@
     clearSel();
     editor.clear();
     currentId = j ? j.id : null;
+    /* Открытая цепочка — сегмент адреса /journeys/<id>: ссылкой на схему
+       делятся чаще, чем на сам раздел, а «назад» возвращает к предыдущей. */
+    if (window.Router) Router.touch();
     document.getElementById("jrName").value = j ? j.name : "";
     document.getElementById("jrKind").value = (j && j.kind === "offline") ? "offline" : "online";
     refreshContinuesOptions(j ? j.continuesJourneyId : null);
@@ -2402,4 +2405,29 @@
   } else {
     initIfAlreadyOpen();
   }
+
+  /* ---------- маршрут: /journeys/<id> ----------
+     Цепочка выбирается выпадающим списком, и до сих пор выбор жил только на
+     экране: перезагрузка возвращала первую попавшуюся, а ссылку на конкретную
+     схему переслать было нельзя. */
+  if (window.Router) Router.register("sec-journeys", {
+    serialize: function () { return currentId ? [String(currentId)] : []; },
+    apply: function (rest) {
+      window.initJourneysSection();
+      var sel = document.getElementById("jrSelect");
+      if (!sel || !rest.length) return;          /* голый адрес — что открыто, то и открыто */
+      if (String(currentId) === String(rest[0])) return;
+      /* Список мог ещё не приехать, своего пункта в выпадающем списке нет —
+         загрузке это не мешает: идентификатор мы уже знаем. */
+      sel.value = rest[0];
+      return CRM.journeyGet(rest[0]).then(renderJourney).catch(function (e) {
+        if (window.console) console.warn("Цепочки: не открылась " + rest[0], e);
+      });
+    },
+    ready: function () { return (window.CRM && CRM.meReady) ? CRM.meReady : null; },
+    title: function () {
+      var n = document.getElementById("jrName");
+      return (n && n.value) ? n.value : null;
+    }
+  });
 })();

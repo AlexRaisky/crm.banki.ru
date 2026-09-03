@@ -1092,6 +1092,8 @@ function wizardSetChannel(ch){
      редактирования, чтобы сохранение пошло как INSERT, а не UPDATE открытого шаблона */
   window.CRM_CURRENT = null;
   if (typeof wizardCardOpen === "function") wizardCardOpen(ch);
+  /* канал стоит в адресе (/comms/admin/sms) — ссылкой открывается нужная форма */
+  if (window.Router) Router.touch();
 }
 
 /* ---------- мониторинг: заглушки статистики блоков ---------- */

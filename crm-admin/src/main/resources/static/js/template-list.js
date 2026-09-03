@@ -741,7 +741,9 @@ function viewFromList(templateId) {
     // Помечаем контекст редактирования, чтобы сохранение пошло как UPDATE именно этого шаблона.
     window.CRM_CURRENT = { channel: channel, code: code };
     // Тянем полные данные шаблона из бэкенда; при ошибке — частичные из строки списка (если она есть).
-    CRM.getTemplate(channel, code)
+    // Промис возвращается наружу: маршрутизатор ждёт его, чтобы не поправить
+    // адрес на список, пока карточка ещё едет.
+    return CRM.getTemplate(channel, code)
         .then(function (dto) { showTemplateInViewer(templateId, CRM.dtoToV1(dto)); })
         .catch(function () {
             if (!listItem) { alert('Не удалось загрузить шаблон: ' + templateId); return; }
@@ -764,6 +766,13 @@ function viewFromList(templateId) {
    коммуникациями» — вместо карточки человек попадал на список разделов. */
 function showTemplateInViewer(templateId, data) {
     if (!data) return;
+    /* Открытие карточки — один переход, даже если по дороге пришлось открыть
+       раздел: иначе «назад» приводило бы на список, через который человек
+       только что проехал не глядя. */
+    if (window.Router) return Router.batch(function(){ return showTemplateInViewer_(templateId, data); });
+    return showTemplateInViewer_(templateId, data);
+}
+function showTemplateInViewer_(templateId, data) {
     /* Если карточку открыли не из реестра (секция не на экране) — сначала откроем
        раздел со списком, иначе переключать режим было бы нечему. */
     var host = document.getElementById('sec-admin');
@@ -937,4 +946,56 @@ document.addEventListener('DOMContentLoaded', () => {
             initDashboard();
             initFieldHelp();
         });
+});
+
+/* ---------- маршрут: реестр шаблонов и мастер ----------
+
+   Обе половины живут в одной секции #sec-admin и различаются режимом, поэтому
+   провайдер один, а хвост адреса разный:
+     /entities/template               — реестр
+     /entities/template/sms/1001      — карточка шаблона
+     /comms/admin/sms                 — мастер на выбранном канале
+   Составной идентификатор шаблона («канал:код») в адресе раскладывается на два
+   сегмента: двоеточие в пути пришлось бы кодировать, и ссылка стала бы
+   нечитаемой. */
+function admActiveForm(){
+  var f = document.querySelector("#sec-admin .form.active");
+  return f ? f.id : null;
+}
+
+if (window.Router) Router.register("sec-admin", {
+  serialize: function(){
+    var form = admActiveForm();
+    if (form === "view" && window.CRM_CURRENT && CRM_CURRENT.channel){
+      return [CRM_CURRENT.channel, String(CRM_CURRENT.code)];
+    }
+    if (form === "wizard"){
+      var seg = document.querySelector("#wizardChannelSeg button.active");
+      return seg ? [seg.dataset.ch] : [];
+    }
+    return [];
+  },
+
+  apply: function(rest){
+    /* мастер: единственный сегмент — канал */
+    if (typeof cur !== "undefined" && cur.sid === "comms"){
+      var ok = document.querySelector('#wizardChannelSeg button[data-ch="' + rest[0] + '"]');
+      if (ok && typeof wizardSetChannel === "function") wizardSetChannel(rest[0]);
+      return;
+    }
+    /* голый адрес реестра — сам реестр: «назад» из карточки закрывает её */
+    if (!rest.length){
+      if (admActiveForm() === "view" && typeof setAdminMode === "function") setAdminMode("list");
+      return;
+    }
+    /* реестр: канал и код шаблона. Возвращаем промис — карточку ещё надо
+       запросить у сервера, и до ответа адрес приводить к факту рано. */
+    if (rest.length >= 2) return viewFromList(rest[0] + ":" + rest[1]);
+  },
+
+  title: function(){
+    if (admActiveForm() !== "view" || !window.CRM_CURRENT) return null;
+    var el = document.querySelector("#sfdOutput .sfd-head b");
+    return el ? el.textContent.trim() : String(CRM_CURRENT.code);
+  }
 });

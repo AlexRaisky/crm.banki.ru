@@ -145,18 +145,32 @@
 
     var rest = want.segs.slice(res.consumed || want.segs.length);
     var prov = PROV[CFG.key ? CFG.key() : ""];
-    if (!prov || !prov.apply || !rest.length) { want = null; fixUrl(); return; }
+    /* Пустой хвост — тоже маршрут: провайдера зовём и с ним, иначе «назад» из
+       карточки на голый адрес раздела не свернул бы открытое поверх списка.
+       Экран знает своё исходное состояние, движок — нет. */
+    if (!prov || !prov.apply) { want = null; fixUrl(); return; }
 
     var mine = want;
     want = null;
     var ready = prov.ready ? prov.ready() : null;
-    var go = function () {
-      applying = true;
-      try { prov.apply(rest); }
-      catch (e) { if (typeof console !== "undefined") console.warn("Router: не удалось открыть", rest, e); }
-      finally { applying = false; }
+    var done = function () {
+      applying = false;
       setTitleFromProvider();
       fixUrl();
+    };
+    var go = function () {
+      var res;
+      applying = true;
+      try { res = prov.apply(rest); }
+      catch (e) {
+        if (typeof console !== "undefined") console.warn("Router: не удалось открыть", rest, e);
+      }
+      /* Экран может открываться в два приёма: карточку шаблона сначала надо
+         запросить у сервера. Пока запрос идёт, состояние ещё не то, которое
+         просили, и приведение адреса к факту стёрло бы правильный адрес —
+         поэтому ждём. */
+      if (res && typeof res.then === "function") res.then(done, done);
+      else done();
     };
     if (ready && typeof ready.then === "function") ready.then(go, go); else go();
   }
@@ -175,8 +189,11 @@
   /* ---------- публичный интерфейс ---------- */
 
   var Router = {
-    /** true — панель открыта во внешнем окне (?only=): адрес не наш, историю не трогаем. */
-    embedded: false,
+    /* Панель открыта во внешнем окне (?only=list|dashboard): там своим адресом
+       распоряжается принимающая страница — разбираем, но не навигируем и
+       историю не трогаем. Это второй, более ранний контракт на URL, и ломать
+       его маршрутизацией нельзя. */
+    embedded: /[?&]only=(list|dashboard)\b/.test(location.search),
 
     configure: function (adapter) {
       CFG = adapter;
