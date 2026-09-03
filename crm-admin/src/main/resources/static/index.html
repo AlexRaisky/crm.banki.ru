@@ -3,6 +3,39 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Базовый путь. Адрес страницы теперь настоящий (/entities/client/12), а все ресурсы
+     подключены относительными путями — без <base> браузер пошёл бы за
+     /entities/js/shell.js и получил бы 404. Скрипт обязан быть инлайновым и первым:
+     внешний файл сам тянется относительным путём и не загрузился бы. -->
+<script>
+(function(){
+  /* Возврат с 404.html: GitHub Pages не умеет отдавать приложение по произвольному
+     адресу и отправляет сюда исходный путь в ?r=. Восстанавливаем адрес ДО расчёта
+     базы — дальше всё идёт как при обычном заходе, и в истории остаётся один вход. */
+  var m = /[?&]r=([^&]*)/.exec(location.search);
+  if (m) {
+    try {
+      var rest = location.search.replace(/([?&])r=[^&]*&?/, "$1").replace(/[?&]$/, "");
+      history.replaceState(null, "", decodeURIComponent(m[1]) + (rest === "?" ? "" : rest) + location.hash);
+    } catch (e) { /* другой origin или запрет истории — останемся на корне, это не смертельно */ }
+  }
+
+  /* Корневые сегменты маршрутов: по первому найденному видно, где кончается адрес
+     приложения и начинается маршрут. Так база считается одинаково и на боевом (/),
+     и на GitHub Pages (/crm.banki.ru/) — без хардкода имени репозитория. */
+  var ROOTS = "home comms entities reports dash monitoring uploads journeys settings".split(" ");
+  var segs = location.pathname.split("/"), base = null;
+  for (var i = 1; i < segs.length; i++){
+    if (ROOTS.indexOf(segs[i]) >= 0){ base = segs.slice(0, i).join("/") + "/"; break; }
+  }
+  /* маршрута в адресе нет — база это каталог самого документа */
+  if (base === null) base = location.pathname.replace(/[^/]*$/, "");
+  window.APP_BASE = base;
+  var b = document.createElement("base");
+  b.setAttribute("href", base);
+  document.head.appendChild(b);
+})();
+</script>
 <!-- Свой значок вкладки: без него браузер каждый раз просит /favicon.ico и получает 404 —
      мусор в консоли, из-за которого потом ищут несуществующую поломку. Значок инлайновый,
      отдельным файлом его класть незачем. -->
@@ -2820,7 +2853,11 @@
      скрипты, они делят общую глобальную область видимости, как раньше делили
      её инлайн-блоки на этих же местах. Менять порядок нельзя: boot.js в конце
      стартует приложение, когда всё уже объявлено. -->
-<script src="js/shell.js?v=2"></script>
+<!-- Маршрутизатор подключается ПЕРЕД оболочкой: shell.js в самом конце настраивает
+     адаптер (Router.configure), модули разделов регистрируют провайдеры, а boot.js
+     последним запускает Router.start(). -->
+<script src="js/router.js?v=1"></script>
+<script src="js/shell.js?v=3"></script>
 
 <script src="js/srcbuilder.js"></script>
 <script src="js/promo.js?v=6"></script>

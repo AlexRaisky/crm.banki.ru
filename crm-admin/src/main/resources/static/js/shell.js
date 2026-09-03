@@ -732,12 +732,14 @@ function setApp(id){
   currentApp = id; store.set("app", id);
   renderLauncher(); renderNav(); updateAppSpecific();
   launcher.classList.remove("open");
-  if (!appAllows(cur.sid)) return openSection("home");
+  /* смена приложения — не переход по разделам: вынужденный уход с недоступного
+     раздела в историю не пишем */
+  if (!appAllows(cur.sid)) return navReplace("home");
   /* если открытый подраздел недоступен в новом приложении — на обзор раздела */
   const s = NAV.find(n => n.id === cur.sid);
   if (s && s.children && cur.cid){
     const child = s.children.find(c => c.id === cur.cid);
-    if (child && !childVisible(child)) openSection(cur.sid);
+    if (child && !childVisible(child)) navReplace(cur.sid);
   }
 }
 $("#waffleBtn").onclick = e => { e.stopPropagation(); launcher.classList.toggle("open"); };
@@ -913,6 +915,17 @@ document.addEventListener("keydown", function(e){
   if (e.key === "Escape" && $("#prefsDialog") && $("#prefsDialog").style.display !== "none") closePrefsDialog();
 });
 
+/* Уход на главную не по воле человека (раздела нет, прав нет, чужая среда) не должен
+   попадать в историю: иначе «назад» вернул бы на недоступный адрес, тот снова отбил бы
+   на главную — и кнопка «назад» перестала бы работать вообще. */
+function navReplace(sid, cid){
+  if (window.Router) Router.replaceNext();
+  openSection(sid, cid);
+}
+
+/* ВНИМАНИЕ: window.openSection оборачивается маршрутизатором (js/router.js) — обёртка
+   после каждой навигации записывает адрес. Не переводить этот файл в модуль и не
+   переприсваивать window.openSection: обёртка отвалится молча. */
 function openSection(sid, cid){
   let s = sectionById(sid);
   if (!s){
@@ -920,12 +933,12 @@ function openSection(sid, cid){
        (например, из journeys.js) — ищем id среди детей групп */
     const parent = NAV.find(n => n.children && n.children.some(c => c.id === sid));
     /* раздел исчез из NAV (например, access переехал в настройки) — уходим на главную */
-    if (!parent) { if (sid !== "home") openSection("home"); return; }
+    if (!parent) { if (sid !== "home") navReplace("home"); return; }
     cid = sid; sid = parent.id; s = parent;
   }
-  if (!appAllows(sid)) { if (sid !== "home") openSection("home"); return; }
+  if (!appAllows(sid)) { if (sid !== "home") navReplace("home"); return; }
   // Не открываем раздел, ограниченный средами (напр. «Цепочки» — только test), на чужой среде.
-  if (!sectionAllowed(s)) { if (sid !== "home") openSection("home"); return; }
+  if (!sectionAllowed(s)) { if (sid !== "home") navReplace("home"); return; }
 
   let target = s;
   if (sid === "uploads"){
@@ -1466,3 +1479,67 @@ renderLauncher();
 renderNav();
 updateAppSpecific();
 applySubOrder();
+
+/* =========================================================
+   АДАПТЕР МАРШРУТИЗАТОРА
+
+   Движок (js/router.js) не знает ни про NAV, ни про секции — всё прикладное
+   здесь. Адаптер живёт в этом файле, потому что ему нужен доступ к `cur`:
+   она объявлена через let и, в отличие от функций, свойством window не
+   является, снаружи её не видно.
+
+   Соответствие «адрес ↔ навигация» прямое: первый сегмент — sid из NAV,
+   второй — cid. Отбрасываются только служебные префиксы (ent-, up-), чтобы
+   адрес совпадал с идентификатором секции прав и не заводить второй
+   справочник соответствий.
+   ========================================================= */
+function routeSegOf(sid, cid){
+  if (!cid) return null;
+  if (sid === "entities") return cid.replace(/^ent-/, "");
+  if (sid === "uploads")  return cid === "up-new" ? "new" : cid.replace(/^up-/, "");
+  return cid;
+}
+function routeCidOf(sid, seg){
+  if (!seg) return null;
+  if (sid === "entities") return "ent-" + seg;
+  if (sid === "uploads")  return seg === "new" ? "up-new" : "up-" + seg;
+  return seg;
+}
+
+if (window.Router) Router.configure({
+  wrap: "openSection",
+  /* Голый адрес открывает Главную: адрес — единственный источник истины,
+     «вернуть туда, где был» через localStorage больше не делаем. */
+  home: function(){ return ["home"]; },
+  /* Ждём /api/env: sectionAllowed зависит от имени среды, без него раздел,
+     ограниченный средой, отбился бы на главную ещё до ответа сервера. */
+  ready: function(){ return (window.CRM && CRM.envReady) ? CRM.envReady : null; },
+
+  serializeTop: function(){
+    if (!cur.sid) return [];
+    var seg = routeSegOf(cur.sid, cur.cid);
+    return seg ? [cur.sid, seg] : [cur.sid];
+  },
+  key: function(){ return cur.cid ? cur.sid + ":" + cur.cid : cur.sid; },
+
+  openTop: function(segs){
+    var sid = segs[0];
+    if (!sid){ openSection("home"); return { ok:true, consumed:0 }; }
+    var s = sectionById(sid);
+    if (!s) return { ok:false };
+    /* Группа есть, а детей ещё нет: подразделы «Сущностей» появляются только
+       после ответа /api/me и загрузки схемы. Показываем обзор группы (экран не
+       пустой) и ждём сигнала Router.navReady() от entSyncNav. */
+    if (segs[1] && s.children && !s.children.length){
+      openSection(sid);
+      return { pending:true };
+    }
+    openSection(sid, segs[1] ? routeCidOf(sid, segs[1]) : null);
+    /* сколько сегментов адреса реально «съела» навигация: подраздел мог не
+       открыться (нет прав, нет такого) — тогда глубину дальше не разбираем */
+    return { ok:true, consumed: cur.cid ? 2 : 1 };
+  },
+
+  fallback: function(){ openSection("home"); },
+  setTitle: function(s){ if (s) document.title = "CRM Team · " + s; }
+});

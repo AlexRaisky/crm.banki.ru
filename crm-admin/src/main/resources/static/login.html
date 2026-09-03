@@ -70,7 +70,14 @@
         credentials: "same-origin",
         body: body.toString()
       }).then(function (r) {
-        if (r.ok) { location.href = "/"; return; }
+        /* Вернуться туда, куда человек шёл: сервер отдаёт исходный адрес,
+           сохранённый до показа формы. Старый ответ без тела тоже понимаем —
+           тогда это просто Главная. */
+        if (r.ok) {
+          r.json().then(function (d) { location.href = (d && d.redirect) || "/"; },
+                        function () { location.href = "/"; });
+          return;
+        }
         err.textContent = "Неверная почта или пароль";
         btn.disabled = false;
       }).catch(function () {

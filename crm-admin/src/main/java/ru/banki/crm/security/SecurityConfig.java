@@ -10,6 +10,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
+import org.springframework.security.web.savedrequest.SavedRequest;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authorization.AuthorizationDecision;
@@ -101,9 +103,42 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * Куда человек шёл до формы входа.
+     *
+     * <p>Матчер обязателен: без него сюда попадает и фоновый запрос. Панель на
+     * старте дёргает /api/me, он получает 401 первым — и «исходным» адресом
+     * оказался бы сам /api/me, то есть после входа человек увидел бы JSON
+     * вместо своего экрана. Запоминаем только переходы браузера: GET за
+     * документом, не под /api/ и не сама страница входа.
+     */
+    private static final HttpSessionRequestCache REQUEST_CACHE = navigationRequestCache();
+
+    private static HttpSessionRequestCache navigationRequestCache() {
+        HttpSessionRequestCache cache = new HttpSessionRequestCache();
+        cache.setRequestMatcher(req -> "GET".equals(req.getMethod())
+                && !req.getRequestURI().startsWith("/api/")
+                && !req.getRequestURI().startsWith("/login.html")
+                && String.valueOf(req.getHeader("Accept")).contains("text/html"));
+        return cache;
+    }
+
+    /** Строка в JSON: адрес приходит от нас же, но кавычки в нём быть могут. */
+    private static String jsonString(String s) {
+        StringBuilder sb = new StringBuilder("\"");
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '"' || c == '\\') sb.append('\\').append(c);
+            else if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+            else sb.append(c);
+        }
+        return sb.append('"').toString();
+    }
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
+            .requestCache(rc -> rc.requestCache(REQUEST_CACHE))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC).permitAll()
                 /* Настроечная админка раздаётся ПОШТУЧНО: панель = секция матрицы прав.
@@ -154,7 +189,18 @@ public class SecurityConfig {
                 .loginProcessingUrl("/api/login")
                 .usernameParameter("email")
                 .passwordParameter("password")
-                .successHandler((req, res, a) -> res.setStatus(HttpServletResponse.SC_OK))
+                /* Вернуть человека туда, куда он шёл. С появлением маршрутов
+                   (js/router.js) ссылка ведёт на конкретный экран, и прежний
+                   безусловный переход на «/» после входа терял её — открывалась
+                   Главная, а адрес из письма или закладки приходилось искать
+                   заново. Исходный запрос лежит в requestCache (см. ниже). */
+                .successHandler((req, res, a) -> {
+                    SavedRequest saved = REQUEST_CACHE.getRequest(req, res);
+                    String to = saved != null ? saved.getRedirectUrl() : "/";
+                    res.setStatus(HttpServletResponse.SC_OK);
+                    res.setContentType("application/json;charset=UTF-8");
+                    res.getWriter().write("{\"redirect\":" + jsonString(to) + "}");
+                })
                 .failureHandler((req, res, e) -> res.sendError(HttpServletResponse.SC_UNAUTHORIZED))
                 .permitAll()
             )

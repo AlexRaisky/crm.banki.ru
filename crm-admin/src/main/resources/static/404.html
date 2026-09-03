@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>CRM Team</title>
+<!-- Страница «не найдено» для GitHub Pages.
+
+     На боевом сервере её никто не видит: там неизвестный путь подменяет сам
+     Spring (SpaFallbackConfig), сразу отдавая нужный документ. Pages так не
+     умеет — на любой несуществующий путь он отдаёт один этот файл, поэтому
+     здесь адрес запоминается в ?r= и мы уходим на настоящий документ, а тот
+     первым делом возвращает адрес на место через replaceState. Получается один
+     мгновенный переход, в истории — одна запись, адрес в строке правильный.
+
+     Документа два (панель и настройки), а файл 404 у Pages один — поэтому
+     выбор документа делается здесь, по первому сегменту маршрута. -->
+<script>
+(function () {
+  var ROOTS = "home comms entities reports dash monitoring uploads journeys settings".split(" ");
+  var p = location.pathname, segs = p.split("/"), base = "/", route = [];
+  for (var i = 1; i < segs.length; i++) {
+    if (ROOTS.indexOf(segs[i]) >= 0) {
+      base = segs.slice(0, i).join("/") + "/";
+      route = segs.slice(i);
+      break;
+    }
+  }
+  /* Знакомого корня нет — это опечатка, а не маршрут. Адрес восстанавливать
+     нечего, ведём на главную. База при этом известна: на боевом сервере этот
+     файл недостижим (там 404 перехватывает Spring), значит мы на Pages, где
+     первый сегмент — имя репозитория. */
+  if (!route.length) {
+    location.replace(segs.length > 2 ? "/" + segs[1] + "/" : "/");
+    return;
+  }
+  var doc = route[0] === "settings" ? base + "settings/" : base;
+  var q = "?r=" + encodeURIComponent(p) + (location.search ? "&" + location.search.slice(1) : "");
+  location.replace(doc + q + location.hash);
+})();
+</script>
+</head>
+<body></body>
+</html>

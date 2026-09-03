@@ -31,12 +31,10 @@ var ENT_SEED_VER  = 1;
 
 var ENT_MODEL = { entities: [], relations: [] };
 var ENT_DATA  = {};
-/* какой подраздел был открыт в прошлый раз: boot.js восстанавливает раздел
-   раньше, чем догрузится схема, и без этого «Сущности» открывались обзором */
-var ENT_WANT = (function(){
-  try { var v = JSON.parse(localStorage.getItem("crmpanel:lastSection"));
-        return (v && v.sid === "entities" && v.cid) ? v.cid : null; } catch(e){ return null; }
-})();
+/* Подраздел, открытый по адресу, дожидается загрузки схемы сам: маршрутизатор
+   держит нерешённый маршрут и повторяет попытку по сигналу Router.navReady()
+   в конце entSyncNav. Раньше здесь лежал ENT_WANT, читавший crmpanel:lastSection
+   напрямую, — он решал ту же задачу, но только для одного раздела. */
 /* mode — список записей или карточка одной записи; tab — вкладка карточки;
    q / fv / sort — состояние списка (поиск, значения фильтров, сортировка по сущностям) */
 /* id — открытая ТАБЛИЦА, schema — сущность, которой она принадлежит.
@@ -1589,9 +1587,16 @@ function entSyncNav(){
   grp.adminOnly = !grp.children.length;
   if (typeof renderNav === "function") renderNav();
   entRenderOverview();
-  /* открытая сущность исчезла из схемы — уходим на обзор */
-  if (ENT_CUR.id && !entEntity(ENT_CUR.id) && typeof cur !== "undefined" && cur.sid === "entities")
+  /* открытая сущность исчезла из схемы — уходим на обзор.
+     replaceNext: схему могли поправить в соседней вкладке, и вынужденный уход
+     не должен становиться точкой, куда возвращает «назад». */
+  if (ENT_CUR.id && !entEntity(ENT_CUR.id) && typeof cur !== "undefined" && cur.sid === "entities"){
+    if (window.Router) Router.replaceNext();
     openSection("entities");
+  }
+  /* Состав подразделов пересчитан — маршрутизатор может дорешать адрес,
+     который пришёл раньше схемы (например /entities/client/client/12). */
+  if (window.Router) Router.navReady();
 }
 
 /* ---------- стартовые данные: по три записи на сущность ----------
@@ -1752,10 +1757,6 @@ function entBoot(){
     });
     if (fixed) entStore();
     entSyncNav();
-    if (ENT_WANT && ENT_MODEL.entities.some(function(e){ return "ent-" + e.id === ENT_WANT; })){
-      if (typeof cur !== "undefined" && cur.sid === "entities" && !cur.cid) openSection("entities", ENT_WANT);
-      ENT_WANT = null;
-    }
   });
 }
 /* сущность завели/удалили в Scheme Builder (другая вкладка) — пересобираем подразделы */

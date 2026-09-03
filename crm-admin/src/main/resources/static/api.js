@@ -433,9 +433,14 @@
     if (!active || active.style.display === "none") {
       var firstVisible = document.querySelector('#nav .nav-item:not([style*="display: none"])');
       if (firstVisible && typeof window.openSection === "function") {
+        // Отказ по правам — не переход человека: в историю его не пишем, иначе
+        // «назад» вернул бы на закрытый раздел и снова отскочил сюда.
+        if (window.Router) window.Router.replaceNext();
         window.openSection(firstVisible.dataset.id);
       }
     }
+    // Права применены — состав меню изменился, маршрут из адреса можно дорешать.
+    if (window.Router) window.Router.navReady();
   }
   // Оболочка перерисовывает сайдбар (смена приложения/языка) — даём ей переприменить ACL.
   window.applyNavAcl = applyNavAcl;
