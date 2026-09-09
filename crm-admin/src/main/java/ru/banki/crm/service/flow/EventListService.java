@@ -110,6 +110,18 @@ public class EventListService {
         if (channel == null || channel.isBlank() || code == null || code.isBlank()) {
             return List.of();
         }
+        /* Код шаблона в базе — bigint, а с фронта он приходит частью составного
+           идентификатора «канал:код», то есть строкой. Отдать его в запрос как есть
+           нельзя: PostgreSQL на сравнение bigint со строкой отвечает ошибкой
+           «operator does not exist», и блок событий в карточке шаблона показывал
+           «не удалось загрузить». Нечисловой код — не ошибка, а просто отсутствие
+           такого шаблона: связей у него быть не может. */
+        long codeNum;
+        try {
+            codeNum = Long.parseLong(code.trim());
+        } catch (NumberFormatException e) {
+            return List.of();
+        }
         return jdbc.queryForList(
                 "SELECT e.id, e.event_name, e.kind, e.is_active, et.step_no," +
                 "       (SELECT d.notify_channel FROM flow.d_event_delivery d" +
@@ -119,7 +131,7 @@ public class EventListService {
                 "  JOIN flow.d_event e ON e.id = et.event_id" +
                 " WHERE t.channel = ? AND t.code = ?" +
                 " ORDER BY e.id",
-                channel, code);
+                channel, codeNum);
     }
 
     /** Полная карточка одного события: обвязка целиком, включая шаги выборки. */

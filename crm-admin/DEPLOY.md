@@ -60,13 +60,30 @@ curl -sI http://localhost/login | head -1   # HTTP/1.1 200
 ## Обновление версии
 
 ```bash
-cd crm.banki.ru/crm-admin && git pull
-# сначала test:
-docker compose -f docker-compose.yml -f docker-compose.server.yml build app-prod
+# 1. Код — тянем в КОРНЕ репозитория, а не в crm-admin
+git -C /путь/к/crm.banki.ru pull --ff-only origin admin-panel
+
+# 2. Сборка образа (она же проставляет версию)
+cd /путь/к/crm.banki.ru/crm-admin && bash scripts/build.sh
+
+# 3. Сначала test
 docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --no-deps app-test
-# проверили test → катим дальше:
+
+# 4. Проверили test → катим дальше
 docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --no-deps app-preprod app-prod
 ```
+
+Собирать нужно `scripts/build.sh`, а не `docker compose build`: внутри сборки git
+недоступен (`.git` исключён `.dockerignore` — история в образе не нужна), поэтому
+версию, ветку и историю коммитов кладёт в `src/main/resources/build-info.json` сам
+сборщик. Без него раздел «Выкатки» может лишь честно сказать «версия неизвестна».
+
+Тянуть нужно в корне репозитория: `crm-admin` — это его подкаталог, а не отдельный
+репозиторий. Если внутри `crm-admin` окажется свой `.git` (так бывает после
+`git init` или копирования дерева на уровень глубже), команды из этого каталога
+пойдут не в тот репозиторий: `git pull` не увидит правок, а `scripts/build.sh`
+определит корень через `git rev-parse --show-toplevel` и запишет в `build-info.json`
+чужую версию. Лишний `.git` внутри `crm-admin` надо удалить.
 
 Миграции БД (Flyway) накатываются автоматически при старте контейнера.
 
