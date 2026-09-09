@@ -10,7 +10,7 @@
   const els={};
   ['channel','mailingType',
    'webDp','webviewFlag','webviewWrap','webviewUrl','deepLinkValue','iosUrl','androidUrl',
-   'result','resultCard','banner','draftNote','copyBtn']
+   'result','resultCard','banner','draftNote','copyBtn','dockToggle']
    .forEach(id=>els[id]=document.getElementById(id));
 
   function normalizeSpaces(v){return (v||'').trim().replace(/\s+/g,'');}
@@ -218,6 +218,23 @@
       setTimeout(()=>els.copyBtn.textContent=orig,2600);
     });
   });
+
+  /* Свёрнутый блок ссылки. Состояние запоминаем: у кого экран маленький, тот
+     сворачивает раз и навсегда, а не при каждом заходе в раздел. Хранилище может
+     быть недоступно (приватное окно) — тогда просто работаем без запоминания. */
+  function setDock(open){
+    els.resultCard.classList.toggle('collapsed',!open);
+    els.dockToggle.setAttribute('aria-expanded',String(open));
+    els.dockToggle.title = open ? 'Свернуть блок со ссылкой' : 'Развернуть блок со ссылкой';
+  }
+  if(els.dockToggle){
+    setDock(store.get('onelinkDockOpen',true)!==false);
+    els.dockToggle.addEventListener('click',()=>{
+      const open=els.resultCard.classList.contains('collapsed');
+      setDock(open);
+      store.set('onelinkDockOpen',open);
+    });
+  }
 
   els.webviewFlag.addEventListener('change',()=>{syncWebviewUI();update();});
 

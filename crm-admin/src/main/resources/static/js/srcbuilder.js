@@ -9,9 +9,10 @@
    Значение подставляется в source_type шаблонов и в параметр c ссылок.
    ========================================================= */
 (function(){
-  const ids = ["sbChannel","sbCampType","sbProduct","sbPartner","sbUniqP","sbDate","sbUniqT","sbSegment","sbDay",
-               "sbWrapPartner","sbWrapUniqP","sbWrapDate","sbWrapUniqT","sbWrapSegment","sbWrapDay",
-               "sbResult","sbResultCard","sbBanner","sbCopyBtn"];
+  const ids = ["sbChannel","sbMailingType","sbNotVoice","sbCampType","sbProduct","sbPartner","sbUniqP","sbDate",
+               "sbUniqT","sbSegment","sbDay",
+               "sbWrapPartner","sbWrapUniqP","sbWrapDate","sbWrapUniqT","sbWrapSegment","sbWrapDay","sbWrapNotVoice",
+               "sbResult","sbResultCard","sbBanner","sbCopyBtn","sbDockToggle"];
   const el = {};
   ids.forEach(id => el[id] = document.getElementById(id));
   if (!el.sbChannel) return;
@@ -20,9 +21,20 @@
   const clean = v => (v || "").trim().replace(/\s+/g, "");
   const fmtDate = iso => { if (!iso) return ""; const p = iso.split("-"); return p[2] + p[1] + p[0].slice(2); };
 
+  /* Коммуникация от лица КЦ, но не звонок: первой частью идёт contact, а сам канал
+     уходит приставкой в уникальное название. Для канала callcenter флаг не нужен —
+     там первая часть и так contact, и приставка «callcenter-» была бы бессмыслицей,
+     поэтому там его прячем (и в расчёте не учитываем: скрытый чекбокс мог остаться
+     отмеченным с прошлого выбора). */
+  function isCCNonVoice(){
+    const ch = el.sbChannel.value;
+    return !!(el.sbNotVoice && el.sbNotVoice.checked && ch && ch !== "callcenter");
+  }
+
   function syncVisibility(){
     const type = el.sbCampType.value;
     const isCC = el.sbChannel.value === "callcenter";
+    if (el.sbWrapNotVoice) el.sbWrapNotVoice.style.display = isCC ? "none" : "";
     el.sbWrapPartner.style.display = type === "promo" ? "" : "none";
     el.sbWrapUniqP.style.display   = type === "promo" ? "" : "none";
     el.sbWrapDate.style.display    = type === "promo" ? "" : "none";
@@ -35,7 +47,12 @@
   window.sbUpdate = function(){
     const channel = el.sbChannel.value;
     const isCC = channel === "callcenter";
-    const campChannel = isCC ? "contact" : channel;   /* sms | mobile-push | email | contact */
+    const ccNonVoice = isCCNonVoice();
+    /* sms | mobile-push | email | contact */
+    const campChannel = (isCC || ccNonVoice) ? "contact" : channel;
+    /* Канал не потерялся: у неголосовой коммуникации КЦ он виден в уникальной части —
+       contact_trigger_credits_sms-abandoned-cart_3day. */
+    const uniqPrefix = ccNonVoice ? channel + "-" : "";
     const type = el.sbCampType.value;
     const product = el.sbProduct.value;
     const missing = [];
@@ -46,6 +63,8 @@
     let parts = [];
     if (type === "promo"){
       const partner = slug(el.sbPartner.value);
+      /* Пустоту проверяем ДО приставки: с ней «незаполненное» поле выглядело бы
+         заполненным (одно «sms-»), и черновик уходил бы в работу как готовый. */
       const uniq = slug(el.sbUniqP.value);
       let date = fmtDate(el.sbDate.value);
       if (!partner) missing.push("partner");
@@ -53,24 +72,31 @@
       if (!el.sbDate.value) missing.push("date");
       /* КЦ-promo в v2 (computeCampaignName) заканчивается на ддммггday */
       if (isCC && date) date += "day";
-      parts = [campChannel, "promo", product, partner, uniq, date];
+      parts = [campChannel, "promo", product, partner, uniq ? uniqPrefix + uniq : "", date];
     } else if (type === "trigger"){
       const uniq = slug(el.sbUniqT.value);
       const day = clean(el.sbDay.value);
       if (!uniq) missing.push("uniqT");
       if (!day) missing.push("day");
+      const uniqOut = uniq ? uniqPrefix + uniq : "";
+      /* Сегмент — принадлежность самого канала callcenter, а не «кцшности» вообще:
+         у неголосовой коммуникации его нет. */
       if (isCC){
         const seg = clean(el.sbSegment.value);
         if (!seg) missing.push("segment");
-        parts = [campChannel, "trigger", product, uniq, seg, day ? day + "day" : ""];
+        parts = [campChannel, "trigger", product, uniqOut, seg, day ? day + "day" : ""];
       } else {
-        parts = [campChannel, "trigger", product, uniq, day ? day + "day" : ""];
+        parts = [campChannel, "trigger", product, uniqOut, day ? day + "day" : ""];
       }
     } else {
       parts = [campChannel, "", product];
     }
 
-    const value = parts.filter(p => p !== "").join("_");
+    /* Сервисная рассылка помечается в самом начале строки: приставка относится ко
+       всему названию, а не к его первой части. */
+    const prefix = el.sbMailingType && el.sbMailingType.value === "service" ? "service-" : "";
+    const body = parts.filter(p => p !== "").join("_");
+    const value = body ? prefix + body : "";
     el.sbResult.innerHTML = value
       ? value.split("_").map(p => '<span class="part">' + p + '</span>').join('<span class="us">_</span>')
       : "";
@@ -163,9 +189,28 @@
   });
   fillPartners();
 
-  ["sbChannel","sbCampType","sbProduct","sbPartner","sbUniqP","sbDate","sbUniqT","sbSegment","sbDay"].forEach(id => {
+  ["sbChannel","sbMailingType","sbNotVoice","sbCampType","sbProduct","sbPartner","sbUniqP","sbDate",
+   "sbUniqT","sbSegment","sbDay"].forEach(id => {
+    if (!el[id]) return;
     ["input","change"].forEach(ev => el[id].addEventListener(ev, () => { syncVisibility(); sbUpdate(); }));
   });
+
+  /* Свёрнутый результат — как в OneLink Builder: блок закреплён сверху и на ноутбуке
+     занимал место, нужное самим полям. Выбор запоминаем; хранилище может быть
+     недоступно (приватное окно), тогда работаем без запоминания. */
+  function setDock(open){
+    el.sbResultCard.classList.toggle("collapsed", !open);
+    el.sbDockToggle.setAttribute("aria-expanded", String(open));
+    el.sbDockToggle.title = open ? "Свернуть блок с результатом" : "Развернуть блок с результатом";
+  }
+  if (el.sbDockToggle){
+    setDock(store.get("srcDockOpen", true) !== false);
+    el.sbDockToggle.addEventListener("click", () => {
+      const open = el.sbResultCard.classList.contains("collapsed");
+      setDock(open);
+      store.set("srcDockOpen", open);
+    });
+  }
 
   syncVisibility();
   sbUpdate();

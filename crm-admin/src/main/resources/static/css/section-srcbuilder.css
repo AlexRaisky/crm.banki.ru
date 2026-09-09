@@ -30,6 +30,16 @@
   .output{font-family:var(--mono);font-size:14px;word-break:break-all;padding:16px;border-radius:12px;
     background:#06101B;border:1px solid var(--line);color:#CFE8FF;min-height:56px;line-height:1.8}
   .output .part{color:var(--green)} .output .us{color:var(--faint)}
+  /* Свёрнутый результат: остаётся строка со статусом и кнопкой копирования.
+     Прячем именно содержимое, а не карточку — иначе на маленьком экране
+     пропадал бы и признак «черновик», ради которого блок и закреплён. */
+  .dock-toggle{border:1px solid var(--line);background:var(--bg2);color:var(--dim);border-radius:9px;
+    width:34px;height:34px;line-height:1;font-size:15px;cursor:pointer;transition:.15s}
+  .dock-toggle:hover{border-color:var(--blue);color:var(--blue)}
+  .result-card.collapsed .result-top{margin-bottom:0}
+  .result-card.collapsed .output,
+  .result-card.collapsed .note{display:none}
+  .result-card.collapsed .dock-toggle{transform:rotate(-90deg)}
   .note{margin-top:11px;font-size:12.5px;color:var(--faint)}
   .note code{font-family:var(--mono);background:var(--card2);color:var(--blue);padding:1px 6px;border-radius:5px;font-size:12px}
 
@@ -62,5 +72,23 @@
     font-size:19px;line-height:1;padding:0;transition:.15s}
   .combo-add .dict-add:hover{border-color:var(--blue);background:var(--blue-bg)}
   .combo-add .dict-add:disabled{opacity:.5;cursor:default}
+
+  /* Флаг «не голосовая коммуникация для КЦ»: подпись кликабельна вместе с квадратом —
+     попасть в сам чекбокс на ноутбучном тачпаде тяжело. */
+  label.check{display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:0;min-height:44px}
+  label.check input{width:18px;height:18px;flex:0 0 18px;accent-color:var(--blue);cursor:pointer}
+
+  /* Шпаргалка под конструктором — то, что раньше висело тремя строками в шапке. */
+  .doc{margin-top:4px;background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .doc summary{cursor:pointer;padding:16px 24px;font-weight:600;font-size:15px;list-style:none}
+  .doc summary::-webkit-details-marker{display:none}
+  .doc summary::before{content:"▸";display:inline-block;margin-right:10px;color:var(--blue);transition:.15s}
+  .doc[open] summary::before{transform:rotate(90deg)}
+  .doc-body{padding:0 24px 20px;color:var(--dim);font-size:14.5px}
+  .doc-body p{margin:10px 0} .doc-body b{color:var(--ink)}
+  .doc-body ul{margin:10px 0 10px 20px} .doc-body li{margin:6px 0}
+  .doc-body code{font-family:var(--mono);font-size:12.5px;background:var(--card2);color:var(--blue);
+    padding:2px 7px;border-radius:6px}
+
   @media(max-width:820px){.grid{grid-template-columns:1fr}:scope{padding:20px 14px 60px}}
 }

@@ -1104,6 +1104,11 @@
         <b>Итоговая ссылка</b>
         <span class="banner draft" id="banner"><span class="pulse"></span>ЧЕРНОВИК — не использовать</span>
         <button class="btn copy primary" id="copyBtn" type="button" disabled style="border:0;border-radius:9px;padding:11px 17px;font-family:var(--mono);font-size:13px;font-weight:600;cursor:pointer;background:var(--grad);color:#06202B">⧉ Скопировать ссылку</button>
+        <!-- Блок закреплён сверху и на ноутбуке съедал треть экрана. Свернём — остаётся
+             строка со статусом и кнопкой копирования: и ссылку видно по клику, и поля
+             формы не уезжают за нижний край. Выбор запоминается. -->
+        <button class="dock-toggle" id="dockToggle" type="button" aria-expanded="true"
+                title="Свернуть блок со ссылкой">▾</button>
       </div>
       <div id="result" class="output"></div>
       <div class="req-note">Поля со звёздочкой <span class="req">*</span> обязательны для готовой ссылки.</div>
@@ -1461,12 +1466,12 @@
     <section class="view" id="sec-srcbuilder">
 <div class="wrap">
 
+  <!-- Описание формата уехало вниз, в сворачиваемый блок «Как собирается source»:
+       на ноутбуке три строки шапки плюс закреплённый результат занимали экран
+       целиком, и до полей приходилось прокручивать. -->
   <header class="hero">
     <div class="eyebrow">CRM · Source · Naming</div>
     <h1 data-i18n-html="h1_srcbuilder">Конструктор <span class="grad">source</span></h1>
-    <p class="sub" data-i18n="Соберите source по правилам названия кампании. Части разделяются подчёркиванием:">Соберите source по правилам названия кампании. Части разделяются подчёркиванием:</p>
-    <p class="sub"><span class="fmt">канал_тип_продукт_…</span></p>
-    <p class="sub"><b data-i18n="Куда подставляется:">Куда подставляется:</b> <span data-i18n="этот формат используется в поле source_type шаблонов коммуникаций и в параметре c ссылок OneLink.">этот формат используется в поле source_type шаблонов коммуникаций и в параметре c ссылок OneLink.</span></p>
   </header>
 
   <!-- закреплённый результат -->
@@ -1476,6 +1481,8 @@
         <b data-i18n="Итоговый source">Итоговый source</b>
         <span class="banner draft" id="sbBanner"><span class="pulse"></span>ЧЕРНОВИК — заполните обязательные поля</span>
         <button class="copy-btn" id="sbCopyBtn" type="button" disabled>⧉ Скопировать</button>
+        <button class="dock-toggle" id="sbDockToggle" type="button" aria-expanded="true"
+                title="Свернуть блок с результатом">▾</button>
       </div>
       <div id="sbResult" class="output"></div>
       <div class="note" data-i18n="Поля со звёздочкой * обязательны. Значение подставляется в source_type шаблона и в параметр c ссылки OneLink.">Поля со звёздочкой * обязательны. Значение подставляется в source_type шаблона и в параметр c ссылки OneLink.</div>
@@ -1496,6 +1503,32 @@
           <option value="callcenter">callcenter</option>
         </select>
         <div class="hint" data-i18n="Для callcenter первая часть подставляется как contact.">Для callcenter первая часть подставляется как contact.</div>
+      </div>
+      <div class="field">
+        <label for="sbMailingType"><span data-i18n="Тип рассылки">Тип рассылки</span></label>
+        <select id="sbMailingType">
+          <option value="" data-i18n="Не выбран">Не выбран</option>
+          <option value="adv">adv</option>
+          <option value="info">info</option>
+          <option value="service">service</option>
+        </select>
+        <!-- Подсказка со ссылкой не переводится атрибутом: translateStatic пишет в
+             textContent и снёс бы и ссылку, и выделение. Так же сделано в OneLink. -->
+        <div class="hint">
+          <span data-i18n="Сервисная рассылка начинается с приписки service-; для adv и info название не меняется.">Сервисная рассылка начинается с приписки service-; для adv и info название не меняется.</span>
+          <br>Как определить тип — на странице WIKI
+          <a href="https://wiki.banki.ru/pages/viewpage.action?pageId=498701322" target="_blank" rel="noopener">Чек-лист по определению типа коммуникации</a>.
+        </div>
+      </div>
+      <!-- КЦ рассылает не только звонки: sms или письмо от лица контакт-центра идут в
+           названии как contact, а исходный канал остаётся видно в уникальной части.
+           При канале callcenter флаг прячем — там первая часть и так contact. -->
+      <div class="field" id="sbWrapNotVoice" style="display:none">
+        <label class="check">
+          <input type="checkbox" id="sbNotVoice">
+          <span data-i18n="Это не голосовая коммуникация для КЦ?">Это не голосовая коммуникация для КЦ?</span>
+        </label>
+        <div class="hint" data-i18n="Первая часть станет contact, а выбранный канал уйдёт приставкой в уникальное название (например sms-).">Первая часть станет contact, а выбранный канал уйдёт приставкой в уникальное название (например sms-).</div>
       </div>
       <div class="field" data-req="campType">
         <label for="sbCampType"><span data-i18n="Тип кампании">Тип кампании</span> <span class="req">*</span></label>
@@ -1563,6 +1596,26 @@
       </div>
     </div>
   </div>
+
+  <details class="doc">
+    <summary data-i18n="Как собирается source">Как собирается source</summary>
+    <div class="doc-body">
+      <p><span data-i18n="Части разделяются подчёркиванием:">Части разделяются подчёркиванием:</span>
+        <span class="fmt">канал_тип_продукт_…</span></p>
+      <ul>
+        <li><b>promo:</b> <code>канал_promo_продукт_партнёр_имя_ддммгг</code></li>
+        <li><b>trigger:</b> <code>канал_trigger_продукт_имя_Nday</code></li>
+        <li><b>callcenter + trigger:</b> <code>contact_trigger_продукт_имя_сегмент_Nday</code></li>
+      </ul>
+      <p><b data-i18n="Тип рассылки:">Тип рассылки:</b>
+        <span data-i18n="service добавляет приписку service- в самое начало; adv и info название не меняют.">service добавляет приписку service- в самое начало; adv и info название не меняют.</span></p>
+      <p><b data-i18n="Коммуникация КЦ:">Коммуникация КЦ:</b>
+        <span data-i18n="флаг «Это не голосовая коммуникация для КЦ?» ставит первой частью contact, а выбранный канал уходит приставкой в уникальное название.">флаг «Это не голосовая коммуникация для КЦ?» ставит первой частью contact, а выбранный канал уходит приставкой в уникальное название.</span>
+        <code>service-contact_trigger_credits_sms-abandoned-cart_3day</code></p>
+      <p><b data-i18n="Куда подставляется:">Куда подставляется:</b>
+        <span data-i18n="этот формат используется в поле source_type шаблонов коммуникаций и в параметре c ссылок OneLink.">этот формат используется в поле source_type шаблонов коммуникаций и в параметре c ссылок OneLink.</span></p>
+    </div>
+  </details>
 
 </div>
     </section>

@@ -57,6 +57,18 @@
   .draft-note{margin-top:8px;font-size:13px;color:var(--amber);display:none}
   .draft-note b{color:var(--ink)}
   .result-card.is-draft .draft-note{display:block}
+  /* Свёрнутый результат: остаётся строка со статусом и кнопкой копирования.
+     Закреплённый блок занимал до трети ноутбучного экрана, из-за чего до полей
+     формы приходилось прокручивать. Прячем содержимое, а не карточку целиком —
+     признак «черновик» должен оставаться на виду. */
+  .dock-toggle{border:1px solid var(--line);background:var(--bg2);color:var(--dim);border-radius:9px;
+    width:34px;height:34px;line-height:1;font-size:15px;cursor:pointer;transition:.15s}
+  .dock-toggle:hover{border-color:var(--blue);color:var(--blue)}
+  .result-card.collapsed .result-top{margin-bottom:0}
+  .result-card.collapsed .output,
+  .result-card.collapsed .req-note,
+  .result-card.collapsed .draft-note{display:none}
+  .result-card.collapsed .dock-toggle{transform:rotate(-90deg)}
 
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;margin-bottom:20px}
   .sec-head{display:flex;align-items:center;gap:13px;margin-bottom:18px}
