@@ -1118,7 +1118,7 @@
       <div class="field" data-req="channel">
         <div class="lbl-row">
           <label for="channel">Канал <span class="req">*</span></label>
-          <span class="info" tabindex="0">i<span class="tip"><b>На что влияет:</b> задаёт <code class="inline">pid</code>, <code class="inline">af_xp</code> и первую часть названия кампании (для callcenter — <code class="inline">contact</code>). Для <code class="inline">email</code> плейсхолдеры идут в двойных скобках.</span></span>
+          <span class="info" tabindex="0">i<span class="tip"><b>На что влияет:</b> задаёт <code class="inline">af_xp</code> и то, в каком виде в ссылку уйдут <code class="inline">pid</code> и <code class="inline">utm_source</code>: для <code class="inline">callcenter</code> — значением, для <code class="inline">email</code> — <code class="inline">{{channel}}</code>, для остальных — <code class="inline">{channel}</code>. Сам канал подставит CRM при отправке.</span></span>
         </div>
         <select id="channel">
           <option value="">Выберите канал</option>
@@ -1149,91 +1149,11 @@
     </div>
   </div>
 
-  <!-- BLOCK 2: CAMPAIGN -->
+  <!-- BLOCK 2: DEEPLINK
+       Блока «Название кампании» здесь больше нет: имя кампании подставляет CRM
+       при отправке (метка c = {sourceType}), и собирать его руками не нужно. -->
   <div class="card">
-    <div class="sec-head"><span class="sec-num">02</span><h2 data-i18n="Название кампании">Название кампании</h2></div>
-    <div class="subgroup full">
-      <div class="sg-t">Собирается автоматически из полей ниже (параметр <code class="inline">c</code>)</div>
-      <div class="grid">
-        <div class="field" data-req="campType">
-          <div class="lbl-row">
-            <label for="campType">Тип кампании <span class="req">*</span></label>
-            <span class="info" tabindex="0">i<span class="tip"><b>На что влияет:</b> вторая часть названия и набор дальнейших полей. <code class="inline">promo</code> — партнёрская/акционная, <code class="inline">trigger</code> — триггерная.</span></span>
-          </div>
-          <select id="campType">
-            <option value="">Выберите тип</option>
-            <option value="promo">promo</option>
-            <option value="trigger">trigger</option>
-          </select>
-          <div class="hint">promo или trigger — определяет структуру названия.</div>
-        </div>
-
-        <div class="field" data-req="product">
-          <div class="lbl-row">
-            <label for="product">Продукт <span class="req">*</span></label>
-            <span class="info" tabindex="0">i<span class="tip"><b>На что влияет:</b> третья часть названия кампании.</span></span>
-          </div>
-          <select id="product">
-            <option value="">Выберите продукт</option>
-            <option>cash_register</option><option>kpk</option><option>business_credits</option>
-            <option>insurance_vzr</option><option>insurance_health</option><option>insurance_combo</option>
-            <option>insurance_estate</option><option>insurance_mrtgg</option><option>kasko</option>
-            <option>general</option><option>insurance_etc</option><option>acquiring</option>
-            <option>autocredits</option><option>bank_guarantees</option><option>business_microloans</option>
-            <option>creditcards</option><option>credits</option><option>cryptocurrency</option>
-            <option>debitcards</option><option>deposits</option><option>estate</option>
-            <option>exchange_rate</option><option>factoring</option><option>investments</option>
-            <option>leasing</option><option>lsre</option><option>microloans</option>
-            <option>mortgage_broker</option><option>mortgages</option><option>rvk</option>
-            <option>savings_account</option><option>osago</option><option>rko</option>
-          </select>
-          <div class="hint">Выбери продукт из справочного списка.</div>
-        </div>
-
-        <!-- PROMO -->
-        <div class="field" data-req="partner" id="wrapPartner" style="display:none">
-          <div class="lbl-row"><label for="partner">Партнёр / General / Digest <span class="req">*</span></label></div>
-          <input id="partner" type="text" placeholder="например: General или tinkoff" />
-          <div class="hint">Наименование партнёра, либо <code class="inline">General</code> / <code class="inline">Digest</code>.</div>
-        </div>
-        <div class="field" data-req="uniqNameP" id="wrapUniqP" style="display:none">
-          <div class="lbl-row"><label for="uniqNameP">Уникальное название <span class="req">*</span></label></div>
-          <input id="uniqNameP" type="text" placeholder="например: spring-sale-2026" />
-          <div class="hint">Любая длина, допускается <code class="inline">-</code>. Пробелы заменяются на <code class="inline">-</code>.</div>
-        </div>
-        <div class="field" data-req="campDate" id="wrapDate" style="display:none">
-          <div class="lbl-row"><label for="campDate">Дата рассылки <span class="req">*</span></label></div>
-          <input id="campDate" type="date" />
-          <div class="hint">Подставится в формате <code class="inline">ддммгг</code> (напр. 180326).</div>
-        </div>
-
-        <!-- TRIGGER -->
-        <div class="field" data-req="uniqNameT" id="wrapUniqT" style="display:none">
-          <div class="lbl-row"><label for="uniqNameT">Уникальное название <span class="req">*</span></label></div>
-          <input id="uniqNameT" type="text" placeholder="например: abandoned-cart" />
-          <div class="hint">Любая длина, допускается <code class="inline">-</code>. Пробелы заменяются на <code class="inline">-</code>.</div>
-        </div>
-        <div class="field" data-req="segment" id="wrapSegment" style="display:none">
-          <div class="lbl-row">
-            <label for="segment">Номер сегмента <span class="req">*</span></label>
-            <span class="info" tabindex="0">i<span class="tip"><b>Только для callcenter:</b> добавляется после уникального названия.</span></span>
-          </div>
-          <input id="segment" type="text" placeholder="например: 288" />
-          <div class="hint">Обязателен для канала callcenter.</div>
-        </div>
-        <div class="field" data-req="day" id="wrapDay" style="display:none">
-          <div class="lbl-row"><label for="day">День отправки <span class="req">*</span></label></div>
-          <input id="day" type="number" min="0" placeholder="например: 3" />
-          <div class="hint">Подставится с припиской <code class="inline">day</code> (напр. <code class="inline">3day</code>).</div>
-        </div>
-      </div>
-      <div class="camp-preview"><span class="lbl">Собранное название (параметр c)</span><span id="campPreview">—</span></div>
-    </div>
-  </div>
-
-  <!-- BLOCK 3: DEEPLINK -->
-  <div class="card">
-    <div class="sec-head"><span class="sec-num">03</span><h2 data-i18n="Посадочная и deep link">Посадочная и deep link</h2></div>
+    <div class="sec-head"><span class="sec-num">02</span><h2 data-i18n="Посадочная и deep link">Посадочная и deep link</h2></div>
     <div class="grid">
       <div class="field full">
         <label class="check">
@@ -1266,9 +1186,9 @@
     </div>
   </div>
 
-  <!-- BLOCK 4: FALLBACK -->
+  <!-- BLOCK 3: FALLBACK -->
   <div class="card">
-    <div class="sec-head"><span class="sec-num">04</span><h2 data-i18n="Fallback-ссылки">Fallback-ссылки</h2><span class="sec-opt">необязательно</span></div>
+    <div class="sec-head"><span class="sec-num">03</span><h2 data-i18n="Fallback-ссылки">Fallback-ссылки</h2><span class="sec-opt">необязательно</span></div>
     <div class="grid">
       <div class="field full">
         <div class="lbl-row">
@@ -1304,9 +1224,9 @@
     <div class="doc-body">
 
       <p>Инструмент собирает готовую ретаргетинговую ссылку AppsFlyer на папку <code>JmaP</code>. Ты заполняешь
-      человекочитаемые поля — инструмент сам формирует название кампании, нормализует deep link, добавляет
-      маркетинговые метки и корректно кодирует всё, что нужно. Ссылка обновляется в реальном времени в закреплённом
-      блоке наверху.</p>
+      человекочитаемые поля — инструмент нормализует deep link, добавляет маркетинговые метки и корректно кодирует
+      всё, что нужно. Канал и название кампании в ссылку уходят переменными: их подставит CRM при отправке. Ссылка
+      обновляется в реальном времени в закреплённом блоке наверху.</p>
 
       <h4><span class="ic">1</span>Черновик vs готовая ссылка</h4>
       <p>Пока не заполнены все обязательные поля (со звёздочкой <span class="req">*</span>), блок ссылки горит
@@ -1316,44 +1236,22 @@
       <div class="callout warn">Никогда не бери в работу ссылку в статусе «черновик»: в ней не хватает данных и она
       соберётся некорректно.</div>
 
-      <h4><span class="ic">2</span>Как собирается название кампании</h4>
-      <p>Части разделяются <code>_</code>. Начало всегда одинаковое: <code>канал_тип_продукт</code>. Дальше структура
-      зависит от типа:</p>
-      <ul>
-        <li><b>promo:</b> <code>канал_promo_продукт_партнёр_уникальноеИмя_ддммгг</code></li>
-        <li><b>trigger:</b> <code>канал_trigger_продукт_уникальноеИмя_Nday</code></li>
-        <li><b>trigger + callcenter:</b> перед днём добавляется номер сегмента —
-          <code>contact_trigger_продукт_уникальноеИмя_сегмент_Nday</code></li>
-      </ul>
-      <div class="callout warn">Важно: для канала <b>callcenter</b> в названии кампании первая часть подставляется
-      как <code>contact</code>, а не <code>callcenter</code>. При этом <code>pid</code> в самой ссылке остаётся
-      <code>callcenter</code>.</div>
-
-      <p><b>Примеры заполнения названия:</b></p>
-
-      <div class="ex">
-        <div class="ex-t">Пример A · promo · email</div>
-        <div class="ex-row"><b>Канал:</b> email</div>
-        <div class="ex-row"><b>Тип кампании:</b> promo · <b>Продукт:</b> mortgages</div>
-        <div class="ex-row"><b>Партнёр:</b> General · <b>Уникальное имя:</b> spring-sale · <b>Дата:</b> 18.03.2026</div>
-        <div class="ex-out">c = <span class="hl">email_promo_mortgages_General_spring-sale_180326</span></div>
-      </div>
-
-      <div class="ex">
-        <div class="ex-t">Пример B · trigger · sms</div>
-        <div class="ex-row"><b>Канал:</b> sms</div>
-        <div class="ex-row"><b>Тип кампании:</b> trigger · <b>Продукт:</b> credits</div>
-        <div class="ex-row"><b>Уникальное имя:</b> abandoned-cart · <b>День отправки:</b> 3</div>
-        <div class="ex-out">c = <span class="hl">sms_trigger_credits_abandoned-cart_3day</span></div>
-      </div>
-
-      <div class="ex">
-        <div class="ex-t">Пример C · trigger · callcenter (с сегментом)</div>
-        <div class="ex-row"><b>Канал:</b> callcenter → в названии <code>contact</code></div>
-        <div class="ex-row"><b>Тип кампании:</b> trigger · <b>Продукт:</b> rko</div>
-        <div class="ex-row"><b>Уникальное имя:</b> welcome-call · <b>Сегмент:</b> 288 · <b>День:</b> 1</div>
-        <div class="ex-out">c = <span class="hl">contact_trigger_rko_welcome-call_288_1day</span></div>
-      </div>
+      <h4><span class="ic">2</span>Канал и название кампании подставляет CRM</h4>
+      <p>Руками их больше не заполняют: в ссылку уходят переменные, а конкретные значения подставляются в момент
+      отправки. Поэтому одна и та же ссылка годится для разных каналов, а название кампании всегда совпадает с тем,
+      что заведено у шаблона.</p>
+      <table>
+        <thead><tr><th>Выбранный канал</th><th><code>pid</code> и <code>utm_source</code></th><th><code>c</code></th></tr></thead>
+        <tbody>
+          <tr><td>callcenter</td><td><code>callcenter</code></td><td><code>{sourceType}</code></td></tr>
+          <tr><td>email</td><td><code>{{channel}}</code></td><td><code>{{sourceType}}</code></td></tr>
+          <tr><td>sms, messenger, chat-bot</td><td><code>{channel}</code></td><td><code>{sourceType}</code></td></tr>
+        </tbody>
+      </table>
+      <p>Двойные скобки у почты — не опечатка: у почтового рассыльщика свой шаблонизатор, там переменные пишутся
+      именно так. У колл-центра подстановки нет вовсе, поэтому канал уходит значением.</p>
+      <div class="callout warn">Выбор канала всё равно обязателен: от него зависит, какой из вариантов записи попадёт
+      в ссылку, а также <code>af_xp</code> и вид остальных плейсхолдеров.</div>
 
       <h4><span class="ic">3</span>Куда ведёт ссылка</h4>
       <table>
@@ -1376,7 +1274,7 @@
       <div class="ex">
         <div class="ex-t">Пример · webview · sms</div>
         <div class="ex-row"><b>webview_url:</b> https://www.banki.ru/promo/leto</div>
-        <div class="ex-out">deep_link_value = <span class="hl">deepLink%2Fwebview%3FwebviewUrl%3Dhttps%253A%252F%252Fwww.banki.ru%252Fpromo%252Fleto%253Fsource%253D{sourceCrm}%2526utm_source%253Dsms%2526utm_medium%253Dcrm%2526utm_campaign%253D{sourceCrm}%2526aff_unique5%253D{AFFUNIQUE5}</span></div>
+        <div class="ex-out">deep_link_value = <span class="hl">deepLink%2Fwebview%3FwebviewUrl%3Dhttps%253A%252F%252Fwww.banki.ru%252Fpromo%252Fleto%253Fsource%253D{sourceCrm}%2526utm_source%253D{channel}%2526utm_medium%253Dcrm%2526utm_campaign%253D{sourceCrm}%2526aff_unique5%253D{AFFUNIQUE5}</span></div>
       </div>
       <p style="font-size:12.5px;color:var(--faint)">Строка webview кодируется дважды намеренно: один раз — сам URL
       страницы (чтобы его query не смешался с webview-параметром), второй — всё значение <code>deep_link_value</code>
@@ -1387,6 +1285,9 @@
       <ul>
         <li><code>source</code> → <code>{{linkSourceCRM}}</code> (для остальных каналов — <code>{sourceCrm}</code>)</li>
         <li><code>aff_unique5</code> → <code>{{aff_unique5}}</code> (для остальных — <code>{AFFUNIQUE5}</code>)</li>
+        <li><code>pid</code> и <code>utm_source</code> → <code>{{channel}}</code> (для остальных — <code>{channel}</code>,
+          для колл-центра — значение <code>callcenter</code>)</li>
+        <li><code>c</code> → <code>{{sourceType}}</code> (для остальных — <code>{sourceType}</code>)</li>
         <li>эксперимент помечается как <code>af_xp=email</code>, а <code>utm_medium</code> становится <code>email</code></li>
       </ul>
 

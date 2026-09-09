@@ -69,12 +69,6 @@
   .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
   .full{grid-column:1 / -1}
 
-  .subgroup{border:1px dashed var(--line);border-radius:11px;padding:16px;margin-top:4px;background:rgba(6,16,27,.35)}
-  .subgroup .sg-t{font-size:13px;font-weight:600;color:var(--dim);margin-bottom:14px}
-  .camp-preview{margin-top:14px;font-family:var(--mono);font-size:13px;background:#06101B;border:1px solid var(--line);
-    border-radius:9px;padding:11px 13px;color:#CFE8FF;word-break:break-all}
-  .camp-preview .lbl{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);display:block;margin-bottom:5px}
-
   .lbl-row{display:flex;align-items:center;gap:7px;margin:0 0 8px}
   label{font-weight:600;font-size:14.5px}
   .req{color:var(--coral);font-weight:700}

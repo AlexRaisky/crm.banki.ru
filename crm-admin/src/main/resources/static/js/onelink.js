@@ -4,21 +4,16 @@
   const DEFAULT_WEB_DP='https://mobile.banki.ru/';
   const WEBVIEW_PREFIX='https://www.banki.ru/deepLink/webview?webviewUrl=';
 
-  const LABELS={channel:'Канал',mailingType:'Тип рассылки',campType:'Тип кампании',product:'Продукт',
-    partner:'Партнёр/General/Digest',uniqNameP:'Уникальное название',campDate:'Дата рассылки',
-    uniqNameT:'Уникальное название',segment:'Номер сегмента',day:'День отправки',
+  const LABELS={channel:'Канал',mailingType:'Тип рассылки',
     deepLinkValue:'deep_link_value',webviewUrl:'webview_url'};
 
   const els={};
-  ['channel','mailingType','campType','product','partner','uniqNameP','campDate','uniqNameT','segment','day',
+  ['channel','mailingType',
    'webDp','webviewFlag','webviewWrap','webviewUrl','deepLinkValue','iosUrl','androidUrl',
-   'result','resultCard','banner','draftNote','copyBtn','campPreview',
-   'wrapPartner','wrapUniqP','wrapDate','wrapUniqT','wrapSegment','wrapDay']
+   'result','resultCard','banner','draftNote','copyBtn']
    .forEach(id=>els[id]=document.getElementById(id));
 
   function normalizeSpaces(v){return (v||'').trim().replace(/\s+/g,'');}
-  function slug(v){return (v||'').trim().replace(/\s+/g,'-');}
-  function fmtDate(iso){if(!iso)return'';const[y,m,d]=iso.split('-');return d+m+y.slice(2);}
 
   function normalizeDeepLink(raw){
     let v=normalizeSpaces(raw);
@@ -46,74 +41,41 @@
   function isValidHttpUrl(v){try{const u=new URL(v);return u.protocol==='http:'||u.protocol==='https:';}catch(e){return false;}}
   function affPlaceholder(channel){return channel==='email'?'{{aff_unique5}}':'{AFFUNIQUE5}';}
   function getSourceValue(channel){return channel==='email'?'{{linkSourceCRM}}':'{sourceCrm}';}
+  /* Канал в ссылку уходит не значением, а переменной: подставит его CRM в момент
+     отправки, поэтому одна ссылка годится для всех каналов. Исключение — колл-центр:
+     там подстановки нет, и канал пишется как есть. Проверять его нужно ДО правила
+     email/не-email, иначе callcenter получил бы {channel}.
+     Скобки разные, потому что рассыльщики разные: у почты свой шаблонизатор. */
+  function channelToken(channel){
+    if(channel==='callcenter') return 'callcenter';
+    return channel==='email'?'{{channel}}':'{channel}';
+  }
+  /* Имя кампании (метка c) панель больше не собирает: оно уже известно CRM как
+     sourceType шаблона. Скобки — по тому же правилу, что у канала. */
+  function sourceTypeToken(channel){return channel==='email'?'{{sourceType}}':'{sourceType}';}
   function getUtmMedium(mailingType){
     const t=(mailingType||'').trim().toLowerCase();
     if(!t) return '';
     return (t==='adv'||t==='info')?'email':'crm';
   }
-  function addMarketingParams(url,source,pid,mailingType,aff){
+  function addMarketingParams(url,source,chToken,mailingType,aff){
     url.searchParams.set('source',source);
-    url.searchParams.set('utm_source',pid);
+    url.searchParams.set('utm_source',chToken);
     const med=getUtmMedium(mailingType);
     if(med) url.searchParams.set('utm_medium',med);
     url.searchParams.set('utm_campaign',source);
     url.searchParams.set('aff_unique5',aff);
     return url;
   }
-  function buildEncodedUrl(baseValue,source,pid,mailingType,aff){
+  function buildEncodedUrl(baseValue,source,chToken,mailingType,aff){
     const base=normalizeSpaces(baseValue)||DEFAULT_WEB_DP;
     let url;
     try{url=new URL(base);}catch(e){return encodePreservingBraces(base);}
-    addMarketingParams(url,source,pid,mailingType,aff);
+    addMarketingParams(url,source,chToken,mailingType,aff);
     return encodePreservingBraces(url.toString());
   }
   function highlight(link){
     return link.replace(/([?&])([a-z0-9_]+)=/gi,(m,sep,key)=>`<span class="amp">${sep}</span><span class="k">${key}</span>=`);
-  }
-
-  function syncCampaignUI(){
-    const type=els.campType.value;
-    const isCC=els.channel.value==='callcenter';
-    els.wrapPartner.style.display = type==='promo'?'block':'none';
-    els.wrapUniqP.style.display   = type==='promo'?'block':'none';
-    els.wrapDate.style.display    = type==='promo'?'block':'none';
-    els.wrapUniqT.style.display   = type==='trigger'?'block':'none';
-    els.wrapDay.style.display     = type==='trigger'?'block':'none';
-    els.wrapSegment.style.display = (type==='trigger'&&isCC)?'block':'none';
-  }
-
-  function buildCampaign(channel){
-    const campChannel = channel==='callcenter' ? 'contact' : channel;
-    const type=els.campType.value;
-    const product=els.product.value;
-    const missing=[];
-    if(!type) missing.push('campType');
-    if(!product) missing.push('product');
-    let parts=[];
-    if(type==='promo'){
-      const partner=slug(els.partner.value);
-      const uniq=slug(els.uniqNameP.value);
-      const date=fmtDate(els.campDate.value);
-      if(!partner) missing.push('partner');
-      if(!uniq) missing.push('uniqNameP');
-      if(!els.campDate.value) missing.push('campDate');
-      parts=[campChannel,'promo',product,partner,uniq,date];
-    }else if(type==='trigger'){
-      const uniq=slug(els.uniqNameT.value);
-      const day=normalizeSpaces(els.day.value);
-      if(!uniq) missing.push('uniqNameT');
-      if(!day) missing.push('day');
-      if(channel==='callcenter'){
-        const seg=normalizeSpaces(els.segment.value);
-        if(!seg) missing.push('segment');
-        parts=[campChannel,'trigger',product,uniq,seg,day?day+'day':''];
-      }else{
-        parts=[campChannel,'trigger',product,uniq,day?day+'day':''];
-      }
-    }else{
-      parts=[campChannel,'',product];
-    }
-    return {value:parts.filter(p=>p!=='').join('_'),missing};
   }
 
   function syncWebviewUI(){
@@ -132,14 +94,14 @@
   // Для webview: url страницы получает utm-метки и кодируется ОДИН раз,
   // чтобы его собственный query не смешался с webviewUrl. Итоговое значение
   // deep_link_value/af_dp кодируется ещё раз уже при вставке в OneLink.
-  function getDeepLinkPath(source,channel,mailingType,aff){
+  function getDeepLinkPath(source,chToken,mailingType,aff){
     if(els.webviewFlag.checked){
       const wv=normalizeSpaces(els.webviewUrl.value);
       if(!wv) return 'deepLink/webview?webviewUrl=';
       let inner;
       try{
         const u=new URL(wv);
-        addMarketingParams(u,source,channel,mailingType,aff);
+        addMarketingParams(u,source,chToken,mailingType,aff);
         inner=encodePreservingBraces(u.toString()); // кодируем сам URL страницы
       }catch(e){inner=encodePreservingBraces(wv);}
       return 'deepLink/webview?webviewUrl=' + inner;
@@ -151,21 +113,18 @@
     const channel=els.channel.value;
     const source=getSourceValue(channel);
     const aff=affPlaceholder(channel);
+    const chToken=channelToken(channel);
     const mailingType=els.mailingType.value;
     const webDpRaw=normalizeSpaces(els.webDp.value)||DEFAULT_WEB_DP;
     const iosUrl=normalizeSpaces(els.iosUrl.value);
     const androidUrl=normalizeSpaces(els.androidUrl.value);
 
-    const camp=buildCampaign(channel);
-    els.campPreview.textContent=camp.value||'—';
-
     // сырой deep link path
-    const deepLinkPath=getDeepLinkPath(source,channel,mailingType,aff);
+    const deepLinkPath=getDeepLinkPath(source,chToken,mailingType,aff);
 
     const missingKeys=[];
     if(!channel) missingKeys.push('channel');
     if(!mailingType) missingKeys.push('mailingType');
-    missingKeys.push(...camp.missing);
     if(els.webviewFlag.checked){
       if(!normalizeSpaces(els.webviewUrl.value)) missingKeys.push('webviewUrl');
     }else{
@@ -187,8 +146,8 @@
     const afXp=channel==='email'?'email':'text';
     const params=[];
     params.push(['af_xp',afXp]);
-    params.push(['pid',channel]);
-    params.push(['c',camp.value]);
+    params.push(['pid',chToken]);
+    params.push(['c',sourceTypeToken(channel)]);
     params.push(['af_channel',source]);
     params.push(['aff_unique5',aff]);
     params.push(['is_retargeting','true']);
@@ -197,9 +156,9 @@
     // af_dp и deep_link_value кодируются одинаково, один раз, из одного сырого path
     params.push(['af_dp',buildAfDp(deepLinkPath)]);
     params.push(['deep_link_value',encodePreservingBraces(deepLinkPath)]);
-    if(iosUrl) params.push(['af_ios_url',buildEncodedUrl(iosUrl,source,channel,mailingType,aff)]);
-    if(androidUrl) params.push(['af_android_url',buildEncodedUrl(androidUrl,source,channel,mailingType,aff)]);
-    params.push(['af_web_dp',buildEncodedUrl(webDpRaw,source,channel,mailingType,aff)]);
+    if(iosUrl) params.push(['af_ios_url',buildEncodedUrl(iosUrl,source,chToken,mailingType,aff)]);
+    if(androidUrl) params.push(['af_android_url',buildEncodedUrl(androidUrl,source,chToken,mailingType,aff)]);
+    params.push(['af_web_dp',buildEncodedUrl(webDpRaw,source,chToken,mailingType,aff)]);
 
     els.result.innerHTML=highlight(`${ONE_LINK_BASE}?${params.map(([k,v])=>`${k}=${v}`).join('&')}`);
 
@@ -260,14 +219,11 @@
     });
   });
 
-  els.campType.addEventListener('change',()=>{syncCampaignUI();update();});
-  els.channel.addEventListener('change',()=>{syncCampaignUI();update();});
   els.webviewFlag.addEventListener('change',()=>{syncWebviewUI();update();});
 
   ['input','change'].forEach(ev=>{
-    ['channel','mailingType','campType','product','partner','uniqNameP','campDate','uniqNameT','segment','day',
-     'webDp','webviewUrl','deepLinkValue','iosUrl','androidUrl']
+    ['channel','mailingType','webDp','webviewUrl','deepLinkValue','iosUrl','androidUrl']
       .forEach(id=>els[id].addEventListener(ev,update));
   });
 
-  syncCampaignUI();syncWebviewUI();update();
+  syncWebviewUI();update();
