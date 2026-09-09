@@ -57,6 +57,9 @@
     const product = el.sbProduct.value;
     const missing = [];
     if (!channel) missing.push("channel");
+    /* Тип рассылки обязателен: от него зависит приставка service-, и «не выбран»
+       молча означал бы «не сервисная» — ошибку в имени заметили бы уже в проде. */
+    if (!el.sbMailingType || !el.sbMailingType.value) missing.push("mailingType");
     if (!type) missing.push("campType");
     if (!product) missing.push("product");
 
