@@ -25,6 +25,72 @@ function recompute(applyManual){
   renderAll();
 }
 
+/* ---------- подъём раздела на сервере ----------
+
+   Порядок важен: сначала комментарии (без них таблицы отрисуются пустыми и
+   человек на секунду увидит «ничего не разобрано»), затем факт. Любая ошибка —
+   не повод ронять раздел: остаёмся на демо-данных и localStorage, как было. */
+async function bootServer(){
+  let notes=null;
+  try{
+    const r=await fetch(DEV_API+'/notes',{credentials:'same-origin',headers:{Accept:'application/json'}});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    notes=await r.json();
+  }catch(e){ boot(SEED_RAW); return; }
+
+  SRV=true;
+  NOTES={}; STATUS={};
+  (notes||[]).forEach(n=>{
+    const id=n.object_key;
+    if(n.comment) NOTES[id]=n.comment;
+    if(n.status==='solved') STATUS[id]='solved';
+  });
+
+  let rows=[];
+  try{
+    const r=await fetch(DEV_API+'/revenue',{credentials:'same-origin',headers:{Accept:'application/json'}});
+    if(r.ok) rows=await r.json();
+  }catch(e){ /* факт не приехал — покажем демо-набор, разбор при этом уже общий */ }
+
+  if(rows && rows.length){
+    RAW=rows.map(r=>({date:String(r.fact_date).slice(0,10), g1:r.group1, g2:r.group2,
+                      g3:r.channel, revenue:Number(r.revenue)}));
+    recompute(true);
+    flashHint('✓ данные из базы: '+[...new Set(RAW.map(r=>r.date))].length+' дней');
+  }else{
+    /* В базе пусто — первый заход. Показываем демо-набор, но не выдаём его за
+       факт: пока никто не загрузил файл, сохранять снимок нечего. */
+    boot(SEED_RAW);
+    flashHint('в базе пока нет данных — показан демонстрационный набор');
+  }
+}
+
+/* Снимок расчёта: что именно показывалось и с какими порогами. Пишется после
+   загрузки данных, а не на каждую перерисовку — иначе в истории копились бы
+   десятки одинаковых прогонов за один сеанс. */
+function saveRun(loadId){
+  if(!SRV || !R) return Promise.resolve();
+  const flagged=new Set(R.flags.map(f=>f.date));
+  /* «День к дню» в разделе не показывается, но в файле такая колонка есть и на
+     неё смотрят при разборе — считаем её здесь, чтобы снимок был полным. */
+  const daily=R.daily.map((d,i)=>{
+    const prev=i>0?R.daily[i-1].rev:null;
+    return {date:d.date, rev:d.rev, base:d.base, dev:d.dev,
+      dod: prev ? Math.round((d.rev/prev-1)*1000)/10 : null,
+      flagged:flagged.has(d.date)};
+  });
+  const monthly=R.monthly.map(m=>({monthStart:m.monthStart||null, total:m.total, avg:m.avg,
+    min:m.min, max:m.max, std:m.std, mom:m.mom}));
+  return fetch(DEV_API+'/runs',{
+    method:'POST', credentials:'same-origin',
+    headers:{'Content-Type':'application/json', Accept:'application/json'},
+    body:JSON.stringify({loadId:loadId||null, daily, flags:R.flags, declines:R.declines,
+      monthly, checkdays:R.checkdays,
+      productsCount:R._meta.nProducts, totalRevenue:R._meta.totalRev})
+  }).then(r=>r.ok?r.json():null)
+    .catch(()=>null);
+}
+
 const MANUAL = {
   'flag_2026-01-01':{type:'confident',comment:'Новый год — нерабочий день. Обвал в основном по Кредиты/Микрозаймы/sms (−14,9 млн). Календарный фактор, ожидаемо.'},
   'flag_2026-02-14':{type:'check',comment:'Суббота, но провал глубже обычного выходного. Драйвер — Микрозаймы (callcenter+sms). Совпадает с началом общего спада 11.01–14.02. ПРОВЕРИТЬ паузу/сбой рассылок по Микрозаймам.'},
@@ -47,16 +113,90 @@ function applyManualHypotheses(flags, declines){
   declines.forEach(d=>{const c=MANUAL_DECL[d.level+'__'+d.start];if(c)d.comment=c;});
 }
 
+/* ==================== ХРАНИЛИЩЕ РАЗБОРА ====================
+
+   Комментарии и статусы гипотез лежат в базе (deviation.t_note): раньше они
+   жили в localStorage, то есть история была только у того, кто последним
+   сохранил Excel, а коллега открывал раздел и не видел ничего.
+
+   localStorage остался запасным путём — для демо на GitHub Pages и на случай,
+   когда сервер недоступен: раздел обязан работать и без него, иначе человек
+   теряет уже написанный текст. Признак SRV показывает, куда мы пишем.
+
+   Рендер синхронный, поэтому и то и другое держим в памяти: NOTES/STATUS
+   наполняются один раз при открытии раздела. */
 const NOTE_KEY='revenue_notes_crmteam';
 const STAT_KEY='revenue_status_crmteam';
-function loadNotes(){try{return JSON.parse(localStorage.getItem(NOTE_KEY)||'{}');}catch(e){return{};}}
-function loadStatus(){try{return JSON.parse(localStorage.getItem(STAT_KEY)||'{}');}catch(e){return{};}}
-function saveNote(id,val){const n=loadNotes();if(val.trim())n[id]=val;else delete n[id];
-  localStorage.setItem(NOTE_KEY,JSON.stringify(n));flashHint('✓ сохранено');}
-function setStatus(id,st){const s=loadStatus();if(st)s[id]=st;else delete s[id];
-  localStorage.setItem(STAT_KEY,JSON.stringify(s));}
-function mergeNotes(inc){const n=loadNotes();Object.assign(n,inc);localStorage.setItem(NOTE_KEY,JSON.stringify(n));}
-function mergeStatus(inc){const s=loadStatus();Object.assign(s,inc);localStorage.setItem(STAT_KEY,JSON.stringify(s));}
+const DEV_API='/api/deviations';
+let NOTES=null, STATUS=null, SRV=false;
+
+function lsNotes(){try{return JSON.parse(localStorage.getItem(NOTE_KEY)||'{}');}catch(e){return{};}}
+function lsStatus(){try{return JSON.parse(localStorage.getItem(STAT_KEY)||'{}');}catch(e){return{};}}
+function loadNotes(){ if(NOTES===null) NOTES=lsNotes(); return NOTES; }
+function loadStatus(){ if(STATUS===null) STATUS=lsStatus(); return STATUS; }
+
+/* Ключ объекта разбора → что это: день проверки или плавное снижение.
+   Формат ключей исторический (check_<дата>, decl_<уровень>__<дата начала>) —
+   он же уходит в базу как object_key, чтобы старые записи и выгрузка в Excel
+   продолжали сходиться по одному и тому же идентификатору. */
+function noteObject(id){
+  if(id.indexOf('check_')===0) return {kind:'day', key:id, date:id.slice(6), level:null};
+  if(id.indexOf('decl_')===0){
+    const rest=id.slice(5), i=rest.lastIndexOf('__');
+    return {kind:'decline', key:id, date:i<0?null:rest.slice(i+2), level:i<0?rest:rest.slice(0,i)};
+  }
+  return {kind:'day', key:id, date:null, level:null};
+}
+/* Обстоятельства на момент комментария: по ним запись можно узнать, если после
+   дозагрузки дней граница тренда уедет и ключ перестанет совпадать. */
+function noteSnapshot(id){
+  const o=noteObject(id);
+  if(o.kind==='decline' && R){
+    const d=(R.declines||[]).filter(x=>('decl_'+x.level+'__'+x.start)===id)[0];
+    if(d) return {level:d.level, start:d.start, end:d.end, days:d.days, drop:d.drop};
+  }
+  if(o.kind==='day' && R){
+    const c=(R.checkdays||[]).filter(x=>('check_'+x.date)===id)[0];
+    if(c) return {date:c.date, auto:c.comment};
+  }
+  return null;
+}
+
+function pushNote(id){
+  if(!SRV) return;
+  const o=noteObject(id);
+  fetch(DEV_API+'/notes', {
+    method:'PUT', credentials:'same-origin',
+    headers:{'Content-Type':'application/json', Accept:'application/json'},
+    body:JSON.stringify({kind:o.kind, key:o.key, date:o.date, level:o.level,
+      comment:loadNotes()[id]||'', status:loadStatus()[id]||'open', snapshot:noteSnapshot(id)})
+  }).catch(()=>flashHint('⚠ не сохранилось на сервере'));
+}
+function persistLocal(){
+  try{
+    localStorage.setItem(NOTE_KEY,JSON.stringify(loadNotes()));
+    localStorage.setItem(STAT_KEY,JSON.stringify(loadStatus()));
+  }catch(e){}
+}
+function saveNote(id,val){
+  const n=loadNotes();
+  if(val.trim()) n[id]=val; else delete n[id];
+  if(SRV) pushNote(id); else persistLocal();
+  flashHint('✓ сохранено');
+}
+function setStatus(id,st){
+  const s=loadStatus();
+  if(st) s[id]=st; else delete s[id];
+  if(SRV) pushNote(id); else persistLocal();
+}
+function mergeNotes(inc){
+  const n=loadNotes(); Object.assign(n,inc);
+  if(SRV) Object.keys(inc).forEach(pushNote); else persistLocal();
+}
+function mergeStatus(inc){
+  const s=loadStatus(); Object.assign(s,inc);
+  if(SRV) Object.keys(inc).forEach(pushNote); else persistLocal();
+}
 let hintTimer;
 function flashHint(msg){const h=document.getElementById('saveHint');if(!h)return;
   h.innerHTML='<b>'+msg+'</b>';clearTimeout(hintTimer);hintTimer=setTimeout(()=>h.textContent='',2400);}
@@ -216,6 +356,26 @@ function xTimeScale(labels){return{grid:{color:C.grid,drawTicks:false},
     return dd==='01'?({1:'янв',2:'фев',3:'мар',4:'апр',5:'май',6:'июн',7:'июл',8:'авг',9:'сен',10:'окт',11:'ноя',12:'дек'})[+m]:'';}}};}
 function yMln(){return{grid:{color:C.grid},ticks:{color:C.faint,callback:v=>Math.round(v/1e6)+'М'},beginAtZero:false};}
 
+/* Отправка загруженного файла в базу. Строки уходят как есть — сервер сам
+   отбрасывает служебные и сводит повторы по (дата, продукт, канал). */
+function pushRevenue(rows, mode, fileName){
+  return fetch(DEV_API+'/revenue',{
+    method:'POST', credentials:'same-origin',
+    headers:{'Content-Type':'application/json', Accept:'application/json'},
+    body:JSON.stringify({mode:mode==='replace'?'replace':'append', fileName:fileName||null, rows})
+  }).then(r=>{
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(res=>{
+    flashHint('✓ сохранено в базу: '+(res.rows||0)+' строк');
+    return saveRun(res.loadId);
+  }).catch(()=>{
+    /* Данные на экране уже пересчитаны — молчать нельзя: человек уйдёт,
+       думая, что коллеги увидят то же самое. */
+    flashHint('⚠ в базу не сохранилось — данные только в этом окне');
+  });
+}
+
 function handleImport(file, mode){
   const reader=new FileReader();
   reader.onload=e=>{
@@ -233,6 +393,10 @@ function handleImport(file, mode){
       recompute(true);
       const n=[...new Set(longRows.map(r=>r.date))].length;
       flashHint(mode==='replace'?`✓ загружено ${n} дней`:`✓ добавлено ${n} дней`);
+      /* Файл лёг в базу — теперь его видят все, а не только этот браузер.
+         Следом пишем снимок расчёта: он привязан к загрузке, по нему потом
+         видно, что показывал раздел на этих данных. */
+      if(SRV) pushRevenue(longRows, mode, file && file.name);
     }catch(err){ alert('Ошибка импорта: '+err.message+'\n\nОжидается .xlsx/.csv в исходном формате (шапка: месяцы / дни / Group 1-3) или ранее выгруженный из панели файл.'); }
   };
   reader.readAsArrayBuffer(file);
@@ -254,8 +418,17 @@ function exportNotesCSV(){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='комментарии.csv';a.click();
 }
 function clearNotes(){
+  /* Когда разбор общий, «очистить» — это стереть работу всей команды одним
+     нажатием, причём без возможности вернуть. Такой кнопки быть не должно:
+     ненужный комментарий убирается по одному, прямо в его поле. */
+  if(SRV){
+    alert('Комментарии теперь общие и хранятся в базе — стереть их все сразу нельзя.\n'+
+          'Уберите ненужный комментарий в его поле: очистите текст и снимите «принято».');
+    return;
+  }
   if(confirm('Удалить все ваши комментарии и статусы из этого браузера? Авто-гипотезы останутся.')){
-    localStorage.removeItem(NOTE_KEY);localStorage.removeItem(STAT_KEY);renderAll();flashHint('очищено');
+    localStorage.removeItem(NOTE_KEY);localStorage.removeItem(STAT_KEY);
+    NOTES={};STATUS={};renderAll();flashHint('очищено');
   }
 }
 document.addEventListener('input',e=>{ if(e.target.tagName==='TEXTAREA'&&e.target.dataset.id) saveNote(e.target.dataset.id,e.target.value); });
@@ -263,4 +436,9 @@ function bindFile(inputId, mode){
   document.getElementById(inputId).addEventListener('change',ev=>{ if(ev.target.files[0]) handleImport(ev.target.files[0],mode);ev.target.value=''; });
 }
 setupChartDefaults();
-window.addEventListener('DOMContentLoaded',()=>{ bindFile('fileReplace','replace'); bindFile('fileAppend','append'); boot(SEED_RAW); });
+window.addEventListener('DOMContentLoaded',()=>{
+  bindFile('fileReplace','replace'); bindFile('fileAppend','append');
+  /* Раздел поднимается от базы, а к демо-набору откатывается сам, если сервера
+     нет (GitHub Pages) или доступ к разделу не выдан. */
+  bootServer();
+});

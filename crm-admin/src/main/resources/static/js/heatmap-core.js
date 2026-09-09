@@ -135,11 +135,18 @@ function analyze(longRows){
   });
 
   // ---- помесячно ----
+  /* Ключ — «год-месяц», а не номер месяца: иначе январь 2026 и январь 2027
+     схлопнулись бы в одну строку, и MoM посчитался бы между разными годами.
+     Год в подписи показываем, только когда лет в периоде больше одного, — на
+     обычном полугодовом наборе вид раздела не меняется. */
   const byMonth={};
-  dates.forEach((d,i)=>{const m=+d.slice(5,7);(byMonth[m]=byMonth[m]||[]).push(totVals[i]);});
-  const monthly=Object.keys(byMonth).map(Number).sort((a,b)=>a-b).map(m=>{
-    const v=byMonth[m];
-    return {month:MONTHS_RU[m], total:Math.round(v.reduce((s,x)=>s+x,0)),
+  dates.forEach((d,i)=>{const k=d.slice(0,7);(byMonth[k]=byMonth[k]||[]).push(totVals[i]);});
+  const monthKeys=Object.keys(byMonth).sort();
+  const manyYears=new Set(monthKeys.map(k=>k.slice(0,4))).size>1;
+  const monthly=monthKeys.map(k=>{
+    const v=byMonth[k], m=+k.slice(5,7);
+    return {month:MONTHS_RU[m]+(manyYears?' '+k.slice(0,4):''), monthStart:k+'-01',
+      total:Math.round(v.reduce((s,x)=>s+x,0)),
       avg:Math.round(mean(v)), min:Math.round(Math.min(...v)),
       max:Math.round(Math.max(...v)), std:Math.round(std(v)), mom:null};
   });
