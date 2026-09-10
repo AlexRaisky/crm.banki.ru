@@ -845,10 +845,13 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
             <span>Обновлять метрики каждый день автоматически</span>
           </label>
           <div class="sub" style="margin-top:4px">Ночной запуск берёт окно шире одних суток, поэтому
-            пропущенный из-за недоступности день подхватится следующим разом сам.</div>
+            пропущенный из-за недоступности день подхватится следующим разом сам.
+            «Проверить связь» забирает только трое суток — это проверка доступов, а не загрузка
+            истории: за нужный период её тянет кнопка «Обновить из постмастеров» в разделе
+            «Каналы» → E-mail.</div>
           <div class="row" style="gap:10px;align-items:center;margin-top:14px">
             <button type="button" class="btn primary" id="pmSave">Сохранить</button>
-            <button type="button" class="btn" id="pmCheck">Проверить связь</button>
+            <button type="button" class="btn" id="pmCheck" title="Короткий запрос за трое суток — проверяет доступы, а не тянет историю">Проверить связь</button>
             <span class="mono" id="pmStatus" style="color:var(--faint);font-size:11.5px"></span>
           </div>
         </div>

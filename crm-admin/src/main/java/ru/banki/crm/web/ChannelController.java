@@ -110,14 +110,31 @@ public class ChannelController {
                       "settings", postmaster.settings());
     }
 
+    /**
+     * Обновление за период, который выбран на экране. Раньше глубина была зашита
+     * (30 дней у кнопки в разделе, трое суток у проверки связи), и человек не мог
+     * дотянуть историю: сколько ни жми, приезжало одно и то же окно.
+     */
     @PostMapping("/email/postmaster/refresh")
     public Map<String, Object> postmasterRefresh(@RequestBody(required = false) Map<String, Object> body) {
         access.requireCapability(Capability.EDIT, Sections.CHANNELS);
+        LocalDate from = date(body, "from"), to = date(body, "to");
+        if (from != null || to != null) {
+            return postmaster.refresh(from, to);
+        }
         Object days = body == null ? null : body.get("days");
         Integer n = null;
         if (days != null) {
             try { n = Integer.valueOf(String.valueOf(days).trim()); } catch (NumberFormatException ignored) { }
         }
         return postmaster.refresh(n);
+    }
+
+    private static LocalDate date(Map<String, Object> body, String key) {
+        Object v = body == null ? null : body.get(key);
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        if (s.length() < 10) return null;
+        try { return LocalDate.parse(s.substring(0, 10)); } catch (RuntimeException e) { return null; }
     }
 }

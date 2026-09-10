@@ -185,27 +185,43 @@ public class PostmasterService {
      * снаружи это выглядело как «ничего не тянется».
      */
     public Map<String, Object> refresh(Integer days) {
+        int span = (days == null || days < 1 || days > 400) ? DEFAULT_DAYS : days;
+        LocalDate to = LocalDate.now();
+        return refresh(to.minusDays(span), to);
+    }
+
+    /**
+     * Обновление за конкретный период — им пользуется раздел, где период выбирает
+     * человек. Глубина не бесконечна: Google хранит около 90 дней, Mail.ru тоже
+     * отдаёт ограниченное окно, поэтому просьба «за три года» вернёт столько,
+     * сколько есть, а не ошибку.
+     */
+    public Map<String, Object> refresh(LocalDate from, LocalDate to) {
         Map<String, Object> cfg = secrets();
         List<String> domains = domainList(cfg);
-        int span = (days == null || days < 1 || days > 400) ? DEFAULT_DAYS : days;
-        LocalDate to = LocalDate.now(), from = to.minusDays(span);
+        if (to == null) to = LocalDate.now();
+        if (from == null) from = to.minusDays(DEFAULT_DAYS);
+        if (from.isAfter(to)) { LocalDate t = from; from = to; to = t; }
+        final LocalDate f = from, t2 = to;
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("domains", domains);
+        out.put("from", f.toString());
+        out.put("to", t2.toString());
         /* Домены обходим внутри источника, а не наоборот: статус подключения один
            на систему, и разбивать его по доменам значило бы путать «нет доступа»
            с «этот домен не подтверждён». */
         out.put("google", googleReady(cfg)
                 ? runSource("google", () -> {
                       int n = 0;
-                      for (String d : domains) n += loadGoogle(cfg, d, from, to);
+                      for (String d : domains) n += loadGoogle(cfg, d, f, t2);
                       return n;
                   })
                 : skipped("google", "доступы Google не заполнены"));
         out.put("mailru", mailruReady(cfg)
                 ? runSource("mailru", () -> {
                       int n = 0;
-                      for (String d : domains) n += loadMailru(cfg, d, from, to);
+                      for (String d : domains) n += loadMailru(cfg, d, f, t2);
                       return n;
                   })
                 : skipped("mailru", "доступы Mail.ru не заполнены"));

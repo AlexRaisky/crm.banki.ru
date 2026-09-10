@@ -280,7 +280,10 @@ window.Integrations = (function(){
             [["google","Google"],["mailru","Mail.ru"]].forEach(function(p){
               var r = res[p[0]];
               if (!r) return;
-              if (r.ok) msg.push(p[1] + ": ок, дней " + r.days);
+              /* Проверка намеренно берёт трое суток — это про связь, а не про
+                 данные. Говорим об этом прямо, иначе «ок, дней 3» читается как
+                 «за три дня и есть вся история». */
+              if (r.ok) msg.push(p[1] + ": ок, забрано дней — " + r.days);
               else if (r.skipped) msg.push(p[1] + ": не подключён — " + r.error);
               else msg.push(p[1] + ": ошибка — " + r.error);
             });
