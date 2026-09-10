@@ -805,8 +805,11 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
         <div class="card">
           <div class="dbc-grid">
             <div class="dbc-fld wide">
-              <label>Домен</label>
-              <input class="dbc-in mono" id="pmDomain" placeholder="email.banki.ru">
+              <label>Домены</label>
+              <input class="dbc-in mono" id="pmDomain" placeholder="email.banki.ru, news.banki.ru">
+              <div class="sub" style="margin-top:6px">Через запятую. Метрики собираются по каждому,
+                в разделе «Каналы» → E-mail домен выбирается списком. Первый в перечне открывается
+                по умолчанию. Каждый домен должен быть подтверждён в кабинете.</div>
             </div>
             <div class="dbc-fld">
               <label>Google · client_id</label>

@@ -101,10 +101,12 @@ public class ChannelController {
     @GetMapping("/email/postmaster")
     public Map<String, Object> postmasterStats(
             @RequestParam(required = false) String source,
+            @RequestParam(required = false) String domain,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         access.requireAnySection(Sections.CHANNELS);
-        return Map.of("stats", postmaster.stats(source, from, to),
+        return Map.of("stats", postmaster.stats(source, domain, from, to),
+                      "domains", postmaster.domains(),
                       "settings", postmaster.settings());
     }
 

@@ -75,7 +75,7 @@ public class PostmasterService {
     @Transactional(readOnly = true)
     public Map<String, Object> settings() {
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT domain, google_client_id, google_api_version," +
+                "SELECT domain, domains, google_client_id, google_api_version," +
                 "       google_client_secret IS NOT NULL AND google_client_secret <> '' AS google_secret_set," +
                 "       google_refresh_token IS NOT NULL AND google_refresh_token <> '' AS google_token_set," +
                 "       mailru_refresh_token IS NOT NULL AND mailru_refresh_token <> '' AS mailru_token_set," +
@@ -95,7 +95,10 @@ public class PostmasterService {
     public Map<String, Object> saveSettings(Map<String, Object> body) {
         jdbc.update(
                 "UPDATE app.postmaster_connection" +
-                "   SET domain = coalesce(nullif(?, ''), domain)," +
+                "   SET domains = coalesce(nullif(?, ''), domains)," +
+                /* domain остаётся «первым из списка»: он лежит у каждой строки
+                   метрик, и раздел показывает его по умолчанию. */
+                "       domain = coalesce(nullif(?, ''), domain)," +
                 "       google_client_id = coalesce(?, google_client_id)," +
                 "       google_client_secret = coalesce(nullif(?, ''), google_client_secret)," +
                 "       google_refresh_token = coalesce(nullif(?, ''), google_refresh_token)," +
@@ -105,7 +108,7 @@ public class PostmasterService {
                 "       sync_enabled = coalesce(?, sync_enabled)," +
                 "       timestamp_upd = now(), updated_by = ?" +
                 " WHERE id = 1",
-                str(body.get("domain")), str(body.get("googleClientId")),
+                str(body.get("domains")), firstDomain(body), str(body.get("googleClientId")),
                 str(body.get("googleClientSecret")), str(body.get("googleRefreshToken")),
                 version(body.get("googleApiVersion")),
                 str(body.get("mailruRefreshToken")), str(body.get("mailruAccessToken")),
@@ -113,6 +116,17 @@ public class PostmasterService {
                         Boolean.parseBoolean(String.valueOf(body.get("syncEnabled")))),
                 CurrentUser.email());
         return settings();
+    }
+
+    /** Первый домен списка — тот, что раздел откроет по умолчанию. */
+    private static String firstDomain(Map<String, Object> body) {
+        String raw = str(body.get("domains"));
+        if (raw == null) return str(body.get("domain"));
+        for (String part : raw.split("[,;\\s]+")) {
+            String d = part.trim().toLowerCase();
+            if (!d.isEmpty()) return d;
+        }
+        return null;
     }
 
     /** Незнакомое значение трактуем как «обе»: терять данные хуже, чем сходить дважды. */
@@ -124,7 +138,7 @@ public class PostmasterService {
 
     private Map<String, Object> secrets() {
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT domain, google_client_id, google_client_secret, google_refresh_token," +
+                "SELECT domain, domains, google_client_id, google_client_secret, google_refresh_token," +
                 "       google_api_version, mailru_refresh_token, mailru_access_token" +
                 "  FROM app.postmaster_connection WHERE id = 1");
         return rows.isEmpty() ? Map.of() : rows.get(0);
@@ -134,7 +148,7 @@ public class PostmasterService {
 
     /** Сохранённые метрики за период — то, что рисует раздел. */
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> stats(String source, LocalDate from, LocalDate to) {
+    public List<Map<String, Object>> stats(String source, String domain, LocalDate from, LocalDate to) {
         LocalDate f = from != null ? from : LocalDate.now().minusDays(DEFAULT_DAYS);
         LocalDate t = to != null ? to : LocalDate.now();
         StringBuilder sql = new StringBuilder(
@@ -146,6 +160,10 @@ public class PostmasterService {
         if (source != null && !source.isBlank()) {
             sql.append(" AND source = ?");
             args.add(source);
+        }
+        if (domain != null && !domain.isBlank()) {
+            sql.append(" AND domain = ?");
+            args.add(domain.trim().toLowerCase());
         }
         sql.append(" ORDER BY stat_date, source");
         return jdbc.queryForList(sql.toString(), args.toArray());
@@ -168,18 +186,60 @@ public class PostmasterService {
      */
     public Map<String, Object> refresh(Integer days) {
         Map<String, Object> cfg = secrets();
-        String domain = str(cfg.get("domain"));
+        List<String> domains = domainList(cfg);
         int span = (days == null || days < 1 || days > 400) ? DEFAULT_DAYS : days;
         LocalDate to = LocalDate.now(), from = to.minusDays(span);
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("domain", domain);
+        out.put("domains", domains);
+        /* Домены обходим внутри источника, а не наоборот: статус подключения один
+           на систему, и разбивать его по доменам значило бы путать «нет доступа»
+           с «этот домен не подтверждён». */
         out.put("google", googleReady(cfg)
-                ? runSource("google", () -> loadGoogle(cfg, domain, from, to))
+                ? runSource("google", () -> {
+                      int n = 0;
+                      for (String d : domains) n += loadGoogle(cfg, d, from, to);
+                      return n;
+                  })
                 : skipped("google", "доступы Google не заполнены"));
         out.put("mailru", mailruReady(cfg)
-                ? runSource("mailru", () -> loadMailru(cfg, domain, from, to))
+                ? runSource("mailru", () -> {
+                      int n = 0;
+                      for (String d : domains) n += loadMailru(cfg, d, from, to);
+                      return n;
+                  })
                 : skipped("mailru", "доступы Mail.ru не заполнены"));
+        return out;
+    }
+
+    /**
+     * Домены из настройки: список через запятую или перевод строки. Пустой список
+     * означает, что не задано ничего, — тогда ходить некуда, и лучше вернуть пусто,
+     * чем спрашивать постмастеры про домен с пустым именем.
+     */
+    private static List<String> domainList(Map<String, Object> cfg) {
+        String raw = str(cfg.get("domains"));
+        if (raw == null) raw = str(cfg.get("domain"));
+        if (raw == null) return List.of();
+        List<String> out = new ArrayList<>();
+        for (String part : raw.split("[,;\\s]+")) {
+            String d = part.trim().toLowerCase();
+            if (!d.isEmpty() && !out.contains(d)) out.add(d);
+        }
+        return out;
+    }
+
+    /** Домены для выпадающего списка в разделе: и настроенные, и те, по которым уже есть данные. */
+    @Transactional(readOnly = true)
+    public List<String> domains() {
+        List<String> out = new ArrayList<>(domainList(secrets()));
+        for (Map<String, Object> r : jdbc.queryForList(
+                "SELECT DISTINCT domain FROM channel.t_postmaster_daily ORDER BY domain")) {
+            String d = str(r.get("domain"));
+            /* Домен могли убрать из настройки, а метрики по нему остались — прятать
+               их незачем, иначе история пропадёт вместе с опечаткой в настройке. */
+            if (d != null && !out.contains(d)) out.add(d);
+        }
         return out;
     }
 

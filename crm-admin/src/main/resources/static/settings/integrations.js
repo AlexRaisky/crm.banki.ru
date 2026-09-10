@@ -200,7 +200,7 @@ window.Integrations = (function(){
 
   function pmFill(s){
     s = s || {};
-    if (pmEl("pmDomain")) pmEl("pmDomain").value = s.domain || "";
+    if (pmEl("pmDomain")) pmEl("pmDomain").value = s.domains || s.domain || "";
     if (pmEl("pmGoogleId")) pmEl("pmGoogleId").value = s.google_client_id || "";
     if (pmEl("pmGoogleVer")) pmEl("pmGoogleVer").value = s.google_api_version || "both";
     if (pmEl("pmGoogleSecret")) pmEl("pmGoogleSecret").placeholder = s.google_secret_set ? "задан" : "не задан";
@@ -241,7 +241,7 @@ window.Integrations = (function(){
         method:"PUT", credentials:"same-origin",
         headers:{ "Content-Type":"application/json", Accept:"application/json" },
         body: JSON.stringify({
-          domain: pmEl("pmDomain").value.trim(),
+          domains: pmEl("pmDomain").value.trim(),
           googleClientId: pmEl("pmGoogleId").value.trim(),
           googleClientSecret: pmEl("pmGoogleSecret").value.trim(),
           googleRefreshToken: pmEl("pmGoogleToken").value.trim(),

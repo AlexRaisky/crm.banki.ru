@@ -14,6 +14,35 @@
   var CUR = { id: null, label: "", free: false, tab: "overview" };
   var DATA = { costs: [], volumes: [], pricing: null, postmaster: null };
   var PERIOD = { from: null, to: null };
+  /* Выбор в блоке постмастеров: домен один на оба графика, метрика — своя у
+     каждой системы, потому что показатели у них разные. */
+  var PM = { domain: null, google: "spam_rate", mailru: "delivered" };
+
+  /* Метрики графиков. value достаёт число из строки: доли показываем процентами,
+     а репутацию — ступенькой, иначе категорию на линии не изобразить. */
+  var REP_LEVEL = { BAD: 1, LOW: 2, MEDIUM: 3, HIGH: 4 };
+  var PM_METRICS = {
+    google: [
+      { k: "spam_rate",  label: "жалобы на спам, %", value: function (r) { return pctVal(r.spam_rate); } },
+      { k: "spf_ratio",  label: "SPF, %",   value: function (r) { return pctVal(r.spf_ratio); } },
+      { k: "dkim_ratio", label: "DKIM, %",  value: function (r) { return pctVal(r.dkim_ratio); } },
+      { k: "dmarc_ratio",label: "DMARC, %", value: function (r) { return pctVal(r.dmarc_ratio); } },
+      { k: "domain_rep", label: "репутация домена (1 плохая — 4 высокая)",
+        value: function (r) { return REP_LEVEL[String(r.domain_reputation || "").toUpperCase()] || null; } },
+      { k: "ip_rep",     label: "репутация IP (1 плохая — 4 высокая)",
+        value: function (r) { return REP_LEVEL[String(r.ip_reputation || "").toUpperCase()] || null; } }
+    ],
+    mailru: [
+      { k: "delivered",  label: "доставлено",  value: function (r) { return numVal(r.delivered); } },
+      { k: "sent",       label: "отправлено",  value: function (r) { return numVal(r.sent); } },
+      { k: "read_count", label: "прочитано",   value: function (r) { return numVal(r.read_count); } },
+      { k: "complaints", label: "жалобы",      value: function (r) { return numVal(r.complaints); } },
+      { k: "spam_rate",  label: "спам, %",     value: function (r) { return pctVal(r.spam_rate); } },
+      { k: "reputation", label: "репутация",   value: function (r) { return numVal(r.domain_reputation); } }
+    ]
+  };
+  function pctVal(v) { return v == null ? null : Math.round(Number(v) * 100 * 1000) / 1000; }
+  function numVal(v) { return v == null || v === "" || isNaN(Number(v)) ? null : Number(v); }
   var CHART = {};
   var LOADING = false;
 
@@ -103,8 +132,12 @@
       req("GET", API + "/" + CUR.id + "/pricing" + q).then(function (r) { DATA.pricing = r; })
     ];
     if (CUR.id === "email") {
-      jobs.push(req("GET", API + "/email/postmaster" + q)
-        .then(function (r) { DATA.postmaster = r; })
+      jobs.push(req("GET", API + "/email/postmaster" + q + (PM.domain ? "&domain=" + encodeURIComponent(PM.domain) : ""))
+        .then(function (r) {
+          DATA.postmaster = r;
+          /* Домен по умолчанию — первый из настройки; дальше держим выбранный. */
+          if (!PM.domain && r && r.domains && r.domains.length) PM.domain = r.domains[0];
+        })
         .catch(function () { DATA.postmaster = null; }));
     }
     Promise.all(jobs).catch(function (e) {
@@ -201,10 +234,18 @@
     function cnt(v) { return v == null ? "—" : Number(v).toLocaleString("ru-RU"); }
 
     var g = last.google, m = last.mailru;
+    var domains = (pm.domains && pm.domains.length) ? pm.domains : (st.domain ? [st.domain] : []);
     var html = '<div class="card"><div class="chart-head"><h2>' + t2("Состояние домена") + "</h2>" +
+      /* Доменов бывает несколько (транзакционный и маркетинговый разведены по
+         поддоменам, репутация у них разная) — выбор рядом с заголовком. */
+      (domains.length > 1
+        ? '<select id="chPmDomain" style="width:auto;min-width:190px">' + domains.map(function (d) {
+            return '<option value="' + esc(d) + '"' + (d === PM.domain ? " selected" : "") + ">" + esc(d) + "</option>";
+          }).join("") + "</select>"
+        : "") +
       '<span class="spacer"></span>' +
       '<button type="button" class="btn" id="chPmRefresh">' + t2("Обновить из постмастеров") + "</button></div>" +
-      '<div class="pm-src">' + t2("Домен") + ": <b>" + esc(st.domain || "—") + "</b>" +
+      '<div class="pm-src">' + t2("Домен") + ": <b>" + esc(PM.domain || st.domain || "—") + "</b>" +
         (st.google_checked_at ? " · Google: " + esc(String(st.google_checked_at).slice(0, 16).replace("T", " ")) : "") +
         (st.mailru_checked_at ? " · Mail.ru: " + esc(String(st.mailru_checked_at).slice(0, 16).replace("T", " ")) : "") +
       "</div>";
@@ -238,7 +279,30 @@
     if (st.mailru_status === "error") html += '<div class="err">Mail.ru: ' + esc(st.mailru_error || "") + "</div>";
     if (st.google_status === "off") html += '<div class="empty">' + t2("Google Postmaster не подключён — доступы задаются в настройках, в «Интеграциях».") + "</div>";
     if (st.mailru_status === "off") html += '<div class="empty">' + t2("Mail.ru Postmaster не подключён — доступы задаются в настройках, в «Интеграциях».") + "</div>";
-    return html + "</div>";
+    html += "</div>";
+
+    /* По окну на систему: показатели у них разные, и в одной паре осей отправки
+       Mail.ru раздавили бы доли Google в ноль. Метрика переключается на месте —
+       данные уже загружены, второй раз на сервер не ходим. */
+    html += pmChartCard("google", "Google Postmaster", rows) +
+            pmChartCard("mailru", "Mail.ru Postmaster", rows);
+    return html;
+  }
+
+  function pmChartCard(source, title, rows) {
+    var has = (rows || []).some(function (r) { return r.source === source; });
+    var list = PM_METRICS[source];
+    return '<div class="card"><div class="chart-head"><h2>' + t2(title) + "</h2>" +
+      '<span class="spacer"></span>' +
+      '<select data-pm-metric="' + source + '" style="width:auto;min-width:220px">' +
+        list.map(function (m) {
+          return '<option value="' + m.k + '"' + (PM[source] === m.k ? " selected" : "") + ">" +
+                 t2(m.label) + "</option>";
+        }).join("") +
+      "</select></div>" +
+      (has ? '<div class="chart-box"><canvas id="chPm' + source + '"></canvas></div>'
+           : '<div class="empty">' + t2("Данных по этой системе пока нет.") + "</div>") +
+      "</div>";
   }
 
   function statusTail(v) { return v ? " · " + v : ""; }
@@ -388,6 +452,19 @@
       };
     });
 
+    var dom = el("chPmDomain");
+    if (dom) dom.onchange = function () { PM.domain = dom.value; load(); };
+
+    /* Смена метрики перерисовывает только свой график: данные уже здесь, а
+       перезагрузка раздела сбросила бы и выбор в соседнем окне. */
+    host.querySelectorAll("[data-pm-metric]").forEach(function (s) {
+      s.onchange = function () {
+        var source = s.dataset.pmMetric;
+        PM[source] = s.value;
+        drawPm(source, source === "google" ? "#3CFAB4" : "#50C3FF");
+      };
+    });
+
     var pm = el("chPmRefresh");
     if (pm) pm.onclick = function () {
       pm.disabled = true;
@@ -425,6 +502,22 @@
     draw("cost", "chCostChart", labels,
          series.map(function (r) { return Number(r.cost || 0); }),
          "#50C3FF", t2("расходы, ₽"));
+
+    if (CUR.id === "email") {
+      drawPm("google", "#3CFAB4");
+      drawPm("mailru", "#50C3FF");
+    }
+  }
+
+  function drawPm(source, color) {
+    var rows = ((DATA.postmaster || {}).stats || []).filter(function (r) { return r.source === source; });
+    if (!rows.length) return;
+    var metric = PM_METRICS[source].filter(function (m) { return m.k === PM[source]; })[0]
+              || PM_METRICS[source][0];
+    draw("pm_" + source, "chPm" + source,
+         rows.map(function (r) { return String(r.stat_date).slice(0, 10); }),
+         rows.map(metric.value),
+         color, t2(metric.label));
   }
 
   function draw(key, canvasId, labels, data, color, title) {
