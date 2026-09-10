@@ -300,6 +300,7 @@ const I18N_EN = {
   "Дни с отклонениями":"Days with deviations", "Требуют точечной проверки":"Need a targeted check",
   "Плавные снижения":"Gradual declines", "Выгрузка":"Export",
   "↺ Загрузить / заменить":"↺ Load / replace", "＋ Дозагрузить дни":"＋ Append days",
+  "↓ Пример файла":"↓ Sample file",
   "↓ Сохранить в Excel":"↓ Save to Excel", "↓ Комментарии (CSV)":"↓ Comments (CSV)", "Очистить":"Clear",
   /* OneLink Builder */
   "Канал и тип рассылки":"Channel and campaign type", "Название кампании":"Campaign name",

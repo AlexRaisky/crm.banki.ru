@@ -43,9 +43,29 @@ function parseWideSheet(ws){
   return long;
 }
 
+/* Строки листа с ПОИСКОМ строки-шапки.
+
+   sheet_to_json по умолчанию считает шапкой первую строку. В наших выгрузках так
+   и есть, а в файлах, собранных вручную или другим инструментом, сверху обычно
+   стоит название таблицы и пустая строка — шапка оказывается третьей. Тогда
+   ключами становились «Плоская таблица день × продукт…», колонка «Дата» не
+   находилась, лист читался пустым, импорт молча падал на широкий формат и
+   заканчивался «Не распознан формат» — при том что файл был правильный. */
+function sheetRows(ws, keys){
+  if(!ws) return [];
+  const A=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null});
+  for(let i=0;i<Math.min(15,A.length);i++){
+    const cells=(A[i]||[]).map(x=>String(x==null?'':x).trim());
+    if(keys.some(k=>cells.includes(k))){
+      return XLSX.utils.sheet_to_json(ws,{raw:true,defval:null,range:i});
+    }
+  }
+  return [];
+}
+
 // Разбор «длинного» листа Данные_день_продукт (наш экспортный формат)
 function parseLongSheet(ws){
-  const rows=XLSX.utils.sheet_to_json(ws,{raw:true,defval:null});
+  const rows=sheetRows(ws,['Дата','date']);
   const out=[];
   rows.forEach(r=>{
     const date=normalizeDate(r['Дата']||r['date']);
@@ -59,7 +79,18 @@ function parseLongSheet(ws){
 
 function normalizeDate(v){
   if(v==null) return null;
-  if(v instanceof Date) return v.toISOString().slice(0,10);
+  /* Дату округляем к ближайшей полуночи по локальному календарю.
+
+     SheetJS отдаёт ячейку «01.01.2026» как Date 31.12.2025 23:59:43 — в serial
+     не хватает считаных секунд, и любой прямой способ (toISOString или
+     getFullYear/getDate) уводит день назад. Тогда весь ряд смещался вместе с
+     выходными, и база-медиана с отклонениями считалась не по тем дням —
+     ошибка, которую на графике не видно, а в выводах она меняет всё. */
+  if(v instanceof Date){
+    const DAY=86400000;
+    const local=v.getTime()-v.getTimezoneOffset()*60000;
+    return new Date(Math.round(local/DAY)*DAY).toISOString().slice(0,10);
+  }
   if(typeof v==='number'){ // excel serial
     const d=XLSX.SSF ? XLSX.SSF.parse_date_code(v) : null;
     if(d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
@@ -77,7 +108,7 @@ function parseCommentsAndStatus(wb){
   const statusOf = v => String(v||'').toLowerCase().includes('реш') ? 'solved' : '';
   // Требуют_проверки
   if(wb.Sheets['Требуют_проверки']){
-    const rows=XLSX.utils.sheet_to_json(wb.Sheets['Требуют_проверки'],{raw:true,defval:null});
+    const rows=sheetRows(wb.Sheets['Требуют_проверки'],['Дата']);
     rows.forEach(r=>{
       const d=normalizeDate(r['Дата']); if(!d) return;
       const id='check_'+d;
@@ -87,7 +118,7 @@ function parseCommentsAndStatus(wb){
   }
   // Плавные_снижения
   if(wb.Sheets['Плавные_снижения']){
-    const rows=XLSX.utils.sheet_to_json(wb.Sheets['Плавные_снижения'],{raw:true,defval:null});
+    const rows=sheetRows(wb.Sheets['Плавные_снижения'],['Уровень']);
     rows.forEach(r=>{
       const lvl=r['Уровень'], st0=normalizeDate(r['Дата_начала']); if(!lvl||!st0) return;
       const id='decl_'+lvl+'__'+st0;
@@ -177,5 +208,62 @@ function buildWorkbook(R, notes, status, rawLong){
   wsLong['!cols']=[{wch:12},{wch:14},{wch:26},{wch:14},{wch:14}];
   XLSX.utils.book_append_sheet(wb, wsLong, 'Данные_день_продукт');
 
+  return wb;
+}
+
+/* ---- Пример файла для заливки ----
+
+   Собирается здесь же, а не лежит готовым в репозитории: тогда шаблон не может
+   разойтись с тем, что читает парсер. Достаточно одного листа
+   «Данные_день_продукт» — остальные листы панель считает сама.
+
+   Даты в примере — последние семь дней, чтобы образец можно было залить как
+   есть и сразу увидеть, что импорт работает. */
+function buildSampleWorkbook(){
+  const PRODUCTS=[
+    ['Кредиты','Микрозаймы','sms'],
+    ['Кредиты','Микрозаймы','email'],
+    ['Кредиты','Автокредиты','callcenter'],
+    ['Карты','Кредитные карты','mobile-push'],
+    ['Страхование','ОСАГО','email']
+  ];
+  const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const aoa=[['Дата','Group1','Group2','Group3','Выручка']];
+  const today=new Date();
+  for(let back=7;back>=1;back--){
+    const d=new Date(today.getFullYear(),today.getMonth(),today.getDate()-back);
+    PRODUCTS.forEach((p,i)=>{
+      /* Значения условные, но правдоподобные: ровные числа в примере создают
+         впечатление, что панель ждёт именно их. */
+      const base=[1200000,340000,180000,260000,95000][i];
+      aoa.push([iso(d), p[0], p[1], p[2], Math.round(base*(0.85+((back*7+i*3)%30)/100))]);
+    });
+  }
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:12},{wch:14},{wch:26},{wch:14},{wch:14}];
+
+  const readme=[
+    ['Пример файла для загрузки в «Панель отклонений»'],[''],
+    ['Нужен один лист — «Данные_день_продукт» — с пятью колонками:'],
+    ['  Дата — ГГГГ-ММ-ДД или ДД.ММ.ГГГГ (подойдёт и обычная дата Excel)'],
+    ['  Group1 — направление (Кредиты, Страхование, Карты, Бизнес…)'],
+    ['  Group2 — продукт (Микрозаймы, ОСАГО, Кредитные карты…)'],
+    ['  Group3 — канал (sms, email, callcenter, mobile-push, push, messenger)'],
+    ['  Выручка — число за этот день по этой тройке'],[''],
+    ['Строка на каждую тройку «продукт × канал × день». Служебные строки'],
+    ['(Grand Total, Total, not_off) можно оставить — панель их отбрасывает сама.'],[''],
+    ['«Загрузить / заменить» — период файла заменяется целиком.'],
+    ['«Дозагрузить дни» — добавляются только пришедшие дни, остальное не трогается.'],
+    ['Повторная загрузка того же файла ничего не удвоит: строка за день и тройку одна.'],[''],
+    ['Панель принимает и исходный «широкий» формат выгрузки (шапка: год / месяц /'],
+    ['день, слева Group 1-3), и файл, ранее выгруженный из самой панели —'],
+    ['в нём вернутся и комментарии со статусами.']
+  ];
+  const wsR=XLSX.utils.aoa_to_sheet(readme);
+  wsR['!cols']=[{wch:96}];
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsR, 'README');
+  XLSX.utils.book_append_sheet(wb, ws, 'Данные_день_продукт');
   return wb;
 }

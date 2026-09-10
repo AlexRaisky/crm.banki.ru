@@ -406,6 +406,10 @@ function exportExcel(){
   XLSX.writeFile(wb, 'Анализ_выручки_'+new Date().toISOString().slice(0,10)+'.xlsx');
   flashHint('✓ Excel сохранён');
 }
+function exportSample(){
+  XLSX.writeFile(buildSampleWorkbook(), 'Пример_загрузки_выручки.xlsx');
+  flashHint('✓ пример сохранён');
+}
 function exportNotesCSV(){
   const notes=loadNotes(), status=loadStatus(); const ctx={};
   R.checkdays.forEach(c=>ctx['check_'+c.date]={date:c.date,type:'проверка',subj:'кластер',auto:c.comment});

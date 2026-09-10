@@ -1001,6 +1001,9 @@
     <span class="io-lbl" data-i18n="Данные">Данные</span>
     <label class="btn" for="fileReplace" data-i18n="↺ Загрузить / заменить">↺ Загрузить / заменить</label>
     <label class="btn" for="fileAppend" data-i18n="＋ Дозагрузить дни">＋ Дозагрузить дни</label>
+    <!-- Образец собирается кодом, а не лежит файлом в репозитории: так шаблон
+         не может разойтись с тем, что читает импорт. -->
+    <button class="btn ghost" onclick="exportSample()" title="Скачать образец с нужными колонками"><span data-i18n="↓ Пример файла">↓ Пример файла</span></button>
     <input type="file" id="fileReplace" accept=".xlsx,.xls,.csv">
     <input type="file" id="fileAppend" accept=".xlsx,.xls,.csv">
     <div class="io-sep"></div>
