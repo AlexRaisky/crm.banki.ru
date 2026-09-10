@@ -16,7 +16,7 @@
      выбор документа делается здесь, по первому сегменту маршрута. -->
 <script>
 (function () {
-  var ROOTS = "home comms entities reports dash monitoring uploads journeys settings".split(" ");
+  var ROOTS = "home comms entities channels reports dash monitoring uploads journeys settings".split(" ");
   var p = location.pathname, segs = p.split("/"), base = "/", route = [];
   for (var i = 1; i < segs.length; i++) {
     if (ROOTS.indexOf(segs[i]) >= 0) {

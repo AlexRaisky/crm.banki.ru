@@ -786,6 +786,58 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
         <div class="card" style="padding:14px">
           <div id="igHost" class="empty">Опрашиваем интеграции…</div>
         </div>
+
+        <!-- Доступы к почтовым постмастерам. Живут здесь, а не в разделе «Каналы»:
+             это реквизиты подключения, как адрес и токен Jira, и тому, кому выдали
+             просмотр цен канала, токены видеть незачем. -->
+        <h2 style="margin-top:26px">Postmaster: Google и Mail.ru</h2>
+        <div class="sub">Раздел «Каналы» → E-mail показывает по ним состояние домена: репутацию,
+          жалобы на спам, доставляемость, SPF/DKIM/DMARC. Токены хранятся на сервере и наружу не
+          отдаются — заполненное поле показывается как «задано», пустое поле при сохранении ничего
+          не стирает.</div>
+        <div class="sub" style="margin-top:8px">Google: OAuth-клиент с доступом к Postmaster Tools
+          (скоуп <code>postmaster.readonly</code>) — идентификатор, секрет и refresh-токен.
+          Версия API: <b>v1</b> работает у всех, <b>v2</b> умеет диапазон дат и статус
+          SPF/DKIM/DMARC, но доступен не каждому кабинету. Mail.ru: refresh-токен из
+          <code>o2.mail.ru</code> (client_id <code>postmaster_api_client</code>). Домен должен быть
+          подтверждён в обоих кабинетах, иначе API отвечает пустотой.</div>
+
+        <div class="card">
+          <div class="dbc-grid">
+            <div class="dbc-fld wide">
+              <label>Домен</label>
+              <input class="dbc-in mono" id="pmDomain" placeholder="email.banki.ru">
+            </div>
+            <div class="dbc-fld">
+              <label>Google · client_id</label>
+              <input class="dbc-in mono" id="pmGoogleId" placeholder="…apps.googleusercontent.com">
+            </div>
+            <div class="dbc-fld">
+              <label>Google · client_secret</label>
+              <input class="dbc-in mono" id="pmGoogleSecret" type="password" placeholder="не задан">
+            </div>
+            <div class="dbc-fld">
+              <label>Google · refresh_token</label>
+              <input class="dbc-in mono" id="pmGoogleToken" type="password" placeholder="не задан">
+            </div>
+            <div class="dbc-fld">
+              <label>Google · версия API</label>
+              <select class="dbc-in" id="pmGoogleVer">
+                <option value="v1">v1 — trafficStats</option>
+                <option value="v2">v2 — domainStats.query</option>
+              </select>
+            </div>
+            <div class="dbc-fld wide">
+              <label>Mail.ru · refresh_token</label>
+              <input class="dbc-in mono" id="pmMailruToken" type="password" placeholder="не задан">
+            </div>
+          </div>
+          <div class="row" style="gap:10px;align-items:center;margin-top:14px">
+            <button type="button" class="btn primary" id="pmSave">Сохранить</button>
+            <button type="button" class="btn" id="pmCheck">Проверить связь</button>
+            <span class="mono" id="pmStatus" style="color:var(--faint);font-size:11.5px"></span>
+          </div>
+        </div>
       </section>
 
       <section class="pane" id="pane-jira">

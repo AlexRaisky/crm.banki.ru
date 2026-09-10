@@ -23,7 +23,7 @@
   /* Корневые сегменты маршрутов: по первому найденному видно, где кончается адрес
      приложения и начинается маршрут. Так база считается одинаково и на боевом (/),
      и на GitHub Pages (/crm.banki.ru/) — без хардкода имени репозитория. */
-  var ROOTS = "home comms entities reports dash monitoring uploads journeys settings".split(" ");
+  var ROOTS = "home comms entities channels reports dash monitoring uploads journeys settings".split(" ");
   var segs = location.pathname.split("/"), base = null;
   for (var i = 1; i < segs.length; i++){
     if (ROOTS.indexOf(segs[i]) >= 0){ base = segs.slice(0, i).join("/") + "/"; break; }
@@ -69,6 +69,7 @@
 <link rel="stylesheet" href="css/section-deviations.css">
 <link rel="stylesheet" href="css/section-onelink.css">
 <link rel="stylesheet" href="css/section-srcbuilder.css">
+<link rel="stylesheet" href="css/section-channels.css">
 <link rel="stylesheet" href="css/section-promo.css?v=4">
 <link rel="stylesheet" href="css/section-abtests.css">
 <link rel="stylesheet" href="css/section-reports.css">
@@ -1465,7 +1466,21 @@
   </div>
     </section>
 
-    <!-- ===== Конструктор source ===== -->
+    <!-- ===== Каналы: тарификация и состояние канала ===== -->
+    <section class="view" id="sec-channels">
+      <div class="wrap">
+        <header class="hero">
+          <div class="eyebrow">CRM · Каналы</div>
+          <h1 id="chTitle">Канал</h1>
+          <p class="sub" id="chSub"></p>
+        </header>
+        <!-- Вкладки и содержимое рисует js/channels.js: разметка у каналов общая,
+             различается только наполнение обзора. -->
+        <div class="ch-tabs" id="chTabs"></div>
+        <div id="chHost"></div>
+      </div>
+    </section>
+
     <section class="view" id="sec-srcbuilder">
 <div class="wrap">
 
@@ -2847,6 +2862,8 @@
 <script src="js/template-details.js?v=2"></script>
 <script src="js/template-list.js?v=4"></script>
 <script src="js/dashboard.js"></script>
+<!-- Каналы: тарификация и постмастеры -->
+<script src="js/channels.js?v=1"></script>
 <script src="js/boot.js"></script>
 </body>
 </html>

@@ -89,6 +89,17 @@ const NAV = [
         aclSection:"dashboard" },
       { id:"deviations", label:"Панель отклонений", icon:"pulse", view:"sec-deviations" },
   ]},
+  /* Каналы. Подраздел на канал, экран один: тарификация у всех устроена
+     одинаково, а различается только содержимое обзора (у почты — постмастеры).
+     Набор совпадает с каналами шаблонов; id канала = id подраздела без префикса. */
+  { id:"channels", label:"Каналы", icon:"megaphone", children:[
+      { id:"cc",    label:"Callcenter",  icon:"phone",    view:"sec-channels", aclSection:"channels" },
+      { id:"sms",   label:"SMS",         icon:"chat",     view:"sec-channels", aclSection:"channels" },
+      { id:"email", label:"E-mail",      icon:"mail",     view:"sec-channels", aclSection:"channels" },
+      { id:"push",  label:"Mobile-push", icon:"bell",     view:"sec-channels", aclSection:"channels" },
+      { id:"vk",    label:"ВК",          icon:"chat",     view:"sec-channels", aclSection:"channels" },
+      { id:"fa",    label:"Финпомощник", icon:"megaphone",view:"sec-channels", aclSection:"channels" },
+  ]},
   { id:"monitoring", label:"Мониторинг", icon:"monitor", overviewView:"view-mon-overview", children:[
       { id:"mon-campaigns", label:"Базовая работа кампаний", icon:"pulse", view:"view-mon-campaigns" },
   ]},
@@ -120,6 +131,11 @@ const ICONS = {
   beaker:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6.5L5 18a2 2 0 0 0 1.7 3h10.6A2 2 0 0 0 19 18l-5-8.5V3"/><path d="M7.5 14h9"/></svg>',
   grid2:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
   monitor:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
+  /* Иконки каналов: телефон, письмо, колокольчик, реплика. */
+  phone:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>',
+  mail:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>',
+  bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
+  chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-4.1-1L3 20l1.2-4.6A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg>',
   upload:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
   plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
@@ -231,6 +247,18 @@ const I18N_EN = {
   "Перетащите файл .html сюда":"Drop an .html file here",
   "или нажмите, чтобы выбрать файл":"or click to choose a file",
   /* конструктор source */
+  /* каналы */
+  "Каналы":"Channels", "ВК":"VK", "Финпомощник":"Fin Assistant", "Канал":"Channel",
+  "Обзор":"Overview", "Тарификация":"Pricing", "Бесплатный":"Free of charge",
+  "Стоимость":"Costs", "Модель тарификации":"Pricing model", "Динамика":"Trend",
+  "Стоимость одной коммуникации":"Cost per communication",
+  "Стоимость одной коммуникации сейчас":"Cost per communication now",
+  "Состояние домена":"Domain health", "Обновить из постмастеров":"Refresh from postmasters",
+  "Канал бесплатный":"Channel is free", "Добавить строку":"Add row", "Показать":"Show",
+  "Сумма":"Amount", "Период суммы":"Amount period", "Период оплаты":"Paid period",
+  "Подрядчик":"Vendor", "За что платим":"What we pay for", "Объём":"Volume",
+  "Период объёма":"Volume period", "Период действия":"Valid period",
+  "в месяц":"per month", "в год":"per year",
   "Итоговый source":"Resulting source",
   "ЧЕРНОВИК — заполните обязательные поля":"DRAFT — fill in the required fields",
   "ГОТОВО — можно копировать":"READY — you can copy",
@@ -992,6 +1020,8 @@ function openSection(sid, cid){
   /* Витрины пересобирают скриптом, и вчерашние числа ничем не лучше пустого экрана —
      читаем при каждом открытии раздела. */
   if (target.view === "sec-comm-analytics" && typeof initCommAnalyticsSection === "function") initCommAnalyticsSection();
+  /* канал берётся из подраздела: экран один на все каналы */
+  if (target.view === "sec-channels" && typeof chOpen === "function") chOpen(cid);
   if (target.view === "sec-deviations") setTimeout(() => {
     /* графики Chart.js, созданные в скрытой секции, имеют нулевой размер —
        при первом показе пересоздаём их через renderAll(). setTimeout, а не rAF:

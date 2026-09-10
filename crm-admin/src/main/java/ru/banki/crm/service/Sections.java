@@ -106,6 +106,9 @@ public final class Sections {
     public static final String REP_DEMO = "rep-demo";
     public static final String MON_CAMPAIGNS = "mon-campaigns";
 
+    /** Каналы: тарификация и состояние канала (постмастеры). */
+    public static final String CHANNELS = "channels";
+
     /* Клиентские инструменты (конструктор source, отчёты, тепловая карта, мониторинг,
        загруженные инструменты) заводим в RBAC только ради видимости в NAV: серверной
        записи у них нет, поэтому они не входят в WRITABLE — значима лишь галка read.
@@ -117,6 +120,7 @@ public final class Sections {
             ENTITIES,
             REP_PLANFACT, REP_MATRIX, REP_LEADGEN, REP_SMSCHECK, REP_DEMO,
             DASHBOARD, DEVIATIONS,
+            CHANNELS,
             MON_CAMPAIGNS,
             UPLOADS, JOURNEYS,
             SET_DBCONN, SET_JIRA, SET_PROCS, SET_SYNC, SET_EVENTS, EV_EXPORT, SET_SCHEME,
@@ -153,6 +157,7 @@ public final class Sections {
             java.util.Map.entry(DASHBOARD, "Дашборд"),
             java.util.Map.entry(DEVIATIONS, "Дашборд"),
             java.util.Map.entry(MON_CAMPAIGNS, "Мониторинг"),
+            java.util.Map.entry(CHANNELS, "Каналы"),
             java.util.Map.entry(SET_DBCONN, "Настройки"),
             java.util.Map.entry(SET_PROCS, "Настройки"),
             java.util.Map.entry(SET_JIRA, "Настройки"),
@@ -184,7 +189,12 @@ public final class Sections {
     public static final Set<String> WRITABLE = Set.of(ADMIN, TEMPLATES, PROMO, ABTESTS,
             EV_ONLINE, EV_OFFLINE, EV_EXPORT, JOURNEYS, ACCESS,
             SET_DBCONN, SET_JIRA, SET_PROCS, SET_SYNC, SET_EVENTS, SET_SCHEME, SET_OBJECTS,
-            SET_APPS, SET_UPLOADS, SET_REFS);
+            SET_APPS, SET_UPLOADS, SET_REFS,
+            /* В канале правят тарификацию, в панели отклонений — комментарии и
+               загрузку выручки: право на запись там имеет смысл, и без него
+               галочки не показывались бы в матрице, то есть писать мог бы только
+               администратор. */
+            CHANNELS, DEVIATIONS);
 
     /**
      * Разделы, которые нельзя выдать матрицей — только флагом администратора.

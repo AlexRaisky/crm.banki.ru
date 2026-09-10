@@ -1,0 +1,79 @@
+/* ===== Каналы: тарификация и состояние канала. Стили изолированы @scope ===== */
+@scope (#sec-channels){
+  :scope{color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6;padding:32px 24px 90px}
+  .wrap{max-width:1180px;margin:0 auto}
+  header.hero{padding-bottom:14px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--blue);margin-bottom:10px}
+  h1{font-size:28px;font-weight:700;letter-spacing:-.015em}
+  .sub{color:var(--dim);margin-top:8px;font-size:14.5px}
+
+  /* вкладки «Обзор / Тарификация» — как в карточке сущности */
+  .ch-tabs{display:flex;gap:8px;margin:18px 0 20px;border-bottom:1px solid var(--line)}
+  .ch-tab{padding:10px 16px;cursor:pointer;font-weight:600;font-size:14.5px;color:var(--dim);
+    border-bottom:2px solid transparent;margin-bottom:-1px;background:none;border-top:0;border-left:0;border-right:0}
+  .ch-tab.on{color:var(--ink);border-bottom-color:var(--blue)}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:18px}
+  .card h2{font-size:17px;font-weight:640;margin-bottom:4px}
+  .card .note{color:var(--faint);font-size:12.5px;margin-bottom:14px}
+  .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+
+  /* Плитка «стоимость сейчас»: главное число раздела, поэтому крупно и отдельно. */
+  .price-now{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-end}
+  .price-big{font-family:var(--mono);font-size:34px;font-weight:700;
+    background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .price-lbl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);display:block;margin-bottom:4px}
+  .price-sub{font-family:var(--mono);font-size:15px;color:var(--dim)}
+  .free-badge{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;
+    font-weight:700;padding:6px 12px;border-radius:20px;background:var(--green-bg);color:var(--green);
+    border:1px solid rgba(60,250,180,.4)}
+
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{text-align:left;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);
+    font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line)}
+  td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  input,select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;
+    background:var(--bg2);color:var(--ink);font:inherit;font-size:14px}
+  input:focus,select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(80,195,255,.1)}
+  input[type=date]{color-scheme:dark}
+  input:disabled,select:disabled{opacity:.55;cursor:not-allowed}
+
+  .btn{border:1px solid var(--line);background:var(--bg2);color:var(--ink);border-radius:9px;
+    padding:9px 14px;font:inherit;font-size:13.5px;cursor:pointer;transition:.15s}
+  .btn:hover:not(:disabled){border-color:var(--blue);color:var(--blue)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.primary{background:var(--grad);color:#06202B;border:0;font-weight:600}
+  .btn.danger{color:var(--coral);border-color:rgba(255,107,138,.35)}
+  .row-actions{display:flex;gap:8px;justify-content:flex-end}
+  .card-foot{display:flex;gap:10px;align-items:center;margin-top:14px}
+
+  /* Галка «бесплатный» стоит над блоками, которые она выключает, — иначе непонятно,
+     почему поля вдруг заблокированы. */
+  label.check{display:flex;align-items:center;gap:10px;cursor:pointer;min-height:40px;font-weight:600}
+  label.check input{width:18px;height:18px;flex:0 0 18px;accent-color:var(--blue);cursor:pointer}
+  .free-hint{color:var(--faint);font-size:12.5px;margin-top:2px}
+
+  .chart-box{position:relative;height:280px}
+  .chart-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .chart-head .spacer{flex:1}
+  .period{display:flex;gap:8px;align-items:center}
+  .period input{width:auto;min-width:150px}
+
+  /* Постмастеры: плитки состояния почтового домена. */
+  .pm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+  .pm-card{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .pm-card .k{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+  .pm-card .v{font-family:var(--mono);font-size:20px;margin-top:6px}
+  .pm-card .v.good{color:var(--green)} .pm-card .v.bad{color:var(--coral)} .pm-card .v.warn{color:var(--amber)}
+  .pm-src{font-size:12px;color:var(--faint);margin:2px 0 12px}
+  .empty{color:var(--faint);font-size:13.5px;padding:12px 0}
+  .err{color:var(--amber);font-size:13px;margin-top:8px}
+
+  @media(max-width:900px){
+    .grid2{grid-template-columns:1fr}
+    :scope{padding:20px 14px 60px}
+    table{display:block;overflow-x:auto;white-space:nowrap}
+  }
+}

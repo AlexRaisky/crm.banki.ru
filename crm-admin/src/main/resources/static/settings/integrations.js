@@ -189,8 +189,94 @@ window.Integrations = (function(){
     b.onclick = load;
   }
 
+  /* ---------------------------------------------------------- Postmaster
+
+     Доступы к Google и Mail.ru Postmaster. Значения токенов сервер не отдаёт —
+     приходит только признак «задано», поэтому поля показываются пустыми с
+     подписью в placeholder, а пустое поле при сохранении ничего не стирает. */
+  var PM_API = "../api/admin/integrations/postmaster";
+
+  function pmEl(id){ return document.getElementById(id); }
+
+  function pmFill(s){
+    s = s || {};
+    if (pmEl("pmDomain")) pmEl("pmDomain").value = s.domain || "";
+    if (pmEl("pmGoogleId")) pmEl("pmGoogleId").value = s.google_client_id || "";
+    if (pmEl("pmGoogleVer")) pmEl("pmGoogleVer").value = s.google_api_version || "v1";
+    if (pmEl("pmGoogleSecret")) pmEl("pmGoogleSecret").placeholder = s.google_secret_set ? "задан" : "не задан";
+    if (pmEl("pmGoogleToken")) pmEl("pmGoogleToken").placeholder = s.google_token_set ? "задан" : "не задан";
+    if (pmEl("pmMailruToken")) pmEl("pmMailruToken").placeholder = s.mailru_token_set ? "задан" : "не задан";
+    pmStatus(s);
+  }
+
+  function pmStatus(s){
+    var box = pmEl("pmStatus");
+    if (!box) return;
+    var parts = [];
+    if (s.google_status) parts.push("Google: " + (s.google_status === "ok" ? "ок" : "ошибка — " + (s.google_error || "")));
+    if (s.mailru_status) parts.push("Mail.ru: " + (s.mailru_status === "ok" ? "ок" : "ошибка — " + (s.mailru_error || "")));
+    box.textContent = parts.join(" · ");
+  }
+
+  function pmLoad(){
+    fetch(PM_API, { credentials:"same-origin", headers:{ Accept:"application/json" } })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(s){ if (s) pmFill(s); })
+      .catch(function(){ /* нет прав или бэкенда — форма просто останется пустой */ });
+  }
+
+  function pmBind(){
+    var save = pmEl("pmSave");
+    if (save) save.onclick = function(){
+      save.disabled = true;
+      fetch(PM_API, {
+        method:"PUT", credentials:"same-origin",
+        headers:{ "Content-Type":"application/json", Accept:"application/json" },
+        body: JSON.stringify({
+          domain: pmEl("pmDomain").value.trim(),
+          googleClientId: pmEl("pmGoogleId").value.trim(),
+          googleClientSecret: pmEl("pmGoogleSecret").value.trim(),
+          googleRefreshToken: pmEl("pmGoogleToken").value.trim(),
+          googleApiVersion: pmEl("pmGoogleVer").value,
+          mailruRefreshToken: pmEl("pmMailruToken").value.trim()
+        })
+      }).then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function(s){
+          /* Введённые секреты со страницы убираем: они уже на сервере, а
+             оставленные в поле легко уедут в чужой скриншот. */
+          pmEl("pmGoogleSecret").value = "";
+          pmEl("pmGoogleToken").value = "";
+          pmEl("pmMailruToken").value = "";
+          pmFill(s);
+        })
+        .catch(function(e){ alert("Не сохранилось: " + e.message); })
+        .then(function(){ save.disabled = false; });
+    };
+
+    var check = pmEl("pmCheck");
+    if (check) check.onclick = function(){
+      check.disabled = true;
+      var was = check.textContent;
+      check.textContent = "Проверяю…";
+      fetch(PM_API + "/check", { method:"POST", credentials:"same-origin",
+                                 headers:{ Accept:"application/json" } })
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(res){
+          if (res){
+            var msg = [];
+            if (res.google) msg.push("Google: " + (res.google.ok ? "ок, дней " + res.google.days : res.google.error));
+            if (res.mailru) msg.push("Mail.ru: " + (res.mailru.ok ? "ок, дней " + res.mailru.days : res.mailru.error));
+            alert(msg.join("\n"));
+          }
+          pmLoad();
+        })
+        .catch(function(e){ alert("Проверка не удалась: " + e.message); })
+        .then(function(){ check.disabled = false; check.textContent = was; });
+    };
+  }
+
   return {
-    open: function(){ bind(); load(); },
+    open: function(){ bind(); load(); pmBind(); pmLoad(); },
     reload: load
   };
 })();
