@@ -387,8 +387,11 @@ public class PostmasterService {
             access = mailruAccessFromRefresh(refresh);
         }
 
+        /* Имена параметров именно такие: date_from / date_to. С привычными from/to
+           сервис отвечает 403 с пустым телом — не «неверный параметр», а «нет
+           доступа», и искать причину приходится в токенах, где её нет. */
         String url = MAILRU_API + "/ext-api/stat-list-detailed/?domain=" + enc(domain)
-                + "&from=" + from + "&to=" + to;
+                + "&date_from=" + from + "&date_to=" + to;
         JsonNode root;
         try {
             root = getJson(url, access, true);
@@ -405,12 +408,27 @@ public class PostmasterService {
             root = getJson(url, access, true);
         }
 
-        JsonNode list = root.has("data") ? root.get("data") : root;
-        if (list == null || !list.isArray()) {
+        /* Ответ двухуровневый: {"ok": true, "data": [{"domain": …, "data": [дни]}]}.
+           Внешний уровень — домены (их может быть несколько, если запрос без
+           фильтра), внутренний — дни. Разбор по внешнему массиву как по дням
+           давал ноль записей: поля date там нет, и каждая строка молча
+           пропускалась. */
+        JsonNode domains = root.has("data") ? root.get("data") : root;
+        if (domains == null || !domains.isArray()) {
             return 0;
         }
+        List<JsonNode> days = new ArrayList<>();
+        for (JsonNode dom : domains) {
+            JsonNode inner = dom.path("data");
+            if (inner.isArray()) {
+                inner.forEach(days::add);
+            } else if (dom.has("date")) {
+                days.add(dom);   /* на случай плоского ответа — вдруг вернут так */
+            }
+        }
+
         int n = 0;
-        for (JsonNode s : list) {
+        for (JsonNode s : days) {
             LocalDate d = parseDate(firstText(s, "date", "day", "dt"));
             if (d == null) {
                 continue;
@@ -493,11 +511,29 @@ public class PostmasterService {
     private JsonNode send(HttpRequest req) throws Exception {
         HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         if (res.statusCode() / 100 != 2) {
-            String body = res.body() == null ? "" : res.body();
-            throw new IllegalStateException("HTTP " + res.statusCode() + ": "
-                    + (body.length() > 300 ? body.substring(0, 300) : body));
+            String body = res.body() == null ? "" : res.body().trim();
+            /* Постмастеры часто отвечают кодом без тела, и голое «HTTP 403»
+               отправляет искать причину в токенах, где её может не быть. Поэтому
+               добавляем адрес (он безопасен — токен идёт заголовком) и подсказку
+               по самому частому смыслу кода. */
+            String hint = switch (res.statusCode()) {
+                case 401 -> "токен недействителен или истёк";
+                case 403 -> "доступ закрыт: проверьте, что домен подтверждён в кабинете"
+                          + " и токен выдан учётке, которая его видит";
+                case 429 -> "слишком часто: у Mail.ru не больше 10 запросов в минуту";
+                default -> null;
+            };
+            throw new IllegalStateException("HTTP " + res.statusCode()
+                    + (hint == null ? "" : " — " + hint)
+                    + (body.isEmpty() ? "" : ": " + (body.length() > 300 ? body.substring(0, 300) : body))
+                    + " [" + hideQueryToken(req.uri().toString()) + "]");
         }
         return om.readTree(res.body());
+    }
+
+    /** На всякий случай: в адресе токена быть не должно, но ошибка уходит на экран. */
+    private static String hideQueryToken(String url) {
+        return url.replaceAll("(?i)(token|secret)=[^&]*", "$1=…");
     }
 
     /* --------------------------------------------------------------- запись */
