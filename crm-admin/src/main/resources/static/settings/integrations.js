@@ -202,10 +202,12 @@ window.Integrations = (function(){
     s = s || {};
     if (pmEl("pmDomain")) pmEl("pmDomain").value = s.domain || "";
     if (pmEl("pmGoogleId")) pmEl("pmGoogleId").value = s.google_client_id || "";
-    if (pmEl("pmGoogleVer")) pmEl("pmGoogleVer").value = s.google_api_version || "v1";
+    if (pmEl("pmGoogleVer")) pmEl("pmGoogleVer").value = s.google_api_version || "both";
     if (pmEl("pmGoogleSecret")) pmEl("pmGoogleSecret").placeholder = s.google_secret_set ? "задан" : "не задан";
     if (pmEl("pmGoogleToken")) pmEl("pmGoogleToken").placeholder = s.google_token_set ? "задан" : "не задан";
     if (pmEl("pmMailruToken")) pmEl("pmMailruToken").placeholder = s.mailru_token_set ? "задан" : "не задан";
+    if (pmEl("pmMailruAccess")) pmEl("pmMailruAccess").placeholder = s.mailru_access_set ? "задан" : "не задан";
+    if (pmEl("pmSync")) pmEl("pmSync").checked = s.sync_enabled !== false;
     pmStatus(s);
   }
 
@@ -215,6 +217,7 @@ window.Integrations = (function(){
     var parts = [];
     if (s.google_status) parts.push("Google: " + (s.google_status === "ok" ? "ок" : "ошибка — " + (s.google_error || "")));
     if (s.mailru_status) parts.push("Mail.ru: " + (s.mailru_status === "ok" ? "ок" : "ошибка — " + (s.mailru_error || "")));
+    if (s.last_sync_at) parts.push("автообновление: " + String(s.last_sync_at).slice(0, 16).replace("T", " "));
     box.textContent = parts.join(" · ");
   }
 
@@ -238,7 +241,9 @@ window.Integrations = (function(){
           googleClientSecret: pmEl("pmGoogleSecret").value.trim(),
           googleRefreshToken: pmEl("pmGoogleToken").value.trim(),
           googleApiVersion: pmEl("pmGoogleVer").value,
-          mailruRefreshToken: pmEl("pmMailruToken").value.trim()
+          mailruRefreshToken: pmEl("pmMailruToken").value.trim(),
+          mailruAccessToken: pmEl("pmMailruAccess").value.trim(),
+          syncEnabled: pmEl("pmSync").checked
         })
       }).then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
         .then(function(s){
@@ -247,6 +252,7 @@ window.Integrations = (function(){
           pmEl("pmGoogleSecret").value = "";
           pmEl("pmGoogleToken").value = "";
           pmEl("pmMailruToken").value = "";
+          pmEl("pmMailruAccess").value = "";
           pmFill(s);
         })
         .catch(function(e){ alert("Не сохранилось: " + e.message); })

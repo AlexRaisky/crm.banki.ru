@@ -218,9 +218,12 @@
         tile("Google · репутация домена", g && g.domain_reputation, repClass(g && g.domain_reputation)) +
         tile("Google · репутация IP", g && g.ip_reputation, repClass(g && g.ip_reputation)) +
         tile("Google · жалобы на спам", g ? pct(g.spam_rate) : null, g && g.spam_rate > 0.003 ? "bad" : "good") +
-        tile("Google · SPF", g ? pct(g.spf_ratio) : null, "") +
-        tile("Google · DKIM", g ? pct(g.dkim_ratio) : null, "") +
-        tile("Google · DMARC", g ? pct(g.dmarc_ratio) : null, "") +
+        /* Доля за день и статус записи в DNS — разные вещи: доля показывает, сколько
+           письмам удалось пройти проверку, статус — настроена ли она вообще.
+           Статус приходит только из v2, поэтому показываем его рядом, когда есть. */
+        tile("Google · SPF", g ? pct(g.spf_ratio) + statusTail(g.spf_status) : null, "") +
+        tile("Google · DKIM", g ? pct(g.dkim_ratio) + statusTail(g.dkim_status) : null, "") +
+        tile("Google · DMARC", g ? pct(g.dmarc_ratio) + statusTail(g.dmarc_status) : null, "") +
         tile("Mail.ru · отправлено", m ? cnt(m.sent) : null, "") +
         tile("Mail.ru · доставлено", m ? cnt(m.delivered) : null, "") +
         tile("Mail.ru · прочитано", m ? cnt(m.read_count) : null, "") +
@@ -233,6 +236,8 @@
     if (st.mailru_status === "error") html += '<div class="err">Mail.ru: ' + esc(st.mailru_error || "") + "</div>";
     return html + "</div>";
   }
+
+  function statusTail(v) { return v ? " · " + v : ""; }
 
   function tile(label, value, cls) {
     return '<div class="pm-card"><div class="k">' + esc(t2(label)) + "</div>" +
