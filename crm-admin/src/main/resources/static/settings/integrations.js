@@ -215,8 +215,13 @@ window.Integrations = (function(){
     var box = pmEl("pmStatus");
     if (!box) return;
     var parts = [];
-    if (s.google_status) parts.push("Google: " + (s.google_status === "ok" ? "ок" : "ошибка — " + (s.google_error || "")));
-    if (s.mailru_status) parts.push("Mail.ru: " + (s.mailru_status === "ok" ? "ок" : "ошибка — " + (s.mailru_error || "")));
+    function one(status, err){
+      if (status === "ok") return "ок";
+      if (status === "off") return "не подключён";
+      return "ошибка — " + (err || "");
+    }
+    if (s.google_status) parts.push("Google: " + one(s.google_status, s.google_error));
+    if (s.mailru_status) parts.push("Mail.ru: " + one(s.mailru_status, s.mailru_error));
     if (s.last_sync_at) parts.push("автообновление: " + String(s.last_sync_at).slice(0, 16).replace("T", " "));
     box.textContent = parts.join(" · ");
   }
@@ -269,9 +274,16 @@ window.Integrations = (function(){
         .then(function(r){ return r.ok ? r.json() : null; })
         .then(function(res){
           if (res){
+            /* Каждую систему показываем отдельно: одна может быть подключена и
+               работать, вторая — вообще не заведена, и это разные сообщения. */
             var msg = [];
-            if (res.google) msg.push("Google: " + (res.google.ok ? "ок, дней " + res.google.days : res.google.error));
-            if (res.mailru) msg.push("Mail.ru: " + (res.mailru.ok ? "ок, дней " + res.mailru.days : res.mailru.error));
+            [["google","Google"],["mailru","Mail.ru"]].forEach(function(p){
+              var r = res[p[0]];
+              if (!r) return;
+              if (r.ok) msg.push(p[1] + ": ок, дней " + r.days);
+              else if (r.skipped) msg.push(p[1] + ": не подключён — " + r.error);
+              else msg.push(p[1] + ": ошибка — " + r.error);
+            });
             alert(msg.join("\n"));
           }
           pmLoad();

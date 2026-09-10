@@ -156,7 +156,16 @@ public class PostmasterService {
      * молчит, данные Google всё равно должны обновиться, а раздел — показать, что
      * именно не получилось.
      */
-    @Transactional
+    /**
+     * Обновление. Источники полностью независимы: настроенный Mail.ru должен
+     * обновляться, даже если доступов Google ещё нет, и наоборот.
+     *
+     * <p>Транзакции здесь нет намеренно. Во-первых, внутри длинныеHTTP-походы
+     * наружу, и держать на них соединение с базой незачем. Во-вторых, общая
+     * транзакция связывала источники: стоило одному упасть на записи, как она
+     * помечалась rollback-only и следующий источник падал уже на ровном месте —
+     * снаружи это выглядело как «ничего не тянется».
+     */
     public Map<String, Object> refresh(Integer days) {
         Map<String, Object> cfg = secrets();
         String domain = str(cfg.get("domain"));
@@ -165,16 +174,46 @@ public class PostmasterService {
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("domain", domain);
-        out.put("google", runSource("google", () -> loadGoogle(cfg, domain, from, to)));
-        out.put("mailru", runSource("mailru", () -> loadMailru(cfg, domain, from, to)));
+        out.put("google", googleReady(cfg)
+                ? runSource("google", () -> loadGoogle(cfg, domain, from, to))
+                : skipped("google", "доступы Google не заполнены"));
+        out.put("mailru", mailruReady(cfg)
+                ? runSource("mailru", () -> loadMailru(cfg, domain, from, to))
+                : skipped("mailru", "доступы Mail.ru не заполнены"));
         return out;
+    }
+
+    private static boolean googleReady(Map<String, Object> cfg) {
+        return str(cfg.get("google_client_id")) != null
+            && str(cfg.get("google_client_secret")) != null
+            && str(cfg.get("google_refresh_token")) != null;
+    }
+
+    private static boolean mailruReady(Map<String, Object> cfg) {
+        return str(cfg.get("mailru_access_token")) != null
+            || str(cfg.get("mailru_refresh_token")) != null;
+    }
+
+    /**
+     * Источник не настроен — это не поломка, а «ещё не подключили». Статус в базе
+     * не трогаем: иначе экран показывал бы красную ошибку у системы, которую никто
+     * и не собирался подключать, и на её фоне терялась бы настоящая.
+     */
+    private Map<String, Object> skipped(String source, String why) {
+        jdbc.update("UPDATE app.postmaster_connection SET " + col(source) + "_status = 'off'," +
+                    " " + col(source) + "_error = NULL WHERE id = 1");
+        return Map.of("ok", false, "skipped", true, "error", why);
+    }
+
+    private static String col(String source) {
+        return "google".equals(source) ? "google" : "mailru";
     }
 
     private interface Loader { int load() throws Exception; }
 
     /** Общая обвязка: посчитать, записать статус, не дать упасть всему обновлению. */
     private Map<String, Object> runSource(String source, Loader loader) {
-        String col = "google".equals(source) ? "google" : "mailru";
+        String col = col(source);
         try {
             int n = loader.load();
             jdbc.update("UPDATE app.postmaster_connection SET " + col + "_status = 'ok'," +

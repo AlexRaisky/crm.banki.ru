@@ -232,8 +232,12 @@
         tile("Mail.ru · репутация", m && m.domain_reputation, repClass(m && m.domain_reputation)) +
       "</div>";
     }
+    /* «off» — систему просто не подключали: это состояние, а не сбой, и красным
+       его красить незачем. */
     if (st.google_status === "error") html += '<div class="err">Google: ' + esc(st.google_error || "") + "</div>";
     if (st.mailru_status === "error") html += '<div class="err">Mail.ru: ' + esc(st.mailru_error || "") + "</div>";
+    if (st.google_status === "off") html += '<div class="empty">' + t2("Google Postmaster не подключён — доступы задаются в настройках, в «Интеграциях».") + "</div>";
+    if (st.mailru_status === "off") html += '<div class="empty">' + t2("Mail.ru Postmaster не подключён — доступы задаются в настройках, в «Интеграциях».") + "</div>";
     return html + "</div>";
   }
 
@@ -390,9 +394,15 @@
       pm.textContent = t2("Обновляю…");
       req("POST", API + "/email/postmaster/refresh", { days: 30 })
         .then(function (res) {
+          /* Источники независимы: ненастроенная система — не ошибка, о ней не
+             тревожим. Настоящий сбой показываем, но только по той системе, где
+             он произошёл: иначе на фоне «Google не подключён» терялось бы
+             сообщение о том, что у Mail.ru протух токен. */
           var bad = [];
-          if (res && res.google && !res.google.ok) bad.push("Google: " + res.google.error);
-          if (res && res.mailru && !res.mailru.ok) bad.push("Mail.ru: " + res.mailru.error);
+          ["google", "mailru"].forEach(function (k) {
+            var r = res && res[k];
+            if (r && !r.ok && !r.skipped) bad.push((k === "google" ? "Google" : "Mail.ru") + ": " + r.error);
+          });
           if (bad.length) alert(bad.join("\n"));
           load();
         })
