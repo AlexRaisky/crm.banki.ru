@@ -16,31 +16,42 @@
   var PERIOD = { from: null, to: null };
   /* Выбор в блоке постмастеров: домен один на оба графика, метрика — своя у
      каждой системы, потому что показатели у них разные. */
-  var PM = { domain: null, google: "spam_rate", mailru: "delivered" };
+  var PM = { domain: null, google: ["spam_rate"], mailru: ["delivered"] };
 
-  /* Метрики графиков. value достаёт число из строки: доли показываем процентами,
-     а репутацию — ступенькой, иначе категорию на линии не изобразить. */
+  /* Метрики графиков.
+     value — как достать число из строки; axis — к какой шкале метрика относится.
+     Шкал три, и смешивать их нельзя: доли живут в пределах процента, отправки —
+     в сотнях тысяч, репутация Google вообще категория. На одной оси проценты
+     прижало бы к нулю, и график врал бы взглядом, а не цифрами. */
   var REP_LEVEL = { BAD: 1, LOW: 2, MEDIUM: 3, HIGH: 4 };
+  var PM_AXES = {
+    pct:   { title: "%",          side: "left"  },
+    count: { title: "письма",     side: "right" },
+    level: { title: "репутация",  side: "right", min: 0, max: 4 },
+    rate:  { title: "показатель", side: "right" }
+  };
   var PM_METRICS = {
     google: [
-      { k: "spam_rate",  label: "жалобы на спам, %", value: function (r) { return pctVal(r.spam_rate); } },
-      { k: "spf_ratio",  label: "SPF, %",   value: function (r) { return pctVal(r.spf_ratio); } },
-      { k: "dkim_ratio", label: "DKIM, %",  value: function (r) { return pctVal(r.dkim_ratio); } },
-      { k: "dmarc_ratio",label: "DMARC, %", value: function (r) { return pctVal(r.dmarc_ratio); } },
-      { k: "domain_rep", label: "репутация домена (1 плохая — 4 высокая)",
+      { k: "spam_rate",  axis: "pct",   label: "жалобы на спам, %", value: function (r) { return pctVal(r.spam_rate); } },
+      { k: "spf_ratio",  axis: "pct",   label: "SPF, %",   value: function (r) { return pctVal(r.spf_ratio); } },
+      { k: "dkim_ratio", axis: "pct",   label: "DKIM, %",  value: function (r) { return pctVal(r.dkim_ratio); } },
+      { k: "dmarc_ratio",axis: "pct",   label: "DMARC, %", value: function (r) { return pctVal(r.dmarc_ratio); } },
+      { k: "domain_rep", axis: "level", label: "репутация домена (1 плохая — 4 высокая)",
         value: function (r) { return REP_LEVEL[String(r.domain_reputation || "").toUpperCase()] || null; } },
-      { k: "ip_rep",     label: "репутация IP (1 плохая — 4 высокая)",
+      { k: "ip_rep",     axis: "level", label: "репутация IP (1 плохая — 4 высокая)",
         value: function (r) { return REP_LEVEL[String(r.ip_reputation || "").toUpperCase()] || null; } }
     ],
     mailru: [
-      { k: "delivered",  label: "доставлено",  value: function (r) { return numVal(r.delivered); } },
-      { k: "sent",       label: "отправлено",  value: function (r) { return numVal(r.sent); } },
-      { k: "read_count", label: "прочитано",   value: function (r) { return numVal(r.read_count); } },
-      { k: "complaints", label: "жалобы",      value: function (r) { return numVal(r.complaints); } },
-      { k: "spam_rate",  label: "спам, %",     value: function (r) { return pctVal(r.spam_rate); } },
-      { k: "reputation", label: "репутация",   value: function (r) { return numVal(r.domain_reputation); } }
+      { k: "delivered",  axis: "count", label: "доставлено",  value: function (r) { return numVal(r.delivered); } },
+      { k: "sent",       axis: "count", label: "отправлено",  value: function (r) { return numVal(r.sent); } },
+      { k: "read_count", axis: "count", label: "прочитано",   value: function (r) { return numVal(r.read_count); } },
+      { k: "complaints", axis: "count", label: "жалобы",      value: function (r) { return numVal(r.complaints); } },
+      { k: "spam_rate",  axis: "pct",   label: "спам, %",     value: function (r) { return pctVal(r.spam_rate); } },
+      { k: "reputation", axis: "rate",  label: "репутация",   value: function (r) { return numVal(r.domain_reputation); } }
     ]
   };
+  /* Линии в одном окне должны различаться, а не сливаться в две зелёные. */
+  var PM_COLORS = ["#3CFAB4", "#50C3FF", "#FFB84D", "#FF6B8A", "#B388FF", "#7FD1AE"];
   function pctVal(v) { return v == null ? null : Math.round(Number(v) * 100 * 1000) / 1000; }
   function numVal(v) { return v == null || v === "" || isNaN(Number(v)) ? null : Number(v); }
   var CHART = {};
@@ -291,15 +302,17 @@
 
   function pmChartCard(source, title, rows) {
     var has = (rows || []).some(function (r) { return r.source === source; });
-    var list = PM_METRICS[source];
-    return '<div class="card"><div class="chart-head"><h2>' + t2(title) + "</h2>" +
-      '<span class="spacer"></span>' +
-      '<select data-pm-metric="' + source + '" style="width:auto;min-width:220px">' +
-        list.map(function (m) {
-          return '<option value="' + m.k + '"' + (PM[source] === m.k ? " selected" : "") + ">" +
-                 t2(m.label) + "</option>";
-        }).join("") +
-      "</select></div>" +
+    var chosen = PM[source] || [];
+    /* Выбор метрик — флажками, а не выпадающим списком: их отмечают по
+       нескольку и сравнивают между собой, а в списке множественный выбор
+       мышью неудобен и не виден целиком. */
+    var picks = PM_METRICS[source].map(function (m) {
+      return '<label class="pm-pick"><input type="checkbox" data-pm-metric="' + source +
+             '" value="' + m.k + '"' + (chosen.indexOf(m.k) >= 0 ? " checked" : "") + ">" +
+             "<span>" + t2(m.label) + "</span></label>";
+    }).join("");
+    return '<div class="card"><div class="chart-head"><h2>' + t2(title) + "</h2></div>" +
+      '<div class="pm-picks">' + picks + "</div>" +
       (has ? '<div class="chart-box"><canvas id="chPm' + source + '"></canvas></div>'
            : '<div class="empty">' + t2("Данных по этой системе пока нет.") + "</div>") +
       "</div>";
@@ -455,13 +468,19 @@
     var dom = el("chPmDomain");
     if (dom) dom.onchange = function () { PM.domain = dom.value; load(); };
 
-    /* Смена метрики перерисовывает только свой график: данные уже здесь, а
+    /* Отметка метрики перерисовывает только свой график: данные уже здесь, а
        перезагрузка раздела сбросила бы и выбор в соседнем окне. */
-    host.querySelectorAll("[data-pm-metric]").forEach(function (s) {
-      s.onchange = function () {
-        var source = s.dataset.pmMetric;
-        PM[source] = s.value;
-        drawPm(source, source === "google" ? "#3CFAB4" : "#50C3FF");
+    host.querySelectorAll("[data-pm-metric]").forEach(function (box) {
+      box.onchange = function () {
+        var source = box.dataset.pmMetric;
+        var chosen = PM[source] || [];
+        if (box.checked) {
+          if (chosen.indexOf(box.value) < 0) chosen = chosen.concat([box.value]);
+        } else {
+          chosen = chosen.filter(function (k) { return k !== box.value; });
+        }
+        PM[source] = chosen;
+        drawPm(source);
       };
     });
 
@@ -504,20 +523,64 @@
          "#50C3FF", t2("расходы, ₽"));
 
     if (CUR.id === "email") {
-      drawPm("google", "#3CFAB4");
-      drawPm("mailru", "#50C3FF");
+      drawPm("google");
+      drawPm("mailru");
     }
   }
 
-  function drawPm(source, color) {
+  /**
+   * График системы: столько линий, сколько метрик отмечено, и своя шкала на
+   * каждый тип величины. Без разделения шкал доли процента на фоне сотен тысяч
+   * писем легли бы в прямую по нулю — картинка выглядела бы осмысленной и врала.
+   */
+  function drawPm(source) {
+    var node = el("chPm" + source);
+    if (!node || typeof Chart === "undefined") return;
+    var key = "pm_" + source;
+    if (CHART[key]) { CHART[key].destroy(); delete CHART[key]; }
+
     var rows = ((DATA.postmaster || {}).stats || []).filter(function (r) { return r.source === source; });
-    if (!rows.length) return;
-    var metric = PM_METRICS[source].filter(function (m) { return m.k === PM[source]; })[0]
-              || PM_METRICS[source][0];
-    draw("pm_" + source, "chPm" + source,
-         rows.map(function (r) { return String(r.stat_date).slice(0, 10); }),
-         rows.map(metric.value),
-         color, t2(metric.label));
+    var chosen = (PM[source] || []).map(function (k) {
+      return PM_METRICS[source].filter(function (m) { return m.k === k; })[0];
+    }).filter(Boolean);
+    if (!rows.length || !chosen.length) return;
+
+    var labels = rows.map(function (r) { return String(r.stat_date).slice(0, 10); });
+    var datasets = chosen.map(function (m, i) {
+      var color = PM_COLORS[i % PM_COLORS.length];
+      return { label: t2(m.label), data: rows.map(m.value), yAxisID: m.axis,
+               borderColor: color, backgroundColor: color + "22", borderWidth: 2,
+               tension: .25, pointRadius: 2, spanGaps: true, fill: false };
+    });
+
+    var scales = { x: { grid: { color: "rgba(80,195,255,.10)" } } };
+    var used = [];
+    chosen.forEach(function (m) { if (used.indexOf(m.axis) < 0) used.push(m.axis); });
+    used.forEach(function (axis, i) {
+      var cfg = PM_AXES[axis] || { title: axis, side: "right" };
+      scales[axis] = {
+        type: "linear",
+        /* Первая шкала слева, остальные справа со сдвигом: две оси на одной
+           стороне иначе рисуются друг поверх друга. */
+        position: i === 0 ? "left" : "right",
+        offset: i > 1,
+        grid: { drawOnChartArea: i === 0, color: "rgba(80,195,255,.10)" },
+        title: { display: true, text: t2(cfg.title), color: "#5A6E8C" },
+        beginAtZero: true,
+        min: cfg.min, max: cfg.max
+      };
+    });
+
+    CHART[key] = new Chart(node.getContext("2d"), {
+      type: "line",
+      data: { labels: labels, datasets: datasets },
+      options: { responsive: true, maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        /* Легенда нужна: линий несколько, и по цвету их иначе не различить. */
+        plugins: { legend: { display: true, position: "bottom",
+                             labels: { boxWidth: 10, usePointStyle: true } } },
+        scales: scales }
+    });
   }
 
   function draw(key, canvasId, labels, data, color, title) {
