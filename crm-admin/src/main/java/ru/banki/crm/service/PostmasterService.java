@@ -392,20 +392,33 @@ public class PostmasterService {
            доступа», и искать причину приходится в токенах, где её нет. */
         String url = MAILRU_API + "/ext-api/stat-list-detailed/?domain=" + enc(domain)
                 + "&date_from=" + from + "&date_to=" + to;
-        JsonNode root;
-        try {
-            root = getJson(url, access, true);
-        } catch (Exception e) {
-            /* Вписанный руками access живёт час. Когда он протух, ответ — 401, и
-               единственный способ продолжить без человека: обменять refresh и
-               заодно сохранить свежий access, чтобы следующий заход не начинался
-               с ошибки. Нет refresh — сказать об этом прямо. */
-            if (refresh == null || !String.valueOf(e.getMessage()).contains("401")) {
-                throw e;
+        JsonNode root = null;
+        Exception last = null;
+        /* Отказ у Mail.ru приходит и как 401, и как 403 — по коду не понять,
+           протух ли токен. Поэтому при любом из них обновляем access, если есть
+           чем, и пробуем ещё раз. */
+        for (int attempt = 0; attempt < 2 && root == null; attempt++) {
+            if (attempt == 1) {
+                if (refresh == null) break;
+                access = mailruAccessFromRefresh(refresh);
+                jdbc.update("UPDATE app.postmaster_connection SET mailru_access_token = ? WHERE id = 1", access);
             }
-            access = mailruAccessFromRefresh(refresh);
-            jdbc.update("UPDATE app.postmaster_connection SET mailru_access_token = ? WHERE id = 1", access);
-            root = getJson(url, access, true);
+            try {
+                root = getJson(url, access, true);
+            } catch (Exception e) {
+                last = e;
+                if (!denied(e)) throw e;
+            }
+        }
+        if (root == null) {
+            /* Заголовок у Mail.ru нестандартный («Bearer: токен»), и если однажды
+               его приведут к общему виду, отказ будет выглядеть точно так же.
+               Прежде чем сдаться, пробуем привычное написание. */
+            try {
+                root = getJson(url, access, false);
+            } catch (Exception e) {
+                throw new IllegalStateException(mailruWhy(access, last == null ? e : last));
+            }
         }
 
         /* Ответ двухуровневый: {"ok": true, "data": [{"domain": …, "data": [дни]}]}.
@@ -445,6 +458,40 @@ public class PostmasterService {
             n++;
         }
         return n;
+    }
+
+    private static boolean denied(Exception e) {
+        String m = String.valueOf(e.getMessage());
+        return m.contains("HTTP 401") || m.contains("HTTP 403");
+    }
+
+    /**
+     * Почему Mail.ru отказал. По коду это не отличить: и «токен не той учётки», и
+     * «домен не подтверждён» дают одинаковый 403 без тела. Зато список доменов
+     * токен отдаёт отдельным методом — спрашиваем его и говорим прямо, что видно.
+     */
+    private String mailruWhy(String access, Exception cause) {
+        String base = cause.getMessage() == null ? cause.toString() : cause.getMessage();
+        try {
+            JsonNode reg = getJson(MAILRU_API + "/ext-api/reg-list/", access, true);
+            List<String> domains = new ArrayList<>();
+            JsonNode data = reg.has("data") ? reg.get("data") : reg;
+            if (data.isArray()) {
+                for (JsonNode d : data) {
+                    String name = d.isTextual() ? d.asText() : firstText(d, "domain", "name");
+                    if (name != null) domains.add(name);
+                }
+            }
+            return base + (domains.isEmpty()
+                    ? " · токен работает, но подтверждённых доменов у этой учётки нет"
+                    : " · токену доступны домены: " + String.join(", ", domains)
+                      + " — нужный должен быть в этом списке");
+        } catch (Exception second) {
+            /* Даже список доменов не отдали — дело в самом токене, а не в домене. */
+            return base + " · список доменов тоже недоступен (" +
+                   (second.getMessage() == null ? second.toString() : second.getMessage()) +
+                   ") — похоже, токен недействителен или выдан другой учётке";
+        }
     }
 
     private String mailruAccessFromRefresh(String refresh) throws Exception {
