@@ -80,7 +80,7 @@ public class PostmasterService {
                 "       google_refresh_token IS NOT NULL AND google_refresh_token <> '' AS google_token_set," +
                 "       mailru_refresh_token IS NOT NULL AND mailru_refresh_token <> '' AS mailru_token_set," +
                 "       mailru_access_token IS NOT NULL AND mailru_access_token <> '' AS mailru_access_set," +
-                "       sync_enabled, last_sync_at," +
+                "       sync_enabled, last_sync_at, history_days, daily_days," +
                 "       google_status, google_error, google_checked_at," +
                 "       mailru_status, mailru_error, mailru_checked_at, timestamp_upd, updated_by" +
                 "  FROM app.postmaster_connection WHERE id = 1");
@@ -106,6 +106,8 @@ public class PostmasterService {
                 "       mailru_refresh_token = coalesce(nullif(?, ''), mailru_refresh_token)," +
                 "       mailru_access_token = coalesce(nullif(?, ''), mailru_access_token)," +
                 "       sync_enabled = coalesce(?, sync_enabled)," +
+                "       history_days = coalesce(?, history_days)," +
+                "       daily_days = coalesce(?, daily_days)," +
                 "       timestamp_upd = now(), updated_by = ?" +
                 " WHERE id = 1",
                 str(body.get("domains")), firstDomain(body), str(body.get("googleClientId")),
@@ -115,8 +117,46 @@ public class PostmasterService {
                 cleanToken(str(body.get("mailruAccessToken")), "access_token"),
                 body.get("syncEnabled") == null ? null : Boolean.valueOf(
                         Boolean.parseBoolean(String.valueOf(body.get("syncEnabled")))),
+                days(body.get("historyDays"), 3650), days(body.get("dailyDays"), 365),
                 CurrentUser.email());
         return settings();
+    }
+
+    /** Число дней в допустимых границах; мусор и пустое — «не менять». */
+    private static Integer days(Object v, int max) {
+        String s = str(v);
+        if (s == null) return null;
+        try {
+            int n = Integer.parseInt(s.replaceAll("\\s", ""));
+            return Math.max(1, Math.min(n, max));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private boolean hasData(String source) {
+        Integer n = jdbc.queryForObject(
+                "SELECT count(*) FROM (SELECT 1 FROM channel.t_postmaster_daily WHERE source = ? LIMIT 1) x",
+                Integer.class, source);
+        return n != null && n > 0;
+    }
+
+    /** Глубина из настройки: history_days для полной загрузки, daily_days для ночной. */
+    private int depth(String column, int fallback) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT " + column + " AS d FROM app.postmaster_connection WHERE id = 1");
+        Object v = rows.isEmpty() ? null : rows.get(0).get("d");
+        return v instanceof Number n ? n.intValue() : fallback;
+    }
+
+    /**
+     * Полная загрузка — на глубину history_days. Сколько истории хранят постмастеры,
+     * заранее не известно (Google срок не публикует), поэтому просим с запасом, а
+     * приедет столько, сколько у них есть.
+     */
+    public Map<String, Object> refreshHistory() {
+        LocalDate to = LocalDate.now();
+        return refresh(to.minusDays(depth("history_days", 400)), to);
     }
 
     /** Первый домен списка — тот, что раздел откроет по умолчанию. */
@@ -664,7 +704,16 @@ public class PostmasterService {
         if (!google && !mailru) {
             return;   /* доступы не заведены — ходить некуда, шуметь ошибкой незачем */
         }
-        refresh(7);
+        /* Если по подключённой системе ещё нет ни одной строки, это первый запуск
+           после подключения — догоняем историю на всю настроенную глубину. Иначе
+           новый кабинет месяцами показывал бы только последнюю неделю, пока кто-то
+           не догадается нажать «Загрузить всю историю». */
+        boolean catchUp = (google && !hasData("google")) || (mailru && !hasData("mailru"));
+        if (catchUp) {
+            refreshHistory();
+        } else {
+            refresh(depth("daily_days", 7));
+        }
         jdbc.update("UPDATE app.postmaster_connection SET last_sync_at = now() WHERE id = 1");
     }
 

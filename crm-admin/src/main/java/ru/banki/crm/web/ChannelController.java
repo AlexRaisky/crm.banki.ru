@@ -118,6 +118,11 @@ public class ChannelController {
     @PostMapping("/email/postmaster/refresh")
     public Map<String, Object> postmasterRefresh(@RequestBody(required = false) Map<String, Object> body) {
         access.requireCapability(Capability.EDIT, Sections.CHANNELS);
+        /* «Вся история» — на глубину из настройки: сколько хранят постмастеры,
+           заранее неизвестно, и выбирать её датами на глаз неудобно. */
+        if (body != null && Boolean.TRUE.equals(body.get("full"))) {
+            return postmaster.refreshHistory();
+        }
         LocalDate from = date(body, "from"), to = date(body, "to");
         if (from != null || to != null) {
             return postmaster.refresh(from, to);

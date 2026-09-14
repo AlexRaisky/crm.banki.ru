@@ -208,6 +208,8 @@ window.Integrations = (function(){
     if (pmEl("pmMailruToken")) pmEl("pmMailruToken").placeholder = s.mailru_token_set ? "задан" : "не задан";
     if (pmEl("pmMailruAccess")) pmEl("pmMailruAccess").placeholder = s.mailru_access_set ? "задан" : "не задан";
     if (pmEl("pmSync")) pmEl("pmSync").checked = s.sync_enabled !== false;
+    if (pmEl("pmHistoryDays")) pmEl("pmHistoryDays").value = s.history_days != null ? s.history_days : "";
+    if (pmEl("pmDailyDays")) pmEl("pmDailyDays").value = s.daily_days != null ? s.daily_days : "";
     pmStatus(s);
   }
 
@@ -248,7 +250,9 @@ window.Integrations = (function(){
           googleApiVersion: pmEl("pmGoogleVer").value,
           mailruRefreshToken: pmEl("pmMailruToken").value.trim(),
           mailruAccessToken: pmEl("pmMailruAccess").value.trim(),
-          syncEnabled: pmEl("pmSync").checked
+          syncEnabled: pmEl("pmSync").checked,
+          historyDays: pmEl("pmHistoryDays").value.trim(),
+          dailyDays: pmEl("pmDailyDays").value.trim()
         })
       }).then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
         .then(function(s){

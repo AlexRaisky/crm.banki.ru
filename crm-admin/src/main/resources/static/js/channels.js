@@ -255,7 +255,10 @@
           }).join("") + "</select>"
         : "") +
       '<span class="spacer"></span>' +
-      '<button type="button" class="btn" id="chPmRefresh">' + t2("Обновить из постмастеров") + "</button></div>" +
+      '<button type="button" class="btn" id="chPmRefresh" title="' + esc(t2("Забрать данные за период, выбранный в блоке «Динамика»")) + '">' +
+        t2("Обновить за период") + "</button>" +
+      '<button type="button" class="btn" id="chPmHistory" title="' + esc(t2("Забрать всё, что хранят постмастеры, на глубину из настроек")) + '">' +
+        t2("Загрузить всю историю") + "</button></div>" +
       '<div class="pm-src">' + t2("Домен") + ": <b>" + esc(PM.domain || st.domain || "—") + "</b>" +
         (st.google_checked_at ? " · Google: " + esc(String(st.google_checked_at).slice(0, 16).replace("T", " ")) : "") +
         (st.mailru_checked_at ? " · Mail.ru: " + esc(String(st.mailru_checked_at).slice(0, 16).replace("T", " ")) : "") +
@@ -484,15 +487,22 @@
       };
     });
 
-    var pm = el("chPmRefresh");
-    if (pm) pm.onclick = function () {
-      pm.disabled = true;
-      pm.textContent = t2("Обновляю…");
-      /* Тянем ровно тот период, который выбран на экране: раньше глубина была
-         зашита в тридцать дней, и дотянуть историю было нельзя — сколько ни
-         жми, приезжало то же окно. Постмастеры отдают около трёх месяцев, за
-         этой границей вернётся столько, сколько у них есть. */
-      req("POST", API + "/email/postmaster/refresh", { from: PERIOD.from, to: PERIOD.to })
+    /* Две кнопки, один обработчик. «Обновить» тянет ровно выбранный на экране
+       период; «Загрузить всю историю» — на глубину из настроек: сколько хранят
+       постмастеры, заранее неизвестно, и подбирать это датами на глаз неудобно. */
+    [["chPmRefresh", function () { return { from: PERIOD.from, to: PERIOD.to }; }],
+     ["chPmHistory", function () { return { full: true }; }]].forEach(function (pair) {
+      var btn = el(pair[0]);
+      if (btn) btn.onclick = function () { pmRun(btn, pair[1]()); };
+    });
+  }
+
+  function pmRun(pm, body) {
+    var was = pm.textContent;
+    host0().querySelectorAll("#chPmRefresh,#chPmHistory").forEach(function (b) { b.disabled = true; });
+    pm.textContent = t2("Загружаю…");
+    {
+      req("POST", API + "/email/postmaster/refresh", body)
         .then(function (res) {
           /* Источники независимы: ненастроенная система — не ошибка, о ней не
              тревожим. Настоящий сбой показываем, но только по той системе, где
@@ -506,9 +516,15 @@
           if (bad.length) alert(bad.join("\n"));
           load();
         })
-        .catch(function (e) { fail(e); pm.disabled = false; pm.textContent = t2("Обновить из постмастеров"); });
-    };
+        .catch(function (e) {
+          fail(e);
+          host0().querySelectorAll("#chPmRefresh,#chPmHistory").forEach(function (b) { b.disabled = false; });
+          pm.textContent = was;
+        });
+    }
   }
+
+  function host0() { return el("chHost") || document; }
 
   function fail(e) { alert((e && e.message) || String(e)); }
 

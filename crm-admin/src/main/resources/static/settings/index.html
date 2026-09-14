@@ -839,7 +839,20 @@ GRANT SELECT ON tracker.d_comm_creation, tracker.t_event_comm,
               <label>Mail.ru · access_token</label>
               <input class="dbc-in mono" id="pmMailruAccess" type="password" placeholder="не задан">
             </div>
+            <div class="dbc-fld">
+              <label>Глубина истории, дней</label>
+              <input class="dbc-in mono" id="pmHistoryDays" type="number" min="1" max="3650" placeholder="400">
+            </div>
+            <div class="dbc-fld">
+              <label>Окно ежедневного обновления, дней</label>
+              <input class="dbc-in mono" id="pmDailyDays" type="number" min="1" max="365" placeholder="7">
+            </div>
           </div>
+          <div class="sub" style="margin-top:6px">Глубина истории — на сколько назад тянет кнопка
+            «Загрузить всю историю» и первый ночной запуск после подключения системы. Сколько данных
+            хранят сами постмастеры, заранее неизвестно, поэтому лимит можно ставить с запасом:
+            вернётся столько, сколько у них есть. Google отдаёт статистику только по доменам, которые
+            шлют не меньше 50 получателям Gmail в день.</div>
           <label class="check" style="display:flex;align-items:center;gap:10px;margin-top:12px;cursor:pointer">
             <input type="checkbox" id="pmSync" checked style="width:18px;height:18px;accent-color:var(--blue)">
             <span>Обновлять метрики каждый день автоматически</span>
