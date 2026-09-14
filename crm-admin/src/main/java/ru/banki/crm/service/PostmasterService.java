@@ -109,9 +109,10 @@ public class PostmasterService {
                 "       timestamp_upd = now(), updated_by = ?" +
                 " WHERE id = 1",
                 str(body.get("domains")), firstDomain(body), str(body.get("googleClientId")),
-                str(body.get("googleClientSecret")), str(body.get("googleRefreshToken")),
+                str(body.get("googleClientSecret")), cleanToken(str(body.get("googleRefreshToken")), "refresh_token"),
                 version(body.get("googleApiVersion")),
-                str(body.get("mailruRefreshToken")), str(body.get("mailruAccessToken")),
+                cleanToken(str(body.get("mailruRefreshToken")), "refresh_token"),
+                cleanToken(str(body.get("mailruAccessToken")), "access_token"),
                 body.get("syncEnabled") == null ? null : Boolean.valueOf(
                         Boolean.parseBoolean(String.valueOf(body.get("syncEnabled")))),
                 CurrentUser.email());
@@ -454,7 +455,7 @@ public class PostmasterService {
 
     private int loadMailru(Map<String, Object> cfg, String domain, LocalDate from, LocalDate to)
             throws Exception {
-        String access = str(cfg.get("mailru_access_token"));
+        String access = cleanToken(str(cfg.get("mailru_access_token")), "access_token");
         String refresh = str(cfg.get("mailru_refresh_token"));
         if (access == null && refresh == null) {
             throw new IllegalStateException("Не заполнены токены Mail.ru Postmaster");
@@ -571,14 +572,74 @@ public class PostmasterService {
     }
 
     private String mailruAccessFromRefresh(String refresh) throws Exception {
-        JsonNode t = postForm(MAILRU_TOKEN,
-                "client_id=" + MAILRU_CLIENT + "&grant_type=refresh_token&refresh_token=" + enc(refresh),
-                null);
+        String token = cleanToken(refresh, "refresh_token");
+        if (token == null) {
+            throw new IllegalStateException("refresh-токен Mail.ru пуст после очистки — впишите его заново");
+        }
+        JsonNode t;
+        try {
+            t = postForm(MAILRU_TOKEN,
+                    "client_id=" + MAILRU_CLIENT + "&grant_type=refresh_token&refresh_token=" + enc(token),
+                    null);
+        } catch (IllegalStateException e) {
+            /* Токен-эндпоинт отвечает на отказ кодом 400 с JSON в теле — достаём его,
+               чтобы сообщение ниже разобрало причину, а не показало голый код. */
+            String m = String.valueOf(e.getMessage());
+            int brace = m.indexOf('{'), end = m.lastIndexOf('}');
+            try {
+                t = (brace >= 0 && end > brace) ? om.readTree(m.substring(brace, end + 1)) : null;
+            } catch (Exception parse) {
+                t = null;   /* тело обрезано или не JSON — отдадим исходную ошибку */
+            }
+            if (t == null) throw e;
+        }
         String access = t.path("access_token").asText(null);
         if (access == null) {
-            throw new IllegalStateException("Mail.ru не выдал access_token: " + t);
+            throw new IllegalStateException(mailruTokenWhy(t));
         }
         return access;
+    }
+
+    /**
+     * Почему o2.mail.ru не обменял refresh-токен. Запрос у нас ровно тот, что в их
+     * документации, поэтому отказ почти всегда означает само значение токена — и
+     * человеку нужно сказать, что с ним делать, а не пересказывать спецификацию OAuth.
+     */
+    private static String mailruTokenWhy(JsonNode t) {
+        String err = t.path("error").asText("");
+        String base = "Mail.ru не принял refresh-токен (" + (err.isEmpty() ? t.toString() : err) + ")";
+        if ("invalid_request".equals(err) || "invalid_grant".equals(err)) {
+            return base + ": значение токена неверное или он перевыпущен. Получите новую пару по ссылке"
+                 + " https://o2.mail.ru/login?client_id=postmaster_api_client&response_type=code"
+                 + "&state=crm&redirect_uri=https%3A%2F%2Fpostmaster.mail.ru%2Fext-api%2Foauth%2F"
+                 + " и впишите refresh_token из ответа. Если токены получали заново для другого контура,"
+                 + " впишите одну и ту же свежую пару на всех контурах: старый refresh после перевыпуска"
+                 + " может перестать работать.";
+        }
+        return base;
+    }
+
+    /**
+     * Токен, очищенный от того, что налипает при копировании. Страница выдачи у
+     * Mail.ru отдаёт JSON, и в поле легко уходит целиком
+     * {"access_token":"…","refresh_token":"…"} или значение в кавычках и с переводом
+     * строки. Сервис на такое отвечает invalid_request без подсказки, что именно
+     * не так. Сами токены пробелов и кавычек не содержат, поэтому их выкидываем, а
+     * из вставленного JSON берём нужное поле.
+     */
+    private String cleanToken(String raw, String jsonKey) {
+        if (raw == null) return null;
+        String s = raw.trim();
+        if (s.startsWith("{")) {
+            try {
+                String v = om.readTree(s).path(jsonKey).asText(null);
+                if (v != null) s = v;
+            } catch (Exception ignored) {
+                /* не JSON — чистим как обычную строку */
+            }
+        }
+        s = s.replaceAll("[\"'\\s]", "");
+        return s.isEmpty() ? null : s;
     }
 
     /**
