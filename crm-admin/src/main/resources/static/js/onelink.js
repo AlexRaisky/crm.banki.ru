@@ -2,7 +2,6 @@
    правила каналов, предпросмотр и копирование ссылки. Чисто клиентский раздел. */
   const ONE_LINK_BASE='https://banki.onelink.me/JmaP';
   const DEFAULT_WEB_DP='https://mobile.banki.ru/';
-  const WEBVIEW_PREFIX='https://www.banki.ru/deepLink/webview?webviewUrl=';
 
   const LABELS={channel:'Канал',mailingType:'Тип рассылки',
     deepLinkValue:'deep_link_value',webviewUrl:'webview_url'};
@@ -35,8 +34,11 @@
       .replace(/%257B/g,'{').replace(/%257D/g,'}')
       .replace(/%7B/g,'{').replace(/%7D/g,'}');
   }
-  // af_dp: собираем полный URI и кодируем один раз (плейсхолдеры сохраняем)
-  function buildAfDp(path){return encodePreservingBraces(`BankiRuInfo2://www.banki.ru/${path}`);}
+  /* af_dp — только схема приложения, без пути. Куда вести внутри приложения,
+     теперь говорит один параметр — deep_link_value; дублировать маршрут ещё и в
+     af_dp значило держать два источника правды, которые легко разойдутся. */
+  const AF_DP_SCHEME='BankiRuInfo2://';
+  function buildAfDp(){return encodeURIComponent(AF_DP_SCHEME);}
 
   function isValidHttpUrl(v){try{const u=new URL(v);return u.protocol==='http:'||u.protocol==='https:';}catch(e){return false;}}
   function affPlaceholder(channel){return channel==='email'?'{{aff_unique5}}':'{AFFUNIQUE5}';}
@@ -78,33 +80,29 @@
     return link.replace(/([?&])([a-z0-9_]+)=/gi,(m,sep,key)=>`<span class="amp">${sep}</span><span class="k">${key}</span>=`);
   }
 
+  /* Режим webview: deep_link_value — это сам адрес страницы из webview_url. Поле
+     блокируется и зеркалит webview_url, чтобы на экране было видно ровно то, что
+     уйдёт в ссылку. Прежний префикс deepLink/webview?webviewUrl= больше не
+     склеивается: маршрут в приложении задаёт одна схема в af_dp. */
   function syncWebviewUI(){
     if(els.webviewFlag.checked){
       els.webviewWrap.style.display='block';
-      els.deepLinkValue.value=WEBVIEW_PREFIX;
+      els.deepLinkValue.value=normalizeSpaces(els.webviewUrl.value);
       els.deepLinkValue.disabled=true;
     }else{
       els.webviewWrap.style.display='none';
+      /* Снимая флаг, очищаем зеркало: иначе адрес страницы остался бы в поле как
+         будто это маршрут приложения, и ссылка тихо собралась бы неверно. */
+      if(els.deepLinkValue.disabled) els.deepLinkValue.value='';
       els.deepLinkValue.disabled=false;
-      if(els.deepLinkValue.value===WEBVIEW_PREFIX) els.deepLinkValue.value='';
     }
   }
 
-  // Возвращает СЫРОЙ deep link path (без пред-кодирования).
-  // Для webview: url страницы получает utm-метки и кодируется ОДИН раз,
-  // чтобы его собственный query не смешался с webviewUrl. Итоговое значение
-  // deep_link_value/af_dp кодируется ещё раз уже при вставке в OneLink.
-  function getDeepLinkPath(source,chToken,mailingType,aff){
+  // Возвращает СЫРОЙ deep link (без кодирования) — кодируется один раз при вставке.
+  function getDeepLinkPath(){
     if(els.webviewFlag.checked){
-      const wv=normalizeSpaces(els.webviewUrl.value);
-      if(!wv) return 'deepLink/webview?webviewUrl=';
-      let inner;
-      try{
-        const u=new URL(wv);
-        addMarketingParams(u,source,chToken,mailingType,aff);
-        inner=encodePreservingBraces(u.toString()); // кодируем сам URL страницы
-      }catch(e){inner=encodePreservingBraces(wv);}
-      return 'deepLink/webview?webviewUrl=' + inner;
+      /* То же значение, что в webview_url, — без префикса и без склейки. */
+      return normalizeSpaces(els.webviewUrl.value);
     }
     return normalizeDeepLink(els.deepLinkValue.value);
   }
@@ -119,8 +117,13 @@
     const iosUrl=normalizeSpaces(els.iosUrl.value);
     const androidUrl=normalizeSpaces(els.androidUrl.value);
 
+    /* Зеркало webview_url в заблокированном deep_link_value обновляем на каждый
+       ввод: иначе поле показывало бы адрес на момент включения флага, а в ссылку
+       уходил бы уже другой. */
+    if(els.webviewFlag.checked) els.deepLinkValue.value=normalizeSpaces(els.webviewUrl.value);
+
     // сырой deep link path
-    const deepLinkPath=getDeepLinkPath(source,chToken,mailingType,aff);
+    const deepLinkPath=getDeepLinkPath();
 
     const missingKeys=[];
     if(!channel) missingKeys.push('channel');
@@ -153,8 +156,8 @@
     params.push(['is_retargeting','true']);
     params.push(['af_reengagement_window','30d']);
     params.push(['af_force_deeplink','true']);
-    // af_dp и deep_link_value кодируются одинаково, один раз, из одного сырого path
-    params.push(['af_dp',buildAfDp(deepLinkPath)]);
+    // af_dp — только схема; маршрут/страница — в deep_link_value, закодированном один раз
+    params.push(['af_dp',buildAfDp()]);
     params.push(['deep_link_value',encodePreservingBraces(deepLinkPath)]);
     if(iosUrl) params.push(['af_ios_url',buildEncodedUrl(iosUrl,source,chToken,mailingType,aff)]);
     if(androidUrl) params.push(['af_android_url',buildEncodedUrl(androidUrl,source,chToken,mailingType,aff)]);
