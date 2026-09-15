@@ -1169,7 +1169,7 @@
           <input type="checkbox" id="webviewFlag" />
           <div class="lbl-row">
             <span>Посадочная содержит webview?</span>
-            <span class="info" tabindex="0">i<span class="tip"><b>На что влияет:</b> при включении <code class="inline">deep_link_value</code> блокируется и повторяет <code class="inline">webview_url</code> — адрес страницы уходит в ссылку как есть, без служебного префикса.</span></span>
+            <span class="info" tabindex="0">i<span class="tip"><b>На что влияет:</b> при включении <code class="inline">deep_link_value</code> блокируется и повторяет <code class="inline">webview_url</code> с добавленными utm-метками — без служебного префикса.</span></span>
           </div>
         </label>
         <div class="hint">Включи, если посадочная — внешняя страница, открываемая во встроенном webview приложения.</div>
@@ -1187,7 +1187,7 @@
       <div class="field full" id="webviewWrap" data-req="webviewUrl" style="display:none">
         <div class="lbl-row">
           <label for="webviewUrl">webview_url <span class="req">*</span></label>
-          <span class="info" tabindex="0">i<span class="tip"><b>На что влияет:</b> страница, открываемая во webview. Это же значение уходит в <code class="inline">deep_link_value</code> — один раз закодированным, без префикса и без склейки.</span></span>
+          <span class="info" tabindex="0">i<span class="tip"><b>На что влияет:</b> страница, открываемая во webview. К ней добавляются utm-метки, и результат уходит в <code class="inline">deep_link_value</code> — один раз закодированным, без префикса.</span></span>
         </div>
         <input id="webviewUrl" type="text" placeholder="https://www.banki.ru/... — страница для открытия в webview" />
         <div class="hint">Полный http/https URL страницы для открытия в webview. utm-метки добавятся автоматически.</div>
@@ -1277,13 +1277,13 @@
 
       <h4><span class="ic">4</span>Режим webview</h4>
       <p>Если посадочная — внешняя страница во встроенном webview, включи чекбокс и укажи страницу в поле
-      <code>webview_url</code>. Поле <code>deep_link_value</code> заблокируется и будет повторять то же значение: в
-      ссылку уходит только <code>deep_link_value</code> с адресом страницы — без служебного префикса и без склейки.
+      <code>webview_url</code>. Поле <code>deep_link_value</code> заблокируется и покажет этот адрес с utm-метками: в
+      ссылку уходит только <code>deep_link_value</code> с адресом страницы и метками — без служебного префикса.
       Адрес кодируется один раз, литеральных <code>?</code>/<code>=</code> в итоговой ссылке не остаётся.</p>
       <div class="ex">
         <div class="ex-t">Пример · webview</div>
         <div class="ex-row"><b>webview_url:</b> https://www.banki.ru/promo/leto</div>
-        <div class="ex-out">deep_link_value = <span class="hl">https%3A%2F%2Fwww.banki.ru%2Fpromo%2Fleto</span></div>
+        <div class="ex-out">deep_link_value = <span class="hl">https%3A%2F%2Fwww.banki.ru%2Fpromo%2Fleto%3Fsource%3D{sourceCrm}%26utm_source%3D{channel}%26utm_medium%3Dcrm%26utm_campaign%3D{sourceCrm}%26aff_unique5%3D{AFFUNIQUE5}</span></div>
         <div class="ex-out">af_dp = <span class="hl">BankiRuInfo2%3A%2F%2F</span></div>
       </div>
 
@@ -1304,7 +1304,7 @@
       хранится «сырым» и кодируется <b>ровно один раз на этапе вставки</b>. Все вложенные URL
       (<code>af_web_dp</code>, <code>af_ios_url</code>, <code>af_android_url</code>) тоже кодируются, чтобы их
       параметры не ломали основную ссылку. Плейсхолдеры в фигурных скобках <code>{…}</code> и <code>{{…}}</code>
-      намеренно <b>не кодируются</b> — их подставит CRM на этапе отправки. В fallback-ссылки
+      намеренно <b>не кодируются</b> — их подставит CRM на этапе отправки. В fallback-ссылки и в страницу webview
       автоматически дописываются <code>source</code>, <code>utm_source</code>, <code>utm_medium</code>,
       <code>utm_campaign</code> и <code>aff_unique5</code>.</p>
       <div class="callout">Тебе не нужно ничего кодировать вручную — вставляй ссылки и deep link «как есть»,

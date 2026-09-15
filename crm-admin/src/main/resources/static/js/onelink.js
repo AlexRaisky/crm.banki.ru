@@ -80,10 +80,10 @@
     return link.replace(/([?&])([a-z0-9_]+)=/gi,(m,sep,key)=>`<span class="amp">${sep}</span><span class="k">${key}</span>=`);
   }
 
-  /* Режим webview: deep_link_value — это сам адрес страницы из webview_url. Поле
-     блокируется и зеркалит webview_url, чтобы на экране было видно ровно то, что
-     уйдёт в ссылку. Прежний префикс deepLink/webview?webviewUrl= больше не
-     склеивается: маршрут в приложении задаёт одна схема в af_dp. */
+  /* Режим webview: deep_link_value — адрес страницы из webview_url с метками.
+     Поле блокируется и показывает ровно то, что уйдёт в ссылку (значение
+     проставляет update). Прежний префикс deepLink/webview?webviewUrl= больше не
+     склеивается: в af_dp — только схема приложения. */
   function syncWebviewUI(){
     if(els.webviewFlag.checked){
       els.webviewWrap.style.display='block';
@@ -98,11 +98,25 @@
     }
   }
 
+  /* Адрес страницы webview с маркетинговыми метками. Метки обязательны: без них
+     переход из рассылки в webview не виден в аналитике — ни канал, ни кампания. */
+  function webviewTarget(source,chToken,mailingType,aff){
+    const wv=normalizeSpaces(els.webviewUrl.value);
+    if(!wv) return '';
+    try{
+      const u=new URL(wv);
+      addMarketingParams(u,source,chToken,mailingType,aff);
+      /* URL кодирует фигурные скобки плейсхолдеров — возвращаем их, иначе на
+         экране вместо {sourceCrm} была бы нечитаемая %7BsourceCrm%7D. */
+      return u.toString().replace(/%7B/gi,'{').replace(/%7D/gi,'}');
+    }catch(e){return wv;}
+  }
+
   // Возвращает СЫРОЙ deep link (без кодирования) — кодируется один раз при вставке.
-  function getDeepLinkPath(){
+  function getDeepLinkPath(source,chToken,mailingType,aff){
     if(els.webviewFlag.checked){
-      /* То же значение, что в webview_url, — без префикса и без склейки. */
-      return normalizeSpaces(els.webviewUrl.value);
+      /* Адрес из webview_url с метками — без служебного префикса и без склейки. */
+      return webviewTarget(source,chToken,mailingType,aff);
     }
     return normalizeDeepLink(els.deepLinkValue.value);
   }
@@ -117,13 +131,13 @@
     const iosUrl=normalizeSpaces(els.iosUrl.value);
     const androidUrl=normalizeSpaces(els.androidUrl.value);
 
-    /* Зеркало webview_url в заблокированном deep_link_value обновляем на каждый
-       ввод: иначе поле показывало бы адрес на момент включения флага, а в ссылку
-       уходил бы уже другой. */
-    if(els.webviewFlag.checked) els.deepLinkValue.value=normalizeSpaces(els.webviewUrl.value);
-
     // сырой deep link path
-    const deepLinkPath=getDeepLinkPath();
+    const deepLinkPath=getDeepLinkPath(source,chToken,mailingType,aff);
+
+    /* Заблокированное deep_link_value показывает ровно то, что уйдёт в ссылку, —
+       адрес с метками, и обновляется на каждый ввод: иначе поле застывало бы на
+       моменте включения флага, а в ссылку уходило бы уже другое. */
+    if(els.webviewFlag.checked) els.deepLinkValue.value=deepLinkPath;
 
     const missingKeys=[];
     if(!channel) missingKeys.push('channel');
